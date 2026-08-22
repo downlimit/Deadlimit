@@ -8,14 +8,27 @@ Deadlimit should remove repetitive mechanical work from Deadlock character repla
 
 ### 1. New project
 
-The user provides, at minimum:
+The user points Deadlimit at an existing artist project folder.
 
-- a working folder containing DMX model files and textures;
+The current project-root convention is intentionally simple:
+
+```text
+<ProjectFolder>\
+├─ *.dmx
+├─ *.png
+├─ 0source\     # current retail hero extraction; created only on request
+├─ optional artist-owned folders
+└─ .deadlimit\  # hidden Deadlimit metadata
+```
+
+At minimum the user provides:
+
+- the existing project folder containing the current DMX model files and PNG textures in its root;
 - the Deadlock hero;
 - a working project name;
 - optionally a release/VPK slot or target identifier, once the loader/deploy convention is finalized.
 
-Deadlimit prepares the CSDK workspace and project metadata automatically.
+Deadlimit must not reorganize the artist's source files merely to initialize a project. The detailed workspace contract lives in `WORKSPACE.md`.
 
 ### 2. Authoring stage
 
@@ -47,17 +60,20 @@ Deadlimit should then:
 
 ## Extract Hero module
 
-Deadlimit should also provide a separate extraction workflow:
+Deadlimit should provide hero extraction as a project action rather than requiring manual VPK navigation.
 
-- choose a Deadlock hero;
-- choose an output folder;
-- locate the hero's actual retail resources rather than assuming one fixed directory layout;
-- extract/decompile the main model and relevant render meshes;
-- extract materials and texture dependencies;
-- preserve original resource paths in project metadata;
-- optionally include additional resources such as animations when explicitly requested.
+Intended behavior:
 
-The extracted folder should be usable as the starting point for a new Deadlimit project.
+- use the hero already associated with the project, or let the user select/change it;
+- locate the hero's current retail resources rather than assuming one fixed directory layout;
+- create `<ProjectFolder>\0source\` if it does not exist when extraction is requested;
+- extract/decompile the main model and relevant render meshes into `0source`;
+- extract materials and texture dependencies into the same extraction package;
+- preserve original retail resource paths in project metadata;
+- optionally include additional resources such as animations when explicitly requested;
+- never overwrite or relocate the artist's DMX/PNG files in the project root as part of extraction.
+
+The extraction should be refreshable so `0source` can represent a current retail reference package for the selected hero.
 
 ## Material model
 
