@@ -54,6 +54,4 @@ ie4uinit.exe -show >nul 2>nul
 if /I "%~1"=="--refresh-only" exit /b 0
 
 cd /d "%ROOT%"
-dotnet run --project internal\src\Deadlimit -- doctor
-echo.
-pause
+dotnet run --project internal\src\Deadlimit
