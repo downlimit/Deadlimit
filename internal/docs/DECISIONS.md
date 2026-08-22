@@ -115,6 +115,41 @@ Implementation, documentation, icons, and source code live under the hidden `int
 
 The repository itself remains complete; hiding files in Explorer is only a local presentation choice.
 
+## Documentation continuity
+
+Project knowledge must not depend on one chat remaining available.
+
+Whenever a discussion produces information that could materially affect later implementation, diagnosis, architecture, product scope, workflow, compatibility handling, or testing, that information should be written into the repository documentation during the same work session.
+
+Examples of information worth persisting include:
+
+- confirmed experimental results;
+- rejected approaches and why they were rejected;
+- important hypotheses that still require testing;
+- newly discovered external-tool constraints or compatibility issues;
+- decisions that change the intended user workflow;
+- known bugs and their current status;
+- assumptions that future code depends on;
+- hero-specific exceptions that must not be generalized;
+- exact commands or paths when they are part of a proven pipeline;
+- next-step rationale when it would otherwise be lost with chat context.
+
+Information should be placed by role rather than accumulated in one giant file:
+
+- `CONTEXT.md` — current project state, known problems, active hypotheses, and what has been learned;
+- `DECISIONS.md` — decisions intended to remain stable until new evidence overturns them;
+- `ARCHITECTURE.md` — technical structure, invariants, adapters, data flow, and implementation constraints;
+- `ROADMAP.md` — sequencing, stage goals, acceptance criteria, and unresolved work;
+- `PROJECT.md` — product purpose and user-facing workflow.
+
+Documentation updates should preserve the distinction between:
+
+1. confirmed by our pipeline;
+2. confirmed by current external evidence;
+3. hypothesis requiring a targeted test.
+
+Do not record speculation as fact. Do not erase older confirmed context merely because a newer idea exists; superseded conclusions should either be updated with the new evidence or explicitly marked as superseded when the history matters.
+
 ## Decision rule for future fixes
 
 Every proposed workaround should be classified before being generalized:
