@@ -43,47 +43,58 @@ Validated locally on 2026-08-22:
 
 This accepts the extraction mechanism and destination contract needed by Stage 1B. It does not yet claim complete material/texture/shared dependency closure. That broader extraction completeness remains a Stage 4 concern unless Stage 1B or Stage 2 exposes a concrete missing dependency first. See `EXTRACTION.md`.
 
-### Stage 1B — Prepare + compile — IMPLEMENTED, PENDING LOCAL COMPILE TEST
+### Stage 1B — Prepare + compile — ACCEPTED FOR CURRENT PROJECT
 
-The first end-to-end build slice is now implemented behind `PREPARE + COMPILE`.
+Validated locally on 2026-08-22 with a real artist DMX:
 
-Current behavior:
+- `PREPARE + COMPILE` completed from the Deadlimit GUI;
+- generated the CSDK addon workspace without modifying the artist root input;
+- generated a minimal VMDL;
+- exercised three automatic `materials/models/... → models/...` material remaps;
+- the validated `bin_cs2` ResourceCompiler produced the expected addon `.vmdl_c`;
+- DeadlockTools post-processing completed and restored AG2/NmSkeleton references;
+- the exact hero-specific skeleton path used by this test is recorded in `BUILD.md` and must not be generalized to other heroes;
+- a deterministic build log was written under the project `.deadlimit\logs` folder.
 
-- takes artist-owned top-level DMX files from the current saved project;
-- derives the addon name deterministically from the project name;
-- derives the replacement VMDL/VMDL_C resource path from the retail main model discovered by extraction;
-- creates only the required generated subtree under CSDK `content\citadel_addons\<addon>` and does not modify the artist's root files;
-- refreshes the generated DMX copy under the target model directory;
-- creates a minimal ModelDoc29 VMDL containing the project's DMX render meshes instead of copying the full retail VMDL with potentially unsupported nodes;
-- scans binary/text DMX bytes for the confirmed Wall Worm `materials/models/...` material-path defect and emits narrow VMDL material remaps to `models/...` without rewriting the artist DMX;
-- invokes the experimentally validated `game\bin_cs2\win64\resourcecompiler.exe -i <vmdl> -nop4`;
-- requires the expected compiled `.vmdl_c` to exist before reporting compile success;
-- searches the decompiled `0source` VMDL data for an original `.vnmskel` reference;
-- when that reference and DeadlockTools are available, invokes the proven `DeadlockTools add ag2` shape using the selected hero, the family inferred from the skeleton path, and `--override-skeleton`;
-- stores generated source/compiled model paths in the project manifest;
-- writes a deterministic build log under `.deadlimit\logs`.
+This accepts the current project's headless prepare/compile/post-process slice. Rendering/material correctness still requires the intermediate CSDK authoring inspection, and retail loading still requires the later VPK/deploy stages.
 
-The local smoke test is deliberately the next gate. It must establish one concrete result before additional fixes are added:
+The current implementation behavior remains:
 
-```text
-artist DMX in project root
-→ PREPARE + COMPILE
-→ ResourceCompiler result
-→ expected VMDL_C
-→ AG2/NmSkeleton post-process result
-```
+- take artist-owned top-level DMX files from the current saved project;
+- derive the addon name deterministically from the project name;
+- derive the replacement VMDL/VMDL_C resource path from the retail main model discovered by extraction;
+- create only the required generated subtree under CSDK `content\citadel_addons\<addon>`;
+- refresh the generated DMX copy under the target model directory;
+- create a minimal ModelDoc29 VMDL containing the project's DMX render meshes;
+- scan DMX bytes for the confirmed Wall Worm `materials/models/...` material-path defect and emit narrow VMDL material remaps without rewriting the artist DMX;
+- invoke `game\bin_cs2\win64\resourcecompiler.exe -i <vmdl> -nop4`;
+- require the expected compiled `.vmdl_c` to exist before reporting compile success;
+- search `0source` VMDL data for an original `.vnmskel` reference;
+- apply the proven `DeadlockTools add ag2` path when sufficient references are discovered;
+- persist generated source/compiled paths and build logs.
 
-Known boundary of this first implementation:
+Known boundary:
 
-- `fix unitstatus` is not run yet. It remains conditional because the previous proven compile reported `Data is not an array! Aborting...`, indicating the fix was not applicable to that output;
-- a separate structural retail-VMDL node remover is not invoked in this first path because the generated minimal VMDL avoids importing those retail-only ModelDoc nodes. If the local compile demonstrates that a required node is missing, add only the specific evidence-backed structure next;
-- full material/texture authoring remains Stage 2.
+- `fix unitstatus` remains conditional and is not run by the current path because the earlier tested output showed the fix was not applicable;
+- full material/texture authoring remains Stage 2;
+- cross-hero AG2/skeleton discovery is not yet proven.
 
-Acceptance for Stage 1 overall: the current known-good replacement model can be rebuilt from artist source with one Deadlimit action and without manually opening ModelDoc for compilation.
-
-## Stage 2 — Authoring workspace and materials
+## Stage 2 — Authoring workspace and materials — NEXT
 
 Goal: support the intended intermediate shader/material authoring stage.
+
+Immediate next validation:
+
+```text
+open generated addon in CSDK12
+→ inspect generated VMDL/model
+→ verify reused retail materials
+→ identify custom material slots
+→ establish custom VMAT + texture authoring behavior
+→ preserve authored VMAT changes across rebuilds
+```
+
+Then automate:
 
 - classify imported model materials as REUSE or CUSTOM;
 - preserve retail material references;
