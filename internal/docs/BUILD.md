@@ -6,7 +6,7 @@ This file records concrete local build results. Hero-specific observations remai
 
 ### Confirmed by our pipeline
 
-A real artist project completed the current Stage 1B action from the Deadlimit GUI.
+A real artist project completed the Stage 1B action from the Deadlimit GUI.
 
 Observed result:
 
@@ -14,138 +14,115 @@ Observed result:
 Addon: ivymason
 Top-level artist DMX inputs: 1
 Automatic material-path remaps: 3
-Compiled model:
-C:\WorkProjects\Deadlock\Reduced_CSDK_12\game\citadel_addons\ivymason\models\heroes_wip\ivy\ivy.vmdl_c
 AG2/NmSkeleton: restored
 Skeleton reference used:
 models/heroes_staging/tengu/tengu_v2/dmx/mesh/ivy.vnmskel
 ```
 
-The build therefore confirmed, for this project, that Deadlimit can perform the following sequence without manual CMD work:
-
-```text
-artist DMX in project root
-→ generated CSDK addon source
-→ minimal generated VMDL
-→ narrow Wall Worm material remaps
-→ bin_cs2 ResourceCompiler
-→ expected VMDL_C discovery
-→ DeadlockTools add ag2 / NmSkeleton restoration
-```
-
-The success dialog reported three material remaps. This validates that the current non-destructive remap mechanism was exercised in a real build; it does not prove that every Wall Worm material-path case is covered.
-
 The `.vnmskel` path above is evidence for the tested Ivy project only. Its `heroes_staging/tengu/tengu_v2/...` location must not be generalized to other heroes.
 
-## 2026-08-22 — first CSDK visual inspection
+## 2026-08-22 — CSDK visual inspection
 
 ### Confirmed by our pipeline
 
 The generated model opens and renders in CSDK12. Base/retail materials are broadly visible and the geometry is usable for authoring inspection.
 
-Observed issues:
+Repeated visual tests established two unresolved issues:
 
-1. the character eyes render black;
-2. the new costume has no project-owned custom VMAT yet; custom material creation belongs to Stage 2;
-3. the generated model has no usable animation/sequence preview in Asset Browser, while an older manually prepared experiment did expose many animation clips and a selectable sequence.
+1. the character eyes still render black;
+2. the current generated model has no usable animation/sequence preview, while an older manually prepared addon did expose selectable animation and a much larger source/dependency set.
 
-The older manual experiment also showed a much larger dependency set. This is evidence that animation preview depends on more than simply adding AG2/NmSkeleton references to the compiled model.
+The new costume has no project-owned custom VMAT yet; that belongs to Stage 2 and is not treated as a build regression.
 
 ## Black-eye investigation
 
 ### Skeleton-retention hypothesis — tested and rejected as sufficient fix
 
-Deadlimit added a generic `BoneMarkupList` with `bone_cull_type = "None"` so ResourceCompiler would not discard helper bones. This is still a valid character-rig preservation rule, but the live visual test showed that Ivy's eyes remained black.
+Deadlimit added a generic `BoneMarkupList` with `bone_cull_type = "None"`. The live visual test showed that the eyes remained black.
 
-Therefore:
+Deadlimit then preserved the retail `Skeleton` and `AttachmentList` from the decompiled retail VMDL. The eyes still remained black.
+
+Therefore both of these statements are confirmed:
 
 ```text
 BoneMarkupList / bone_cull_type=None
 ≠ sufficient fix for the observed black eyes
+
+retail Skeleton + AttachmentList inheritance
+≠ sufficient fix for the observed black eyes
 ```
 
-The retention rule remains in the pipeline because helper-bone preservation is independently useful. The next eye investigation must look at missing retail skeleton data, eye shader/material parameters, eye occlusion data, or another retail model dependency rather than repeating the same culling experiment.
+The retention rules remain useful character-rig invariants. The next eye investigation must focus on data lost at the mesh/material boundary or another retail ModelDoc node rather than repeating skeleton-culling fixes.
 
-## Retail VMDL inheritance experiment
+Fresh ValveResourceFormat renderer code is relevant here: current character-eye rendering requires `eyeball_l`, `eyeball_r`, and `eye_target` and then resolves those model-level bones through each mesh's bone-remapping table before supplying eyeball shader bind indices/positions. This means a model can contain the correct skeleton while an exported render mesh still lacks the eye bones in its mesh-local remapping table. That is now an active hypothesis, not yet a confirmed diagnosis of the Wall Worm DMX.
 
-### Attempt
+Wall Worm's current public Source 2 documentation also still describes advanced eye/QC behavior as incomplete territory. Do not assume a Wall Worm DMX round-trip preserves every retail eye-specific datum merely because the visible skeleton is present.
 
-To restore richer authoring context, Deadlimit temporarily inherited these nodes from the decompiled retail VMDL:
+## Retail VMDL source-node experiment
 
-```text
-BoneMarkupList
-AttachmentList
-NmSkeletonList
-AnimGraph2List
-Skeleton
-```
+### Confirmed failed approach
 
-### Result — compile failure, confirmed 2026-08-22
-
-The current Reduced CSDK12 ResourceCompiler rejected the generated VMDL before compilation:
+Copying `NmSkeletonList` and `AnimGraph2List` directly into the authoring VMDL fails with current Reduced CSDK12:
 
 ```text
 Failed to allocate an instance of class 'NmSkeletonList'
 Failed to allocate an instance of class 'AnimGraph2List'
 ```
 
-The failing build otherwise had the same artist DMX and three material remaps. This is a direct local result, not a hypothesis.
+Current Deadlock modding guidance independently requires removing those two nodes from source ModelDoc before compilation. Runtime AG2/NmSkeleton restoration remains a post-compile operation through DeadlockTools.
 
-Fresh external Deadlock modding guidance independently reports the same practical constraint: `NmSkeletonList` / `AnimGraph2List` nodes must be removed from VMDL sources for current CSDK12 workflows, and AG2 creation/restoration happens through the dedicated AnimGraph2 workflow rather than by keeping those nodes in the source ModelDoc.
+## Authoring-context strategy — current implementation
 
-### Decision
+The earlier minimal-VMDL approach preserved too little authoring context. The older successful manual experiment showed that retaining the retail model's broader source context matters, especially for animation preview.
 
-Deadlimit now preserves only source-compiler-compatible retail authoring nodes:
+Deadlimit now uses the extracted retail hero source as the template for the CSDK addon:
 
 ```text
-BoneMarkupList
-Skeleton
-AttachmentList
+0source retail model folder
+→ copy complete decompiled model-source tree into addon content
+→ preserve every retail root ModelDoc node that current CSDK12 can accept
+→ strip only known-incompatible NmSkeletonList / AnimGraph2List
+→ replace RenderMeshList with artist DMX
+→ replace MaterialGroupList with Deadlimit/project material routing
+→ compile
+→ restore runtime AG2/NmSkeleton through DeadlockTools
 ```
 
-`NmSkeletonList` and `AnimGraph2List` are explicitly excluded from generated authoring VMDL files. Runtime AG2/NmSkeleton references continue to be restored after model compilation through DeadlockTools.
+The artist mesh is stored in a dedicated generated `deadlimit_mesh` folder so refreshing the retail source tree cannot erase retail animation DMX/source files and retail source files cannot overwrite the artist input.
 
-This restores a compilable authoring source while preserving the fuller retail skeleton. It does not yet solve animation preview.
+This change is specifically intended to preserve nodes such as `AnimationList`, `ModelModifierList`, `PoseParamList`, hitboxes, weights, body/LOD context, attachments, and skeleton data when they exist in the current extracted retail VMDL, without hardcoding Ivy-specific node names.
+
+This is pending the next local compile/visual test. A newly exposed unsupported ModelDoc class must be removed only after a concrete compiler error demonstrates that requirement.
+
+## Controlled `game` output policy
+
+The CSDK trees have distinct roles:
+
+```text
+content\citadel_addons\<addon>\...
+= persistent authoring source owned by the project/Deadlimit
+
+game\citadel_addons\<addon>\...
+= generated runtime output/cache
+```
+
+The user correctly identified that stale `game` output should not accumulate across prepare cycles. Deadlimit now deletes only the current addon's `game\citadel_addons\<addon>` tree at the start of `PREPARE + COMPILE`, then rebuilds it from the prepared content and applies the required post-compile AG2 patch.
+
+It never deletes the global CSDK `game` tree or other addons.
+
+The success dialog now exposes the authoring `content` path and reports that runtime output was cleaned/rebuilt; it no longer presents the `game` path as if it were the primary artist-facing result.
 
 ## Animation-preview direction
 
-The missing sequence picker is now treated as a separate dependency-closure problem.
+The old manual experiment exposed many animation source assets and a selectable sequence; the current minimal source did not. The first corrective step is now to copy the complete already-decompiled retail model source folder from `0source` into addon `content` and preserve compatible `AnimationList`/related ModelDoc nodes.
 
-Evidence from the older manually prepared addon shows many `vnmclip` assets from external hero/staging paths and a large dependency count. The current generated addon does not materialize that AG2 dependency closure.
-
-The likely generic solution is:
-
-```text
-retail model AG2/NmSkeleton references
-→ discover referenced vnmskel/vnmgraph resources
-→ recursively discover required vnmclip / related AG2 dependencies
-→ materialize them into the addon under their original resource paths
-→ keep unsupported NmSkeletonList/AnimGraph2List out of authoring VMDL
-→ compile model
-→ restore runtime AG2 refs
-→ verify sequence preview
-```
-
-This remains a hypothesis until implemented and tested. Do not hardcode the dependency paths observed on Ivy to other heroes.
-
-## Content vs game paths
-
-The build uses both CSDK trees deliberately:
-
-```text
-Authoring source:
-CSDK content\citadel_addons\<addon>\...\model.vmdl
-
-Compiled runtime output:
-CSDK game\citadel_addons\<addon>\...\model.vmdl_c
-```
-
-The Deadlimit success dialog now labels both paths separately. Showing only the `game` path previously was technically incomplete UX even though the runtime output path itself was correct.
+This is intentionally tested before implementing a more expensive VPK-wide AG2 dependency crawler. If the existing extracted retail source tree is sufficient to restore the sequence picker, no extra recursive dependency system should be added. If it remains insufficient, the next evidence-driven step is to discover and materialize referenced `vnmskel`, `vnmgraph`, and `vnmclip` resources under their original paths.
 
 ## Still unvalidated
 
-- exact cause of the observed black eyes after full retail Skeleton inheritance;
-- AG2 animation dependency materialization and sequence preview;
+- whether full compatible retail ModelDoc/source-tree preservation restores animation preview;
+- whether the next build exposes another current-CSDK-incompatible retail ModelDoc node;
+- exact cause of the observed black eyes; current strongest hypothesis is mesh-local eye-bone/remapping or eye-material data lost in the DMX round-trip;
 - custom material/texture creation and persistence;
 - retail Deadlock loading;
 - VPK packaging/deployment;
