@@ -61,8 +61,9 @@ internal static class BuildFeature
                 $"Prepare + compile completed.\n\n" +
                 $"Addon: {result.AddonName}\n" +
                 $"DMX: {result.DmxCount}\n" +
-                $"Material path remaps: {result.MaterialRemapCount}\n" +
-                $"Compiled model: {result.CompiledVmdlPath}\n" +
+                $"Material path remaps: {result.MaterialRemapCount}\n\n" +
+                $"Authoring source (content):\n{result.SourceVmdlPath}\n\n" +
+                $"Compiled runtime output (game):\n{result.CompiledVmdlPath}\n\n" +
                 $"{postProcess}\n\n" +
                 $"Log: {result.LogPath}",
                 "Deadlimit",
