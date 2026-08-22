@@ -12,6 +12,7 @@ public sealed record PrepareAuthoringResult(
     int DmxCount,
     int MaterialRemapCount,
     int RetailSourceFilesCopied,
+    bool GameOutputCleaned,
     string LogPath);
 
 public sealed class PrepareAuthoringService
@@ -59,6 +60,7 @@ public sealed class PrepareAuthoringService
 
         var addonName = MakeAddonName(manifest.ProjectName);
         var addonContentRoot = Path.Combine(_paths.CsdkContentRoot, "citadel_addons", addonName);
+        var addonGameRoot = Path.Combine(_paths.CsdkGameRoot, "citadel_addons", addonName);
 
         var metadataFolder = ProjectStore.GetMetadataFolder(manifest.ProjectFolder);
         var logFolder = Path.Combine(metadataFolder, "logs");
@@ -71,11 +73,26 @@ public sealed class PrepareAuthoringService
         log.AppendLine($"Addon: {addonName}");
         log.AppendLine($"Retail model: {manifest.RetailMainModel}");
         log.AppendLine($"CSDK content root: {addonContentRoot}");
-        log.AppendLine("CSDK game output: untouched by Deadlimit during prepare.");
+        log.AppendLine($"CSDK game output root: {addonGameRoot}");
         log.AppendLine();
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            progress?.Report(new PrepareAuthoringProgress("Cleaning stale compiled output for this addon..."));
+
+            var gameOutputCleaned = false;
+            if (Directory.Exists(addonGameRoot))
+            {
+                Directory.Delete(addonGameRoot, recursive: true);
+                gameOutputCleaned = true;
+            }
+
+            log.AppendLine(gameOutputCleaned
+                ? $"Removed stale addon runtime output: {addonGameRoot}"
+                : $"No stale addon runtime output existed: {addonGameRoot}");
+            log.AppendLine("Deadlimit does not compile content during PREPARE FOR CSDK; CSDK12 rebuilds game output from content when launched/compiled.");
+
             progress?.Report(new PrepareAuthoringProgress("Refreshing retail authoring template in CSDK content..."));
             Directory.CreateDirectory(addonContentRoot);
 
@@ -126,15 +143,14 @@ public sealed class PrepareAuthoringService
             log.AppendLine("Render-mesh policy: preserve retail RenderMeshList/bodygroups/LODs; overlay artist DMX at the original render-mesh resource path.");
 
             manifest.SourceVmdl = sourceCopy.DestinationVmdlPath;
-            // Prepare owns only content. Any runtime output may be stale until CSDK compiles it.
             manifest.CompiledVmdl = null;
             ProjectStore.Save(manifest);
 
             log.AppendLine();
-            log.AppendLine("RESULT: AUTHORING CONTENT PREPARED");
+            log.AppendLine("RESULT: AUTHORING CONTENT PREPARED; ADDON GAME OUTPUT CLEAN");
             File.WriteAllText(logPath, log.ToString());
 
-            progress?.Report(new PrepareAuthoringProgress("Authoring content prepared. Launch CSDK to compile/preview it."));
+            progress?.Report(new PrepareAuthoringProgress("Authoring content prepared. Launch CSDK to rebuild clean game output."));
 
             return new PrepareAuthoringResult(
                 addonName,
@@ -143,6 +159,7 @@ public sealed class PrepareAuthoringService
                 replacedRenderMeshes.Count,
                 patchResult.ExistingMaterialRemapCount + patchResult.AddedMaterialRemapCount,
                 sourceCopy.FilesCopied,
+                gameOutputCleaned,
                 logPath);
         }
         catch (Exception ex)
@@ -164,6 +181,11 @@ public sealed class PrepareAuthoringService
         if (!Directory.Exists(_paths.CsdkContentRoot))
         {
             throw new DirectoryNotFoundException($"CSDK content root was not found: {_paths.CsdkContentRoot}");
+        }
+
+        if (!Directory.Exists(_paths.CsdkGameRoot))
+        {
+            throw new DirectoryNotFoundException($"CSDK game root was not found: {_paths.CsdkGameRoot}");
         }
     }
 
