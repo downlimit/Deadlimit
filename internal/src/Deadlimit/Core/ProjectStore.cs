@@ -72,19 +72,6 @@ public static class ProjectStore
         return TryLoad(settings.LastProjectFolder);
     }
 
-    public static string? TryGetSource2ViewerCliPath()
-    {
-        var path = LoadSettings().Source2ViewerCliPath;
-        return !string.IsNullOrWhiteSpace(path) && File.Exists(path) ? path : null;
-    }
-
-    public static void SaveSource2ViewerCliPath(string path)
-    {
-        var settings = LoadSettings();
-        settings.Source2ViewerCliPath = Path.GetFullPath(path);
-        SaveSettings(settings);
-    }
-
     private static void SaveLastProject(string projectFolder)
     {
         var settings = LoadSettings();
@@ -136,6 +123,5 @@ public static class ProjectStore
     private sealed class LocalSettings
     {
         public string LastProjectFolder { get; set; } = string.Empty;
-        public string? Source2ViewerCliPath { get; set; }
     }
 }
