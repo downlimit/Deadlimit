@@ -1,4 +1,7 @@
-using System.Text.RegularExpressions;
+using SteamDatabase.ValvePak;
+using ValveResourceFormat;
+using ValveResourceFormat.IO;
+using ValveResourceFormat.ResourceTypes;
 
 namespace Deadlimit.Core;
 
@@ -13,13 +16,6 @@ public sealed record HeroExtractionResult(
 
 public sealed class HeroExtractionService
 {
-    private static readonly Regex ModelPathRegex = new(
-        @"(?<path>models/[A-Za-z0-9_./\-]+\.vmdl_c)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-    private const string HeroModelPathFilter =
-        "models/heroes/,models/heroes_wip/,models/heroes_staging/";
-
     private readonly DeadlimitPaths _paths;
 
     public HeroExtractionService(DeadlimitPaths paths)
@@ -27,11 +23,16 @@ public sealed class HeroExtractionService
         _paths = paths;
     }
 
-    public async Task<HeroExtractionResult> ExtractAsync(
+    public Task<HeroExtractionResult> ExtractAsync(
         ProjectManifest manifest,
-        string source2ViewerCliPath,
         IProgress<HeroExtractionProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        Task.Run(() => Extract(manifest, progress, cancellationToken), cancellationToken);
+
+    private HeroExtractionResult Extract(
+        ProjectManifest manifest,
+        IProgress<HeroExtractionProgress>? progress,
+        CancellationToken cancellationToken)
     {
         if (!Directory.Exists(manifest.ProjectFolder))
         {
@@ -50,14 +51,10 @@ public sealed class HeroExtractionService
             throw new DirectoryNotFoundException($"Retail Deadlock game folder was not found: {retailGameRoot}");
         }
 
-        var adapter = new Source2ViewerAdapter(source2ViewerCliPath);
-        progress?.Report(new HeroExtractionProgress("Checking Source 2 Viewer..."));
-        var versionResult = await adapter.GetVersionAsync(cancellationToken);
-        var source2ViewerVersion = FirstNonEmptyLine(versionResult.StandardOutput)
-            ?? FirstNonEmptyLine(versionResult.StandardError);
+        var vrfVersion = typeof(Resource).Assembly.GetName().Version?.ToString();
 
         progress?.Report(new HeroExtractionProgress("Locating current retail hero model..."));
-        var candidate = await FindMainModelAsync(adapter, retailGameRoot, hero, progress, cancellationToken);
+        var candidate = FindMainModel(retailGameRoot, hero, progress, cancellationToken);
         if (candidate is null)
         {
             throw new InvalidOperationException(
@@ -74,69 +71,70 @@ public sealed class HeroExtractionService
         DeleteDirectoryIfExists(stagingFolder);
         Directory.CreateDirectory(stagingFolder);
 
-        progress?.Report(new HeroExtractionProgress($"Decompiling {resourceFolder}..."));
-        var extraction = await adapter.DecompileVpkFolderAsync(
-            candidate.VpkPath,
-            resourceFolder,
-            stagingFolder,
-            cancellationToken);
-
-        if (!extraction.Success)
-        {
-            DeleteDirectoryIfExists(stagingFolder);
-            throw new InvalidOperationException(BuildToolError("Source 2 Viewer extraction failed", extraction));
-        }
-
-        var extractedFileCount = Directory.EnumerateFiles(stagingFolder, "*", SearchOption.AllDirectories).Count();
-        if (extractedFileCount == 0)
-        {
-            DeleteDirectoryIfExists(stagingFolder);
-            throw new InvalidOperationException(
-                "Source 2 Viewer completed without an error, but no files were written to the extraction folder.");
-        }
-
-        progress?.Report(new HeroExtractionProgress("Publishing refreshed 0source..."));
-
-        DeleteDirectoryIfExists(previousFolder);
-        if (Directory.Exists(outputFolder))
-        {
-            Directory.Move(outputFolder, previousFolder);
-        }
-
         try
         {
-            Directory.Move(stagingFolder, outputFolder);
+            progress?.Report(new HeroExtractionProgress($"Decompiling {resourceFolder}..."));
+            ExtractResourceFolder(
+                candidate.VpkPath,
+                resourceFolder,
+                stagingFolder,
+                progress,
+                cancellationToken);
+
+            var extractedFileCount = Directory.EnumerateFiles(stagingFolder, "*", SearchOption.AllDirectories).Count();
+            if (extractedFileCount == 0)
+            {
+                throw new InvalidOperationException(
+                    "ValveResourceFormat completed without an error, but no files were written to the extraction folder.");
+            }
+
+            progress?.Report(new HeroExtractionProgress("Publishing refreshed 0source..."));
+
+            DeleteDirectoryIfExists(previousFolder);
+            if (Directory.Exists(outputFolder))
+            {
+                Directory.Move(outputFolder, previousFolder);
+            }
+
+            try
+            {
+                Directory.Move(stagingFolder, outputFolder);
+            }
+            catch
+            {
+                if (!Directory.Exists(outputFolder) && Directory.Exists(previousFolder))
+                {
+                    Directory.Move(previousFolder, outputFolder);
+                }
+
+                throw;
+            }
+
+            manifest.SchemaVersion = Math.Max(manifest.SchemaVersion, 2);
+            manifest.RetailMainModel = candidate.ResourcePath;
+            manifest.RetailSourceVpk = candidate.VpkPath;
+            manifest.LastSourceExtractionUtc = DateTimeOffset.UtcNow;
+            manifest.Source2ViewerVersion = vrfVersion is null ? "ValveResourceFormat" : $"ValveResourceFormat {vrfVersion}";
+            manifest.ExtractedSourceFileCount = extractedFileCount;
+            ProjectStore.Save(manifest);
+
+            progress?.Report(new HeroExtractionProgress("Hero source extraction complete."));
+
+            return new HeroExtractionResult(
+                candidate.ResourcePath,
+                candidate.VpkPath,
+                outputFolder,
+                extractedFileCount,
+                manifest.Source2ViewerVersion);
         }
         catch
         {
-            if (!Directory.Exists(outputFolder) && Directory.Exists(previousFolder))
-            {
-                Directory.Move(previousFolder, outputFolder);
-            }
-
+            DeleteDirectoryIfExists(stagingFolder);
             throw;
         }
-
-        manifest.SchemaVersion = Math.Max(manifest.SchemaVersion, 2);
-        manifest.RetailMainModel = candidate.ResourcePath;
-        manifest.RetailSourceVpk = candidate.VpkPath;
-        manifest.LastSourceExtractionUtc = DateTimeOffset.UtcNow;
-        manifest.Source2ViewerVersion = source2ViewerVersion;
-        manifest.ExtractedSourceFileCount = extractedFileCount;
-        ProjectStore.Save(manifest);
-
-        progress?.Report(new HeroExtractionProgress("Hero source extraction complete."));
-
-        return new HeroExtractionResult(
-            candidate.ResourcePath,
-            candidate.VpkPath,
-            outputFolder,
-            extractedFileCount,
-            source2ViewerVersion);
     }
 
-    private async Task<ModelCandidate?> FindMainModelAsync(
-        Source2ViewerAdapter adapter,
+    private ModelCandidate? FindMainModel(
         string retailGameRoot,
         string hero,
         IProgress<HeroExtractionProgress>? progress,
@@ -160,35 +158,41 @@ public sealed class HeroExtractionService
         }
 
         ModelCandidate? best = null;
-        foreach (var vpk in vpks)
+        foreach (var vpkPath in vpks)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(new HeroExtractionProgress($"Scanning {Path.GetFileName(vpk)}..."));
+            progress?.Report(new HeroExtractionProgress($"Scanning {Path.GetFileName(vpkPath)}..."));
 
-            var listResult = await adapter.ListVpkResourcesAsync(
-                vpk,
-                HeroModelPathFilter,
-                cancellationToken);
-
-            if (!listResult.Success)
+            try
             {
-                continue;
+                using var package = new Package();
+                package.Read(vpkPath);
+
+                foreach (var entry in package.Entries.SelectMany(group => group.Value))
+                {
+                    var resourcePath = NormalizeResourcePath(entry.GetFullPath());
+                    if (!IsHeroModelPath(resourcePath))
+                    {
+                        continue;
+                    }
+
+                    var score = ScoreModelCandidate(resourcePath, hero);
+                    if (score <= 0)
+                    {
+                        continue;
+                    }
+
+                    var candidate = new ModelCandidate(vpkPath, resourcePath, score);
+                    if (best is null || candidate.Score > best.Score)
+                    {
+                        best = candidate;
+                    }
+                }
             }
-
-            foreach (Match match in ModelPathRegex.Matches(listResult.StandardOutput.Replace('\\', '/')))
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or NotSupportedException)
             {
-                var resourcePath = match.Groups["path"].Value.Trim().Replace('\\', '/');
-                var score = ScoreModelCandidate(resourcePath, hero);
-                if (score <= 0)
-                {
-                    continue;
-                }
-
-                var candidate = new ModelCandidate(vpk, resourcePath, score);
-                if (best is null || candidate.Score > best.Score)
-                {
-                    best = candidate;
-                }
+                progress?.Report(new HeroExtractionProgress(
+                    $"Skipping unreadable VPK {Path.GetFileName(vpkPath)}: {ex.Message}"));
             }
 
             if (best is { Score: >= 1000 })
@@ -200,6 +204,111 @@ public sealed class HeroExtractionService
         return best;
     }
 
+    private static void ExtractResourceFolder(
+        string vpkPath,
+        string resourceFolder,
+        string outputRoot,
+        IProgress<HeroExtractionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        using var package = new Package();
+        package.Read(vpkPath);
+        using var fileLoader = new GameFileLoader(package, package.FileName);
+
+        var entries = package.Entries
+            .SelectMany(group => group.Value)
+            .Select(entry => (Entry: entry, Path: NormalizeResourcePath(entry.GetFullPath())))
+            .Where(item => item.Path.StartsWith(resourceFolder, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (entries.Length == 0)
+        {
+            throw new InvalidOperationException($"No VPK entries matched '{resourceFolder}'.");
+        }
+
+        for (var index = 0; index < entries.Length; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var (entry, filePath) = entries[index];
+
+            if (index == 0 || (index + 1) % 25 == 0 || index == entries.Length - 1)
+            {
+                progress?.Report(new HeroExtractionProgress(
+                    $"Decompiling {index + 1}/{entries.Length}: {Path.GetFileName(filePath)}"));
+            }
+
+            try
+            {
+                package.ReadEntry(entry, out byte[] rawData);
+
+                if (!entry.TypeName.EndsWith(GameFileLoader.CompiledFileSuffix, StringComparison.Ordinal))
+                {
+                    WriteFile(Path.Combine(outputRoot, ToWindowsPath(filePath)), rawData);
+                    continue;
+                }
+
+                using var stream = new MemoryStream(rawData, writable: false);
+                using var resource = new Resource { FileName = filePath };
+                resource.Read(stream);
+
+                var outputExtension = FileExtract.GetExtension(resource) ?? entry.TypeName[..^2];
+                var decompiledPath = Path.ChangeExtension(filePath, outputExtension);
+                var outputPath = Path.Combine(outputRoot, ToWindowsPath(decompiledPath));
+
+                using var contentFile = resource.ResourceType == ResourceType.Texture
+                    ? new TextureExtract(resource).ToContentFile()
+                    : FileExtract.Extract(resource, fileLoader, null);
+
+                DumpContentFile(outputRoot, outputPath, contentFile);
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    $"ValveResourceFormat failed while decompiling '{filePath}': {ex.Message}",
+                    ex);
+            }
+        }
+    }
+
+    private static void DumpContentFile(string outputRoot, string path, ContentFile contentFile)
+    {
+        if (contentFile.Data is not null)
+        {
+            WriteFile(path, contentFile.Data);
+        }
+
+        foreach (var additionalFile in contentFile.AdditionalFiles)
+        {
+            var additionalPath = additionalFile.KeepFullPath
+                ? Path.Combine(outputRoot, ToWindowsPath(additionalFile.FileName))
+                : Path.Combine(Path.GetDirectoryName(path)!, Path.GetFileName(additionalFile.FileName));
+
+            DumpContentFile(outputRoot, additionalPath, additionalFile);
+        }
+
+        foreach (var subFile in contentFile.SubFiles)
+        {
+            var data = subFile.Extract?.Invoke();
+            if (data is not null)
+            {
+                WriteFile(Path.Combine(Path.GetDirectoryName(path)!, subFile.FileName), data);
+            }
+        }
+    }
+
+    private static void WriteFile(string path, ReadOnlySpan<byte> data)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllBytes(path, data.ToArray());
+    }
+
+    private static bool IsHeroModelPath(string path) =>
+        path.EndsWith(".vmdl_c", StringComparison.OrdinalIgnoreCase)
+        && (path.StartsWith("models/heroes/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("models/heroes_wip/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("models/heroes_staging/", StringComparison.OrdinalIgnoreCase));
+
     private static int ScoreModelCandidate(string resourcePath, string hero)
     {
         var normalizedHero = NormalizeToken(hero);
@@ -208,7 +317,7 @@ public sealed class HeroExtractionService
             return 0;
         }
 
-        var path = resourcePath.Replace('\\', '/');
+        var path = NormalizeResourcePath(resourcePath);
         var fileName = Path.GetFileNameWithoutExtension(path);
         if (fileName.EndsWith(".vmdl", StringComparison.OrdinalIgnoreCase))
         {
@@ -257,24 +366,17 @@ public sealed class HeroExtractionService
     private static string NormalizeToken(string value) =>
         new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
 
+    private static string NormalizeResourcePath(string value) => value.Replace('\\', '/').TrimStart('/');
+
     private static string GetResourceFolder(string resourcePath)
     {
-        var normalized = resourcePath.Replace('\\', '/');
+        var normalized = NormalizeResourcePath(resourcePath);
         var slash = normalized.LastIndexOf('/');
         return slash >= 0 ? normalized[..(slash + 1)] : string.Empty;
     }
 
-    private static string BuildToolError(string heading, ExternalToolResult result)
-    {
-        var detail = FirstNonEmptyLine(result.StandardError)
-            ?? FirstNonEmptyLine(result.StandardOutput)
-            ?? $"exit code {result.ExitCode}";
-        return $"{heading}: {detail}";
-    }
-
-    private static string? FirstNonEmptyLine(string text) =>
-        text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .FirstOrDefault();
+    private static string ToWindowsPath(string resourcePath) =>
+        resourcePath.Replace('/', Path.DirectorySeparatorChar);
 
     private static void DeleteDirectoryIfExists(string path)
     {
