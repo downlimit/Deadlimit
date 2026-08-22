@@ -21,7 +21,7 @@ models/heroes_staging/tengu/tengu_v2/dmx/mesh/ivy.vnmskel
 
 The `.vnmskel` path above is evidence for the tested Ivy project only. Its `heroes_staging/tengu/tengu_v2/...` location must not be generalized to other heroes.
 
-This successful direct compile remains useful evidence, but the authoring workflow has since been changed: `PREPARE FOR CSDK` prepares `content` only and leaves normal authoring compilation to CSDK12.
+This successful direct compile remains useful evidence, but the authoring workflow has since been changed: `PREPARE FOR CSDK` prepares the authoring source and leaves normal compilation to CSDK12.
 
 ## 2026-08-22 — failed minimal-VMDL approach
 
@@ -87,7 +87,7 @@ The known-good `RenderMeshList` contains six retail source meshes:
 
 ```text
 ivy
- gun
+gun
 ivy_lod1
 gun_lod1
 ivy_lod2
@@ -152,29 +152,45 @@ This is a generic rule; it does not hardcode Ivy's eye material.
 → overlay artist DMX onto the matching original RenderMeshFile resource path
 → preserve retail MaterialGroupList
 → merge only missing Deadlimit material-path repairs
-→ leave normal content → game compilation to CSDK12
+→ clear stale compiled output for this addon only
+→ leave content → game compilation to CSDK12
 ```
 
 For the current Ivy project the artist file `ivy_ivy.dmx` matches the retail `RenderMeshFile` filename directly, so Deadlimit can replace that generated content copy while keeping gun and LOD meshes untouched.
 
 This approach intentionally reconstructs the known-good manual workflow instead of approximating the model with a newly generated ModelDoc.
 
-## `content` vs `game` ownership
+## `content` vs `game` ownership — final authoring rule
 
-Current rule:
+Fresh CSDK12 documentation confirms the two-tree contract:
+
+```text
+content\citadel_addons\<addon>
+= raw/editable authoring source
+
+game\citadel_addons\<addon>
+= compiled output automatically produced/read by the tools/game
+```
+
+The first `PREPARE FOR CSDK` rewrite went too far and left `game` completely untouched. That allowed stale `.vmdl_c` and other previously compiled files to survive and be mistaken for the current prepared state.
+
+Confirmed user-facing requirement:
 
 ```text
 PREPARE FOR CSDK
-→ prepares content only
-→ does not delete game
-→ does not invoke ResourceCompiler
-→ does not apply compiled-binary AG2 patches
+→ delete only game\citadel_addons\<current_addon>
+→ prepare/patch content\citadel_addons\<current_addon>
+→ do not invoke ResourceCompiler
+→ do not apply compiled-binary AG2 patches
+→ stop with the current addon's game output empty
 
-CSDK12 authoring session
-→ compiles prepared content into game as needed
+Launch/use CSDK12
+→ CSDK rebuilds game output from the prepared content
 ```
 
-A later explicit `RELEASE` / `RELEASE & TEST` transaction may own clean runtime compilation, post-compile AG2 restoration, VPK packaging, and deployment. That is separate from authoring preparation.
+Deadlimit must never delete the global `game` tree or another addon's output. If files in the current addon output are locked by a running CSDK process, prepare should fail visibly rather than silently leave a mixed stale state.
+
+A later explicit `RELEASE` / `RELEASE & TEST` transaction may own release-time runtime validation, post-compile AG2 restoration, VPK packaging, and deployment. That remains separate from authoring preparation.
 
 ## Still unvalidated
 
