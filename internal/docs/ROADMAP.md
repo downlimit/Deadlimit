@@ -30,32 +30,33 @@ Acceptance was confirmed with a real project: project metadata survived close/re
 
 The exact project-folder contract is documented in `WORKSPACE.md`.
 
-### Stage 1A.1 — Hero extraction validation slice — IMPLEMENTED, PENDING REAL OUTPUT TEST
+### Stage 1A.1 — Hero extraction validation slice — ACCEPTED FOR MODEL-FOLDER EXTRACTION
 
-Implemented immediately after 1A because later Prepare requires reliable retail model/reference discovery:
+Validated locally on 2026-08-22:
 
-- `EXTRACT HERO SOURCE` button in the desktop UI;
-- pinned in-process `ValveResourceFormat 20.0.6980` integration; no separate Source2Viewer CLI is required;
-- scan current retail Deadlock VPKs instead of hardcoding one hero path;
-- prioritize current `game\citadel\pak01_dir.vpk` and exact hero-model filename matches;
-- decompile the discovered hero resource folder into hidden staging;
-- publish to `<ProjectFolder>\0source\` only after successful non-empty extraction;
-- preserve the previous extraction as hidden `.deadlimit\0source.previous` during refresh;
-- persist discovered retail main model/VPK, ValveResourceFormat version, extraction time, and file count.
+- `EXTRACT HERO SOURCE` runs from the desktop UI;
+- pinned in-process `ValveResourceFormat 20.0.6980` integration works; no separate Source2Viewer CLI is required;
+- current retail Deadlock VPK discovery found the selected hero;
+- extraction published a non-empty `<ProjectFolder>\0source\`;
+- the resulting hero source folder contained the decompiled main VMDL and many DMX resources;
+- existing artist root assets were not part of the extraction transaction.
 
-The first real-project output test must establish whether folder-level decompilation already yields the complete useful model/render-mesh/material/texture set or whether dependency closure must be expanded. See `EXTRACTION.md`.
+This accepts the extraction mechanism and destination contract needed by Stage 1B. It does not yet claim complete material/texture/shared dependency closure. That broader extraction completeness remains a Stage 4 concern unless Stage 1B or Stage 2 exposes a concrete missing dependency first. See `EXTRACTION.md`.
 
-### Stage 1B — Prepare + compile
+### Stage 1B — Prepare + compile — NEXT
 
-After the extraction validation test:
+Next:
 
+- take artist-owned top-level DMX input from the current Deadlimit project;
+- create the generated CSDK addon workspace without modifying artist originals;
+- generate/prepare the source VMDL needed for compilation;
 - safely preprocess source VMDL where required;
 - normalize the confirmed Wall Worm `materials/models/...` defect narrowly;
-- create the generated CSDK addon workspace without modifying artist originals;
 - invoke the validated CSDK12 `bin_cs2` ResourceCompiler;
 - locate the resulting addon `.vmdl_c`;
-- apply `DeadlockTools add ag2` with discovered original refs;
-- make `fix unitstatus` conditional/no-op when not applicable;
+- discover/reuse the retail graph/skeleton references needed for the selected hero;
+- apply `DeadlockTools add ag2` when required;
+- keep `fix unitstatus` conditional/no-op when not applicable;
 - verify expected graph/skeleton references;
 - produce a clear success/failure report.
 
