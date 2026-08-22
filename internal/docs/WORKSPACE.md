@@ -12,11 +12,12 @@ Current expected shape:
 <ProjectFolder>\
 ├─ *.dmx
 ├─ *.png
-├─ 0source\          # retail hero extraction destination; created on demand
+├─ 0source\          # current retail hero extraction; generated on demand
 ├─ 1scene\           # optional artist-owned folder; Deadlimit does not assume or manage it
 ├─ 6temp\            # optional artist-owned folder; Deadlimit does not assume or manage it
-└─ .deadlimit\       # hidden Deadlimit metadata
-   └─ project.json
+└─ .deadlimit\       # hidden Deadlimit metadata / staging / safety backup
+   ├─ project.json
+   └─ 0source.previous\   # previous extraction, when a refresh replaces an existing 0source
 ```
 
 Only the conventions that affect Deadlimit are normative. Folder names such as `1scene` and `6temp` are examples of artist-owned structure and must not be hardcoded as required directories.
@@ -38,17 +39,21 @@ Deadlimit must not move, rename, overwrite, or copy these artist-owned root asse
 
 `0source` is reserved for a current extraction of the selected retail Deadlock hero.
 
-Intended behavior:
+Implemented behavior:
 
-1. the user requests hero source extraction from Deadlimit;
-2. Deadlimit creates `<ProjectFolder>\0source\` if it does not exist;
-3. Deadlimit discovers the hero's current retail resources;
-4. the extraction adapter writes the decompiled/source package into `0source`;
-5. repeated extraction should refresh the extraction deterministically without touching the artist's DMX/PNG files in the project root.
+1. the user clicks `EXTRACT HERO SOURCE`;
+2. Deadlimit saves the current project metadata first;
+3. Deadlimit locates `Source2Viewer-CLI.exe`; if its location is not already known, the user selects it once and the path is persisted locally;
+4. Deadlimit scans the current retail Deadlock VPKs for a matching hero `.vmdl_c`, preferring the canonical `game\citadel\pak01_dir.vpk` and exact hero-model filename matches;
+5. the hero resource folder is decompiled into a hidden staging directory;
+6. only after a non-empty successful extraction does Deadlimit publish the staging result as `<ProjectFolder>\0source\`;
+7. if an older `0source` existed, it is moved to hidden `.deadlimit\0source.previous\` before the new extraction is published;
+8. if publishing the new extraction fails, Deadlimit attempts to restore the previous `0source`;
+9. the selected retail model path, source VPK, Source 2 Viewer version, extraction timestamp, and extracted file count are persisted in `project.json`.
 
-`0source` must not be created simply because a project is opened. It is created when extraction is actually requested.
+`0source` is generated data. Artist-authored DMX/PNG files remain in the project root and are not touched by extraction.
 
-The extraction implementation is not part of the initial New Project milestone. The folder destination is nevertheless persisted now so later extraction does not require a workspace migration.
+The first extraction slice decompiles the discovered retail hero resource folder. Full transitive dependency closure outside that folder remains to be validated from real extraction output before it is generalized.
 
 ## Deadlimit metadata
 
@@ -70,13 +75,17 @@ The manifest currently stores:
 - discovered root DMX files;
 - discovered root PNG textures;
 - timestamps;
-- placeholders for later discovered retail/VMDL/AnimGraph2/NmSkeleton data.
+- discovered retail main model and VPK;
+- last hero extraction metadata;
+- placeholders for later VMDL/AnimGraph2/NmSkeleton build data.
 
 ## Persistence
 
 Deadlimit remembers the last opened project in `%LOCALAPPDATA%\Deadlimit\settings.json`.
 
 On the next launch, if that project and its manifest still exist, the project is reopened automatically.
+
+The selected Source 2 Viewer CLI path is also stored in the same local settings file and is reused on later extractions.
 
 ## Current implementation boundary
 
@@ -88,16 +97,20 @@ select existing artist folder
 → enter project name + hero + optional release ID
 → save hidden manifest
 → reopen last project automatically
+→ EXTRACT HERO SOURCE
+→ discover current retail hero model
+→ decompile hero resource folder into 0source
+→ preserve previous extraction on refresh
 ```
 
-Not implemented by this milestone:
+Not yet implemented:
 
-- retail hero extraction into `0source`;
+- validated extraction of every transitive material/texture/shared dependency outside the discovered hero folder;
 - CSDK addon preparation;
 - VMDL generation/preprocessing;
 - custom/reused material processing;
-- ResourceCompiler invocation;
-- AG2/NmSkeleton post-processing;
+- ResourceCompiler invocation from the GUI pipeline;
+- AG2/NmSkeleton post-processing in the GUI pipeline;
 - VPK packaging/deploy.
 
-Those remain separate stages so the project-folder contract can be validated before build automation starts modifying/generated CSDK workspaces.
+Each boundary is kept explicit so a real project can validate one transformation before the next layer is automated.
