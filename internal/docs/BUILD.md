@@ -2,7 +2,7 @@
 
 This file records concrete local build results. Hero-specific observations remain scoped to the tested project until separately validated.
 
-## 2026-08-22 — first successful `PREPARE + COMPILE`
+## 2026-08-22 — first successful headless compile experiment
 
 ### Confirmed by our pipeline
 
@@ -21,121 +21,167 @@ models/heroes_staging/tengu/tengu_v2/dmx/mesh/ivy.vnmskel
 
 The `.vnmskel` path above is evidence for the tested Ivy project only. Its `heroes_staging/tengu/tengu_v2/...` location must not be generalized to other heroes.
 
-This successful direct compile remains useful evidence, but the authoring workflow has since been changed: `PREPARE FOR CSDK` no longer compiles runtime output itself.
+This successful direct compile remains useful evidence, but the authoring workflow has since been changed: `PREPARE FOR CSDK` prepares `content` only and leaves normal authoring compilation to CSDK12.
 
-## 2026-08-22 — CSDK visual inspection
+## 2026-08-22 — failed minimal-VMDL approach
 
-### Confirmed by our pipeline
+Repeated CSDK visual tests showed that rebuilding a small VMDL from scratch was too destructive:
 
-The generated model opens and renders in CSDK12. Base/retail materials are broadly visible and the geometry is usable for authoring inspection.
+- the model could render, but Ivy's eyes were black;
+- the sequence/animation picker disappeared;
+- preserving `BoneMarkupList`, then full retail `Skeleton + AttachmentList`, did not fix the black eyes;
+- adding `NmSkeletonList` and `AnimGraph2List` directly to the source VMDL caused the current Reduced CSDK12 ResourceCompiler to reject the document.
 
-Repeated visual tests established two unresolved issues:
-
-1. the character eyes still render black;
-2. the current generated model has no usable animation/sequence preview, while an older manually prepared addon did expose selectable animation and a much larger source/dependency set.
-
-The new costume has no project-owned custom VMAT yet; that belongs to Stage 2 and is not treated as a build regression.
-
-## Black-eye investigation
-
-### Skeleton-retention hypothesis — tested and rejected as sufficient fix
-
-Deadlimit added a generic `BoneMarkupList` with `bone_cull_type = "None"`. The live visual test showed that the eyes remained black.
-
-Deadlimit then preserved the retail `Skeleton` and `AttachmentList` from the decompiled retail VMDL. The eyes still remained black.
-
-Therefore both of these statements are confirmed:
-
-```text
-BoneMarkupList / bone_cull_type=None
-≠ sufficient fix for the observed black eyes
-
-retail Skeleton + AttachmentList inheritance
-≠ sufficient fix for the observed black eyes
-```
-
-The retention rules remain useful character-rig invariants. The next eye investigation must focus on data lost at the mesh/material boundary or another retail ModelDoc node rather than repeating skeleton-culling fixes.
-
-Fresh ValveResourceFormat renderer code is relevant here: current character-eye rendering requires `eyeball_l`, `eyeball_r`, and `eye_target` and then resolves those model-level bones through each mesh's bone-remapping table before supplying eyeball shader bind indices/positions. This means a model can contain the correct skeleton while an exported render mesh still lacks the eye bones in its mesh-local remapping table. That is now an active hypothesis, not yet a confirmed diagnosis of the Wall Worm DMX.
-
-Wall Worm's current public Source 2 documentation also still describes advanced eye/QC behavior as incomplete territory. Do not assume a Wall Worm DMX round-trip preserves every retail eye-specific datum merely because the visible skeleton is present.
-
-## Retail VMDL source-node experiment
-
-### Confirmed failed approach
-
-Copying `NmSkeletonList` and `AnimGraph2List` directly into the authoring VMDL fails with current Reduced CSDK12:
+Confirmed compiler error:
 
 ```text
 Failed to allocate an instance of class 'NmSkeletonList'
 Failed to allocate an instance of class 'AnimGraph2List'
 ```
 
-Current Deadlock modding guidance independently requires removing those two nodes from source ModelDoc before compilation. Runtime AG2/NmSkeleton restoration remains a post-compile operation through DeadlockTools.
+Current Deadlock animation guidance independently requires clearing those two ModelDoc nodes before the relevant CSDK12/AG2 workflow.
 
-## Authoring-context strategy — current implementation
+Conclusion: Deadlimit must stop synthesizing a fresh approximation of the retail ModelDoc. The extracted retail VMDL is the authoring template; Deadlimit should apply narrow structural edits to it.
 
-The earlier minimal-VMDL approach preserved too little authoring context. The older successful manual experiment showed that retaining the retail model's broader source context matters, especially for animation preview.
+## 2026-08-22 — known-good Ivy files supplied from the older manual workflow
 
-Deadlimit now uses the extracted retail hero source as the template for the CSDK addon:
-
-```text
-0source retail model folder
-→ copy complete decompiled model-source tree into addon content
-→ preserve every retail root ModelDoc node that current CSDK12 can accept
-→ strip only known-incompatible NmSkeletonList / AnimGraph2List
-→ replace RenderMeshList with artist DMX
-→ replace MaterialGroupList with Deadlimit/project material routing
-→ leave runtime compilation to CSDK12
-```
-
-The artist mesh is stored in a dedicated generated `deadlimit_mesh` folder so refreshing the retail source tree cannot erase retail animation DMX/source files and retail source files cannot overwrite the artist input.
-
-This change is specifically intended to preserve nodes such as `AnimationList`, `ModelModifierList`, `PoseParamList`, hitboxes, weights, body/LOD context, attachments, and skeleton data when they exist in the current extracted retail VMDL, without hardcoding Ivy-specific node names.
-
-A newly exposed unsupported ModelDoc class must be removed only after a concrete CSDK compiler error demonstrates that requirement.
-
-## `content` vs `game` ownership — corrected architecture
-
-CSDK12 documentation states that an addon has two trees:
+The user supplied two files that are known to render correctly in Asset Browser/ModelDoc and do not exhibit the black-eye problem:
 
 ```text
-content\citadel_addons\<addon>\...
-= raw/editable authoring source
-
-game\citadel_addons\<addon>\...
-= compiled runtime output generated/read by CSDK/game
+ivy.vmdl
+ivy_ivy.dmx
 ```
 
-The previous Deadlimit implementation deleted the current addon's `game` tree and immediately recompiled it during `PREPARE + COMPILE`. That was unnecessary duplication of CSDK12's normal authoring behavior and has been removed.
+The attached DMX is binary DMX encoding 9, model format 22. The attached VMDL is a ModelDoc28 document.
+
+### Confirmed structure of the known-good VMDL
+
+Root child classes, in source order:
+
+```text
+BoneMarkupList
+RenderMeshList
+MaterialGroupList
+BodyGroupList
+LODGroupList
+AttachmentList
+WeightListList
+AnimationList
+AnimConstraintList
+GameDataList
+HitboxSetList
+Skeleton
+PhysicsShapeList
+```
+
+Notably absent:
+
+```text
+NmSkeletonList
+AnimGraph2List
+```
+
+This matches the earlier remembered manual workaround: remove the two current-CSDK-incompatible AG2 source nodes, keep the rest of the retail ModelDoc.
+
+The known-good `RenderMeshList` contains six retail source meshes:
+
+```text
+ivy
+ gun
+ivy_lod1
+gun_lod1
+ivy_lod2
+gun_lod2
+```
+
+The corresponding `BodyGroupList` and `LODGroupList` reference those names. Therefore replacing the whole `RenderMeshList` with a single artist mesh breaks an internally coherent retail structure even when the artist only modified the main body mesh.
+
+The known-good `AnimationList` contains 254 `AnimFile` entries pointing to source DMX animations such as:
+
+```text
+models/heroes_wip/ivy/ivy_primary_run_e.dmx
+models/heroes_wip/ivy/ivy_primary_run_w.dmx
+...
+```
+
+This is direct evidence for why the old prepared model exposed a sequence list in the authoring tools: the normal retail `AnimationList` and its DMX source files were retained.
+
+### Confirmed material evidence and black-eye fix
+
+The known-good `MaterialGroupList` contains five remaps. Four are decompiler/import compatibility mappings and one is the project custom material mapping.
+
+Relevant non-custom remaps include:
+
+```text
+materials/models/heroes_staging/tengu/tengu_v2/materials/ivy_bodyv3.vmat
+→ models/heroes_staging/tengu/tengu_v2/materials/ivy_bodyv3.vmat
+
+materials/models/heroes_staging/tengu/tengu_v2/materials/ivy_gearv3.vmat
+→ models/heroes_staging/tengu/tengu_v2/materials/ivy_gearv3.vmat
+
+materials/models/heroes_staging/tengu/tengu_v2/materials/ivy_wingsv3.vmat
+→ models/heroes_staging/tengu/tengu_v2/materials/ivy_wingsv3.vmat
+
+materials/dev/vertcolor_pbr_basic.vmat
+→ models/heroes_staging/tengu/tengu_v2/materials/ivy_bodyv3.vmat
+```
+
+The supplied DMX contains the mesh/string identifiers `ivy_eyes` and `ivy_eyes_mesh`, plus `materials/dev/vertcolor_pbr_basic.vmat`. It does not contain `eyeball_l`, `eyeball_r`, or `eye_target` bone-name strings.
+
+This is strong direct evidence that the previously working Ivy black-eye correction was the VMDL material remap from the generic dev material to the retail body material, rather than an eye-helper-bone workaround.
+
+The previous Deadlimit generator discarded the retail `MaterialGroupList` and recreated only the three `materials/models/... → models/...` remaps. That explains why it consistently reported exactly three remaps while the known-good VMDL has the additional dev-material remap required by the eye mesh.
+
+### Corrected authoring invariant
+
+Deadlimit must preserve the retail `MaterialGroupList` and merge project/path additions into it. Replacing the table destroys decompiler-authored compatibility redirects that are not inferable from a simple material-path scan.
+
+This is a generic rule; it does not hardcode Ivy's eye material.
+
+## Current authoring strategy
+
+`PREPARE FOR CSDK` now follows this structure:
+
+```text
+0source retail model source tree
+→ copy to CSDK content at the original resource path
+→ preserve original VMDL header/version
+→ preserve original root-node ordering and all compatible retail nodes
+→ remove only proven current-CSDK-incompatible NmSkeletonList / AnimGraph2List
+→ preserve retail RenderMeshList / BodyGroupList / LODGroupList
+→ overlay artist DMX onto the matching original RenderMeshFile resource path
+→ preserve retail MaterialGroupList
+→ merge only missing Deadlimit material-path repairs
+→ leave normal content → game compilation to CSDK12
+```
+
+For the current Ivy project the artist file `ivy_ivy.dmx` matches the retail `RenderMeshFile` filename directly, so Deadlimit can replace that generated content copy while keeping gun and LOD meshes untouched.
+
+This approach intentionally reconstructs the known-good manual workflow instead of approximating the model with a newly generated ModelDoc.
+
+## `content` vs `game` ownership
 
 Current rule:
 
 ```text
 PREPARE FOR CSDK
-→ touches content only
+→ prepares content only
 → does not delete game
 → does not invoke ResourceCompiler
-→ does not apply post-compile binary patches
+→ does not apply compiled-binary AG2 patches
 
-Launch/use CSDK12
-→ CSDK compiles prepared content into game as needed
+CSDK12 authoring session
+→ compiles prepared content into game as needed
 ```
 
-A later explicit `RELEASE` / `RELEASE & TEST` transaction may deliberately own clean runtime compilation, post-compile AG2 fixes, VPK packaging, and deployment. That is a different operation from authoring preparation.
-
-## Animation-preview direction
-
-The old manual experiment exposed many animation source assets and a selectable sequence; the current minimal source did not. The first corrective step is to copy the complete already-decompiled retail model source folder from `0source` into addon `content` and preserve compatible `AnimationList`/related ModelDoc nodes.
-
-This is intentionally tested before implementing a more expensive VPK-wide AG2 dependency crawler. If the existing extracted retail source tree is sufficient to restore the sequence picker, no extra recursive dependency system should be added. If it remains insufficient, the next evidence-driven step is to discover and materialize referenced `vnmskel`, `vnmgraph`, and `vnmclip` resources under their original paths.
+A later explicit `RELEASE` / `RELEASE & TEST` transaction may own clean runtime compilation, post-compile AG2 restoration, VPK packaging, and deployment. That is separate from authoring preparation.
 
 ## Still unvalidated
 
-- whether full compatible retail ModelDoc/source-tree preservation restores animation preview;
-- whether the next CSDK build exposes another current-CSDK-incompatible retail ModelDoc node;
-- exact cause of the observed black eyes; current strongest hypothesis is mesh-local eye-bone/remapping or eye-material data lost in the DMX round-trip;
-- custom material/texture creation and persistence;
-- retail Deadlock loading;
-- VPK packaging/deployment;
-- AG2/skeleton discovery on another hero.
+- whether the corrected template-preserving prepare reproduces the supplied known-good Ivy behavior in the current CSDK12 build;
+- whether the retail MaterialGroupList preservation restores normal Ivy eyes in the new automated flow;
+- whether preserving the original AnimationList/source DMX tree restores the sequence picker;
+- custom material/texture creation and persistence as an automated Stage 2 feature;
+- retail Deadlock loading from a Deadlimit-built VPK;
+- the release-time AG2 patch sequence in the new separated authoring/release architecture;
+- cross-hero RenderMesh matching and material-remap preservation.
