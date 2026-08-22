@@ -13,6 +13,7 @@ public sealed class MainForm : Form
     private readonly Label _sourceFolderLabel = new() { AutoSize = true };
     private readonly ListBox _assetList = new() { Dock = DockStyle.Fill };
     private readonly ToolStripStatusLabel _statusLabel = new() { Text = "Select or create a project." };
+    private readonly Button _extractHeroButton = new() { Text = "EXTRACT HERO SOURCE", AutoSize = true };
 
     private ProjectManifest? _loadedManifest;
 
@@ -20,9 +21,9 @@ public sealed class MainForm : Form
     {
         Text = "Deadlimit";
         StartPosition = FormStartPosition.CenterScreen;
-        Width = 900;
-        Height = 640;
-        MinimumSize = new Size(760, 520);
+        Width = 980;
+        Height = 660;
+        MinimumSize = new Size(800, 540);
 
         BuildUi();
         Shown += (_, _) => RestoreLastProject();
@@ -47,7 +48,7 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             AutoSize = true,
             FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
+            WrapContents = true,
             Padding = new Padding(0, 0, 0, 10),
         };
 
@@ -57,10 +58,12 @@ public sealed class MainForm : Form
         openButton.Click += (_, _) => OpenProject();
         var rescanButton = new Button { Text = "RESCAN", AutoSize = true };
         rescanButton.Click += (_, _) => RefreshScan(showStatus: true);
+        _extractHeroButton.Click += async (_, _) => await ExtractHeroSourceAsync();
 
         topBar.Controls.Add(newButton);
         topBar.Controls.Add(openButton);
         topBar.Controls.Add(rescanButton);
+        topBar.Controls.Add(_extractHeroButton);
 
         var projectGroup = new GroupBox
         {
@@ -259,6 +262,14 @@ public sealed class MainForm : Form
 
     private void SaveProject()
     {
+        if (TrySaveProject())
+        {
+            SetStatus($"Saved. DMX: {_loadedManifest!.DmxFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}.");
+        }
+    }
+
+    private bool TrySaveProject()
+    {
         var folder = _projectFolderText.Text.Trim();
         var projectName = _projectNameText.Text.Trim();
         var hero = _heroText.Text.Trim();
@@ -267,19 +278,19 @@ public sealed class MainForm : Form
         if (!Directory.Exists(folder))
         {
             ShowValidation("Select an existing project folder.");
-            return;
+            return false;
         }
 
         if (string.IsNullOrWhiteSpace(projectName))
         {
             ShowValidation("Enter a project name.");
-            return;
+            return false;
         }
 
         if (string.IsNullOrWhiteSpace(hero))
         {
             ShowValidation("Enter the Deadlock hero for this project.");
-            return;
+            return false;
         }
 
         try
@@ -289,16 +300,20 @@ public sealed class MainForm : Form
 
             var manifest = new ProjectManifest
             {
-                SchemaVersion = 1,
+                SchemaVersion = Math.Max(existing?.SchemaVersion ?? 1, 2),
                 ProjectName = projectName,
                 ProjectFolder = Path.GetFullPath(folder),
                 Hero = hero,
                 ReleaseTarget = releaseTarget,
-                SourceDumpFolderName = "0source",
+                SourceDumpFolderName = existing?.SourceDumpFolderName ?? "0source",
                 DmxFiles = [.. scan.DmxFiles],
                 PngTextures = [.. scan.PngTextures],
                 CreatedUtc = existing?.CreatedUtc ?? DateTimeOffset.UtcNow,
                 RetailMainModel = existing?.RetailMainModel,
+                RetailSourceVpk = existing?.RetailSourceVpk,
+                LastSourceExtractionUtc = existing?.LastSourceExtractionUtc,
+                Source2ViewerVersion = existing?.Source2ViewerVersion,
+                ExtractedSourceFileCount = existing?.ExtractedSourceFileCount,
                 SourceVmdl = existing?.SourceVmdl,
                 CompiledVmdl = existing?.CompiledVmdl,
                 AnimGraph2Refs = existing?.AnimGraph2Refs ?? [],
@@ -308,7 +323,7 @@ public sealed class MainForm : Form
             ProjectStore.Save(manifest);
             _loadedManifest = manifest;
             RefreshScan(showStatus: false);
-            SetStatus($"Saved. DMX: {manifest.DmxFiles.Count}; PNG: {manifest.PngTextures.Count}.");
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -318,7 +333,119 @@ public sealed class MainForm : Form
                 "Could not save project",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
+            return false;
         }
+    }
+
+    private async Task ExtractHeroSourceAsync()
+    {
+        if (!TrySaveProject() || _loadedManifest is null)
+        {
+            return;
+        }
+
+        var cliPath = ResolveSource2ViewerCliPath();
+        if (cliPath is null)
+        {
+            return;
+        }
+
+        var outputFolder = Path.Combine(_loadedManifest.ProjectFolder, _loadedManifest.SourceDumpFolderName);
+        if (Directory.Exists(outputFolder) && Directory.EnumerateFileSystemEntries(outputFolder).Any())
+        {
+            var answer = MessageBox.Show(
+                this,
+                "0source already contains files. Refresh it from the current retail Deadlock build?\n\nThe previous 0source will be preserved as a hidden backup until the new extraction succeeds.",
+                "Refresh hero source",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (answer != DialogResult.Yes)
+            {
+                SetStatus("Hero source extraction cancelled.");
+                return;
+            }
+        }
+
+        _extractHeroButton.Enabled = false;
+        try
+        {
+            var progress = new Progress<HeroExtractionProgress>(update => SetStatus(update.Message));
+            var service = new HeroExtractionService(new DeadlimitPaths());
+            var result = await service.ExtractAsync(_loadedManifest, cliPath, progress);
+
+            RefreshScan(showStatus: false);
+            SetStatus($"Hero source ready: {result.ExtractedFileCount} files.");
+
+            MessageBox.Show(
+                this,
+                $"Hero source refreshed successfully.\n\nMain model: {result.MainModelResourcePath}\nFiles: {result.ExtractedFileCount}\nOutput: {result.OutputFolder}",
+                "Deadlimit",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            SetStatus("Hero source extraction failed.");
+            MessageBox.Show(
+                this,
+                ex.Message,
+                "Hero source extraction failed",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+        finally
+        {
+            _extractHeroButton.Enabled = true;
+        }
+    }
+
+    private string? ResolveSource2ViewerCliPath()
+    {
+        var saved = ProjectStore.TryGetSource2ViewerCliPath();
+        if (saved is not null)
+        {
+            return saved;
+        }
+
+        var paths = new DeadlimitPaths();
+        var knownCandidates = new[]
+        {
+            Path.Combine(paths.WorkspaceRoot, "Source2Viewer-CLI.exe"),
+            Path.Combine(paths.WorkspaceRoot, "Source2Viewer", "Source2Viewer-CLI.exe"),
+            Path.Combine(paths.WorkspaceRoot, "ValveResourceFormat", "Source2Viewer-CLI.exe"),
+        };
+
+        var found = knownCandidates.FirstOrDefault(File.Exists);
+        if (found is not null)
+        {
+            ProjectStore.SaveSource2ViewerCliPath(found);
+            return found;
+        }
+
+        using var dialog = new OpenFileDialog
+        {
+            Title = "Locate Source2Viewer-CLI.exe (one time only)",
+            Filter = "Source 2 Viewer CLI|Source2Viewer-CLI.exe|Executable files|*.exe",
+            CheckFileExists = true,
+            Multiselect = false,
+            InitialDirectory = Directory.Exists(paths.WorkspaceRoot) ? paths.WorkspaceRoot : string.Empty,
+        };
+
+        if (dialog.ShowDialog(this) != DialogResult.OK)
+        {
+            SetStatus("Source 2 Viewer CLI was not selected.");
+            return null;
+        }
+
+        if (!string.Equals(Path.GetFileName(dialog.FileName), "Source2Viewer-CLI.exe", StringComparison.OrdinalIgnoreCase))
+        {
+            ShowValidation("Select Source2Viewer-CLI.exe.");
+            return null;
+        }
+
+        ProjectStore.SaveSource2ViewerCliPath(dialog.FileName);
+        return dialog.FileName;
     }
 
     private void LoadManifest(ProjectManifest manifest)
@@ -349,7 +476,17 @@ public sealed class MainForm : Form
             var scan = ProjectScanner.Scan(folder);
             _dmxCountLabel.Text = $"DMX: {scan.DmxFiles.Count}";
             _pngCountLabel.Text = $"PNG: {scan.PngTextures.Count}";
-            _sourceFolderLabel.Text = $"Hero source destination: {Path.Combine(folder, "0source")} (created only when extraction is requested).";
+
+            var sourcePath = Path.Combine(folder, _loadedManifest?.SourceDumpFolderName ?? "0source");
+            if (_loadedManifest?.LastSourceExtractionUtc is not null)
+            {
+                _sourceFolderLabel.Text =
+                    $"Hero source: {sourcePath} | {_loadedManifest.ExtractedSourceFileCount ?? 0} files | main: {_loadedManifest.RetailMainModel ?? "unknown"}";
+            }
+            else
+            {
+                _sourceFolderLabel.Text = $"Hero source destination: {sourcePath} (created only when extraction is requested).";
+            }
 
             foreach (var file in scan.DmxFiles)
             {
