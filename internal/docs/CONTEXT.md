@@ -54,7 +54,7 @@ The user should normally provide only:
 - a project name;
 - release/package identity when the final loading convention is settled.
 
-Technical commands, paths, ResourceCompiler invocation, VMDL preprocessing, DeadlockTools post-processing, texture compilation, and VPK packaging should remain internal unless diagnostics are required.
+Technical commands, paths, ResourceCompiler invocation, VMDL preprocessing, DeadlockTools post-processing, texture compilation, VPK extraction, and VPK packaging should remain internal unless diagnostics are required.
 
 ## Authoring model
 
@@ -119,28 +119,40 @@ The automation should prepare custom textures/materials so that the artist can o
 
 The final release path should compile changed resources, validate the model, perform required post-processing, package the VPK, and place it in the configured test/deploy destination without manual file shuffling.
 
-### 8. Hero extraction should not rely on hardcoded hero paths
+### 8. Hero extraction should not rely on hardcoded hero paths or a separate CLI install
 
 Retail resource layouts differ and can change. Deadlimit should discover the main model and dependencies from current retail resources, persist the discovered paths, and avoid converting one hero-specific workaround into a universal assumption.
+
+The Source 2 Viewer GUI and `Source2Viewer-CLI` are separate binaries. Requiring the artist to locate the CLI would add exactly the kind of setup/mechanical step Deadlimit is intended to remove. Extraction therefore uses the ValveResourceFormat NuGet library in-process.
 
 ## Evidence status
 
 ### Confirmed by our current pipeline
 
-- `bin_cs2\win64\resourcecompiler.exe` compiled the tested replacement model successfully.
-- `bin_tools\win64\resourcecompiler.exe` failed in the same installation with a particles schema mismatch.
+- Stage 1A project persistence works locally: a real saved project restored its folder, project name, hero and Release ID after Deadlimit was closed and relaunched;
+- `bin_cs2\win64\resourcecompiler.exe` compiled the tested replacement model successfully;
+- `bin_tools\win64\resourcecompiler.exe` failed in the same installation with a particles schema mismatch;
 - the tested compiled model required DeadlockTools `add ag2` to restore graph/skeleton references;
 - `fix unitstatus` was not applicable to that tested compiled output;
 - Wall Worm exported the demonstrated `materials/models/...` material path defect;
 - changing Wall Worm `Full Material Names` did not fix that defect in the test.
 
+### Confirmed by current external sources — checked 2026-08-22
+
+- Source 2 Viewer is the GUI application and `Source2Viewer-CLI` is a separate command-line binary;
+- the official Source2Viewer CLI documentation does not guarantee CLI argument stability;
+- ValveResourceFormat `20.0.6980` is the current NuGet package checked for this integration, published 2026-08-17 and targeting .NET 10;
+- ValveResourceFormat/ValvePak expose in-process VPK reading and resource decompilation APIs used by the current extraction implementation.
+
 ### Working hypotheses to validate before generalizing
 
+- the embedded ValveResourceFormat extraction path works on the current local Deadlock install and produces a useful `0source`;
+- hero candidate scoring identifies the intended current main model across heroes;
+- folder-local extraction is sufficient for the first artist-source package, or missing shared dependencies can be discovered generically;
 - the `materials/models/... → models/...` normalization is general enough to automate when matched narrowly;
 - incompatible VMDL blocks can be identified structurally and removed deterministically without hero-specific hardcoding;
 - retail graph/skeleton references can be discovered automatically for every supported hero;
 - custom VMAT scaffolding can be generated in a generic form that remains compatible with the current Deadlock material pipeline;
-- retail hero extraction can be made reliable through a ValveResourceFormat/Source 2 Viewer adapter plus dependency discovery;
 - the complete release pipeline can be reduced to one deterministic action after the authoring stage.
 
 ### Open questions
@@ -159,20 +171,24 @@ Retail resource layouts differ and can change. Deadlimit should discover the mai
 - keep deterministic logs for preprocessing, compilation, post-processing, packaging, and deployment;
 - never overwrite an existing authored custom VMAT during routine builds;
 - do not encode hero-specific fixes as universal behavior without evidence;
-- treat external tool/version compatibility as changeable and revalidate adapters when Deadlock, Reduced CSDK, Wall Worm, ValveResourceFormat, or DeadlockTools changes.
+- avoid user-facing prerequisites that can be embedded or discovered reliably by Deadlimit;
+- treat external tool/version compatibility as changeable and revalidate adapters/dependencies when Deadlock, Reduced CSDK, Wall Worm, ValveResourceFormat, or DeadlockTools changes.
 
 ## Current development focus
 
-The current implementation should concentrate on the first useful automation slice:
+The immediate next check is the first real local `EXTRACT HERO SOURCE` run using embedded ValveResourceFormat.
+
+If the extraction succeeds, inspect the generated `0source` and determine exactly which expected model/render-mesh/material/texture resources are present or missing. That result decides whether dependency discovery must be expanded before Stage 1B.
+
+Stage 1B then continues with:
 
 ```text
-source DMX/textures
-→ project metadata
-→ safe prepare/preprocess
+root DMX/textures
+→ generated CSDK addon workspace
+→ safe VMDL preprocessing
+→ narrow material-path normalization
 → validated ResourceCompiler invocation
 → compiled model discovery
 → required DeadlockTools post-processing
 → verification
 ```
-
-After that path is deterministic, material authoring support and VPK release automation can be layered on top.
