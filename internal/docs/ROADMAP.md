@@ -35,14 +35,13 @@ The exact project-folder contract is documented in `WORKSPACE.md`.
 Implemented immediately after 1A because later Prepare requires reliable retail model/reference discovery:
 
 - `EXTRACT HERO SOURCE` button in the desktop UI;
-- isolated Source 2 Viewer CLI adapter;
-- persisted one-time CLI location;
+- pinned in-process `ValveResourceFormat 20.0.6980` integration; no separate Source2Viewer CLI is required;
 - scan current retail Deadlock VPKs instead of hardcoding one hero path;
 - prioritize current `game\citadel\pak01_dir.vpk` and exact hero-model filename matches;
 - decompile the discovered hero resource folder into hidden staging;
 - publish to `<ProjectFolder>\0source\` only after successful non-empty extraction;
 - preserve the previous extraction as hidden `.deadlimit\0source.previous` during refresh;
-- persist discovered retail main model/VPK, Source 2 Viewer version, extraction time, and file count.
+- persist discovered retail main model/VPK, ValveResourceFormat version, extraction time, and file count.
 
 The first real-project output test must establish whether folder-level decompilation already yields the complete useful model/render-mesh/material/texture set or whether dependency closure must be expanded. See `EXTRACTION.md`.
 
