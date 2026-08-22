@@ -66,7 +66,7 @@ The detector has been replaced with a less format-fragile rule:
 2. require the exact generic fallback material `materials/dev/vertcolor_pbr_basic.vmat` to be one of those references;
 3. independently require an eye-related identifier (`eye`, `eyes`, `eyeball`, `pupil`, or `iris`) somewhere in the same artist DMX set;
 4. preserve existing retail remaps;
-5. infer a target only when one unique body/skin/head/face retail material is available;
+5. infer a target only when one unique body/skin/head/face material is available from either preserved retail remaps or the compatibility path-remaps being generated in the same prepare pass;
 6. ambiguous targets remain unresolved and are logged instead of guessed.
 
 This keeps the useful fail-closed behavior while removing the incorrect assumption about Wall Worm DMX string ordering.
@@ -84,7 +84,7 @@ Total VMDL remaps
 
 These values must not be conflated. A Multi/Sub-Object material may expose several DMX material references while the VMDL needs a different number of remap entries.
 
-For the current supplied Ivy DMX, the expected diagnostic material-reference count is five. The expected VMDL remap count before CUSTOM material routing is not necessarily five: the old known-good fifth redirect for `materials/ivy_biulder` belongs to the project-owned CUSTOM material path and is handled separately from the eye compatibility repair.
+For the current supplied Ivy DMX, the expected diagnostic material-reference count is five. The expected VMDL remap count before CUSTOM material routing is four: three `materials/models/...` path repairs plus the eye redirect. The old known-good fifth redirect for `materials/ivy_biulder` belongs to the project-owned CUSTOM material path and is handled separately from the eye compatibility repair.
 
 ## Generic automatic eye repair rule
 
@@ -95,17 +95,24 @@ The current automatic repair is allowed only when:
 - the artist DMX references the exact generic dev fallback material;
 - the same DMX set contains an eye-related identifier;
 - the copied retail VMDL has no existing remap for that generic material;
-- exactly one defensible body/skin/head/face target can be inferred from the retail remaps.
+- exactly one defensible body/skin/head/face target can be inferred from the union of preserved retail remaps and compatibility path-remaps generated from the same DMX.
 
 The target chooser strongly prefers body/skin/head/face materials and penalizes wing/gear/weapon/gun materials. The selected material must be unique at the best score.
 
-### Current status
+## 2026-08-22 — live prepare confirmation after detector fix
 
-Implementation: complete.
+A new local `PREPARE FOR CSDK` run on the current Ivy project reported:
 
-Validation: pending a new live `PREPARE FOR CSDK` run using the revised DMX material enumerator and detector.
+```text
+DMX overlays: 1
+DMX material references detected: 5
+VMDL remaps preserved: 0
+Compatibility remaps added: 4
+Total VMDL remaps: 4
+Retail source files copied: 272
+```
 
-For the supplied Ivy evidence, a successful run should show the generic dev material among the detected DMX references and should add one compatibility remap equivalent to the known-good eye fix.
+This confirms that the current DMX scanner sees all five material references and that the prepare pass now generates the expected four pre-CUSTOM compatibility remaps. The remaining validation is visual: launch CSDK12, let it rebuild clean game output from prepared content, and verify whether the eyes render correctly while the already-restored animation list remains available.
 
 ## Constraints
 
