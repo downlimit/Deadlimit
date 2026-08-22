@@ -43,9 +43,25 @@ Target adapters include:
 
 - Reduced CSDK ResourceCompiler;
 - DeadlockTools;
-- ValveResourceFormat / Source 2 Viewer;
+- ValveResourceFormat;
 - CSDK VPK packaging;
 - optional deploy/test launcher integration.
+
+### Embed ValveResourceFormat for extraction
+
+Deadlimit must not require the artist to install or locate the separate `Source2Viewer-CLI.exe` merely to extract retail resources.
+
+The normal Source 2 Viewer executable is the GUI application; the official command-line utility is a separate binary named `Source2Viewer-CLI`. Because the official CLI interface explicitly does not guarantee argument stability, Deadlimit uses ValveResourceFormat as an in-process library instead of automating the CLI.
+
+The current pinned dependency is:
+
+```text
+ValveResourceFormat 20.0.6980
+```
+
+This version targets .NET 10 and was current when the integration was made on 2026-08-22. Upgrading ValveResourceFormat is an explicit compatibility change: extraction must be rebuilt and smoke-tested against the current Deadlock retail resources before the pinned version is changed.
+
+The Source 2 Viewer GUI remains useful as a manual inspection/reference tool, but it is not a runtime prerequisite for Deadlimit extraction.
 
 ### Use the validated compiler path
 
