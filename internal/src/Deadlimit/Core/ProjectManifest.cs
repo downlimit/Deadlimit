@@ -2,13 +2,22 @@ namespace Deadlimit.Core;
 
 public sealed class ProjectManifest
 {
-    public required string ProjectName { get; init; }
-    public required string SourceFolder { get; init; }
-    public required string Hero { get; init; }
-    public string? RetailMainModel { get; init; }
-    public string? SourceVmdl { get; init; }
-    public string? CompiledVmdl { get; init; }
-    public List<string> AnimGraph2Refs { get; init; } = [];
-    public string? NmSkeletonRef { get; init; }
-    public string? ReleaseTarget { get; init; }
+    public int SchemaVersion { get; set; } = 1;
+    public string ProjectName { get; set; } = string.Empty;
+    public string ProjectFolder { get; set; } = string.Empty;
+    public string Hero { get; set; } = string.Empty;
+    public string? ReleaseTarget { get; set; }
+
+    public string SourceDumpFolderName { get; set; } = "0source";
+    public List<string> DmxFiles { get; set; } = [];
+    public List<string> PngTextures { get; set; } = [];
+
+    public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset UpdatedUtc { get; set; } = DateTimeOffset.UtcNow;
+
+    public string? RetailMainModel { get; set; }
+    public string? SourceVmdl { get; set; }
+    public string? CompiledVmdl { get; set; }
+    public List<string> AnimGraph2Refs { get; set; } = [];
+    public string? NmSkeletonRef { get; set; }
 }
