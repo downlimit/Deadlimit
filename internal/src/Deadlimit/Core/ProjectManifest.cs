@@ -2,7 +2,7 @@ namespace Deadlimit.Core;
 
 public sealed class ProjectManifest
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
     public string ProjectName { get; set; } = string.Empty;
     public string ProjectFolder { get; set; } = string.Empty;
     public string Hero { get; set; } = string.Empty;
@@ -16,6 +16,11 @@ public sealed class ProjectManifest
     public DateTimeOffset UpdatedUtc { get; set; } = DateTimeOffset.UtcNow;
 
     public string? RetailMainModel { get; set; }
+    public string? RetailSourceVpk { get; set; }
+    public DateTimeOffset? LastSourceExtractionUtc { get; set; }
+    public string? Source2ViewerVersion { get; set; }
+    public int? ExtractedSourceFileCount { get; set; }
+
     public string? SourceVmdl { get; set; }
     public string? CompiledVmdl { get; set; }
     public List<string> AnimGraph2Refs { get; set; } = [];
