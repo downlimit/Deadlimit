@@ -39,17 +39,17 @@ Deadlimit must not move, rename, overwrite, or copy these artist-owned root asse
 
 `0source` is reserved for a current extraction of the selected retail Deadlock hero.
 
-Implemented behavior:
+Current intended/implemented behavior:
 
 1. the user clicks `EXTRACT HERO SOURCE`;
 2. Deadlimit saves the current project metadata first;
-3. Deadlimit locates `Source2Viewer-CLI.exe`; if its location is not already known, the user selects it once and the path is persisted locally;
-4. Deadlimit scans the current retail Deadlock VPKs for a matching hero `.vmdl_c`, preferring the canonical `game\citadel\pak01_dir.vpk` and exact hero-model filename matches;
+3. Deadlimit uses its embedded pinned ValveResourceFormat library to inspect the current retail Deadlock VPKs; no separate Source2Viewer CLI selection is required;
+4. Deadlimit discovers a matching hero `.vmdl_c` from current retail resources;
 5. the hero resource folder is decompiled into a hidden staging directory;
-6. only after a non-empty successful extraction does Deadlimit publish the staging result as `<ProjectFolder>\0source\`;
+6. only after a non-empty extraction does Deadlimit publish the staging result as `<ProjectFolder>\0source\`;
 7. if an older `0source` existed, it is moved to hidden `.deadlimit\0source.previous\` before the new extraction is published;
 8. if publishing the new extraction fails, Deadlimit attempts to restore the previous `0source`;
-9. the selected retail model path, source VPK, Source 2 Viewer version, extraction timestamp, and extracted file count are persisted in `project.json`.
+9. the selected retail model path, source VPK, ValveResourceFormat version, extraction timestamp, and extracted file count are persisted in `project.json`.
 
 `0source` is generated data. Artist-authored DMX/PNG files remain in the project root and are not touched by extraction.
 
@@ -85,21 +85,28 @@ Deadlimit remembers the last opened project in `%LOCALAPPDATA%\Deadlimit\setting
 
 On the next launch, if that project and its manifest still exist, the project is reopened automatically.
 
-The selected Source 2 Viewer CLI path is also stored in the same local settings file and is reused on later extractions.
+External Source2Viewer paths are not part of local settings because extraction now uses the embedded ValveResourceFormat library.
 
 ## Current implementation boundary
 
-Implemented now:
+Confirmed locally:
 
 ```text
 select existing artist folder
 → scan root DMX/PNG
 → enter project name + hero + optional release ID
 → save hidden manifest
-→ reopen last project automatically
-→ EXTRACT HERO SOURCE
-→ discover current retail hero model
-→ decompile hero resource folder into 0source
+→ close/reopen Deadlimit
+→ last project and metadata restore correctly
+```
+
+Implemented and awaiting the next local smoke test:
+
+```text
+EXTRACT HERO SOURCE
+→ discover current retail hero model in VPKs
+→ decompile hero resource folder through embedded ValveResourceFormat
+→ publish into 0source
 → preserve previous extraction on refresh
 ```
 
