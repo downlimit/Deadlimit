@@ -15,9 +15,9 @@ Goal: preserve project context and establish reproducible development workflow.
 
 Goal: replace the current manual mechanical sequence with one deterministic project/build flow.
 
-### Stage 1A — Artist project shell
+### Stage 1A — Artist project shell — ACCEPTED
 
-Implemented in code; pending local smoke test:
+Validated locally on 2026-08-22:
 
 - create/open a Deadlimit project from an existing artist folder;
 - scan top-level DMX files and PNG textures without moving or modifying them;
@@ -26,13 +26,29 @@ Implemented in code; pending local smoke test:
 - remember and reopen the last project;
 - reserve `0source` as the on-demand retail hero extraction destination without creating it during ordinary project creation.
 
+Acceptance was confirmed with a real project: project metadata survived close/relaunch and the same project reopened automatically.
+
 The exact project-folder contract is documented in `WORKSPACE.md`.
 
-Acceptance for 1A: select a real existing project folder, enter hero/project metadata, save it, close Deadlimit, and reopen the same project with the discovered root DMX/PNG list intact.
+### Stage 1A.1 — Hero extraction validation slice — IMPLEMENTED, PENDING REAL OUTPUT TEST
+
+Implemented immediately after 1A because later Prepare requires reliable retail model/reference discovery:
+
+- `EXTRACT HERO SOURCE` button in the desktop UI;
+- isolated Source 2 Viewer CLI adapter;
+- persisted one-time CLI location;
+- scan current retail Deadlock VPKs instead of hardcoding one hero path;
+- prioritize current `game\citadel\pak01_dir.vpk` and exact hero-model filename matches;
+- decompile the discovered hero resource folder into hidden staging;
+- publish to `<ProjectFolder>\0source\` only after successful non-empty extraction;
+- preserve the previous extraction as hidden `.deadlimit\0source.previous` during refresh;
+- persist discovered retail main model/VPK, Source 2 Viewer version, extraction time, and file count.
+
+The first real-project output test must establish whether folder-level decompilation already yields the complete useful model/render-mesh/material/texture set or whether dependency closure must be expanded. See `EXTRACTION.md`.
 
 ### Stage 1B — Prepare + compile
 
-Next:
+After the extraction validation test:
 
 - safely preprocess source VMDL where required;
 - normalize the confirmed Wall Worm `materials/models/...` defect narrowly;
@@ -73,17 +89,16 @@ Goal: one Release action from authored workspace to testable package.
 
 Acceptance: `Release` produces the same testable result as the known-good manual packaging workflow.
 
-## Stage 4 — Extract Hero
+## Stage 4 — Extract Hero completion
 
-Goal: create modding-ready source folders from retail Deadlock with minimal manual VRF work.
+Goal: complete the extraction slice into a robust modding-ready retail-source module.
 
 - enumerate/select heroes from current retail resources;
-- discover each hero's actual main model and dependency paths;
-- call ValveResourceFormat/Source 2 Viewer through an isolated adapter;
-- create `<ProjectFolder>\0source\` only when extraction is requested;
+- validate main-model discovery across multiple heroes;
+- resolve dependency paths beyond the main hero folder when real output proves this is necessary;
 - extract/decompile model/render meshes;
 - extract relevant materials and texture dependencies;
-- preserve retail resource paths in an extraction manifest;
+- preserve retail resource paths in extraction metadata;
 - make animations optional;
 - allow the extracted source to coexist with artist-owned DMX/PNG files in the project root.
 
@@ -93,7 +108,7 @@ Acceptance: a user selects a hero and requests source extraction, and `0source` 
 
 Goal: expose the completed core workflow without requiring command-line knowledge.
 
-A minimal Windows desktop shell starts during Stage 1A so the project-folder contract can be tested through the intended user interaction rather than through manual CLI commands.
+A minimal Windows desktop shell started during Stage 1A so the project-folder contract could be tested through the intended user interaction rather than through manual CLI commands.
 
 Final primary actions:
 
