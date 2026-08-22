@@ -7,19 +7,36 @@ Goal: preserve project context and establish reproducible development workflow.
 - initialize repository and documentation;
 - connect local `C:\WorkProjects\Deadlock\Deadlimit` workspace;
 - define project manifest format;
-- add a minimal CLI host and logging;
+- add a minimal host and environment diagnostics;
 - detect configured CSDK/Deadlock/DeadlockTools paths;
 - record tool versions in diagnostics.
 
 ## Stage 1 — Prepare + headless model build
 
-Goal: replace the current manual mechanical sequence with one deterministic command.
+Goal: replace the current manual mechanical sequence with one deterministic project/build flow.
 
-- create/open a Deadlimit project from a source folder;
-- discover DMX files and textures;
-- support hero/project metadata;
+### Stage 1A — Artist project shell
+
+Implemented in code; pending local smoke test:
+
+- create/open a Deadlimit project from an existing artist folder;
+- scan top-level DMX files and PNG textures without moving or modifying them;
+- persist project name, hero, optional release ID, discovered assets, and future pipeline metadata;
+- keep Deadlimit metadata in hidden `.deadlimit\project.json`;
+- remember and reopen the last project;
+- reserve `0source` as the on-demand retail hero extraction destination without creating it during ordinary project creation.
+
+The exact project-folder contract is documented in `WORKSPACE.md`.
+
+Acceptance for 1A: select a real existing project folder, enter hero/project metadata, save it, close Deadlimit, and reopen the same project with the discovered root DMX/PNG list intact.
+
+### Stage 1B — Prepare + compile
+
+Next:
+
 - safely preprocess source VMDL where required;
 - normalize the confirmed Wall Worm `materials/models/...` defect narrowly;
+- create the generated CSDK addon workspace without modifying artist originals;
 - invoke the validated CSDK12 `bin_cs2` ResourceCompiler;
 - locate the resulting addon `.vmdl_c`;
 - apply `DeadlockTools add ag2` with discovered original refs;
@@ -27,7 +44,7 @@ Goal: replace the current manual mechanical sequence with one deterministic comm
 - verify expected graph/skeleton references;
 - produce a clear success/failure report.
 
-Acceptance: the current known-good replacement model can be rebuilt from source with one Deadlimit command and without manually opening ModelDoc for compilation.
+Acceptance for Stage 1 overall: the current known-good replacement model can be rebuilt from artist source with one Deadlimit action and without manually opening ModelDoc for compilation.
 
 ## Stage 2 — Authoring workspace and materials
 
@@ -63,19 +80,22 @@ Goal: create modding-ready source folders from retail Deadlock with minimal manu
 - enumerate/select heroes from current retail resources;
 - discover each hero's actual main model and dependency paths;
 - call ValveResourceFormat/Source 2 Viewer through an isolated adapter;
+- create `<ProjectFolder>\0source\` only when extraction is requested;
 - extract/decompile model/render meshes;
 - extract relevant materials and texture dependencies;
 - preserve retail resource paths in an extraction manifest;
 - make animations optional;
-- allow `Create project from extraction`.
+- allow the extracted source to coexist with artist-owned DMX/PNG files in the project root.
 
-Acceptance: a user selects a hero and output folder and receives a consistent working source package suitable for 3ds Max/material work.
+Acceptance: a user selects a hero and requests source extraction, and `0source` receives a consistent current retail source package suitable for reference/3ds Max/material work.
 
-## Stage 5 — Desktop UI
+## Stage 5 — Desktop UI completion
 
 Goal: expose the completed core workflow without requiring command-line knowledge.
 
-Primary actions:
+A minimal Windows desktop shell starts during Stage 1A so the project-folder contract can be tested through the intended user interaction rather than through manual CLI commands.
+
+Final primary actions:
 
 ```text
 EXTRACT HERO
