@@ -167,8 +167,10 @@ public sealed class HeroExtractionService
             {
                 using var package = new Package();
                 package.Read(vpkPath);
+                var packageEntries = package.Entries
+                    ?? throw new InvalidDataException($"VPK entry table was not available: {vpkPath}");
 
-                foreach (var entry in package.Entries.SelectMany(group => group.Value))
+                foreach (var entry in packageEntries.SelectMany(group => group.Value))
                 {
                     var resourcePath = NormalizeResourcePath(entry.GetFullPath());
                     if (!IsHeroModelPath(resourcePath))
@@ -189,7 +191,7 @@ public sealed class HeroExtractionService
                     }
                 }
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or NotSupportedException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
             {
                 progress?.Report(new HeroExtractionProgress(
                     $"Skipping unreadable VPK {Path.GetFileName(vpkPath)}: {ex.Message}"));
@@ -213,9 +215,11 @@ public sealed class HeroExtractionService
     {
         using var package = new Package();
         package.Read(vpkPath);
+        var packageEntries = package.Entries
+            ?? throw new InvalidDataException($"VPK entry table was not available: {vpkPath}");
         using var fileLoader = new GameFileLoader(package, package.FileName);
 
-        var entries = package.Entries
+        var entries = packageEntries
             .SelectMany(group => group.Value)
             .Select(entry => (Entry: entry, Path: NormalizeResourcePath(entry.GetFullPath())))
             .Where(item => item.Path.StartsWith(resourceFolder, StringComparison.OrdinalIgnoreCase))
