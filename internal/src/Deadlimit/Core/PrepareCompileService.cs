@@ -124,6 +124,8 @@ public sealed class PrepareCompileService
                 log.AppendLine($"  {remap.From} -> {remap.To}");
             }
 
+            log.AppendLine("Character skeleton retention: BoneMarkupList bone_cull_type=None.");
+
             progress?.Report(new PrepareCompileProgress("Compiling model with CSDK12 bin_cs2 ResourceCompiler..."));
             var compileResult = await RunProcessAsync(
                 _paths.ResourceCompilerPath,
@@ -278,6 +280,12 @@ public sealed class PrepareCompileService
         sb.AppendLine("_class = \"RootNode\"");
         sb.AppendLine("children =");
         sb.AppendLine("[");
+
+        sb.AppendLine("{");
+        sb.AppendLine("_class = \"BoneMarkupList\"");
+        sb.AppendLine("children = [ ]");
+        sb.AppendLine("bone_cull_type = \"None\"");
+        sb.AppendLine("},");
 
         if (materialRemaps.Count > 0)
         {
