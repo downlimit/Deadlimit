@@ -66,7 +66,7 @@ public sealed class PrepareCompileService
         var sourceVmdlPath = Path.Combine(addonContentRoot, sourceRelativePath);
         var compiledVmdlPath = Path.Combine(addonGameRoot, compiledRelativePath);
         var sourceModelDirectory = Path.GetDirectoryName(sourceVmdlPath)!;
-        var generatedDmxDirectory = Path.Combine(sourceModelDirectory, "dmx");
+        var generatedDmxDirectory = Path.Combine(sourceModelDirectory, "deadlimit_mesh");
 
         var metadataFolder = ProjectStore.GetMetadataFolder(manifest.ProjectFolder);
         var logFolder = Path.Combine(metadataFolder, "logs");
@@ -84,7 +84,19 @@ public sealed class PrepareCompileService
 
         try
         {
-            progress?.Report(new PrepareCompileProgress("Preparing generated CSDK addon workspace..."));
+            progress?.Report(new PrepareCompileProgress("Cleaning addon runtime output..."));
+            if (Directory.Exists(addonGameRoot))
+            {
+                Directory.Delete(addonGameRoot, recursive: true);
+            }
+
+            log.AppendLine($"Runtime output cleaned before rebuild: {addonGameRoot}");
+
+            progress?.Report(new PrepareCompileProgress("Refreshing retail authoring source context..."));
+            Directory.CreateDirectory(addonContentRoot);
+            var retailSourceFilesCopied = RetailVmdlInheritance.CopyRetailModelSourceTree(manifest, addonContentRoot);
+            log.AppendLine($"Retail source files copied into addon content: {retailSourceFilesCopied}");
+
             Directory.CreateDirectory(sourceModelDirectory);
 
             if (Directory.Exists(generatedDmxDirectory))
@@ -104,18 +116,18 @@ public sealed class PrepareCompileService
                 .Select(path => NormalizeResourcePath(
                     Path.Combine(
                             Path.GetDirectoryName(sourceResourcePath) ?? string.Empty,
-                            "dmx",
+                            "deadlimit_mesh",
                             Path.GetFileName(path))
                         .Replace('\\', '/')))
                 .ToArray();
 
-            progress?.Report(new PrepareCompileProgress("Preserving retail rig and animation authoring metadata..."));
+            progress?.Report(new PrepareCompileProgress("Preserving compatible retail ModelDoc context..."));
             var retailInheritance = RetailVmdlInheritance.Load(manifest);
 
             var vmdlText = BuildVmdl(renderMeshResourcePaths, remaps, retailInheritance);
             File.WriteAllText(sourceVmdlPath, vmdlText, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
-            log.AppendLine($"DMX files copied: {rootDmxFiles.Length}");
+            log.AppendLine($"Artist DMX files copied: {rootDmxFiles.Length}");
             foreach (var dmx in rootDmxFiles)
             {
                 log.AppendLine($"  {Path.GetFileName(dmx)}");
@@ -134,16 +146,21 @@ public sealed class PrepareCompileService
             else
             {
                 log.AppendLine($"Retail VMDL inheritance source: {retailInheritance.SourceVmdlPath}");
-                log.AppendLine($"Retail VMDL nodes preserved: {retailInheritance.Nodes.Count}");
+                log.AppendLine($"Compatible retail root nodes preserved: {retailInheritance.Nodes.Count}");
                 foreach (var node in retailInheritance.Nodes)
                 {
-                    log.AppendLine($"  {node.ClassName}");
+                    log.AppendLine($"  keep {node.ClassName}");
+                }
+
+                foreach (var removedClass in retailInheritance.RemovedClasses)
+                {
+                    log.AppendLine($"  strip unsupported source node {removedClass}");
                 }
             }
 
-            log.AppendLine("Character skeleton retention: retail Skeleton/BoneMarkup are preserved when available; BoneMarkup fallback uses bone_cull_type=None.");
+            log.AppendLine("Character skeleton retention: compatible retail ModelDoc nodes are preserved; artist RenderMeshList and project MaterialGroupList remain Deadlimit-owned.");
 
-            progress?.Report(new PrepareCompileProgress("Compiling model with CSDK12 bin_cs2 ResourceCompiler..."));
+            progress?.Report(new PrepareCompileProgress("Compiling fresh runtime model with CSDK12 ResourceCompiler..."));
             var compileResult = await RunProcessAsync(
                 _paths.ResourceCompilerPath,
                 ["-i", sourceVmdlPath, "-nop4"],
@@ -179,7 +196,7 @@ public sealed class PrepareCompileService
 
                 if (!string.IsNullOrWhiteSpace(family) && heroToken.Length > 0)
                 {
-                    progress?.Report(new PrepareCompileProgress("Restoring AnimGraph2 / NmSkeleton references..."));
+                    progress?.Report(new PrepareCompileProgress("Restoring AnimGraph2 / NmSkeleton runtime references..."));
                     var ag2Result = await RunProcessAsync(
                         _paths.DeadlockToolsExePath,
                         [
@@ -409,11 +426,9 @@ public sealed class PrepareCompileService
             }
             catch (IOException)
             {
-                // Continue to the next decompiled VMDL.
             }
             catch (UnauthorizedAccessException)
             {
-                // Continue to the next decompiled VMDL.
             }
         }
 
