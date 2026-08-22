@@ -109,7 +109,10 @@ public sealed class PrepareCompileService
                         .Replace('\\', '/')))
                 .ToArray();
 
-            var vmdlText = BuildVmdl(renderMeshResourcePaths, remaps);
+            progress?.Report(new PrepareCompileProgress("Preserving retail rig and animation authoring metadata..."));
+            var retailInheritance = RetailVmdlInheritance.Load(manifest);
+
+            var vmdlText = BuildVmdl(renderMeshResourcePaths, remaps, retailInheritance);
             File.WriteAllText(sourceVmdlPath, vmdlText, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
             log.AppendLine($"DMX files copied: {rootDmxFiles.Length}");
@@ -124,7 +127,21 @@ public sealed class PrepareCompileService
                 log.AppendLine($"  {remap.From} -> {remap.To}");
             }
 
-            log.AppendLine("Character skeleton retention: BoneMarkupList bone_cull_type=None.");
+            if (retailInheritance.SourceVmdlPath is null)
+            {
+                log.AppendLine("Retail VMDL inheritance: source VMDL not found; using generated BoneMarkup fallback only.");
+            }
+            else
+            {
+                log.AppendLine($"Retail VMDL inheritance source: {retailInheritance.SourceVmdlPath}");
+                log.AppendLine($"Retail VMDL nodes preserved: {retailInheritance.Nodes.Count}");
+                foreach (var node in retailInheritance.Nodes)
+                {
+                    log.AppendLine($"  {node.ClassName}");
+                }
+            }
+
+            log.AppendLine("Character skeleton retention: retail Skeleton/BoneMarkup are preserved when available; BoneMarkup fallback uses bone_cull_type=None.");
 
             progress?.Report(new PrepareCompileProgress("Compiling model with CSDK12 bin_cs2 ResourceCompiler..."));
             var compileResult = await RunProcessAsync(
@@ -269,7 +286,8 @@ public sealed class PrepareCompileService
 
     private static string BuildVmdl(
         IReadOnlyList<string> renderMeshResourcePaths,
-        IReadOnlyList<MaterialRemap> materialRemaps)
+        IReadOnlyList<MaterialRemap> materialRemaps,
+        RetailVmdlInheritanceResult retailInheritance)
     {
         var sb = new StringBuilder();
         sb.AppendLine("<!-- kv3 encoding:text:version{e21c7f3c-8a33-41c5-9977-a76d3a32aa0d} format:modeldoc29:version{3cec427c-1b0e-4d48-a90a-0436f33a6041} -->");
@@ -281,11 +299,20 @@ public sealed class PrepareCompileService
         sb.AppendLine("children =");
         sb.AppendLine("[");
 
-        sb.AppendLine("{");
-        sb.AppendLine("_class = \"BoneMarkupList\"");
-        sb.AppendLine("children = [ ]");
-        sb.AppendLine("bone_cull_type = \"None\"");
-        sb.AppendLine("},");
+        foreach (var inheritedNode in retailInheritance.Nodes)
+        {
+            sb.AppendLine(inheritedNode.Text.TrimEnd());
+            sb.AppendLine(",");
+        }
+
+        if (!retailInheritance.Contains("BoneMarkupList"))
+        {
+            sb.AppendLine("{");
+            sb.AppendLine("_class = \"BoneMarkupList\"");
+            sb.AppendLine("children = [ ]");
+            sb.AppendLine("bone_cull_type = \"None\"");
+            sb.AppendLine("},");
+        }
 
         if (materialRemaps.Count > 0)
         {
