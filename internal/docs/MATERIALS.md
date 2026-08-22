@@ -99,9 +99,9 @@ The current automatic repair is allowed only when:
 
 The target chooser strongly prefers body/skin/head/face materials and penalizes wing/gear/weapon/gun materials. The selected material must be unique at the best score.
 
-## 2026-08-22 — live prepare confirmation after detector fix
+## 2026-08-22 — live prepare and visual confirmation after detector fix
 
-A new local `PREPARE FOR CSDK` run on the current Ivy project reported:
+A local `PREPARE FOR CSDK` run on the current Ivy project reported:
 
 ```text
 DMX overlays: 1
@@ -112,7 +112,23 @@ Total VMDL remaps: 4
 Retail source files copied: 272
 ```
 
-This confirms that the current DMX scanner sees all five material references and that the prepare pass now generates the expected four pre-CUSTOM compatibility remaps. The remaining validation is visual: launch CSDK12, let it rebuild clean game output from prepared content, and verify whether the eyes render correctly while the already-restored animation list remains available.
+After launching CSDK12 and rebuilding from the prepared `content`, the user confirmed that the eyes render correctly. The animation list also remained restored from the preceding template-preservation fix.
+
+This confirms the current Ivy pipeline end-to-end for the eye compatibility layer:
+
+```text
+artist DMX
+→ detect five material references
+→ generate three materials/models path repairs
+→ infer one generic-eye fallback redirect to the unique body material
+→ preserve retail authoring/animation structure
+→ CSDK12 rebuild
+→ eyes render correctly
+```
+
+Status: **CONFIRMED BY LIVE PIPELINE for the current Ivy export.**
+
+The generic detection mechanism is implemented without an Ivy-specific hardcoded path, but cross-hero generality remains unproven until another hero with the same failure class is tested. Do not claim hero-independent validation yet.
 
 ## Constraints
 
