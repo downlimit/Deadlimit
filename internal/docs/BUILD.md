@@ -43,36 +43,50 @@ The `.vnmskel` path above is evidence for the tested Ivy project only. Its `hero
 
 The generated model opens and renders in CSDK12 ModelDoc. The preserved/base character materials are broadly visible and the geometry is usable for authoring inspection.
 
-Two visible issues were observed:
+Two visible conditions were observed:
 
 1. the character eyes render black;
-2. the new costume material is absent, as expected, because no project-owned custom VMAT has been created yet.
+2. the new costume has no project-owned custom VMAT yet; custom material creation belongs to Stage 2 and is not a build regression.
 
-The costume-material issue belongs to Stage 2 custom material authoring and is not treated as a build regression.
+### Black-eye diagnosis — external evidence checked 2026-08-22
 
-### Black-eye issue: evidence and current hypothesis
+Fresh Source 2 evidence points to skeleton retention as a generic failure mode worth fixing before any hero-specific eye patch:
 
-Black-eye rendering is a known class of Source 2 asset-conversion problem. Source 2 has a dedicated eyeball material/shader path and an eye-occlusion rendering system. Current external examples explicitly document that incorrect eye-material occlusion values can produce black-eye artifacts, and Deadlock exposes eye-occlusion runtime controls.
+- current ValveResourceFormat model export emits a `BoneMarkupList` with `bone_cull_type = "None"` for decompiled ModelDoc sources;
+- the current ValveResourceFormat character-eye renderer identifies eyeball materials and requires the model skeleton to retain the eye-related bones used for bind-pose eye parameters; its current implementation looks for `eyeball_l`, `eyeball_r`, and `eye_target`;
+- current Source 2 ModelDoc guidance states that `Bone Cull Type = None` or `Leaf Only` is the mechanism used when required/helper bones are being discarded during compile;
+- Source 2 porting guidance likewise recommends BoneMarkup / Do Not Discard when bones disappear after compilation.
 
-For this Deadlimit build, the exact cause is not yet proven. The strongest current hypothesis is that the minimal generated VMDL preserves the mesh/material reference but omits some eye-specific retail model/material configuration that the original hero model carries.
+This evidence does not prove that every black-eye artifact has the same cause. It does support a general character-build invariant: a replacement model intended to inherit the retail character rig should not allow ModelDoc/ResourceCompiler to discard helper bones merely because they are not directly vertex-weighted.
 
-Do not add a hero-specific Ivy patch or a blanket material override yet.
+### Implemented generic fix — pending local visual acceptance
 
-The universal-fix direction, if the hypothesis is confirmed, is:
+Deadlimit now emits this node in every generated character VMDL:
 
 ```text
-detect that the retail model uses eye-specific configuration
-→ preserve/transplant the required eye-related model/material data from the extracted retail source
-→ keep retail eye material references intact
-→ apply only the required eye configuration to the generated VMDL
+{
+    _class = "BoneMarkupList"
+    children = [ ]
+    bone_cull_type = "None"
+}
 ```
 
-The next diagnostic must discriminate between model-source loss and material/extraction loss. Compare the original decompiled retail VMDL/eye configuration from `0source` with the minimal generated VMDL. If the original decompiled source renders normal eyes while the generated model renders black, the missing VMDL configuration is confirmed. If both render black, investigate the eye material/texture extraction path instead.
+The build log records the skeleton-retention policy explicitly.
+
+This is deliberately broader and cleaner than an Ivy-specific eye material override:
+
+- it preserves all imported rig/helper bones instead of naming individual eye bones;
+- it does not alter artist DMX data;
+- it does not alter retail eye materials;
+- it applies equally to other character replacements that depend on unweighted attachment, gaze, facial, procedural, or helper bones;
+- it remains compatible with the existing AG2/NmSkeleton post-process.
+
+The next local test is a rebuild of the same live project followed by ModelDoc visual inspection. If the eyes become correct, record this as confirmed pipeline evidence. If they remain black, retain the skeleton-preservation invariant and investigate the next layer: eye material/shader parameters or other retail model data. Do not remove the generic bone-retention rule merely because a second independent eye problem may exist.
 
 ### Still unvalidated
 
-- exact eye-specific VMDL/material fields required by current Deadlock heroes;
-- whether the same mechanism applies across multiple heroes;
+- whether `bone_cull_type = None` fixes the observed black eyes in the current live project;
+- whether another eye-material/occlusion issue remains after skeleton retention;
 - custom material/texture creation and persistence;
 - retail Deadlock loading;
 - VPK packaging/deployment;
