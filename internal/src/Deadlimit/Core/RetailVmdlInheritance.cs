@@ -14,12 +14,16 @@ public sealed record RetailVmdlInheritanceResult(
 
 public static class RetailVmdlInheritance
 {
+    // These ModelDoc nodes are accepted by the current Reduced CSDK12 model compiler
+    // and are useful to preserve from the retail character source.
+    //
+    // NmSkeletonList / AnimGraph2List are intentionally NOT copied into the authoring
+    // VMDL. Current CSDK12 fails to instantiate those classes while loading the VMDL.
+    // Runtime AG2/NmSkeleton references are restored after model compilation instead.
     private static readonly HashSet<string> PreservedClasses = new(StringComparer.Ordinal)
     {
         "BoneMarkupList",
         "Skeleton",
-        "NmSkeletonList",
-        "AnimGraph2List",
         "AttachmentList",
     };
 
