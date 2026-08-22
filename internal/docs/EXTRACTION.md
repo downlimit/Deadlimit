@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`EXTRACT HERO SOURCE` exists to replace the manual Source 2 Viewer/VPK browsing step with one project-level action.
+`EXTRACT HERO SOURCE` replaces manual Source 2 Viewer/VPK browsing with one project-level action.
 
 The artist-facing destination is:
 
@@ -14,31 +14,40 @@ The project root remains the artist-owned handoff area for edited DMX and PNG fi
 
 ## Current external evidence — 2026-08-22
 
-Source 2 Viewer / ValveResourceFormat release `20.0` is the current release as of this check (released 2026-08-17).
+Official ValveResourceFormat/Source 2 Viewer documentation distinguishes two programs:
 
-The current official CLI documentation confirms:
+- `Source2Viewer` — the Windows GUI application;
+- `Source2Viewer-CLI` — a separate command-line utility.
 
-- the binary name is `Source2Viewer-CLI`;
-- `-i` / `--input` accepts VPK input;
-- `--vpk_list` lists archive resources;
-- `--vpk_filepath` filters archive resource paths and supports comma-separated filters;
-- `-o` / `--output` selects the output directory;
-- `-d` / `--vpk_decompile` decompiles supported resources;
-- CLI argument stability is explicitly not guaranteed across future versions.
+The CLI documentation explicitly states that command-line arguments and behavior are not guaranteed to remain stable across releases.
 
-Therefore Deadlimit keeps all Source 2 Viewer command syntax inside a single adapter and records the detected CLI version with each extraction. Compatibility must be rechecked when Source 2 Viewer is updated.
+The current NuGet package checked on 2026-08-22 is:
 
-Recent ValveResourceFormat releases also include Deadlock-specific model/resource work, including support for Deadlock model gamedata nodes and export/decompilation improvements involving NmSkeletonRefs and AnimGraph2Refs. These are external capabilities; Deadlimit must still validate its own concrete extraction output before depending on them.
+```text
+ValveResourceFormat 20.0.6980
+Target: .NET 10
+Published: 2026-08-17
+```
 
-## Implemented extraction slice
+ValveResourceFormat exposes the VPK/resource parsing and decompilation primitives directly as a .NET library, including ValvePak `Package`, `Resource`, `GameFileLoader`, `FileExtract`, and texture extraction.
 
-Current flow:
+## Integration decision
+
+Deadlimit embeds the pinned ValveResourceFormat NuGet package and performs extraction in-process.
+
+Consequences:
+
+- the artist is not asked to locate or install `Source2Viewer-CLI.exe`;
+- the ordinary `Source2Viewer.exe` GUI is optional and remains useful only for manual inspection;
+- Deadlimit does not depend on unstable CLI argument syntax;
+- upgrading ValveResourceFormat is an explicit compatibility change and requires a fresh Deadlock extraction smoke test.
+
+## Current implemented flow
 
 ```text
 saved Deadlimit project
 → EXTRACT HERO SOURCE
-→ resolve Source2Viewer-CLI.exe
-→ scan current retail Deadlock VPK(s)
+→ open current retail VPK(s) through ValveResourceFormat/ValvePak
 → discover a hero .vmdl_c candidate
 → decompile its resource folder into hidden staging
 → verify that files were actually produced
@@ -46,15 +55,15 @@ saved Deadlimit project
 → persist discovered retail paths/version/timestamp/count
 ```
 
-The locator currently prioritizes:
+The locator prioritizes:
 
 ```text
 D:\Program Files (x86)\Steam\steamapps\common\Project8Staging\game\citadel\pak01_dir.vpk
 ```
 
-and falls back to other `*_dir.vpk` archives under the current retail `game` tree.
+and then scans other `*_dir.vpk` archives under the current retail `game` tree.
 
-Candidate search is restricted to current hero model namespaces:
+Candidate search is restricted to:
 
 ```text
 models/heroes/
@@ -62,50 +71,62 @@ models/heroes_wip/
 models/heroes_staging/
 ```
 
-An exact hero model filename receives the strongest score. This is discovery logic, not a hardcoded hero path.
+An exact normalized hero-model filename receives the strongest score. This remains discovery logic rather than a hardcoded hero path.
 
-## Source 2 Viewer location
+## Resource decompilation
 
-Deadlimit does not assume a permanent Source 2 Viewer install path.
+For each VPK entry in the discovered hero resource folder:
 
-It first reuses the saved path from:
+- uncompiled files are copied as raw bytes;
+- compiled Source 2 resources are read as `Resource`;
+- generic supported resources are decompiled through `FileExtract`;
+- textures use `TextureExtract`;
+- additional and sub-files emitted by the decompiler are preserved.
 
-```text
-%LOCALAPPDATA%\Deadlimit\settings.json
-```
-
-It checks a small set of likely locations under the Deadlock workspace. If the CLI still cannot be found, the user selects `Source2Viewer-CLI.exe` once; Deadlimit persists that path for future extraction.
+The exact output of this implementation is not yet confirmed by a real local extraction test. Until that test passes, this behavior is implementation backed by current external library APIs, not a confirmed Deadlimit pipeline fact.
 
 ## Refresh safety
 
-`0source` is generated retail-source data, but an existing folder may contain a useful prior manual extraction.
+`0source` is generated retail-source data, but an existing folder may contain a useful prior extraction.
 
-Refresh therefore uses a publish-after-success rule:
+Refresh uses a publish-after-success rule:
 
 1. decompile into `.deadlimit\source-extract-staging`;
-2. require a successful CLI exit and at least one output file;
+2. require at least one output file;
 3. move the current `0source` to hidden `.deadlimit\0source.previous`;
 4. move staging into `0source`;
 5. if the final move fails, attempt to restore the previous extraction.
 
-The artist's root DMX/PNG files are outside this transaction and are never touched.
+The artist's root DMX/PNG files remain outside this transaction.
 
 ## Persisted extraction facts
 
-`project.json` now records:
+`project.json` records:
 
 - discovered retail main model resource path;
 - source VPK path;
 - last extraction timestamp;
-- detected Source 2 Viewer version string;
+- pinned/runtime ValveResourceFormat version string (the property currently retains the historical `Source2ViewerVersion` name);
 - extracted file count.
 
-These facts are project evidence and should be reused by later Prepare/Release stages rather than rediscovered blindly.
+The field name should be migrated later when schema migration work exists; preserving compatibility is more important than renaming it during this first extraction validation.
 
-## Current hypothesis / next validation
+## Evidence status
 
-The first implementation decompiles the resource folder containing the discovered main hero model.
+### Confirmed by current external sources
 
-This is intentionally narrower than claiming a complete dependency closure. The next real-project test must determine whether the generated folder already contains all render meshes/materials/textures required for the artist workflow or whether Deadlimit must inspect VMDL dependencies and extract additional shared resources from other retail paths.
+- Source 2 Viewer GUI and Source2Viewer-CLI are separate binaries;
+- CLI argument stability is not guaranteed;
+- ValveResourceFormat 20.0.6980 is available as a .NET 10 NuGet package and exposes in-process extraction APIs.
 
-Do not generalize the dependency strategy until that test is observed.
+### Confirmed by our pipeline
+
+- none yet for the new embedded extraction path; the next local test is the first acceptance check.
+
+### Hypotheses requiring validation
+
+- hero discovery scoring selects the intended current retail main model;
+- decompiling only the discovered hero resource folder produces the useful model/render-mesh/material/texture set expected by the artist;
+- shared dependencies outside that folder can be identified and added generically if the first extraction is incomplete.
+
+Do not generalize dependency closure until real extraction output is inspected.
