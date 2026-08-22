@@ -1,0 +1,1 @@
+Windows shortcut icon is intentionally stored under internal/assets and referenced by the root Deadlimit shortcut.
