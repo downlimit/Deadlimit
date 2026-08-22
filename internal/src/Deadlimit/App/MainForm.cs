@@ -344,12 +344,6 @@ public sealed class MainForm : Form
             return;
         }
 
-        var cliPath = ResolveSource2ViewerCliPath();
-        if (cliPath is null)
-        {
-            return;
-        }
-
         var outputFolder = Path.Combine(_loadedManifest.ProjectFolder, _loadedManifest.SourceDumpFolderName);
         if (Directory.Exists(outputFolder) && Directory.EnumerateFileSystemEntries(outputFolder).Any())
         {
@@ -372,7 +366,7 @@ public sealed class MainForm : Form
         {
             var progress = new Progress<HeroExtractionProgress>(update => SetStatus(update.Message));
             var service = new HeroExtractionService(new DeadlimitPaths());
-            var result = await service.ExtractAsync(_loadedManifest, cliPath, progress);
+            var result = await service.ExtractAsync(_loadedManifest, progress);
 
             RefreshScan(showStatus: false);
             SetStatus($"Hero source ready: {result.ExtractedFileCount} files.");
@@ -384,7 +378,7 @@ public sealed class MainForm : Form
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or NotSupportedException)
         {
             SetStatus("Hero source extraction failed.");
             MessageBox.Show(
@@ -398,54 +392,6 @@ public sealed class MainForm : Form
         {
             _extractHeroButton.Enabled = true;
         }
-    }
-
-    private string? ResolveSource2ViewerCliPath()
-    {
-        var saved = ProjectStore.TryGetSource2ViewerCliPath();
-        if (saved is not null)
-        {
-            return saved;
-        }
-
-        var paths = new DeadlimitPaths();
-        var knownCandidates = new[]
-        {
-            Path.Combine(paths.WorkspaceRoot, "Source2Viewer-CLI.exe"),
-            Path.Combine(paths.WorkspaceRoot, "Source2Viewer", "Source2Viewer-CLI.exe"),
-            Path.Combine(paths.WorkspaceRoot, "ValveResourceFormat", "Source2Viewer-CLI.exe"),
-        };
-
-        var found = knownCandidates.FirstOrDefault(File.Exists);
-        if (found is not null)
-        {
-            ProjectStore.SaveSource2ViewerCliPath(found);
-            return found;
-        }
-
-        using var dialog = new OpenFileDialog
-        {
-            Title = "Locate Source2Viewer-CLI.exe (one time only)",
-            Filter = "Source 2 Viewer CLI|Source2Viewer-CLI.exe|Executable files|*.exe",
-            CheckFileExists = true,
-            Multiselect = false,
-            InitialDirectory = Directory.Exists(paths.WorkspaceRoot) ? paths.WorkspaceRoot : string.Empty,
-        };
-
-        if (dialog.ShowDialog(this) != DialogResult.OK)
-        {
-            SetStatus("Source 2 Viewer CLI was not selected.");
-            return null;
-        }
-
-        if (!string.Equals(Path.GetFileName(dialog.FileName), "Source2Viewer-CLI.exe", StringComparison.OrdinalIgnoreCase))
-        {
-            ShowValidation("Select Source2Viewer-CLI.exe.");
-            return null;
-        }
-
-        ProjectStore.SaveSource2ViewerCliPath(dialog.FileName);
-        return dialog.FileName;
     }
 
     private void LoadManifest(ProjectManifest manifest)
