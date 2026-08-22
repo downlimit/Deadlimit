@@ -21,8 +21,11 @@ Export DMX / save textures
 - `CONTEXT.md` — what Deadlimit is for, which workflow problems it is solving, confirmed evidence, working hypotheses, open questions, and current development focus.
 - `DECISIONS.md` — durable product/technical decisions and rules for when a workaround is allowed to become generic behavior.
 - `PROJECT.md` — product definition and intended user workflow.
-- `WORKSPACE.md` — artist project-folder contract: root DMX/PNG inputs, hidden `.deadlimit` metadata, and the future `0source` hero-extraction destination.
+- `WORKSPACE.md` — artist project-folder contract: root DMX/PNG inputs, hidden `.deadlimit` metadata, and `0source` extraction behavior.
+- `EXTRACTION.md` — current retail hero discovery/decompilation implementation, Source 2 Viewer integration, safety rules, evidence, and dependency-closure hypothesis.
 - `ARCHITECTURE.md` — environment roots, architecture, pipeline structure, and confirmed technical facts.
 - `ROADMAP.md` — implementation stages and acceptance criteria.
 
 When there is a conflict, current experimental evidence takes priority over assumptions recorded in older documentation. External tool compatibility should be revalidated when Deadlock, Reduced CSDK, DeadlockTools, Wall Worm, or ValveResourceFormat changes.
+
+Powered in part by [Source 2 Viewer](https://s2v.app) ([ValveResourceFormat](https://github.com/ValveResourceFormat/ValveResourceFormat)).
