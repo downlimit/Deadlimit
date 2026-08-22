@@ -10,7 +10,9 @@ public sealed record PrepareAuthoringResult(
     string AddonContentRoot,
     string SourceVmdlPath,
     int DmxCount,
-    int MaterialRemapCount,
+    int DmxMaterialReferenceCount,
+    int ExistingMaterialRemapCount,
+    int AddedMaterialRemapCount,
     int RetailSourceFilesCopied,
     bool GameOutputCleaned,
     string LogPath);
@@ -21,6 +23,10 @@ public sealed class PrepareAuthoringService
 
     private static readonly Regex InvalidMaterialRegex = new(
         @"materials/models/[A-Za-z0-9_./\\-]+\.vmat",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex DmxMaterialReferenceRegex = new(
+        @"materials/[A-Za-z0-9_./\\-]+",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex MaterialRemapRegex = new(
@@ -126,8 +132,16 @@ public sealed class PrepareAuthoringService
                 log.AppendLine($"  replace {resourcePath}");
             }
 
+            var dmxMaterialReferences = DiscoverDmxMaterialReferences(rootDmxFiles);
+            log.AppendLine($"DMX material references detected: {dmxMaterialReferences.Count}");
+            foreach (var materialReference in dmxMaterialReferences)
+            {
+                log.AppendLine($"  material {materialReference}");
+            }
+
             var generatedRemaps = DiscoverMaterialRepairs(
                 rootDmxFiles,
+                dmxMaterialReferences,
                 sourceCopy.DestinationVmdlPath,
                 manifest.Hero,
                 log);
@@ -153,6 +167,7 @@ public sealed class PrepareAuthoringService
             }
 
             log.AppendLine("VMDL policy: preserve the extracted retail document/header/order and patch only proven incompatible or project-owned data.");
+            log.AppendLine("Material policy: DMX material-reference count is diagnostic only; VMDL remaps are a separate concept.");
             log.AppendLine("Material policy: preserve retail MaterialGroupList remaps and merge only narrow path/fallback repairs supported by artist-source evidence.");
             log.AppendLine("Render-mesh policy: preserve retail RenderMeshList/bodygroups/LODs; overlay artist DMX at the original render-mesh resource path.");
 
@@ -171,7 +186,9 @@ public sealed class PrepareAuthoringService
                 addonContentRoot,
                 sourceCopy.DestinationVmdlPath,
                 replacedRenderMeshes.Count,
-                patchResult.ExistingMaterialRemapCount + patchResult.AddedMaterialRemapCount,
+                dmxMaterialReferences.Count,
+                patchResult.ExistingMaterialRemapCount,
+                patchResult.AddedMaterialRemapCount,
                 sourceCopy.FilesCopied,
                 gameOutputCleaned,
                 logPath);
@@ -203,29 +220,63 @@ public sealed class PrepareAuthoringService
         }
     }
 
-    private static List<VmdlMaterialRemap> DiscoverMaterialRepairs(
-        IEnumerable<string> dmxFiles,
-        string vmdlPath,
-        string hero,
-        StringBuilder log)
+    private static IReadOnlyList<string> DiscoverDmxMaterialReferences(IEnumerable<string> dmxFiles)
     {
-        var files = dmxFiles.ToArray();
-        var remaps = new Dictionary<string, VmdlMaterialRemap>(StringComparer.OrdinalIgnoreCase);
+        var references = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var dmxPath in files)
+        foreach (var dmxPath in dmxFiles)
         {
             var raw = File.ReadAllBytes(dmxPath);
             var text = Encoding.Latin1.GetString(raw).Replace('\\', '/');
 
-            foreach (Match match in InvalidMaterialRegex.Matches(text))
+            foreach (Match match in DmxMaterialReferenceRegex.Matches(text))
             {
-                var from = match.Value;
-                var to = from["materials/".Length..];
-                remaps.TryAdd(from, new VmdlMaterialRemap(from, to));
+                var value = match.Value.TrimEnd('/', '.', '-');
+                var extension = Path.GetExtension(value);
+
+                if (extension.Length > 0
+                    && !string.Equals(extension, ".vmat", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                references.Add(value);
             }
         }
 
-        var eyeFallback = DiscoverEyeFallbackRepair(files, vmdlPath, hero, log);
+        return references
+            .OrderBy(reference => reference, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static List<VmdlMaterialRemap> DiscoverMaterialRepairs(
+        IReadOnlyList<string> dmxFiles,
+        IReadOnlyList<string> dmxMaterialReferences,
+        string vmdlPath,
+        string hero,
+        StringBuilder log)
+    {
+        var remaps = new Dictionary<string, VmdlMaterialRemap>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var materialReference in dmxMaterialReferences)
+        {
+            var match = InvalidMaterialRegex.Match(materialReference);
+            if (!match.Success || !string.Equals(match.Value, materialReference, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var to = materialReference["materials/".Length..];
+            remaps.TryAdd(materialReference, new VmdlMaterialRemap(materialReference, to));
+        }
+
+        var eyeFallback = DiscoverEyeFallbackRepair(
+            dmxFiles,
+            dmxMaterialReferences,
+            vmdlPath,
+            hero,
+            log);
+
         if (eyeFallback is not null)
         {
             remaps.TryAdd(eyeFallback.From, eyeFallback);
@@ -238,13 +289,26 @@ public sealed class PrepareAuthoringService
 
     private static VmdlMaterialRemap? DiscoverEyeFallbackRepair(
         IReadOnlyList<string> dmxFiles,
+        IReadOnlyList<string> dmxMaterialReferences,
         string vmdlPath,
         string hero,
         StringBuilder log)
     {
-        var hasEyeFallbackSignature = dmxFiles.Any(DmxHasEyeFallbackSignature);
-        if (!hasEyeFallbackSignature)
+        var hasGenericFallback = dmxMaterialReferences.Any(reference => string.Equals(
+            reference,
+            GenericEyeFallbackMaterial,
+            StringComparison.OrdinalIgnoreCase));
+
+        if (!hasGenericFallback)
         {
+            log.AppendLine("Eye fallback repair: generic dev material is not referenced by the artist DMX.");
+            return null;
+        }
+
+        var hasEyeIdentifier = dmxFiles.Any(DmxContainsEyeIdentifier);
+        if (!hasEyeIdentifier)
+        {
+            log.AppendLine("Eye fallback repair: generic dev material is present, but no eye-related mesh/token was found in the same artist DMX set.");
             return null;
         }
 
@@ -262,42 +326,22 @@ public sealed class PrepareAuthoringService
         if (target is null)
         {
             log.AppendLine(
-                "Eye fallback repair: artist DMX contains an eye mesh adjacent to the generic dev material, " +
+                "Eye fallback repair: artist DMX contains both an eye identifier and the generic dev material, " +
                 "but no unique body/head/face/skin retail material target could be inferred. No automatic remap was added.");
             return null;
         }
 
         log.AppendLine(
-            $"Eye fallback repair inferred from artist DMX signature: {GenericEyeFallbackMaterial} -> {target}");
+            $"Eye fallback repair inferred from artist DMX material set: {GenericEyeFallbackMaterial} -> {target}");
 
         return new VmdlMaterialRemap(GenericEyeFallbackMaterial, target);
     }
 
-    private static bool DmxHasEyeFallbackSignature(string dmxPath)
+    private static bool DmxContainsEyeIdentifier(string dmxPath)
     {
         var raw = File.ReadAllBytes(dmxPath);
-        var tokens = Encoding.Latin1.GetString(raw)
-            .Replace('\\', '/')
-            .Split('\0', StringSplitOptions.None);
-
-        for (var index = 0; index < tokens.Length; index++)
-        {
-            if (!string.Equals(tokens[index], GenericEyeFallbackMaterial, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var start = Math.Max(0, index - 4);
-            for (var cursor = start; cursor < index; cursor++)
-            {
-                if (EyeIdentifierRegex.IsMatch(tokens[cursor]))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
+        var text = Encoding.Latin1.GetString(raw);
+        return EyeIdentifierRegex.IsMatch(text);
     }
 
     private static IReadOnlyList<VmdlMaterialRemap> ReadMaterialRemaps(string vmdlPath)
