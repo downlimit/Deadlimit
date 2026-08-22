@@ -58,12 +58,15 @@ public sealed class MainForm : Form
         openButton.Click += (_, _) => OpenProject();
         var rescanButton = new Button { Text = "RESCAN", AutoSize = true };
         rescanButton.Click += (_, _) => RefreshScan(showStatus: true);
+        var settingsButton = new Button { Text = "SETTINGS", AutoSize = true };
+        settingsButton.Click += (_, _) => ShowSettings();
         _extractHeroButton.Click += async (_, _) => await ExtractHeroSourceAsync();
 
         topBar.Controls.Add(newButton);
         topBar.Controls.Add(openButton);
         topBar.Controls.Add(rescanButton);
         topBar.Controls.Add(_extractHeroButton);
+        topBar.Controls.Add(settingsButton);
 
         var projectGroup = new GroupBox
         {
@@ -85,9 +88,22 @@ public sealed class MainForm : Form
         projectGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         AddField(projectGrid, 0, "Folder", _projectFolderText);
-        var browseButton = new Button { Text = "BROWSE", AutoSize = true, Anchor = AnchorStyles.Left };
+
+        var folderButtons = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = new Padding(0),
+            Anchor = AnchorStyles.Left,
+        };
+        var browseButton = new Button { Text = "BROWSE", AutoSize = true };
         browseButton.Click += (_, _) => BrowseProjectFolder();
-        projectGrid.Controls.Add(browseButton, 2, 0);
+        var openFolderButton = new Button { Text = "OPEN", AutoSize = true };
+        openFolderButton.Click += (_, _) => OpenProjectFolder();
+        folderButtons.Controls.Add(browseButton);
+        folderButtons.Controls.Add(openFolderButton);
+        projectGrid.Controls.Add(folderButtons, 2, 0);
 
         AddField(projectGrid, 1, "Project name", _projectNameText);
         AddField(projectGrid, 2, "Hero", _heroText);
@@ -258,6 +274,45 @@ public sealed class MainForm : Form
         }
 
         RefreshScan(showStatus: true);
+    }
+
+    private void OpenProjectFolder()
+    {
+        var folder = _projectFolderText.Text.Trim();
+        if (!Directory.Exists(folder))
+        {
+            ShowValidation("Select an existing project folder first.");
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{folder}\"",
+                UseShellExecute = true,
+            });
+            SetStatus("Opened project folder.");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            MessageBox.Show(
+                this,
+                ex.Message,
+                "Could not open project folder",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+    }
+
+    private void ShowSettings()
+    {
+        using var dialog = new SettingsForm();
+        if (dialog.ShowDialog(this) == DialogResult.OK)
+        {
+            SetStatus("Tool paths saved. New actions will use the updated paths immediately.");
+        }
     }
 
     private void SaveProject()
