@@ -35,66 +35,81 @@ PhysicsShapeList
 
 The sequence picker also returned after preserving the retail `AnimationList` and source tree, confirming that the broader template-preserving authoring strategy is correct.
 
-The material difference relevant to the black eyes is direct:
-
-Current generated VMDL contains only the retail/decompiler path redirects:
+The supplied working DMX contains five distinct material references relevant to the current model:
 
 ```text
-materials/models/.../ivy_wingsv3.vmat -> models/.../ivy_wingsv3.vmat
-materials/models/.../ivy_bodyv3.vmat  -> models/.../ivy_bodyv3.vmat
-materials/models/.../ivy_gearv3.vmat  -> models/.../ivy_gearv3.vmat
+materials/ivy_biulder
+materials/models/heroes_staging/tengu/tengu_v2/materials/ivy_bodyv3.vmat
+materials/models/heroes_staging/tengu/tengu_v2/materials/ivy_gearv3.vmat
+materials/models/heroes_staging/tengu/tengu_v2/materials/ivy_wingsv3.vmat
+materials/dev/vertcolor_pbr_basic.vmat
 ```
 
-The known-good VMDL additionally contains:
+The first Deadlimit implementation reported `3` because that number was the count of generated/retained VMDL path remaps matching `materials/models/...`, not the number of sub-materials in the artist DMX. This distinction is now explicit in both the code and the UI.
+
+The known-good VMDL additionally contains the experimentally confirmed eye redirect:
 
 ```text
 materials/dev/vertcolor_pbr_basic.vmat
 -> models/heroes_staging/tengu/tengu_v2/materials/ivy_bodyv3.vmat
 ```
 
-The supplied known-good DMX string table places `ivy_eyes` / `ivy_eyes_mesh` immediately before the `materials/dev/vertcolor_pbr_basic.vmat` material reference. This is concrete evidence that the prior working eye fix was a VMDL material redirect for a generic dev fallback material.
+The supplied known-good DMX contains `ivy_eyes` / `ivy_eyes_mesh` together with the `materials/dev/vertcolor_pbr_basic.vmat` reference. After adding the redirect above in the earlier manual pipeline, the user confirmed that the eyes rendered correctly. Therefore this mapping is confirmed for the current Ivy export; it must not be hardcoded as a universal hero rule.
 
-Therefore the earlier skeleton-only hypotheses are not the active explanation for this case.
+## 2026-08-22 — failed eye detector and repair
 
-## Generic automatic repair rule implemented
+The first generic eye detector required the eye identifier to occur within four NUL-delimited string-table entries immediately before the generic dev material. The live prepare run still reported only three remaps and the eyes remained black. That proves the detector did not recognize the actual current DMX layout.
+
+The detector has been replaced with a less format-fragile rule:
+
+1. enumerate distinct material references from the entire artist DMX byte stream;
+2. require the exact generic fallback material `materials/dev/vertcolor_pbr_basic.vmat` to be one of those references;
+3. independently require an eye-related identifier (`eye`, `eyes`, `eyeball`, `pupil`, or `iris`) somewhere in the same artist DMX set;
+4. preserve existing retail remaps;
+5. infer a target only when one unique body/skin/head/face retail material is available;
+6. ambiguous targets remain unresolved and are logged instead of guessed.
+
+This keeps the useful fail-closed behavior while removing the incorrect assumption about Wall Worm DMX string ordering.
+
+## Diagnostics contract
+
+`PREPARE FOR CSDK` now reports these separately:
+
+```text
+DMX material references detected
+VMDL remaps preserved
+Compatibility remaps added
+Total VMDL remaps
+```
+
+These values must not be conflated. A Multi/Sub-Object material may expose several DMX material references while the VMDL needs a different number of remap entries.
+
+For the current supplied Ivy DMX, the expected diagnostic material-reference count is five. The expected VMDL remap count before CUSTOM material routing is not necessarily five: the old known-good fifth redirect for `materials/ivy_biulder` belongs to the project-owned CUSTOM material path and is handled separately from the eye compatibility repair.
+
+## Generic automatic eye repair rule
 
 Deadlimit does not hardcode `Ivy` or a fixed retail material path.
 
-During `PREPARE FOR CSDK`, it now adds a generic eye fallback remap only when all of the following are true:
+The current automatic repair is allowed only when:
 
-1. an artist DMX contains the exact generic fallback material:
-
-```text
-materials/dev/vertcolor_pbr_basic.vmat
-```
-
-2. the DMX string table contains an eye-related identifier (`eye`, `eyes`, `eyeball`, `pupil`, or `iris`) within the four string-table entries immediately preceding that material reference;
-3. the copied retail VMDL does not already contain a remap for that generic material;
-4. the existing retail material remaps expose one unique plausible character-surface target whose material filename identifies `body`, `skin`, `head`, or `face`;
-5. ambiguous candidates cause no automatic repair.
+- the artist DMX references the exact generic dev fallback material;
+- the same DMX set contains an eye-related identifier;
+- the copied retail VMDL has no existing remap for that generic material;
+- exactly one defensible body/skin/head/face target can be inferred from the retail remaps.
 
 The target chooser strongly prefers body/skin/head/face materials and penalizes wing/gear/weapon/gun materials. The selected material must be unique at the best score.
-
-This deliberately preserves a fail-closed invariant: if Deadlimit cannot infer one defensible target, it leaves the material unresolved and records the condition in the prepare log instead of silently guessing.
 
 ### Current status
 
 Implementation: complete.
 
-Validation: pending one live CSDK rebuild on the current project.
+Validation: pending a new live `PREPARE FOR CSDK` run using the revised DMX material enumerator and detector.
 
-Expected current-project result after the next `PREPARE FOR CSDK` is an additional remap equivalent to the known-good manual fix:
-
-```text
-materials/dev/vertcolor_pbr_basic.vmat
--> <uniquely inferred retail body/skin/head/face material>
-```
-
-For the supplied Ivy evidence, the uniquely inferred target is the existing retail `ivy_bodyv3.vmat` target. This outcome follows from the generic scoring rule and is not encoded as an Ivy-specific constant.
+For the supplied Ivy evidence, a successful run should show the generic dev material among the detected DMX references and should add one compatibility remap equivalent to the known-good eye fix.
 
 ## Constraints
 
 - Generic `materials/dev/...` paths are not rewritten indiscriminately.
-- CUSTOM project material identifiers are not affected by this rule.
+- CUSTOM project material identifiers are not affected by the eye rule.
 - Existing retail material remaps remain authoritative and are preserved.
 - A project-specific observed mapping must not be generalized to a different hero unless the generic detection conditions succeed for that hero's own DMX/VMDL data.
