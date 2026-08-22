@@ -14,6 +14,9 @@ public static class ProjectStore
     public static string GetManifestPath(string projectFolder) =>
         Path.Combine(projectFolder, MetadataFolderName, ManifestFileName);
 
+    public static string GetMetadataFolder(string projectFolder) =>
+        Path.Combine(projectFolder, MetadataFolderName);
+
     public static ProjectManifest? TryLoad(string projectFolder)
     {
         var path = GetManifestPath(projectFolder);
@@ -43,7 +46,7 @@ public static class ProjectStore
 
     public static void Save(ProjectManifest manifest)
     {
-        var metadataFolder = Path.Combine(manifest.ProjectFolder, MetadataFolderName);
+        var metadataFolder = GetMetadataFolder(manifest.ProjectFolder);
         Directory.CreateDirectory(metadataFolder);
 
         if (OperatingSystem.IsWindows())
@@ -60,42 +63,67 @@ public static class ProjectStore
 
     public static ProjectManifest? TryLoadLastProject()
     {
+        var settings = LoadSettings();
+        if (string.IsNullOrWhiteSpace(settings.LastProjectFolder))
+        {
+            return null;
+        }
+
+        return TryLoad(settings.LastProjectFolder);
+    }
+
+    public static string? TryGetSource2ViewerCliPath()
+    {
+        var path = LoadSettings().Source2ViewerCliPath;
+        return !string.IsNullOrWhiteSpace(path) && File.Exists(path) ? path : null;
+    }
+
+    public static void SaveSource2ViewerCliPath(string path)
+    {
+        var settings = LoadSettings();
+        settings.Source2ViewerCliPath = Path.GetFullPath(path);
+        SaveSettings(settings);
+    }
+
+    private static void SaveLastProject(string projectFolder)
+    {
+        var settings = LoadSettings();
+        settings.LastProjectFolder = projectFolder;
+        SaveSettings(settings);
+    }
+
+    private static LocalSettings LoadSettings()
+    {
         var settingsPath = GetSettingsPath();
         if (!File.Exists(settingsPath))
         {
-            return null;
+            return new LocalSettings();
         }
 
         try
         {
             var json = File.ReadAllText(settingsPath);
-            var settings = JsonSerializer.Deserialize<LocalSettings>(json, JsonOptions);
-            if (settings is null || string.IsNullOrWhiteSpace(settings.LastProjectFolder))
-            {
-                return null;
-            }
-
-            return TryLoad(settings.LastProjectFolder);
+            return JsonSerializer.Deserialize<LocalSettings>(json, JsonOptions) ?? new LocalSettings();
         }
         catch (JsonException)
         {
-            return null;
+            return new LocalSettings();
         }
         catch (IOException)
         {
-            return null;
+            return new LocalSettings();
         }
         catch (UnauthorizedAccessException)
         {
-            return null;
+            return new LocalSettings();
         }
     }
 
-    private static void SaveLastProject(string projectFolder)
+    private static void SaveSettings(LocalSettings settings)
     {
         var settingsPath = GetSettingsPath();
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
-        var json = JsonSerializer.Serialize(new LocalSettings { LastProjectFolder = projectFolder }, JsonOptions);
+        var json = JsonSerializer.Serialize(settings, JsonOptions);
         File.WriteAllText(settingsPath, json);
     }
 
@@ -108,5 +136,6 @@ public static class ProjectStore
     private sealed class LocalSettings
     {
         public string LastProjectFolder { get; set; } = string.Empty;
+        public string? Source2ViewerCliPath { get; set; }
     }
 }
