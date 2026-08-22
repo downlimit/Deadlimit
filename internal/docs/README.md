@@ -16,4 +16,12 @@ Export DMX / save textures
 → test in Deadlock
 ```
 
-Technical details and current constraints are documented in `PROJECT.md`, `ARCHITECTURE.md`, and `ROADMAP.md`.
+## Documentation map
+
+- `CONTEXT.md` — what Deadlimit is for, which workflow problems it is solving, confirmed evidence, working hypotheses, open questions, and current development focus.
+- `DECISIONS.md` — durable product/technical decisions and rules for when a workaround is allowed to become generic behavior.
+- `PROJECT.md` — product definition and intended user workflow.
+- `ARCHITECTURE.md` — environment roots, architecture, pipeline structure, and confirmed technical facts.
+- `ROADMAP.md` — implementation stages and acceptance criteria.
+
+When there is a conflict, current experimental evidence takes priority over assumptions recorded in older documentation. External tool compatibility should be revalidated when Deadlock, Reduced CSDK, DeadlockTools, Wall Worm, or ValveResourceFormat changes.
