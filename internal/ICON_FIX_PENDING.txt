@@ -1,1 +1,0 @@
-The icon asset is being replaced with a proper multi-resolution Windows ICO during this migration.
