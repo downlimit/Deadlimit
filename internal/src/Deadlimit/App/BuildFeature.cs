@@ -17,22 +17,22 @@ internal static class BuildFeature
 
         var buildButton = new Button
         {
-            Text = "PREPARE + COMPILE",
+            Text = "PREPARE FOR CSDK",
             AutoSize = true,
         };
 
-        buildButton.Click += async (_, _) => await RunBuildAsync(form, buildButton);
+        buildButton.Click += async (_, _) => await RunPrepareAsync(form, buildButton);
         topBar.Controls.Add(buildButton);
     }
 
-    private static async Task RunBuildAsync(MainForm form, Button buildButton)
+    private static async Task RunPrepareAsync(MainForm form, Button buildButton)
     {
         var manifest = ProjectStore.TryLoadLastProject();
         if (manifest is null || !Directory.Exists(manifest.ProjectFolder))
         {
             MessageBox.Show(
                 form,
-                "Save the current Deadlimit project before running PREPARE + COMPILE.",
+                "Save the current Deadlimit project before running PREPARE FOR CSDK.",
                 "Deadlimit",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
@@ -44,27 +44,24 @@ internal static class BuildFeature
 
         try
         {
-            var progress = new Progress<PrepareCompileProgress>(update =>
+            var progress = new Progress<PrepareAuthoringProgress>(update =>
             {
                 form.Text = $"Deadlimit — {update.Message}";
             });
 
-            var service = new PrepareCompileService(new DeadlimitPaths());
-            var result = await service.PrepareAndCompileAsync(manifest, progress);
-
-            var postProcess = result.Ag2Applied
-                ? $"AG2/NmSkeleton: restored ({result.NmSkeletonRef})"
-                : "AG2/NmSkeleton: skipped; see build log";
+            var service = new PrepareAuthoringService(new DeadlimitPaths());
+            var result = await service.PrepareAsync(manifest, progress);
 
             MessageBox.Show(
                 form,
-                $"Prepare + compile completed.\n\n" +
+                $"Authoring content prepared.\n\n" +
                 $"Addon: {result.AddonName}\n" +
                 $"DMX: {result.DmxCount}\n" +
-                $"Material path remaps: {result.MaterialRemapCount}\n\n" +
-                $"Authoring source (content):\n{result.SourceVmdlPath}\n\n" +
-                $"Runtime output: cleaned before this build and rebuilt from the prepared content.\n\n" +
-                $"{postProcess}\n\n" +
+                $"Material path remaps: {result.MaterialRemapCount}\n" +
+                $"Retail source files copied: {result.RetailSourceFilesCopied}\n\n" +
+                $"CSDK content:\n{result.AddonContentRoot}\n\n" +
+                $"Model source:\n{result.SourceVmdlPath}\n\n" +
+                $"Deadlimit did not touch or compile the CSDK game folder. Launch CSDK12; its tools compile content into game.\n\n" +
                 $"Log: {result.LogPath}",
                 "Deadlimit",
                 MessageBoxButtons.OK,
@@ -77,7 +74,7 @@ internal static class BuildFeature
             MessageBox.Show(
                 form,
                 ex.Message,
-                "Prepare + compile failed",
+                "Prepare failed",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
