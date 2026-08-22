@@ -52,16 +52,21 @@ internal static class BuildFeature
             var service = new PrepareAuthoringService(new DeadlimitPaths());
             var result = await service.PrepareAsync(manifest, progress);
 
+            var gameState = result.GameOutputCleaned
+                ? "Existing compiled output for this addon was removed."
+                : "No previous compiled output for this addon existed.";
+
             MessageBox.Show(
                 form,
                 $"Authoring content prepared.\n\n" +
                 $"Addon: {result.AddonName}\n" +
-                $"DMX: {result.DmxCount}\n" +
-                $"Material path remaps: {result.MaterialRemapCount}\n" +
+                $"DMX overlays: {result.DmxCount}\n" +
+                $"Material remaps retained/added: {result.MaterialRemapCount}\n" +
                 $"Retail source files copied: {result.RetailSourceFilesCopied}\n\n" +
                 $"CSDK content:\n{result.AddonContentRoot}\n\n" +
                 $"Model source:\n{result.SourceVmdlPath}\n\n" +
-                $"Deadlimit did not touch or compile the CSDK game folder. Launch CSDK12; its tools compile content into game.\n\n" +
+                $"CSDK game output: CLEAN. {gameState}\n" +
+                $"Deadlimit did not compile it; launch CSDK12 to rebuild game from the prepared content.\n\n" +
                 $"Log: {result.LogPath}",
                 "Deadlimit",
                 MessageBoxButtons.OK,
