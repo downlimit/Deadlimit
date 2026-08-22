@@ -6,24 +6,56 @@ public sealed record ToolProbe(string Name, string Path, bool Exists, string? Ve
 
 public sealed class DeadlimitPaths
 {
-    public string WorkspaceRoot { get; init; } = @"C:\WorkProjects\Deadlock";
-    public string DeadlimitRoot { get; init; } = @"C:\WorkProjects\Deadlock\Deadlimit";
-    public string CsdkRoot { get; init; } = @"C:\WorkProjects\Deadlock\Reduced_CSDK_12";
-    public string DeadlockToolsRoot { get; init; } = @"C:\WorkProjects\Deadlock\DeadlockTools";
-    public string RetailDeadlockRoot { get; init; } = @"D:\Program Files (x86)\Steam\steamapps\common\Project8Staging";
+    public const string DefaultWorkspaceRoot = @"C:\WorkProjects\Deadlock";
+    public const string DefaultDeadlimitRoot = @"C:\WorkProjects\Deadlock\Deadlimit";
+    public const string DefaultCsdkRoot = @"C:\WorkProjects\Deadlock\Reduced_CSDK_12";
+    public const string DefaultDeadlockToolsRoot = @"C:\WorkProjects\Deadlock\DeadlockTools";
+    public const string DefaultRetailDeadlockRoot = @"D:\Program Files (x86)\Steam\steamapps\common\Project8Staging";
+
+    public DeadlimitPaths()
+        : this(ProjectStore.GetToolPathSettings())
+    {
+    }
+
+    public DeadlimitPaths(ToolPathSettings configuredPaths)
+    {
+        WorkspaceRoot = DefaultWorkspaceRoot;
+        DeadlimitRoot = DefaultDeadlimitRoot;
+        CsdkRoot = UseConfiguredOrDefault(configuredPaths.CsdkRoot, DefaultCsdkRoot);
+        DeadlockToolsRoot = UseConfiguredOrDefault(configuredPaths.DeadlockToolsRoot, DefaultDeadlockToolsRoot);
+        RetailDeadlockRoot = UseConfiguredOrDefault(configuredPaths.RetailDeadlockRoot, DefaultRetailDeadlockRoot);
+    }
+
+    public string WorkspaceRoot { get; }
+    public string DeadlimitRoot { get; }
+    public string CsdkRoot { get; }
+    public string DeadlockToolsRoot { get; }
+    public string RetailDeadlockRoot { get; }
 
     public string CsdkContentRoot => Path.Combine(CsdkRoot, "content");
     public string CsdkGameRoot => Path.Combine(CsdkRoot, "game");
+    public string CsdkLauncherPath => Path.Combine(CsdkRoot, "csdkcfg.exe");
     public string ResourceCompilerPath => Path.Combine(CsdkRoot, "game", "bin_cs2", "win64", "resourcecompiler.exe");
     public string VpkPackerPath => Path.Combine(CsdkRoot, "game", "bin", "win64", "CSDKCfgVPK.exe");
     public string DeadlockToolsExePath => Path.Combine(DeadlockToolsRoot, "DeadlockTools", "bin", "Release", "net10.0", "DeadlockTools.exe");
 
     public IReadOnlyList<ToolProbe> ProbeTools() =>
     [
+        Probe("CSDK launcher", CsdkLauncherPath),
         Probe("ResourceCompiler", ResourceCompilerPath),
         Probe("CSDKCfgVPK", VpkPackerPath),
         Probe("DeadlockTools", DeadlockToolsExePath),
     ];
+
+    private static string UseConfiguredOrDefault(string configured, string fallback)
+    {
+        if (string.IsNullOrWhiteSpace(configured))
+        {
+            return fallback;
+        }
+
+        return Path.GetFullPath(configured.Trim());
+    }
 
     private static ToolProbe Probe(string name, string path)
     {
