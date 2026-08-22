@@ -1,5 +1,12 @@
 namespace Deadlimit.Core;
 
+public sealed class ToolPathSettings
+{
+    public string CsdkRoot { get; set; } = string.Empty;
+    public string DeadlockToolsRoot { get; set; } = string.Empty;
+    public string RetailDeadlockRoot { get; set; } = string.Empty;
+}
+
 public static class ProjectStore
 {
     private const string MetadataFolderName = ".deadlimit";
@@ -72,6 +79,26 @@ public static class ProjectStore
         return TryLoad(settings.LastProjectFolder);
     }
 
+    public static ToolPathSettings GetToolPathSettings()
+    {
+        var settings = LoadSettings();
+        return new ToolPathSettings
+        {
+            CsdkRoot = settings.CsdkRoot,
+            DeadlockToolsRoot = settings.DeadlockToolsRoot,
+            RetailDeadlockRoot = settings.RetailDeadlockRoot,
+        };
+    }
+
+    public static void SaveToolPathSettings(ToolPathSettings toolPaths)
+    {
+        var settings = LoadSettings();
+        settings.CsdkRoot = NormalizeOptionalPath(toolPaths.CsdkRoot);
+        settings.DeadlockToolsRoot = NormalizeOptionalPath(toolPaths.DeadlockToolsRoot);
+        settings.RetailDeadlockRoot = NormalizeOptionalPath(toolPaths.RetailDeadlockRoot);
+        SaveSettings(settings);
+    }
+
     private static void SaveLastProject(string projectFolder)
     {
         var settings = LoadSettings();
@@ -114,6 +141,16 @@ public static class ProjectStore
         File.WriteAllText(settingsPath, json);
     }
 
+    private static string NormalizeOptionalPath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return Path.GetFullPath(value.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+    }
+
     private static string GetSettingsPath() =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -123,5 +160,8 @@ public static class ProjectStore
     private sealed class LocalSettings
     {
         public string LastProjectFolder { get; set; } = string.Empty;
+        public string CsdkRoot { get; set; } = string.Empty;
+        public string DeadlockToolsRoot { get; set; } = string.Empty;
+        public string RetailDeadlockRoot { get; set; } = string.Empty;
     }
 }
