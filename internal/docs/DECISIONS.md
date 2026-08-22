@@ -41,11 +41,30 @@ External tools are accessed through isolated adapters rather than duplicating co
 
 Target adapters include:
 
-- Reduced CSDK ResourceCompiler;
+- Reduced CSDK authoring/compile integration;
 - DeadlockTools;
 - ValveResourceFormat;
 - CSDK VPK packaging;
 - optional deploy/test launcher integration.
+
+### CSDK owns `content → game` during authoring
+
+The authoritative editable workspace is:
+
+```text
+Reduced_CSDK_12\content\citadel_addons\<addon>\
+```
+
+`Reduced_CSDK_12\game\citadel_addons\<addon>\` is generated runtime output owned by CSDK12. Current CSDK12 documentation explicitly states that files placed in addon `content` are compiled by the tools and their compiled `_c` resources are written into the corresponding addon `game` folder.
+
+Therefore `PREPARE FOR CSDK` must:
+
+- prepare/update only addon `content`;
+- never delete the addon `game` folder;
+- never invoke ResourceCompiler itself;
+- never apply post-compile binary patches during this authoring-preparation action.
+
+Compilation, runtime-output cleanup/rebuild policy, and any post-compile patching belong to a later explicit release/test action, where Deadlimit can control the entire transaction intentionally.
 
 ### Embed ValveResourceFormat for extraction
 
@@ -63,15 +82,17 @@ This version targets .NET 10 and was current when the integration was made on 20
 
 The Source 2 Viewer GUI remains useful as a manual inspection/reference tool, but it is not a runtime prerequisite for Deadlimit extraction.
 
-### Use the validated compiler path
+### Validated ResourceCompiler path is retained as release-stage evidence
 
-The current known-good compiler for the tested pipeline is:
+The current known-good direct compiler from the earlier headless experiment is:
 
 ```text
 C:\WorkProjects\Deadlock\Reduced_CSDK_12\game\bin_cs2\win64\resourcecompiler.exe
 ```
 
 The `game\bin_tools\win64` compiler must not be substituted automatically because it failed in the current environment with a schema mismatch.
+
+This direct compiler path is no longer used by `PREPARE FOR CSDK`. It remains evidence for a future controlled release/test pipeline if direct compilation is still needed there.
 
 ### VMDL preprocessing must be structural
 
@@ -92,9 +113,11 @@ Only matching cases supported by evidence should be normalized. Valid `materials
 
 ### AG2/NmSkeleton repair is post-compile and evidence-driven
 
-After model compilation, Deadlimit should verify required graph/skeleton references and invoke DeadlockTools `add ag2` when the compiled model needs them restored.
+After a controlled runtime compilation step, Deadlimit may verify required graph/skeleton references and invoke DeadlockTools `add ag2` when the compiled model needs them restored.
 
 `fix unitstatus` is conditional and must not be treated as universally required.
+
+AG2/NmSkeleton post-processing does not belong to `PREPARE FOR CSDK`, because that action no longer owns compiled `game` output.
 
 ### Originals are immutable inputs
 
