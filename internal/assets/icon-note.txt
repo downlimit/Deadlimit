@@ -1,1 +1,0 @@
-Deadlimit shortcut uses internal/assets/Deadlimit.ico.
