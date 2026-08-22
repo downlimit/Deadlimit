@@ -6,7 +6,7 @@ This file records concrete local build results. Hero-specific observations remai
 
 ### Confirmed by our pipeline
 
-A real artist project completed the Stage 1B action from the Deadlimit GUI.
+A real artist project completed the earlier headless Stage 1B experiment from the Deadlimit GUI.
 
 Observed result:
 
@@ -20,6 +20,8 @@ models/heroes_staging/tengu/tengu_v2/dmx/mesh/ivy.vnmskel
 ```
 
 The `.vnmskel` path above is evidence for the tested Ivy project only. Its `heroes_staging/tengu/tengu_v2/...` location must not be generalized to other heroes.
+
+This successful direct compile remains useful evidence, but the authoring workflow has since been changed: `PREPARE FOR CSDK` no longer compiles runtime output itself.
 
 ## 2026-08-22 — CSDK visual inspection
 
@@ -84,44 +86,54 @@ Deadlimit now uses the extracted retail hero source as the template for the CSDK
 → strip only known-incompatible NmSkeletonList / AnimGraph2List
 → replace RenderMeshList with artist DMX
 → replace MaterialGroupList with Deadlimit/project material routing
-→ compile
-→ restore runtime AG2/NmSkeleton through DeadlockTools
+→ leave runtime compilation to CSDK12
 ```
 
 The artist mesh is stored in a dedicated generated `deadlimit_mesh` folder so refreshing the retail source tree cannot erase retail animation DMX/source files and retail source files cannot overwrite the artist input.
 
 This change is specifically intended to preserve nodes such as `AnimationList`, `ModelModifierList`, `PoseParamList`, hitboxes, weights, body/LOD context, attachments, and skeleton data when they exist in the current extracted retail VMDL, without hardcoding Ivy-specific node names.
 
-This is pending the next local compile/visual test. A newly exposed unsupported ModelDoc class must be removed only after a concrete compiler error demonstrates that requirement.
+A newly exposed unsupported ModelDoc class must be removed only after a concrete CSDK compiler error demonstrates that requirement.
 
-## Controlled `game` output policy
+## `content` vs `game` ownership — corrected architecture
 
-The CSDK trees have distinct roles:
+CSDK12 documentation states that an addon has two trees:
 
 ```text
 content\citadel_addons\<addon>\...
-= persistent authoring source owned by the project/Deadlimit
+= raw/editable authoring source
 
 game\citadel_addons\<addon>\...
-= generated runtime output/cache
+= compiled runtime output generated/read by CSDK/game
 ```
 
-The user correctly identified that stale `game` output should not accumulate across prepare cycles. Deadlimit now deletes only the current addon's `game\citadel_addons\<addon>` tree at the start of `PREPARE + COMPILE`, then rebuilds it from the prepared content and applies the required post-compile AG2 patch.
+The previous Deadlimit implementation deleted the current addon's `game` tree and immediately recompiled it during `PREPARE + COMPILE`. That was unnecessary duplication of CSDK12's normal authoring behavior and has been removed.
 
-It never deletes the global CSDK `game` tree or other addons.
+Current rule:
 
-The success dialog now exposes the authoring `content` path and reports that runtime output was cleaned/rebuilt; it no longer presents the `game` path as if it were the primary artist-facing result.
+```text
+PREPARE FOR CSDK
+→ touches content only
+→ does not delete game
+→ does not invoke ResourceCompiler
+→ does not apply post-compile binary patches
+
+Launch/use CSDK12
+→ CSDK compiles prepared content into game as needed
+```
+
+A later explicit `RELEASE` / `RELEASE & TEST` transaction may deliberately own clean runtime compilation, post-compile AG2 fixes, VPK packaging, and deployment. That is a different operation from authoring preparation.
 
 ## Animation-preview direction
 
-The old manual experiment exposed many animation source assets and a selectable sequence; the current minimal source did not. The first corrective step is now to copy the complete already-decompiled retail model source folder from `0source` into addon `content` and preserve compatible `AnimationList`/related ModelDoc nodes.
+The old manual experiment exposed many animation source assets and a selectable sequence; the current minimal source did not. The first corrective step is to copy the complete already-decompiled retail model source folder from `0source` into addon `content` and preserve compatible `AnimationList`/related ModelDoc nodes.
 
 This is intentionally tested before implementing a more expensive VPK-wide AG2 dependency crawler. If the existing extracted retail source tree is sufficient to restore the sequence picker, no extra recursive dependency system should be added. If it remains insufficient, the next evidence-driven step is to discover and materialize referenced `vnmskel`, `vnmgraph`, and `vnmclip` resources under their original paths.
 
 ## Still unvalidated
 
 - whether full compatible retail ModelDoc/source-tree preservation restores animation preview;
-- whether the next build exposes another current-CSDK-incompatible retail ModelDoc node;
+- whether the next CSDK build exposes another current-CSDK-incompatible retail ModelDoc node;
 - exact cause of the observed black eyes; current strongest hypothesis is mesh-local eye-bone/remapping or eye-material data lost in the DMX round-trip;
 - custom material/texture creation and persistence;
 - retail Deadlock loading;
