@@ -1,5 +1,3 @@
-using System.Text.Json;
-
 namespace Deadlimit.Core;
 
 public static class ProjectStore
@@ -24,8 +22,23 @@ public static class ProjectStore
             return null;
         }
 
-        var json = File.ReadAllText(path);
-        return JsonSerializer.Deserialize<ProjectManifest>(json, JsonOptions);
+        try
+        {
+            var json = File.ReadAllText(path);
+            return JsonSerializer.Deserialize<ProjectManifest>(json, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     public static void Save(ProjectManifest manifest)
@@ -69,6 +82,10 @@ public static class ProjectStore
             return null;
         }
         catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
         {
             return null;
         }
