@@ -61,7 +61,10 @@ internal static class BuildFeature
                 $"Authoring content prepared.\n\n" +
                 $"Addon: {result.AddonName}\n" +
                 $"DMX overlays: {result.DmxCount}\n" +
-                $"Material remaps retained/added: {result.MaterialRemapCount}\n" +
+                $"DMX material references detected: {result.DmxMaterialReferenceCount}\n" +
+                $"VMDL remaps preserved: {result.ExistingMaterialRemapCount}\n" +
+                $"Compatibility remaps added: {result.AddedMaterialRemapCount}\n" +
+                $"Total VMDL remaps: {result.ExistingMaterialRemapCount + result.AddedMaterialRemapCount}\n" +
                 $"Retail source files copied: {result.RetailSourceFilesCopied}\n\n" +
                 $"CSDK content:\n{result.AddonContentRoot}\n\n" +
                 $"Model source:\n{result.SourceVmdlPath}\n\n" +
