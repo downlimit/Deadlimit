@@ -71,9 +71,7 @@ internal static class BuildFeature
         }
         catch (Exception ex) when (ex is IOException
             or UnauthorizedAccessException
-            or InvalidOperationException
-            or FileNotFoundException
-            or DirectoryNotFoundException)
+            or InvalidOperationException)
         {
             MessageBox.Show(
                 form,
