@@ -83,7 +83,20 @@ For each VPK entry in the discovered hero resource folder:
 - textures use `TextureExtract`;
 - additional and sub-files emitted by the decompiler are preserved.
 
-The exact output of this implementation is not yet confirmed by a real local extraction test. Until that test passes, this behavior is implementation backed by current external library APIs, not a confirmed Deadlimit pipeline fact.
+## Local validation — 2026-08-22
+
+The embedded extraction path was exercised successfully against the current retail Deadlock install from a real Deadlimit project.
+
+Observed result:
+
+- `EXTRACT HERO SOURCE` completed and populated `<ProjectFolder>\0source\`;
+- the generated tree contained a decompiled hero model folder under `models\heroes_wip\ivy\`;
+- the output visibly included the main `.vmdl` plus many `.dmx` files, including animation-related DMX resources;
+- no separate `Source2Viewer-CLI.exe` was required.
+
+This confirms that the in-process ValveResourceFormat path can discover the selected retail hero and produce a substantial decompiled source package in the expected destination.
+
+This observation does **not** yet prove complete dependency closure. The screenshot validates the hero model folder and its decompiled files, but does not by itself prove that every required material, texture, shared mesh, skeleton, or other dependency outside that folder has been included.
 
 ## Refresh safety
 
@@ -121,12 +134,15 @@ The field name should be migrated later when schema migration work exists; prese
 
 ### Confirmed by our pipeline
 
-- none yet for the new embedded extraction path; the next local test is the first acceptance check.
+- embedded ValveResourceFormat extraction runs without requiring Source2Viewer-CLI;
+- current retail VPK discovery found the selected hero source;
+- `0source` was populated successfully with the decompiled hero model folder;
+- the resulting hero folder included a main VMDL and many DMX files.
 
 ### Hypotheses requiring validation
 
-- hero discovery scoring selects the intended current retail main model;
-- decompiling only the discovered hero resource folder produces the useful model/render-mesh/material/texture set expected by the artist;
-- shared dependencies outside that folder can be identified and added generically if the first extraction is incomplete.
+- hero discovery scoring selects the intended current retail main model across other heroes, not only the current tested project;
+- decompiling only the discovered hero resource folder includes every material/texture/shared dependency needed by the full authoring workflow;
+- shared dependencies outside that folder can be identified and added generically if later stages prove they are missing.
 
-Do not generalize dependency closure until real extraction output is inspected.
+Do not generalize dependency closure until those dependencies are exercised by Prepare/authoring or inspected explicitly.
