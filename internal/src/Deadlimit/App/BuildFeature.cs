@@ -63,7 +63,7 @@ internal static class BuildFeature
                 $"DMX: {result.DmxCount}\n" +
                 $"Material path remaps: {result.MaterialRemapCount}\n\n" +
                 $"Authoring source (content):\n{result.SourceVmdlPath}\n\n" +
-                $"Compiled runtime output (game):\n{result.CompiledVmdlPath}\n\n" +
+                $"Runtime output: cleaned before this build and rebuilt from the prepared content.\n\n" +
                 $"{postProcess}\n\n" +
                 $"Log: {result.LogPath}",
                 "Deadlimit",
