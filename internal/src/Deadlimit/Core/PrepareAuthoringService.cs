@@ -270,10 +270,18 @@ public sealed class PrepareAuthoringService
             remaps.TryAdd(materialReference, new VmdlMaterialRemap(materialReference, to));
         }
 
+        var existingRemaps = ReadMaterialRemaps(vmdlPath);
+        var targetCandidates = existingRemaps
+            .Concat(remaps.Values)
+            .GroupBy(candidate => candidate.From, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+
         var eyeFallback = DiscoverEyeFallbackRepair(
             dmxFiles,
             dmxMaterialReferences,
-            vmdlPath,
+            existingRemaps,
+            targetCandidates,
             hero,
             log);
 
@@ -290,7 +298,8 @@ public sealed class PrepareAuthoringService
     private static VmdlMaterialRemap? DiscoverEyeFallbackRepair(
         IReadOnlyList<string> dmxFiles,
         IReadOnlyList<string> dmxMaterialReferences,
-        string vmdlPath,
+        IReadOnlyList<VmdlMaterialRemap> existingRemaps,
+        IReadOnlyList<VmdlMaterialRemap> targetCandidates,
         string hero,
         StringBuilder log)
     {
@@ -312,7 +321,6 @@ public sealed class PrepareAuthoringService
             return null;
         }
 
-        var existingRemaps = ReadMaterialRemaps(vmdlPath);
         if (existingRemaps.Any(remap => string.Equals(
                 remap.From,
                 GenericEyeFallbackMaterial,
@@ -322,12 +330,13 @@ public sealed class PrepareAuthoringService
             return null;
         }
 
-        var target = ChooseLikelyCharacterSurfaceMaterial(existingRemaps, hero);
+        var target = ChooseLikelyCharacterSurfaceMaterial(targetCandidates, hero);
         if (target is null)
         {
             log.AppendLine(
                 "Eye fallback repair: artist DMX contains both an eye identifier and the generic dev material, " +
-                "but no unique body/head/face/skin retail material target could be inferred. No automatic remap was added.");
+                "but no unique body/head/face/skin target could be inferred from either retail remaps or pending path repairs. " +
+                "No automatic remap was added.");
             return null;
         }
 
@@ -355,12 +364,12 @@ public sealed class PrepareAuthoringService
     }
 
     private static string? ChooseLikelyCharacterSurfaceMaterial(
-        IReadOnlyList<VmdlMaterialRemap> existingRemaps,
+        IReadOnlyList<VmdlMaterialRemap> candidateRemaps,
         string hero)
     {
         var heroToken = NormalizeToken(hero);
 
-        var scored = existingRemaps
+        var scored = candidateRemaps
             .Select(remap => remap.To)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(path =>
