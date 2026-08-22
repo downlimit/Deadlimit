@@ -20,9 +20,17 @@ internal static class BuildFeature
             Text = "PREPARE FOR CSDK",
             AutoSize = true,
         };
-
         buildButton.Click += async (_, _) => await RunPrepareAsync(form, buildButton);
+
+        var launchCsdkButton = new Button
+        {
+            Text = "LAUNCH CSDK",
+            AutoSize = true,
+        };
+        launchCsdkButton.Click += (_, _) => LaunchCsdk(form);
+
         topBar.Controls.Add(buildButton);
+        topBar.Controls.Add(launchCsdkButton);
     }
 
     private static async Task RunPrepareAsync(MainForm form, Button buildButton)
@@ -90,6 +98,40 @@ internal static class BuildFeature
         {
             form.Text = originalTitle;
             buildButton.Enabled = true;
+        }
+    }
+
+    private static void LaunchCsdk(MainForm form)
+    {
+        var paths = new DeadlimitPaths();
+        if (!File.Exists(paths.CsdkLauncherPath))
+        {
+            MessageBox.Show(
+                form,
+                $"CSDK launcher was not found:\n{paths.CsdkLauncherPath}\n\nOpen SETTINGS and select the Reduced_CSDK_12 root.",
+                "CSDK launcher not found",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = paths.CsdkLauncherPath,
+                WorkingDirectory = paths.CsdkRoot,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            MessageBox.Show(
+                form,
+                ex.Message,
+                "Could not launch CSDK",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
         }
     }
 
