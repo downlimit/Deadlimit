@@ -2,9 +2,10 @@
 setlocal EnableExtensions
 set "ROOT=%~dp0"
 set "SHORTCUT=%ROOT%Deadlimit.lnk"
-set "UPDATER_SHORTCUT=%ROOT%Deadlimit Updater.lnk"
-set "ICON=%ROOT%internal\assets\Deadlimit_v2.ico"
-set "ICON_B64=%ROOT%internal\assets\Deadlimit.ico.b64"
+set "UPDATER_SHORTCUT=%ROOT%Updater.lnk"
+set "OLD_UPDATER_SHORTCUT=%ROOT%Deadlimit Updater.lnk"
+set "ICON=%ROOT%internal\assets\Deadlimit_128.ico"
+set "UPDATER_ICON=%ROOT%internal\assets\Updater_128.ico"
 set "TARGET=%ROOT%internal\Deadlimit.cmd"
 set "UPDATER=%ROOT%DEADLIMIT_LocalUpdater.bat"
 
@@ -14,11 +15,9 @@ if not exist "%TARGET%" (
     exit /b 1
 )
 
-if exist "%ICON_B64%" (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-      "$raw = Get-Content -Raw -LiteralPath '%ICON_B64%';" ^
-      "[IO.File]::WriteAllBytes('%ICON%', [Convert]::FromBase64String($raw))"
-)
+if exist "%OLD_UPDATER_SHORTCUT%" del /f /q "%OLD_UPDATER_SHORTCUT%" >nul 2>nul
+if exist "%SHORTCUT%" del /f /q "%SHORTCUT%" >nul 2>nul
+if exist "%UPDATER_SHORTCUT%" del /f /q "%UPDATER_SHORTCUT%" >nul 2>nul
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$w = New-Object -ComObject WScript.Shell;" ^
@@ -32,8 +31,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "  $u = $w.CreateShortcut('%UPDATER_SHORTCUT%');" ^
   "  $u.TargetPath = '%UPDATER%';" ^
   "  $u.WorkingDirectory = '%ROOT%';" ^
-  "  $u.IconLocation = '%ICON%,0';" ^
-  "  $u.Description = 'Update Deadlimit';" ^
+  "  $u.IconLocation = '%UPDATER_ICON%,0';" ^
+  "  $u.Description = 'Updater';" ^
   "  $u.Save();" ^
   "}"
 
