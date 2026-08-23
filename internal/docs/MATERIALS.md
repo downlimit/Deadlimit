@@ -9,7 +9,7 @@ Deadlimit distinguishes two intended material roles:
 - `REUSE` — the prepared model continues to reference an existing retail material;
 - `CUSTOM` — the addon owns an editable VMAT and its texture sources.
 
-The current Stage 1 authoring path handles retail reuse and compatibility remaps. Full CUSTOM VMAT generation/edit persistence remains Stage 2.
+Stage 1 established retail reuse and compatibility remaps. Stage 2 now owns CUSTOM VMAT authoring and preservation.
 
 ## 2026-08-22 — Ivy black-eye comparison
 
@@ -73,24 +73,26 @@ This keeps the useful fail-closed behavior while removing the incorrect assumpti
 
 ## Diagnostics contract
 
-`PREPARE FOR CSDK` now reports these separately:
+`PREPARE FOR CSDK` reports these separately:
 
 ```text
 DMX material references detected
 VMDL remaps preserved
-Compatibility remaps added
+Compatibility remaps generated
+VMDL remaps added
 Total VMDL remaps
+Custom materials detected
+Custom VMAT created / preserved
+Texture PNG sources refreshed
 ```
 
 These values must not be conflated. A Multi/Sub-Object material may expose several DMX material references while the VMDL needs a different number of remap entries.
-
-For the current supplied Ivy DMX, the expected diagnostic material-reference count is five. The expected VMDL remap count before CUSTOM material routing is four: three `materials/models/...` path repairs plus the eye redirect. The old known-good fifth redirect for `materials/ivy_biulder` belongs to the project-owned CUSTOM material path and is handled separately from the eye compatibility repair.
 
 ## Generic automatic eye repair rule
 
 Deadlimit does not hardcode `Ivy` or a fixed retail material path.
 
-The current automatic repair is allowed only when:
+The automatic repair is allowed only when:
 
 - the artist DMX references the exact generic dev fallback material;
 - the same DMX set contains an eye-related identifier;
@@ -114,25 +116,78 @@ Retail source files copied: 272
 
 After launching CSDK12 and rebuilding from the prepared `content`, the user confirmed that the eyes render correctly. The animation list also remained restored from the preceding template-preservation fix.
 
-This confirms the current Ivy pipeline end-to-end for the eye compatibility layer:
-
-```text
-artist DMX
-→ detect five material references
-→ generate three materials/models path repairs
-→ infer one generic-eye fallback redirect to the unique body material
-→ preserve retail authoring/animation structure
-→ CSDK12 rebuild
-→ eyes render correctly
-```
-
 Status: **CONFIRMED BY LIVE PIPELINE for the current Ivy export.**
 
-The generic detection mechanism is implemented without an Ivy-specific hardcoded path, but cross-hero generality remains unproven until another hero with the same failure class is tested. Do not claim hero-independent validation yet.
+The generic detection mechanism is implemented without an Ivy-specific hardcoded path, but cross-hero generality remains unproven until another hero with the same failure class is tested.
+
+## 2026-08-23 — Stage 2 CUSTOM material authoring slice
+
+### External state checked before implementation
+
+Current CSDK12 documentation still defines `content/citadel_addons/<addon>` as the editable source workspace, `game/citadel_addons/<addon>` as compiled output, and Material Editor as the editor/compiler path for `.vmat` assets. No current external change invalidates the authoring design used here.
+
+### Implemented behavior
+
+`PREPARE FOR CSDK` now handles unresolved Wall Worm-style custom material references whose DMX value has the form `materials/<name>` without a `.vmat` extension.
+
+For each such reference it now:
+
+1. allocates a deterministic addon-owned resource path:
+
+```text
+materials/<addon>/<custom_name>.vmat
+```
+
+2. adds a VMDL remap from the DMX custom reference to that addon-owned VMAT;
+3. when the VMAT does not yet exist, decompiles the uniquely inferred retail body/skin/head/face material from the configured retail Deadlock VPK and uses that as a character-compatible starting scaffold;
+4. when the VMAT already exists, preserves it byte-for-byte and does not regenerate it;
+5. refreshes project-root PNG files into:
+
+```text
+content/citadel_addons/<addon>/materials/<addon>/textures/
+```
+
+6. leaves texture-slot assignment inside the authored VMAT under Material Editor control.
+
+The retail-template strategy is deliberate: Deadlimit does not guess a generic Source 2 shader name when it can inherit a character material already proven compatible with the current hero/build.
+
+### Preservation contract
+
+`PREPARE FOR CSDK` may overwrite derived copies of project-root PNG source files, because the project root is authoritative for those inputs.
+
+`PREPARE FOR CSDK` must **never overwrite an existing addon-owned CUSTOM VMAT**. The edited VMAT in CSDK content is authoritative after its first creation.
+
+The current `PREPARE` cleanup still applies only to `game/citadel_addons/<current addon>`; the addon `content` tree remains persistent specifically so custom authoring survives repeated prepares.
+
+### Current validation status
+
+Implementation is complete in code. Live validation is pending on the current Ivy project.
+
+Expected first-run result for the current project:
+
+```text
+DMX material references detected: 5
+Compatibility remaps generated: 4
+Custom materials detected: 1
+Custom VMAT created: 1
+Custom VMAT preserved: 0
+VMDL remaps added: 5
+Total VMDL remaps: 5
+```
+
+Expected second `PREPARE FOR CSDK` after editing/saving the custom VMAT:
+
+```text
+Custom VMAT created: 0
+Custom VMAT preserved: 1
+```
+
+That second run is the critical proof that author-authored Material Editor changes are not destroyed.
 
 ## Constraints
 
 - Generic `materials/dev/...` paths are not rewritten indiscriminately.
-- CUSTOM project material identifiers are not affected by the eye rule.
 - Existing retail material remaps remain authoritative and are preserved.
+- The automatic custom-slot classifier currently covers the observed Wall Worm no-extension custom-reference form; other custom-reference encodings remain unproven until observed.
+- The retail body/skin/head/face template is used only when one unique target can be inferred; ambiguous projects fail closed rather than silently choosing a shader.
 - A project-specific observed mapping must not be generalized to a different hero unless the generic detection conditions succeed for that hero's own DMX/VMDL data.
