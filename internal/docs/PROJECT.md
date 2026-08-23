@@ -21,11 +21,12 @@ The current project-root convention is intentionally simple:
 └─ .deadlimit\  # hidden Deadlimit metadata
 ```
 
+The project folder name is the canonical project name. Deadlimit does not maintain a second user-editable display name for the same project.
+
 At minimum the user provides:
 
 - the existing project folder containing the current DMX model files and PNG textures in its root;
 - the Deadlock hero;
-- a working project name;
 - optionally a release/VPK slot or target identifier, once the loader/deploy convention is finalized.
 
 Deadlimit must not reorganize the artist's source files merely to initialize a project. The detailed workspace contract lives in `WORKSPACE.md`.

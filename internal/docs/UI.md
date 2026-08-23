@@ -8,11 +8,13 @@ Settings includes a machine-local `Projects folder / Папка проектов
 
 The library hides directories that contain configured tool roots when those roots are inside the projects folder. This includes Reduced CSDK12, DeadlockTools and retail Deadlock. The Deadlimit directory is also excluded, including the current application directory when it is located under the projects root.
 
-A `+` action in the Projects header creates a new child directory after asking for its name, so a project folder does not need to be created manually in Explorer.
+A `+` action in the Projects header creates a new child directory after asking for its name, so a project folder does not need to be created manually in Explorer. That directory name is also the canonical project name; the main project panel does not expose a second editable project-name field.
 
-Each library entry shows its Release ID and state. A valid `.deadlimit/project.json` entry is marked as `PROJECT / ПРОЕКТ`; a directory without project metadata is marked as `FOLDER / ПАПКА`; an existing metadata file that cannot be loaded is marked as `JSON ERROR / ОШИБКА JSON`. Entries without a Release ID display `ID —`.
+Each library entry shows its Release ID. A valid `.deadlimit/project.json` entry is marked with `◆`; a directory without project metadata is marked with `◇`; an existing metadata file that cannot be loaded is marked with `!` plus `JSON ERROR / ОШИБКА JSON`. Entries without a Release ID display `ID —`.
 
-Selecting a library entry loads its existing `.deadlimit/project.json` metadata when present. A plain folder without metadata is still selectable and can be initialized by filling the project fields and pressing `SAVE PROJECT / СОХРАНИТЬ ПРОЕКТ`.
+Selecting a library entry loads its existing `.deadlimit/project.json` metadata when present. A plain folder without metadata is still selectable and can be initialized by filling the remaining project fields and pressing `SAVE PROJECT / СОХРАНИТЬ ПРОЕКТ`. Double-clicking a library entry opens that folder in Explorer.
+
+For compatibility with existing project JSON files, the manifest may still contain `ProjectName`, but Deadlimit derives and normalizes that value from the project folder name whenever metadata is loaded or saved.
 
 The library and the selected project's DMX/PNG scan refresh automatically when the application regains focus, after settings changes and after project saves. The previous NEW PROJECT, OPEN PROJECT and RESCAN actions are therefore not exposed in the main UI.
 
