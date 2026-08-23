@@ -15,9 +15,11 @@ The important distinction is therefore:
 
 Current CSDK12 still uses `.vmat` sources in `content/citadel_addons/<addon>` and Material Editor for authoring/compilation. Current Source 2 materials still expose conventional inputs such as `TextureColor`, `TextureNormal`, `TextureRoughness`, `TextureAmbientOcclusion`, and `TextureMetalness`, with default resources under `materials/default/`.
 
-### V3 creation rule
+Current Source 2 import settings also associate `TextureMetalness` with `F_METALNESS_TEXTURE` (and, for the complex shader, specular support), so Deadlimit-managed materials reconcile the metalness texture-enable combo when the project-root metal map appears or disappears.
 
-A missing CUSTOM VMAT is now created from the uniquely inferred current retail character material (for example the body/skin/head/face material actually referenced by the current hero/model), then Deadlimit sanitizes **only its texture inputs**.
+### V4 creation rule
+
+A missing CUSTOM VMAT is created from the uniquely inferred current retail character material (for example the body/skin/head/face material actually referenced by the current hero/model), then Deadlimit sanitizes **only its texture inputs**.
 
 This intentionally preserves the retail material's:
 
@@ -31,13 +33,13 @@ Deadlimit does not hardcode a specific `v1`/`v3` material generation. It inherit
 
 ### Automatic project-root PNG binding
 
-Project-root PNG files are copied to:
+Project-root PNG files are synchronized to:
 
 ```text
 content/citadel_addons/<addon>/materials/<addon>/textures/
 ```
 
-When the CUSTOM VMAT is first created, matching filenames replace the inherited texture path automatically.
+Matching filenames are bound into Deadlimit-managed CUSTOM VMAT texture slots.
 
 Supported standard suffixes:
 
@@ -66,7 +68,7 @@ If there is exactly one CUSTOM material and exactly one candidate for a semantic
 
 ### Missing texture inputs
 
-Retail texture-source paths are never left pointing at unavailable hero PNG/TGA files in a newly generated CUSTOM VMAT.
+Retail texture-source paths are never left pointing at unavailable hero PNG/TGA files in a generated CUSTOM VMAT.
 
 When no project texture matches:
 
@@ -81,20 +83,57 @@ other Texture* masks/effect inputs -> materials/default/default_black_mask.tga
 
 Using a black fallback for specialty effect/mask textures is deliberate: it preserves the inherited numeric/color tuning but prevents missing rim/self-illum/highlight/etc. masks from enabling the whole custom surface and producing the "red/glowing Warframe" failure class.
 
-### Preservation contract
+### V4 source-of-truth and repeat-PREPARE contract
 
-Generated V3 scaffolds contain:
+Generated V4 scaffolds contain:
 
 ```text
-// DEADLIMIT_GENERATED_CUSTOM_VMAT_V3
+// DEADLIMIT_GENERATED_CUSTOM_VMAT_V4
 ```
 
-The marker is diagnostic only. The authoritative rule remains: **PREPARE FOR CSDK never overwrites an existing addon-owned CUSTOM VMAT.** Once Material Editor has saved it, that file is artist-owned.
+A VMAT carrying a Deadlimit generated marker remains **texture-managed** by Deadlimit across later `PREPARE FOR CSDK` runs.
 
-Existing V1/V2/custom-edited VMATs are not silently migrated. To test a newer generator for one material, that specific generated VMAT must be intentionally deleted/reset first.
+For those managed files, the project-root PNG set is authoritative for texture slots:
+
+```text
+first PREPARE: builder_color.png only
+→ TextureColor = builder_color.png
+→ TextureMetalness = default black mask
+
+later add builder_metal.png
+→ next PREPARE binds builder_metal.png to TextureMetalness
+→ F_METALNESS_TEXTURE is enabled
+
+later remove builder_metal.png from the project root
+→ next PREPARE returns TextureMetalness to the default black mask
+→ F_METALNESS_TEXTURE is disabled
+→ the stale derived builder_metal.png copy is removed from addon content
+```
+
+The same add/remove reconciliation applies to standard color/normal/roughness/AO inputs and to inherited specialty `Texture*` source-path fields that have a semantic project PNG match.
+
+Crucially, reconciliation rewrites **only managed texture source assignments plus required texture-enable combo state**. Material Editor edits to non-texture values — outline colors, strengths, widths, rim/highlight tuning, scalar/vector values, shader configuration, etc. — remain untouched.
+
+An existing addon-owned VMAT **without** a Deadlimit generated marker is artist-owned/unmanaged and remains byte-for-byte protected from PREPARE.
+
+This replaces the older blanket rule that every existing VMAT is immutable. The new distinction is:
+
+- generated-marker VMAT: texture slots remain synchronized with project-root source textures;
+- unmarked VMAT: fully artist-owned and never rewritten.
+
+Older unmarked VMATs created before this managed contract are not silently adopted because Deadlimit cannot prove they are safe to rewrite. A one-time intentional delete/recreate is required to opt such a material into V4 management.
 
 ### Validation status
 
 Implementation: complete.
 
-Live validation of V3 on the current Ivy project: pending.
+Live V4 validation on the current Ivy project is pending. Required proof sequence:
+
+```text
+create with color only
+→ add metal PNG and PREPARE
+→ metal binds
+→ remove metal PNG and PREPARE
+→ metal reverts to safe default
+→ non-texture Material Editor edits survive both PREPARE runs
+```
