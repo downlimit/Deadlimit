@@ -64,6 +64,14 @@ internal static class BuildFeature
                 ? "Existing compiled output for this addon was removed."
                 : "No previous compiled output for this addon existed.";
 
+            var customMaterialSummary = result.CustomMaterialCount == 0
+                ? "Custom materials detected: 0\n"
+                : $"Custom materials detected: {result.CustomMaterialCount}\n" +
+                  $"Custom VMAT created: {result.CustomVmatCreatedCount}\n" +
+                  $"Custom VMAT preserved: {result.CustomVmatPreservedCount}\n" +
+                  $"Texture PNG sources refreshed: {result.TextureSourceCount}\n" +
+                  $"Custom material folder:\n{result.CustomMaterialContentFolder}\n";
+
             MessageBox.Show(
                 form,
                 $"Authoring content prepared.\n\n" +
@@ -71,8 +79,10 @@ internal static class BuildFeature
                 $"DMX overlays: {result.DmxCount}\n" +
                 $"DMX material references detected: {result.DmxMaterialReferenceCount}\n" +
                 $"VMDL remaps preserved: {result.ExistingMaterialRemapCount}\n" +
-                $"Compatibility remaps added: {result.AddedMaterialRemapCount}\n" +
+                $"Compatibility remaps generated: {result.CompatibilityRemapCount}\n" +
+                $"VMDL remaps added: {result.AddedMaterialRemapCount}\n" +
                 $"Total VMDL remaps: {result.ExistingMaterialRemapCount + result.AddedMaterialRemapCount}\n" +
+                customMaterialSummary +
                 $"Retail source files copied: {result.RetailSourceFilesCopied}\n\n" +
                 $"CSDK content:\n{result.AddonContentRoot}\n\n" +
                 $"Model source:\n{result.SourceVmdlPath}\n\n" +
