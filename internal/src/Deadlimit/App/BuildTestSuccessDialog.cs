@@ -8,7 +8,7 @@ internal sealed class BuildTestSuccessDialog : Form
     {
         var deadlockRunning = IsDeadlockRunning();
 
-        Text = "Build & Test complete";
+        Text = UiText.T("Build & Test complete", "Сборка и тест готовы");
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -39,8 +39,12 @@ internal sealed class BuildTestSuccessDialog : Form
             AutoSize = true,
             MaximumSize = new Size(720, 0),
             Text = deadlockRunning
-                ? "Deadlock is already running. Try reselecting/reloading the hero first; restart the game only if it keeps the old cached asset."
-                : "Deadlock is not running. Launch it when you are ready to test the new VPK.",
+                ? UiText.T(
+                    "Deadlock is already running. Try reselecting/reloading the hero first; restart the game only if it keeps the old cached asset.",
+                    "Deadlock уже запущен. Сначала попробуйте выбрать другого героя и вернуться обратно; перезапускайте игру только если она продолжает держать старый asset в кеше.")
+                : UiText.T(
+                    "Deadlock is not running. Launch it when you are ready to test the new VPK.",
+                    "Deadlock не запущен. Запустите игру, когда будете готовы проверить новый VPK."),
             Margin = new Padding(0, 0, 0, 16),
         };
 
@@ -56,7 +60,9 @@ internal sealed class BuildTestSuccessDialog : Form
 
         var launchButton = new Button
         {
-            Text = deadlockRunning ? "DEADLOCK IS RUNNING" : "LAUNCH DEADLOCK GAME",
+            Text = deadlockRunning
+                ? UiText.T("DEADLOCK IS RUNNING", "DEADLOCK УЖЕ ЗАПУЩЕН")
+                : UiText.T("LAUNCH DEADLOCK GAME", "ЗАПУСТИТЬ DEADLOCK"),
             AutoSize = true,
             Enabled = !deadlockRunning,
             Margin = new Padding(8, 0, 0, 0),
@@ -108,7 +114,9 @@ internal sealed class BuildTestSuccessDialog : Form
             MessageBox.Show(
                 this,
                 ex.Message,
-                "Could not launch Deadlock through Steam",
+                UiText.T(
+                    "Could not launch Deadlock through Steam",
+                    "Не удалось запустить Deadlock через Steam"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
