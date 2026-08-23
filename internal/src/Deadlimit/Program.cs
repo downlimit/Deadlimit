@@ -1,5 +1,6 @@
 using System.Drawing;
 using Deadlimit.App;
+using Deadlimit.Core;
 
 namespace Deadlimit;
 
@@ -10,6 +11,9 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        var settings = ProjectStore.GetToolPathSettings();
+        UiTheme.ConfigureApplication(settings.UiTheme);
+
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
@@ -18,6 +22,7 @@ internal static class Program
             Icon = AppIcon,
         };
         BuildFeature.Attach(form);
+        UiTheme.ApplyCustomPalette(form, settings.UiTheme);
         Application.Run(form);
     }
 

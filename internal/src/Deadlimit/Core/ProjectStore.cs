@@ -6,6 +6,7 @@ public sealed class ToolPathSettings
     public string DeadlockToolsRoot { get; set; } = string.Empty;
     public string RetailDeadlockRoot { get; set; } = string.Empty;
     public string UiLanguage { get; set; } = "en";
+    public string UiTheme { get; set; } = "system";
 }
 
 public static class ProjectStore
@@ -89,6 +90,7 @@ public static class ProjectStore
             DeadlockToolsRoot = settings.DeadlockToolsRoot,
             RetailDeadlockRoot = settings.RetailDeadlockRoot,
             UiLanguage = NormalizeUiLanguage(settings.UiLanguage),
+            UiTheme = NormalizeUiTheme(settings.UiTheme),
         };
     }
 
@@ -99,6 +101,7 @@ public static class ProjectStore
         settings.DeadlockToolsRoot = NormalizeOptionalPath(toolPaths.DeadlockToolsRoot);
         settings.RetailDeadlockRoot = NormalizeOptionalPath(toolPaths.RetailDeadlockRoot);
         settings.UiLanguage = NormalizeUiLanguage(toolPaths.UiLanguage);
+        settings.UiTheme = NormalizeUiTheme(toolPaths.UiTheme);
         SaveSettings(settings);
     }
 
@@ -157,6 +160,12 @@ public static class ProjectStore
     private static string NormalizeUiLanguage(string? value) =>
         string.Equals(value?.Trim(), "ru", StringComparison.OrdinalIgnoreCase) ? "ru" : "en";
 
+    private static string NormalizeUiTheme(string? value)
+    {
+        var normalized = value?.Trim().ToLowerInvariant();
+        return normalized is "light" or "gray" or "dark" ? normalized : "system";
+    }
+
     private static string GetSettingsPath() =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -170,5 +179,6 @@ public static class ProjectStore
         public string DeadlockToolsRoot { get; set; } = string.Empty;
         public string RetailDeadlockRoot { get; set; } = string.Empty;
         public string UiLanguage { get; set; } = "en";
+        public string UiTheme { get; set; } = "system";
     }
 }
