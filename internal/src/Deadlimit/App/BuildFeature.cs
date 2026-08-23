@@ -15,25 +15,36 @@ internal static class BuildFeature
             return;
         }
 
-        var buildButton = new Button
+        var prepareButton = new Button
         {
             Text = "PREPARE FOR CSDK",
             AutoSize = true,
         };
-        buildButton.Click += async (_, _) => await RunPrepareAsync(form, buildButton);
+
+        var buildAndTestButton = new Button
+        {
+            Text = "BUILD & TEST",
+            AutoSize = true,
+        };
 
         var launchCsdkButton = new Button
         {
             Text = "LAUNCH CSDK",
             AutoSize = true,
         };
+
+        var actionButtons = new[] { prepareButton, buildAndTestButton, launchCsdkButton };
+
+        prepareButton.Click += async (_, _) => await RunPrepareAsync(form, actionButtons);
+        buildAndTestButton.Click += async (_, _) => await RunBuildAndTestAsync(form, actionButtons);
         launchCsdkButton.Click += (_, _) => LaunchCsdk(form);
 
-        topBar.Controls.Add(buildButton);
+        topBar.Controls.Add(prepareButton);
+        topBar.Controls.Add(buildAndTestButton);
         topBar.Controls.Add(launchCsdkButton);
     }
 
-    private static async Task RunPrepareAsync(MainForm form, Button buildButton)
+    private static async Task RunPrepareAsync(MainForm form, IReadOnlyList<Button> actionButtons)
     {
         var manifest = ProjectStore.TryLoadLastProject();
         if (manifest is null || !Directory.Exists(manifest.ProjectFolder))
@@ -47,7 +58,7 @@ internal static class BuildFeature
             return;
         }
 
-        buildButton.Enabled = false;
+        SetButtonsEnabled(actionButtons, false);
         var originalTitle = form.Text;
 
         try
@@ -87,7 +98,7 @@ internal static class BuildFeature
                 $"CSDK content:\n{result.AddonContentRoot}\n\n" +
                 $"Model source:\n{result.SourceVmdlPath}\n\n" +
                 $"CSDK game output: CLEAN. {gameState}\n" +
-                $"Deadlimit did not compile it; launch CSDK12 to rebuild game from the prepared content.\n\n" +
+                $"Deadlimit did not compile it; use LAUNCH CSDK while authoring, or BUILD & TEST for the normal in-game iteration loop.\n\n" +
                 $"Log: {result.LogPath}",
                 "Deadlimit",
                 MessageBoxButtons.OK,
@@ -107,7 +118,65 @@ internal static class BuildFeature
         finally
         {
             form.Text = originalTitle;
-            buildButton.Enabled = true;
+            SetButtonsEnabled(actionButtons, true);
+        }
+    }
+
+    private static async Task RunBuildAndTestAsync(MainForm form, IReadOnlyList<Button> actionButtons)
+    {
+        var manifest = ProjectStore.TryLoadLastProject();
+        if (manifest is null || !Directory.Exists(manifest.ProjectFolder))
+        {
+            MessageBox.Show(
+                form,
+                "Save the current Deadlimit project before running BUILD & TEST.",
+                "Deadlimit",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+
+        SetButtonsEnabled(actionButtons, false);
+        var originalTitle = form.Text;
+
+        try
+        {
+            var progress = new Progress<BuildAndTestProgress>(update =>
+            {
+                form.Text = $"Deadlimit — {update.Message}";
+            });
+
+            var service = new BuildAndTestService(new DeadlimitPaths());
+            var result = await service.BuildAsync(manifest, progress);
+
+            MessageBox.Show(
+                form,
+                $"Build & Test complete.\n\n" +
+                $"Addon: {result.AddonName}\n" +
+                $"Mode: {(result.FullRebuild ? "clean/full" : "incremental")}\n" +
+                $"Compiled sources: {result.CompiledSourceCount}\n" +
+                $"Stale compiled outputs removed: {result.RemovedCompiledOutputCount}\n" +
+                $"AG2 restored this run: {(result.Ag2Applied ? "yes" : "not needed")}\n\n" +
+                $"VPK deployed directly to retail Deadlock:\n{result.VpkPath}\n\n" +
+                $"If Deadlock was already running, restart it to load the new VPK.\n\n" +
+                $"Log: {result.LogPath}",
+                "Deadlimit",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                form,
+                ex.Message,
+                "Build & Test failed",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+        finally
+        {
+            form.Text = originalTitle;
+            SetButtonsEnabled(actionButtons, true);
         }
     }
 
@@ -142,6 +211,14 @@ internal static class BuildFeature
                 "Could not launch CSDK",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
+        }
+    }
+
+    private static void SetButtonsEnabled(IEnumerable<Button> buttons, bool enabled)
+    {
+        foreach (var button in buttons)
+        {
+            button.Enabled = enabled;
         }
     }
 
