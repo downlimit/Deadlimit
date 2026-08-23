@@ -32,8 +32,8 @@ if exist "%UPDATER_SHORTCUT%" del /f /q "%UPDATER_SHORTCUT%" >nul 2>nul
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$w = New-Object -ComObject WScript.Shell;" ^
   "$s = $w.CreateShortcut('%SHORTCUT%');" ^
-  "$s.TargetPath = "$env:SystemRoot\System32\wscript.exe";" ^
-  "$s.Arguments = '""%LAUNCHER%""';" ^
+  "$s.TargetPath = $env:SystemRoot + '\System32\wscript.exe';" ^
+  "$s.Arguments = [char]34 + '%LAUNCHER%' + [char]34;" ^
   "$s.WorkingDirectory = '%ROOT%';" ^
   "$s.IconLocation = '%ICON%,0';" ^
   "$s.Description = 'Deadlimit';" ^
