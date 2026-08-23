@@ -1,7 +1,5 @@
 using System.Text;
-using SteamDatabase.ValvePak;
-using ValveResourceFormat;
-using ValveResourceFormat.IO;
+using System.Text.RegularExpressions;
 
 namespace Deadlimit.Core;
 
@@ -16,6 +14,21 @@ public sealed record CustomMaterialAuthoringResult(
 
 public sealed class CustomMaterialAuthoringService
 {
+    private const string GeneratedMarker = "// DEADLIMIT_GENERATED_CUSTOM_VMAT_V2";
+
+    private static readonly TextureSlotDefinition[] TextureSlots =
+    [
+        new("TextureColor", "materials/default/default_color.tga", ["basecolor", "base_color", "diffuse", "albedo", "color"]),
+        new("TextureNormal", "materials/default/default_normal.tga", ["normal", "norm"]),
+        new("TextureRoughness", "materials/default/default_rough.tga", ["roughness", "rough"]),
+        new("TextureAmbientOcclusion", "materials/default/default_ao.tga", ["ambientocclusion", "ambient_occlusion", "occlusion", "ao"]),
+        new("TextureMetalness", string.Empty, ["metalness", "metallic", "metal"]),
+    ];
+
+    private static readonly Regex ShaderRegex = new(
+        "\\bshader\\s+\"(?<shader>[^\"]+)\"",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
     private readonly DeadlimitPaths _paths;
 
     public CustomMaterialAuthoringService(DeadlimitPaths paths)
@@ -33,6 +46,8 @@ public sealed class CustomMaterialAuthoringService
         StringBuilder log,
         CancellationToken cancellationToken)
     {
+        _ = templateMaterialResource;
+
         var resolved = resolvedMaterialSources
             .Select(NormalizeResourcePath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -79,15 +94,24 @@ public sealed class CustomMaterialAuthoringService
             File.Copy(sourcePng, Path.Combine(textureFolder, Path.GetFileName(sourcePng)), overwrite: true);
         }
 
+        var textureCandidates = rootPngFiles
+            .Select(path => ParseTextureCandidate(path, materialResourceFolder))
+            .Where(candidate => candidate is not null)
+            .Select(candidate => candidate!)
+            .ToArray();
+
         log.AppendLine($"Custom materials detected: {customReferences.Length}");
         log.AppendLine($"Custom texture sources refreshed from project root: {rootPngFiles.Length}");
         log.AppendLine($"Custom texture source folder: {textureFolder}");
+        log.AppendLine("Custom texture naming: <material>_color|diffuse|basecolor|albedo, _normal, _rough|roughness, _ao|occlusion, _metal|metalness|metallic.");
 
         var usedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var remaps = new List<VmdlMaterialRemap>();
         var vmatResources = new List<string>();
         var created = 0;
         var preserved = 0;
+        var autoBoundTextures = 0;
+        var shader = ResolveCleanPbrShader(log);
 
         foreach (var customReference in customReferences)
         {
@@ -113,29 +137,31 @@ public sealed class CustomMaterialAuthoringService
             }
             else
             {
-                if (string.IsNullOrWhiteSpace(templateMaterialResource))
-                {
-                    throw new InvalidOperationException(
-                        $"Custom material '{customReference}' needs a new VMAT, but Deadlimit could not infer one unique retail body/skin/head/face material to use as a safe character-material template.");
-                }
+                var bindings = ResolveTextureBindings(
+                    customReference,
+                    customReferences.Length,
+                    textureCandidates,
+                    log);
 
-                var sourceVpk = DecompileRetailMaterialTemplate(
-                    manifest,
-                    templateMaterialResource,
-                    targetPath,
-                    cancellationToken);
-
+                File.WriteAllText(targetPath, BuildCleanPbrVmat(shader, bindings));
                 created++;
-                log.AppendLine(
-                    $"Custom VMAT created from retail character-material template: {customReference} -> {targetResource} | template {templateMaterialResource} | VPK {sourceVpk}");
+                autoBoundTextures += bindings.Values.Count(value => value is not null);
+
+                log.AppendLine($"Custom VMAT created as clean PBR scaffold: {customReference} -> {targetResource}");
+                foreach (var binding in bindings.Where(pair => pair.Value is not null))
+                {
+                    log.AppendLine($"  auto-bind {binding.Key} -> {binding.Value}");
+                }
             }
 
             remaps.Add(new VmdlMaterialRemap(customReference, targetResource));
             vmatResources.Add(targetResource);
         }
 
+        log.AppendLine($"Custom textures auto-bound during VMAT creation: {autoBoundTextures}");
         log.AppendLine("Custom VMAT policy: create only when missing; never overwrite an existing addon-owned VMAT during PREPARE FOR CSDK.");
-        log.AppendLine("Custom texture policy: project-root PNG files are artist-owned source inputs and are refreshed into the addon texture-source folder; authored VMAT files remain authoritative for shader/slot assignment.");
+        log.AppendLine("Custom VMAT scaffold policy: use a clean PBR material with Source 2 default color/normal/roughness/AO fallbacks instead of inheriting hero-specific NPR/rim/self-illum texture references.");
+        log.AppendLine("Custom texture policy: project-root PNG files are artist-owned source inputs and are refreshed into the addon texture-source folder; authored VMAT files remain authoritative after creation.");
 
         return new CustomMaterialAuthoringResult(
             remaps,
@@ -147,85 +173,178 @@ public sealed class CustomMaterialAuthoringService
             vmatResources);
     }
 
-    private string DecompileRetailMaterialTemplate(
-        ProjectManifest manifest,
-        string templateMaterialResource,
-        string destinationVmatPath,
-        CancellationToken cancellationToken)
+    private string ResolveCleanPbrShader(StringBuilder log)
     {
-        var compiledResourcePaths = ToCompiledMaterialResourcePaths(templateMaterialResource)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var vpkCandidates = EnumerateRetailVpks(manifest).ToArray();
+        var defaultVmat = Path.Combine(
+            _paths.CsdkContentRoot,
+            "core",
+            "materials",
+            "default",
+            "default.vmat");
 
-        foreach (var vpkPath in vpkCandidates)
+        if (File.Exists(defaultVmat))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            using var package = new Package();
-            package.Read(vpkPath);
-            var packageEntries = package.Entries;
-            if (packageEntries is null)
+            var text = File.ReadAllText(defaultVmat);
+            var match = ShaderRegex.Match(text);
+            if (match.Success)
             {
+                var shader = match.Groups["shader"].Value.Trim();
+                if (shader.Length > 0)
+                {
+                    log.AppendLine($"Custom VMAT shader inherited from CSDK core default material: {shader}");
+                    return shader;
+                }
+            }
+        }
+
+        const string fallback = "shaders/complex.shader";
+        log.AppendLine($"Custom VMAT shader: CSDK core default.vmat was unavailable/unreadable; using current Source 2 PBR fallback {fallback}.");
+        return fallback;
+    }
+
+    private static IReadOnlyDictionary<string, string?> ResolveTextureBindings(
+        string customReference,
+        int customMaterialCount,
+        IReadOnlyList<TextureCandidate> textureCandidates,
+        StringBuilder log)
+    {
+        var materialToken = NormalizeMatchToken(GetResourceLeaf(customReference));
+        var result = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var slot in TextureSlots)
+        {
+            var slotCandidates = textureCandidates
+                .Where(candidate => string.Equals(candidate.SlotKey, slot.Key, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            var exact = slotCandidates
+                .Where(candidate => string.Equals(candidate.BaseToken, materialToken, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+            if (exact.Length == 1)
+            {
+                result[slot.Key] = exact[0].ResourcePath;
                 continue;
             }
 
-            foreach (var entry in packageEntries.SelectMany(group => group.Value))
+            if (exact.Length > 1)
             {
-                var entryPath = NormalizeResourcePath(entry.GetFullPath());
-                if (!compiledResourcePaths.Contains(entryPath))
-                {
-                    continue;
-                }
-
-                package.ReadEntry(entry, out byte[] rawData);
-                using var fileLoader = new GameFileLoader(package, package.FileName);
-                using var stream = new MemoryStream(rawData, writable: false);
-                using var resource = new Resource { FileName = entryPath };
-                resource.Read(stream);
-                using var contentFile = FileExtract.Extract(resource, fileLoader, null);
-
-                if (contentFile.Data is null || contentFile.Data.Length == 0)
-                {
-                    throw new InvalidOperationException(
-                        $"ValveResourceFormat found retail material '{entryPath}', but decompilation produced no VMAT source data.");
-                }
-
-                File.WriteAllBytes(destinationVmatPath, contentFile.Data.ToArray());
-                return vpkPath;
+                log.AppendLine($"Custom texture binding unresolved for {customReference} {slot.Key}: multiple filename matches; using default.");
+                result[slot.Key] = null;
+                continue;
             }
+
+            if (customMaterialCount == 1 && slotCandidates.Length == 1)
+            {
+                result[slot.Key] = slotCandidates[0].ResourcePath;
+                log.AppendLine(
+                    $"Custom texture binding used unique-project fallback for {customReference} {slot.Key}: {slotCandidates[0].FileName}");
+                continue;
+            }
+
+            result[slot.Key] = null;
         }
 
-        throw new InvalidOperationException(
-            $"Could not find retail material template '{templateMaterialResource}' in the configured Deadlock VPKs. " +
-            $"Tried: {string.Join(", ", compiledResourcePaths)}. " +
-            "Run EXTRACT HERO SOURCE against the current retail build and verify the Project8Staging path in SETTINGS.");
+        return result;
     }
 
-    private IEnumerable<string> EnumerateRetailVpks(ProjectManifest manifest)
+    private static TextureCandidate? ParseTextureCandidate(string path, string materialResourceFolder)
     {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        if (!string.IsNullOrWhiteSpace(manifest.RetailSourceVpk)
-            && File.Exists(manifest.RetailSourceVpk)
-            && seen.Add(manifest.RetailSourceVpk))
+        var stem = Path.GetFileNameWithoutExtension(path);
+        if (string.IsNullOrWhiteSpace(stem))
         {
-            yield return manifest.RetailSourceVpk;
+            return null;
         }
 
-        var retailGameRoot = Path.Combine(_paths.RetailDeadlockRoot, "game");
-        if (!Directory.Exists(retailGameRoot))
+        foreach (var slot in TextureSlots)
         {
-            yield break;
-        }
-
-        foreach (var vpkPath in Directory.EnumerateFiles(retailGameRoot, "*_dir.vpk", SearchOption.AllDirectories)
-                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
-        {
-            if (seen.Add(vpkPath))
+            foreach (var suffix in slot.Suffixes.OrderByDescending(value => value.Length))
             {
-                yield return vpkPath;
+                foreach (var separator in new[] { "_", "-", " " })
+                {
+                    var tail = separator + suffix;
+                    if (!stem.EndsWith(tail, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var baseName = stem[..^tail.Length].Trim();
+                    if (baseName.Length == 0)
+                    {
+                        return null;
+                    }
+
+                    var resourcePath = $"{materialResourceFolder}/textures/{Path.GetFileName(path)}";
+                    return new TextureCandidate(
+                        slot.Key,
+                        NormalizeMatchToken(baseName),
+                        NormalizeResourcePath(resourcePath),
+                        Path.GetFileName(path));
+                }
             }
         }
+
+        return null;
+    }
+
+    private static string BuildCleanPbrVmat(
+        string shader,
+        IReadOnlyDictionary<string, string?> bindings)
+    {
+        string Resolve(string key)
+        {
+            var slot = TextureSlots.First(definition => string.Equals(definition.Key, key, StringComparison.OrdinalIgnoreCase));
+            return bindings.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value)
+                ? value
+                : slot.DefaultResource;
+        }
+
+        var metalness = bindings.TryGetValue("TextureMetalness", out var metalnessTexture)
+            && !string.IsNullOrWhiteSpace(metalnessTexture)
+            ? $"F_METALNESS_TEXTURE \"1\"{Environment.NewLine}TextureMetalness \"{metalnessTexture}\""
+            : "g_flMetalness \"0.000\"";
+
+        return $"""
+{GeneratedMarker}
+// Initial scaffold only. After creation, Material Editor owns this file and Deadlimit will not overwrite it.
+Layer0
+{{
+    shader "{shader}"
+
+    //---- Ambient Occlusion ----
+    g_flAmbientOcclusionDirectDiffuse "0.000"
+    g_flAmbientOcclusionDirectSpecular "0.000"
+    TextureAmbientOcclusion "{Resolve("TextureAmbientOcclusion")}"
+
+    //---- Color ----
+    g_flModelTintAmount "1.000"
+    g_vColorTint "[1.000000 1.000000 1.000000 0.000000]"
+    TextureColor "{Resolve("TextureColor")}"
+
+    //---- Metalness ----
+    {metalness}
+
+    //---- Normal ----
+    TextureNormal "{Resolve("TextureNormal")}"
+
+    //---- Roughness ----
+    g_flRoughnessScaleFactor "1.000"
+    TextureRoughness "{Resolve("TextureRoughness")}"
+
+    //---- Fade ----
+    g_flFadeExponent "1.000"
+
+    //---- Fog ----
+    g_bFogEnabled "1"
+
+    //---- Texture Coordinates ----
+    g_nScaleTexCoordUByModelScaleAxis "0"
+    g_nScaleTexCoordVByModelScaleAxis "0"
+    g_vTexCoordOffset "[0.000 0.000]"
+    g_vTexCoordScale "[1.000 1.000]"
+    g_vTexCoordScrollSpeed "[0.000 0.000]"
+}}
+""";
     }
 
     private static bool IsWallWormCustomMaterialReference(string reference)
@@ -260,32 +379,6 @@ public sealed class CustomMaterialAuthoringService
         }
     }
 
-    private static IReadOnlyList<string> ToCompiledMaterialResourcePaths(string vmatResourcePath)
-    {
-        var normalized = NormalizeResourcePath(vmatResourcePath);
-        if (!normalized.EndsWith(".vmat", StringComparison.OrdinalIgnoreCase))
-        {
-            normalized += ".vmat";
-        }
-
-        var candidates = new List<string>();
-        if (normalized.StartsWith("materials/", StringComparison.OrdinalIgnoreCase))
-        {
-            candidates.Add(normalized + "_c");
-            candidates.Add(normalized["materials/".Length..] + "_c");
-        }
-        else
-        {
-            candidates.Add($"materials/{normalized}_c");
-            candidates.Add(normalized + "_c");
-        }
-
-        return candidates
-            .Select(NormalizeResourcePath)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-    }
-
     private static string GetResourceLeaf(string resourcePath)
     {
         var normalized = NormalizeResourcePath(resourcePath);
@@ -315,6 +408,24 @@ public sealed class CustomMaterialAuthoringService
         return sb.ToString().Trim('_');
     }
 
+    private static string NormalizeMatchToken(string value) =>
+        new(value
+            .Trim()
+            .ToLowerInvariant()
+            .Where(char.IsLetterOrDigit)
+            .ToArray());
+
     private static string NormalizeResourcePath(string value) =>
         value.Replace('\\', '/').TrimStart('/');
+
+    private sealed record TextureSlotDefinition(
+        string Key,
+        string DefaultResource,
+        IReadOnlyList<string> Suffixes);
+
+    private sealed record TextureCandidate(
+        string SlotKey,
+        string BaseToken,
+        string ResourcePath,
+        string FileName);
 }
