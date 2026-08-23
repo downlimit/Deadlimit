@@ -12,10 +12,12 @@ internal static class UiTheme
         ButtonHover: Color.FromArgb(224, 224, 224),
         ButtonPressed: Color.FromArgb(214, 214, 214),
         Border: Color.FromArgb(190, 190, 190),
+        HoverBorder: Color.FromArgb(150, 150, 150),
         Text: Color.FromArgb(34, 34, 34),
         MutedText: Color.FromArgb(86, 86, 86),
         ButtonText: Color.FromArgb(34, 34, 34),
-        ButtonBorderSize: 1);
+        ButtonBorderSize: 1,
+        ButtonHoverBorderSize: 1);
 
     private static readonly Palette GrayPalette = new(
         Background: Color.FromArgb(58, 58, 58),
@@ -25,25 +27,29 @@ internal static class UiTheme
         ButtonHover: Color.FromArgb(84, 84, 84),
         ButtonPressed: Color.FromArgb(92, 92, 92),
         Border: Color.FromArgb(96, 96, 96),
+        HoverBorder: Color.FromArgb(150, 150, 150),
         Text: Color.FromArgb(226, 226, 226),
         MutedText: Color.FromArgb(184, 184, 184),
         ButtonText: Color.FromArgb(226, 226, 226),
-        ButtonBorderSize: 1);
+        ButtonBorderSize: 1,
+        ButtonHoverBorderSize: 1);
 
-    // Measured from the current CSDK12 reference: ordinary section outlines are about #3F3F3F,
-    // while the Launch Tools button surface is #3C3C3C and has no bright outline.
+    // Measured from the current CSDK12 reference. Normal buttons are #3C3C3C without
+    // a bright outline; hovered buttons are #464646 with an approximately #969696 outline.
     private static readonly Palette DarkPalette = new(
         Background: Color.FromArgb(27, 27, 27),
         Surface: Color.FromArgb(33, 33, 33),
         Input: Color.FromArgb(36, 36, 36),
         Button: Color.FromArgb(60, 60, 60),
-        ButtonHover: Color.FromArgb(68, 68, 68),
+        ButtonHover: Color.FromArgb(70, 70, 70),
         ButtonPressed: Color.FromArgb(50, 50, 50),
         Border: Color.FromArgb(63, 63, 63),
+        HoverBorder: Color.FromArgb(150, 150, 150),
         Text: Color.FromArgb(210, 210, 210),
         MutedText: Color.FromArgb(160, 160, 160),
         ButtonText: Color.FromArgb(180, 180, 180),
-        ButtonBorderSize: 0);
+        ButtonBorderSize: 0,
+        ButtonHoverBorderSize: 1);
 
     public static void ConfigureApplication(string theme)
     {
@@ -89,7 +95,7 @@ internal static class UiTheme
                 groupBox.FlatStyle = FlatStyle.Flat;
                 groupBox.BackColor = palette.Surface;
                 groupBox.ForeColor = palette.MutedText;
-                groupBox.Paint += (_, e) => DrawGroupBoxFrame(groupBox, e.Graphics, palette.Border);
+                groupBox.Paint += (_, e) => DrawGroupBox(groupBox, e.Graphics, palette.Border);
                 break;
 
             case TextBoxBase textBox:
@@ -99,7 +105,9 @@ internal static class UiTheme
                 break;
 
             case ListBox listBox:
-                listBox.BorderStyle = BorderStyle.FixedSingle;
+                // Native WinForms list borders can pick up the Windows accent/focus color.
+                // The enclosing Deadlimit section already provides the visual boundary.
+                listBox.BorderStyle = BorderStyle.None;
                 listBox.BackColor = palette.Input;
                 listBox.ForeColor = palette.Text;
                 break;
@@ -111,14 +119,7 @@ internal static class UiTheme
                 break;
 
             case Button button:
-                button.UseVisualStyleBackColor = false;
-                button.FlatStyle = FlatStyle.Flat;
-                button.FlatAppearance.BorderSize = palette.ButtonBorderSize;
-                button.FlatAppearance.BorderColor = palette.Border;
-                button.FlatAppearance.MouseOverBackColor = palette.ButtonHover;
-                button.FlatAppearance.MouseDownBackColor = palette.ButtonPressed;
-                button.BackColor = palette.Button;
-                button.ForeColor = palette.ButtonText;
+                ConfigureButton(button, palette);
                 break;
 
             case StatusStrip statusStrip:
@@ -164,12 +165,67 @@ internal static class UiTheme
         }
     }
 
-    private static void DrawGroupBoxFrame(GroupBox groupBox, Graphics graphics, Color borderColor)
+    private static void ConfigureButton(Button button, Palette palette)
+    {
+        button.UseVisualStyleBackColor = false;
+        button.FlatStyle = FlatStyle.Flat;
+        button.ForeColor = palette.ButtonText;
+
+        SetButtonNormal(button, palette);
+
+        // Explicit state changes are used instead of relying only on FlatAppearance's
+        // themed hover handling, which is inconsistent under WinForms dark mode.
+        button.MouseEnter += (_, _) => SetButtonHover(button, palette);
+        button.MouseLeave += (_, _) => SetButtonNormal(button, palette);
+        button.MouseDown += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                button.BackColor = palette.ButtonPressed;
+                button.FlatAppearance.BorderColor = palette.HoverBorder;
+                button.FlatAppearance.BorderSize = palette.ButtonHoverBorderSize;
+            }
+        };
+        button.MouseUp += (_, _) =>
+        {
+            var pointer = button.PointToClient(Cursor.Position);
+            if (button.ClientRectangle.Contains(pointer))
+            {
+                SetButtonHover(button, palette);
+            }
+            else
+            {
+                SetButtonNormal(button, palette);
+            }
+        };
+    }
+
+    private static void SetButtonNormal(Button button, Palette palette)
+    {
+        button.BackColor = palette.Button;
+        button.FlatAppearance.BorderColor = palette.Border;
+        button.FlatAppearance.BorderSize = palette.ButtonBorderSize;
+        button.FlatAppearance.MouseOverBackColor = palette.ButtonHover;
+        button.FlatAppearance.MouseDownBackColor = palette.ButtonPressed;
+    }
+
+    private static void SetButtonHover(Button button, Palette palette)
+    {
+        button.BackColor = palette.ButtonHover;
+        button.FlatAppearance.BorderColor = palette.HoverBorder;
+        button.FlatAppearance.BorderSize = palette.ButtonHoverBorderSize;
+    }
+
+    private static void DrawGroupBox(GroupBox groupBox, Graphics graphics, Color borderColor)
     {
         if (groupBox.ClientSize.Width < 2 || groupBox.ClientSize.Height < 2)
         {
             return;
         }
+
+        // Clear the native GroupBox painting entirely so Windows hover/focus accent
+        // rendering cannot leak through around the custom Deadlimit frame.
+        graphics.Clear(groupBox.BackColor);
 
         var captionSize = TextRenderer.MeasureText(
             graphics,
@@ -184,12 +240,6 @@ internal static class UiTheme
         var captionLeft = 8;
         var captionRight = Math.Min(right, captionLeft + captionSize.Width + 6);
 
-        using var backgroundBrush = new SolidBrush(groupBox.BackColor);
-        graphics.FillRectangle(backgroundBrush, 0, Math.Max(0, borderTop - 2), groupBox.ClientSize.Width, 5);
-        graphics.FillRectangle(backgroundBrush, 0, borderTop, 2, Math.Max(0, bottom - borderTop + 1));
-        graphics.FillRectangle(backgroundBrush, Math.Max(0, right - 1), borderTop, 2, Math.Max(0, bottom - borderTop + 1));
-        graphics.FillRectangle(backgroundBrush, 0, Math.Max(0, bottom - 1), groupBox.ClientSize.Width, 2);
-
         using var borderPen = new Pen(borderColor);
         graphics.DrawLine(borderPen, 0, borderTop, Math.Max(0, captionLeft - 3), borderTop);
         if (captionRight < right)
@@ -201,7 +251,6 @@ internal static class UiTheme
         graphics.DrawLine(borderPen, 0, bottom, right, bottom);
 
         var captionRect = new Rectangle(captionLeft, 0, captionSize.Width, captionSize.Height);
-        graphics.FillRectangle(backgroundBrush, captionRect);
         TextRenderer.DrawText(
             graphics,
             groupBox.Text,
@@ -225,8 +274,10 @@ internal static class UiTheme
         Color ButtonHover,
         Color ButtonPressed,
         Color Border,
+        Color HoverBorder,
         Color Text,
         Color MutedText,
         Color ButtonText,
-        int ButtonBorderSize);
+        int ButtonBorderSize,
+        int ButtonHoverBorderSize);
 }
