@@ -6,6 +6,8 @@ internal static class ProjectLibraryFeature
 {
     public static void Attach(MainForm form)
     {
+        ProjectIdentityFeature.Attach(form);
+
         var libraryGroup = FindDescendants<GroupBox>(form)
             .FirstOrDefault(group =>
                 string.Equals(group.Text, "Projects", StringComparison.Ordinal)

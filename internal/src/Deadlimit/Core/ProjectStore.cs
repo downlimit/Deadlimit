@@ -38,7 +38,14 @@ public static class ProjectStore
         try
         {
             var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<ProjectManifest>(json, JsonOptions);
+            var manifest = JsonSerializer.Deserialize<ProjectManifest>(json, JsonOptions);
+            if (manifest is null)
+            {
+                return null;
+            }
+
+            CanonicalizeProjectIdentity(manifest, projectFolder);
+            return manifest;
         }
         catch (JsonException)
         {
@@ -56,6 +63,8 @@ public static class ProjectStore
 
     public static void Save(ProjectManifest manifest)
     {
+        CanonicalizeProjectIdentity(manifest, manifest.ProjectFolder);
+
         var metadataFolder = GetMetadataFolder(manifest.ProjectFolder);
         Directory.CreateDirectory(metadataFolder);
 
@@ -121,6 +130,14 @@ public static class ProjectStore
         settings.UiLanguage = NormalizeUiLanguage(toolPaths.UiLanguage);
         settings.UiTheme = NormalizeUiTheme(toolPaths.UiTheme);
         SaveSettings(settings);
+    }
+
+    private static void CanonicalizeProjectIdentity(ProjectManifest manifest, string projectFolder)
+    {
+        var fullFolder = Path.GetFullPath(projectFolder.Trim())
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        manifest.ProjectFolder = fullFolder;
+        manifest.ProjectName = Path.GetFileName(fullFolder);
     }
 
     private static LocalSettings LoadSettings()
