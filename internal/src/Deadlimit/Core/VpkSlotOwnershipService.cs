@@ -35,7 +35,15 @@ public sealed class VpkSlotOwnershipService
 
         var currentHash = ComputeSha256(vpkPath);
         var ownershipPath = GetOwnershipPath(manifest);
+        var ownershipFileExists = File.Exists(ownershipPath);
         var record = TryLoadRecord(ownershipPath);
+
+        if (ownershipFileExists && record is null)
+        {
+            throw new InvalidOperationException(
+                $"Deadlimit found a VPK ownership file for this project but could not read it safely:\n\n{ownershipPath}\n\n" +
+                "The retail VPK slot will not be overwritten until that state is repaired or removed intentionally.");
+        }
 
         if (record is not null
             && record.ReleaseSlot == slot
@@ -58,7 +66,7 @@ public sealed class VpkSlotOwnershipService
         }
 
         var legacyBuildState = Path.Combine(ProjectStore.GetMetadataFolder(manifest.ProjectFolder), BuildStateFileName);
-        if (record is null && File.Exists(legacyBuildState))
+        if (!ownershipFileExists && File.Exists(legacyBuildState))
         {
             return new VpkSlotOwnershipCheck(
                 vpkPath,
@@ -84,7 +92,14 @@ public sealed class VpkSlotOwnershipService
 
         var slot = ParseReleaseSlot(manifest.ReleaseTarget);
         var ownershipPath = GetOwnershipPath(manifest);
+        var ownershipFileExists = File.Exists(ownershipPath);
         var previous = TryLoadRecord(ownershipPath);
+
+        if (ownershipFileExists && previous is null)
+        {
+            throw new InvalidOperationException(
+                $"Deadlimit cannot update the malformed VPK ownership file safely:\n{ownershipPath}");
+        }
 
         if (previous is not null
             && previous.ReleaseSlot != slot
