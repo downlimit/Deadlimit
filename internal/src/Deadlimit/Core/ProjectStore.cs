@@ -5,6 +5,7 @@ public sealed class ToolPathSettings
     public string CsdkRoot { get; set; } = string.Empty;
     public string DeadlockToolsRoot { get; set; } = string.Empty;
     public string RetailDeadlockRoot { get; set; } = string.Empty;
+    public string UiLanguage { get; set; } = "en";
 }
 
 public static class ProjectStore
@@ -87,6 +88,7 @@ public static class ProjectStore
             CsdkRoot = settings.CsdkRoot,
             DeadlockToolsRoot = settings.DeadlockToolsRoot,
             RetailDeadlockRoot = settings.RetailDeadlockRoot,
+            UiLanguage = NormalizeUiLanguage(settings.UiLanguage),
         };
     }
 
@@ -96,6 +98,7 @@ public static class ProjectStore
         settings.CsdkRoot = NormalizeOptionalPath(toolPaths.CsdkRoot);
         settings.DeadlockToolsRoot = NormalizeOptionalPath(toolPaths.DeadlockToolsRoot);
         settings.RetailDeadlockRoot = NormalizeOptionalPath(toolPaths.RetailDeadlockRoot);
+        settings.UiLanguage = NormalizeUiLanguage(toolPaths.UiLanguage);
         SaveSettings(settings);
     }
 
@@ -151,6 +154,9 @@ public static class ProjectStore
         return Path.GetFullPath(value.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
     }
 
+    private static string NormalizeUiLanguage(string? value) =>
+        string.Equals(value?.Trim(), "ru", StringComparison.OrdinalIgnoreCase) ? "ru" : "en";
+
     private static string GetSettingsPath() =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -163,5 +169,6 @@ public static class ProjectStore
         public string CsdkRoot { get; set; } = string.Empty;
         public string DeadlockToolsRoot { get; set; } = string.Empty;
         public string RetailDeadlockRoot { get; set; } = string.Empty;
+        public string UiLanguage { get; set; } = "en";
     }
 }
