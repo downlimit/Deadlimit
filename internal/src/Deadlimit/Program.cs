@@ -28,6 +28,7 @@ internal static class Program
             MaximizeBox = false,
         };
         BuildFeature.Attach(form);
+        ProjectLibraryFeature.Attach(form);
         UiTheme.ApplyCustomPalette(form, settings.UiTheme);
         form.Shown += (_, _) => form.BeginInvoke((Action)(() => form.ActiveControl = null));
         Application.Run(form);
