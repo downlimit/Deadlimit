@@ -12,8 +12,15 @@ public sealed class MainForm : Form
     private readonly Label _pngCountLabel = new() { AutoSize = true };
     private readonly Label _sourceFolderLabel = new() { AutoSize = true };
     private readonly ListBox _assetList = new() { Dock = DockStyle.Fill };
-    private readonly ToolStripStatusLabel _statusLabel = new() { Text = "Select or create a project." };
-    private readonly Button _extractHeroButton = new() { Text = "EXTRACT HERO SOURCE", AutoSize = true };
+    private readonly ToolStripStatusLabel _statusLabel = new()
+    {
+        Text = UiText.T("Select or create a project.", "Выберите или создайте проект."),
+    };
+    private readonly Button _extractHeroButton = new()
+    {
+        Text = UiText.T("EXTRACT HERO SOURCE", "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ"),
+        AutoSize = true,
+    };
 
     private ProjectManifest? _loadedManifest;
 
@@ -52,13 +59,32 @@ public sealed class MainForm : Form
             Padding = new Padding(0, 0, 0, 10),
         };
 
-        var newButton = new Button { Text = "NEW PROJECT", AutoSize = true };
+        var newButton = new Button
+        {
+            Text = UiText.T("NEW PROJECT", "НОВЫЙ ПРОЕКТ"),
+            AutoSize = true,
+        };
         newButton.Click += (_, _) => NewProject();
-        var openButton = new Button { Text = "OPEN PROJECT", AutoSize = true };
+
+        var openButton = new Button
+        {
+            Text = UiText.T("OPEN PROJECT", "ОТКРЫТЬ ПРОЕКТ"),
+            AutoSize = true,
+        };
         openButton.Click += (_, _) => OpenProject();
-        var rescanButton = new Button { Text = "RESCAN", AutoSize = true };
+
+        var rescanButton = new Button
+        {
+            Text = UiText.T("RESCAN", "ПЕРЕСКАНИРОВАТЬ"),
+            AutoSize = true,
+        };
         rescanButton.Click += (_, _) => RefreshScan(showStatus: true);
-        var settingsButton = new Button { Text = "SETTINGS", AutoSize = true };
+
+        var settingsButton = new Button
+        {
+            Text = UiText.T("SETTINGS", "НАСТРОЙКИ"),
+            AutoSize = true,
+        };
         settingsButton.Click += (_, _) => ShowSettings();
         _extractHeroButton.Click += async (_, _) => await ExtractHeroSourceAsync();
 
@@ -70,7 +96,7 @@ public sealed class MainForm : Form
 
         var projectGroup = new GroupBox
         {
-            Text = "Project",
+            Text = UiText.T("Project", "Проект"),
             Dock = DockStyle.Fill,
             AutoSize = true,
             Padding = new Padding(12),
@@ -87,7 +113,7 @@ public sealed class MainForm : Form
         projectGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         projectGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        AddField(projectGrid, 0, "Folder", _projectFolderText);
+        AddField(projectGrid, 0, UiText.T("Folder", "Папка"), _projectFolderText);
 
         var folderButtons = new FlowLayoutPanel
         {
@@ -97,21 +123,29 @@ public sealed class MainForm : Form
             Margin = new Padding(0),
             Anchor = AnchorStyles.Left,
         };
-        var browseButton = new Button { Text = "BROWSE", AutoSize = true };
+        var browseButton = new Button
+        {
+            Text = UiText.T("BROWSE", "ОБЗОР"),
+            AutoSize = true,
+        };
         browseButton.Click += (_, _) => BrowseProjectFolder();
-        var openFolderButton = new Button { Text = "OPEN", AutoSize = true };
+        var openFolderButton = new Button
+        {
+            Text = UiText.T("OPEN", "ОТКРЫТЬ"),
+            AutoSize = true,
+        };
         openFolderButton.Click += (_, _) => OpenProjectFolder();
         folderButtons.Controls.Add(browseButton);
         folderButtons.Controls.Add(openFolderButton);
         projectGrid.Controls.Add(folderButtons, 2, 0);
 
-        AddField(projectGrid, 1, "Project name", _projectNameText);
-        AddField(projectGrid, 2, "Hero", _heroText);
+        AddField(projectGrid, 1, UiText.T("Project name", "Имя проекта"), _projectNameText);
+        AddField(projectGrid, 2, UiText.T("Hero", "Герой"), _heroText);
         AddField(projectGrid, 3, "Release ID", _releaseTargetText);
 
         var saveButton = new Button
         {
-            Text = "CREATE / SAVE PROJECT",
+            Text = UiText.T("CREATE / SAVE PROJECT", "СОЗДАТЬ / СОХРАНИТЬ ПРОЕКТ"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 10, 0, 0),
@@ -123,7 +157,7 @@ public sealed class MainForm : Form
 
         var assetsGroup = new GroupBox
         {
-            Text = "Detected in project root",
+            Text = UiText.T("Detected in project root", "Найдено в корне проекта"),
             Dock = DockStyle.Fill,
             Padding = new Padding(12),
         };
@@ -193,17 +227,21 @@ public sealed class MainForm : Form
             }
 
             LoadManifest(manifest);
-            SetStatus($"Opened last project: {manifest.ProjectName}");
+            SetStatus(UiText.T(
+                $"Opened last project: {manifest.ProjectName}",
+                $"Открыт последний проект: {manifest.ProjectName}"));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
         {
-            SetStatus("Could not reopen the last project.");
+            SetStatus(UiText.T("Could not reopen the last project.", "Не удалось открыть последний проект."));
         }
     }
 
     private void NewProject()
     {
-        var folder = ChooseFolder("Select the folder that contains your project's DMX and PNG files");
+        var folder = ChooseFolder(UiText.T(
+            "Select the folder that contains your project's DMX and PNG files",
+            "Выберите папку проекта с файлами DMX и PNG"));
         if (folder is null)
         {
             return;
@@ -213,7 +251,9 @@ public sealed class MainForm : Form
         if (existing is not null)
         {
             LoadManifest(existing);
-            SetStatus("This folder already contains a Deadlimit project; opened it instead.");
+            SetStatus(UiText.T(
+                "This folder already contains a Deadlimit project; opened it instead.",
+                "В этой папке уже есть проект Deadlimit; он был открыт."));
             return;
         }
 
@@ -223,12 +263,16 @@ public sealed class MainForm : Form
         _heroText.Clear();
         _releaseTargetText.Clear();
         RefreshScan(showStatus: false);
-        SetStatus("New project folder selected. Enter the hero and save the project.");
+        SetStatus(UiText.T(
+            "New project folder selected. Enter the hero and save the project.",
+            "Выбрана папка нового проекта. Укажите героя и сохраните проект."));
     }
 
     private void OpenProject()
     {
-        var folder = ChooseFolder("Select an existing Deadlimit project folder");
+        var folder = ChooseFolder(UiText.T(
+            "Select an existing Deadlimit project folder",
+            "Выберите папку существующего проекта Deadlimit"));
         if (folder is null)
         {
             return;
@@ -239,7 +283,9 @@ public sealed class MainForm : Form
         {
             MessageBox.Show(
                 this,
-                "No Deadlimit project metadata was found in this folder. Use NEW PROJECT to initialize it.",
+                UiText.T(
+                    "No Deadlimit project metadata was found in this folder. Use NEW PROJECT to initialize it.",
+                    "В этой папке не найдены метаданные проекта Deadlimit. Используйте НОВЫЙ ПРОЕКТ для инициализации."),
                 "Deadlimit",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -247,12 +293,14 @@ public sealed class MainForm : Form
         }
 
         LoadManifest(manifest);
-        SetStatus($"Opened project: {manifest.ProjectName}");
+        SetStatus(UiText.T(
+            $"Opened project: {manifest.ProjectName}",
+            $"Открыт проект: {manifest.ProjectName}"));
     }
 
     private void BrowseProjectFolder()
     {
-        var folder = ChooseFolder("Select project folder");
+        var folder = ChooseFolder(UiText.T("Select project folder", "Выберите папку проекта"));
         if (folder is null)
         {
             return;
@@ -262,7 +310,9 @@ public sealed class MainForm : Form
         if (manifest is not null)
         {
             LoadManifest(manifest);
-            SetStatus($"Opened project: {manifest.ProjectName}");
+            SetStatus(UiText.T(
+                $"Opened project: {manifest.ProjectName}",
+                $"Открыт проект: {manifest.ProjectName}"));
             return;
         }
 
@@ -281,7 +331,9 @@ public sealed class MainForm : Form
         var folder = _projectFolderText.Text.Trim();
         if (!Directory.Exists(folder))
         {
-            ShowValidation("Select an existing project folder first.");
+            ShowValidation(UiText.T(
+                "Select an existing project folder first.",
+                "Сначала выберите существующую папку проекта."));
             return;
         }
 
@@ -293,14 +345,14 @@ public sealed class MainForm : Form
                 Arguments = $"\"{folder}\"",
                 UseShellExecute = true,
             });
-            SetStatus("Opened project folder.");
+            SetStatus(UiText.T("Opened project folder.", "Папка проекта открыта."));
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             MessageBox.Show(
                 this,
                 ex.Message,
-                "Could not open project folder",
+                UiText.T("Could not open project folder", "Не удалось открыть папку проекта"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -311,7 +363,16 @@ public sealed class MainForm : Form
         using var dialog = new SettingsForm();
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
-            SetStatus("Tool paths saved. New actions will use the updated paths immediately.");
+            if (dialog.LanguageChanged)
+            {
+                Application.Restart();
+                Close();
+                return;
+            }
+
+            SetStatus(UiText.T(
+                "Tool paths saved. New actions will use the updated paths immediately.",
+                "Пути к инструментам сохранены. Новые действия сразу используют обновлённые пути."));
         }
     }
 
@@ -319,7 +380,9 @@ public sealed class MainForm : Form
     {
         if (TrySaveProject())
         {
-            SetStatus($"Saved. DMX: {_loadedManifest!.DmxFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}.");
+            SetStatus(UiText.T(
+                $"Saved. DMX: {_loadedManifest!.DmxFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}.",
+                $"Сохранено. DMX: {_loadedManifest!.DmxFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}."));
         }
     }
 
@@ -332,19 +395,21 @@ public sealed class MainForm : Form
 
         if (!Directory.Exists(folder))
         {
-            ShowValidation("Select an existing project folder.");
+            ShowValidation(UiText.T("Select an existing project folder.", "Выберите существующую папку проекта."));
             return false;
         }
 
         if (string.IsNullOrWhiteSpace(projectName))
         {
-            ShowValidation("Enter a project name.");
+            ShowValidation(UiText.T("Enter a project name.", "Введите имя проекта."));
             return false;
         }
 
         if (string.IsNullOrWhiteSpace(hero))
         {
-            ShowValidation("Enter the Deadlock hero for this project.");
+            ShowValidation(UiText.T(
+                "Enter the Deadlock hero for this project.",
+                "Укажите героя Deadlock для этого проекта."));
             return false;
         }
 
@@ -385,7 +450,7 @@ public sealed class MainForm : Form
             MessageBox.Show(
                 this,
                 ex.Message,
-                "Could not save project",
+                UiText.T("Could not save project", "Не удалось сохранить проект"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return false;
@@ -404,14 +469,16 @@ public sealed class MainForm : Form
         {
             var answer = MessageBox.Show(
                 this,
-                "0source already contains files. Refresh it from the current retail Deadlock build?\n\nThe previous 0source will be preserved as a hidden backup until the new extraction succeeds.",
-                "Refresh hero source",
+                UiText.T(
+                    "0source already contains files. Refresh it from the current retail Deadlock build?\n\nThe previous 0source will be preserved as a hidden backup until the new extraction succeeds.",
+                    "0source уже содержит файлы. Обновить его из текущей retail-сборки Deadlock?\n\nПредыдущий 0source будет сохранён как скрытый backup до успешного завершения нового извлечения."),
+                UiText.T("Refresh hero source", "Обновить исходники героя"),
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);
 
             if (answer != DialogResult.Yes)
             {
-                SetStatus("Hero source extraction cancelled.");
+                SetStatus(UiText.T("Hero source extraction cancelled.", "Извлечение исходников героя отменено."));
                 return;
             }
         }
@@ -424,22 +491,26 @@ public sealed class MainForm : Form
             var result = await service.ExtractAsync(_loadedManifest, progress);
 
             RefreshScan(showStatus: false);
-            SetStatus($"Hero source ready: {result.ExtractedFileCount} files.");
+            SetStatus(UiText.T(
+                $"Hero source ready: {result.ExtractedFileCount} files.",
+                $"Исходники героя готовы: {result.ExtractedFileCount} файлов."));
 
             MessageBox.Show(
                 this,
-                $"Hero source refreshed successfully.\n\nMain model: {result.MainModelResourcePath}\nFiles: {result.ExtractedFileCount}\nOutput: {result.OutputFolder}",
+                UiText.T(
+                    $"Hero source refreshed successfully.\n\nMain model: {result.MainModelResourcePath}\nFiles: {result.ExtractedFileCount}\nOutput: {result.OutputFolder}",
+                    $"Исходники героя успешно обновлены.\n\nОсновная модель: {result.MainModelResourcePath}\nФайлов: {result.ExtractedFileCount}\nПапка: {result.OutputFolder}"),
                 "Deadlimit",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or NotSupportedException)
         {
-            SetStatus("Hero source extraction failed.");
+            SetStatus(UiText.T("Hero source extraction failed.", "Не удалось извлечь исходники героя."));
             MessageBox.Show(
                 this,
                 ex.Message,
-                "Hero source extraction failed",
+                UiText.T("Hero source extraction failed", "Ошибка извлечения исходников героя"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -468,7 +539,9 @@ public sealed class MainForm : Form
         {
             _dmxCountLabel.Text = "DMX: 0";
             _pngCountLabel.Text = "PNG: 0";
-            _sourceFolderLabel.Text = "Hero source destination: 0source (created on demand by hero extraction).";
+            _sourceFolderLabel.Text = UiText.T(
+                "Hero source destination: 0source (created on demand by hero extraction).",
+                "Папка исходников героя: 0source (создаётся по запросу при извлечении)." );
             return;
         }
 
@@ -481,12 +554,15 @@ public sealed class MainForm : Form
             var sourcePath = Path.Combine(folder, _loadedManifest?.SourceDumpFolderName ?? "0source");
             if (_loadedManifest?.LastSourceExtractionUtc is not null)
             {
-                _sourceFolderLabel.Text =
-                    $"Hero source: {sourcePath} | {_loadedManifest.ExtractedSourceFileCount ?? 0} files | main: {_loadedManifest.RetailMainModel ?? "unknown"}";
+                _sourceFolderLabel.Text = UiText.T(
+                    $"Hero source: {sourcePath} | {_loadedManifest.ExtractedSourceFileCount ?? 0} files | main: {_loadedManifest.RetailMainModel ?? "unknown"}",
+                    $"Исходники героя: {sourcePath} | файлов: {_loadedManifest.ExtractedSourceFileCount ?? 0} | main: {_loadedManifest.RetailMainModel ?? "неизвестно"}");
             }
             else
             {
-                _sourceFolderLabel.Text = $"Hero source destination: {sourcePath} (created only when extraction is requested).";
+                _sourceFolderLabel.Text = UiText.T(
+                    $"Hero source destination: {sourcePath} (created only when extraction is requested).",
+                    $"Папка исходников героя: {sourcePath} (создаётся только при запуске извлечения)." );
             }
 
             foreach (var file in scan.DmxFiles)
@@ -501,12 +577,14 @@ public sealed class MainForm : Form
 
             if (showStatus)
             {
-                SetStatus($"Scan complete. DMX: {scan.DmxFiles.Count}; PNG: {scan.PngTextures.Count}.");
+                SetStatus(UiText.T(
+                    $"Scan complete. DMX: {scan.DmxFiles.Count}; PNG: {scan.PngTextures.Count}.",
+                    $"Сканирование завершено. DMX: {scan.DmxFiles.Count}; PNG: {scan.PngTextures.Count}."));
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            SetStatus($"Scan failed: {ex.Message}");
+            SetStatus(UiText.T($"Scan failed: {ex.Message}", $"Ошибка сканирования: {ex.Message}"));
         }
     }
 
@@ -519,7 +597,9 @@ public sealed class MainForm : Form
         _assetList.Items.Clear();
         _dmxCountLabel.Text = "DMX: 0";
         _pngCountLabel.Text = "PNG: 0";
-        _sourceFolderLabel.Text = "Hero source destination: 0source (created on demand by hero extraction).";
+        _sourceFolderLabel.Text = UiText.T(
+            "Hero source destination: 0source (created on demand by hero extraction).",
+            "Папка исходников героя: 0source (создаётся по запросу при извлечении)." );
     }
 
     private static string? ChooseFolder(string description)
