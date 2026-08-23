@@ -13,6 +13,12 @@ public sealed record PrepareAuthoringResult(
     int DmxMaterialReferenceCount,
     int ExistingMaterialRemapCount,
     int AddedMaterialRemapCount,
+    int CompatibilityRemapCount,
+    int CustomMaterialCount,
+    int CustomVmatCreatedCount,
+    int CustomVmatPreservedCount,
+    int TextureSourceCount,
+    string CustomMaterialContentFolder,
     int RetailSourceFilesCopied,
     bool GameOutputCleaned,
     string LogPath);
@@ -139,12 +145,47 @@ public sealed class PrepareAuthoringService
                 log.AppendLine($"  material {materialReference}");
             }
 
-            var generatedRemaps = DiscoverMaterialRepairs(
+            var compatibilityRemaps = DiscoverMaterialRepairs(
                 rootDmxFiles,
                 dmxMaterialReferences,
                 sourceCopy.DestinationVmdlPath,
                 manifest.Hero,
                 log);
+
+            var existingRemapsBeforePatch = ReadMaterialRemaps(sourceCopy.DestinationVmdlPath);
+            var templateCandidates = existingRemapsBeforePatch
+                .Concat(compatibilityRemaps)
+                .GroupBy(candidate => candidate.From, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .ToArray();
+
+            var customTemplateMaterial = ChooseLikelyCharacterSurfaceMaterial(templateCandidates, manifest.Hero);
+            var resolvedMaterialSources = templateCandidates
+                .Select(remap => remap.From)
+                .ToArray();
+
+            cancellationToken.ThrowIfCancellationRequested();
+            progress?.Report(new PrepareAuthoringProgress("Preparing addon-owned custom materials..."));
+
+            var customMaterials = new CustomMaterialAuthoringService(_paths).Prepare(
+                manifest,
+                addonName,
+                addonContentRoot,
+                dmxMaterialReferences,
+                resolvedMaterialSources,
+                customTemplateMaterial,
+                log,
+                cancellationToken);
+
+            var generatedRemaps = compatibilityRemaps
+                .Concat(customMaterials.Remaps)
+                .GroupBy(remap => remap.From, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .OrderBy(remap => remap.From, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            log.AppendLine($"Compatibility material remaps generated: {compatibilityRemaps.Count}");
+            log.AppendLine($"Custom material remaps generated: {customMaterials.Remaps.Count}");
 
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new PrepareAuthoringProgress("Applying narrow CSDK compatibility patches to retail VMDL..."));
@@ -154,7 +195,7 @@ public sealed class PrepareAuthoringService
                 generatedRemaps);
 
             log.AppendLine($"Retail material remaps preserved: {patchResult.ExistingMaterialRemapCount}");
-            log.AppendLine($"Additional material repairs added: {patchResult.AddedMaterialRemapCount}");
+            log.AppendLine($"VMDL material remaps added: {patchResult.AddedMaterialRemapCount}");
             foreach (var remap in generatedRemaps)
             {
                 log.AppendLine($"  candidate {remap.From} -> {remap.To}");
@@ -168,7 +209,8 @@ public sealed class PrepareAuthoringService
 
             log.AppendLine("VMDL policy: preserve the extracted retail document/header/order and patch only proven incompatible or project-owned data.");
             log.AppendLine("Material policy: DMX material-reference count is diagnostic only; VMDL remaps are a separate concept.");
-            log.AppendLine("Material policy: preserve retail MaterialGroupList remaps and merge only narrow path/fallback repairs supported by artist-source evidence.");
+            log.AppendLine("Material policy: preserve retail reuse, generate narrow compatibility repairs, and route unresolved Wall Worm custom slots to addon-owned VMAT files.");
+            log.AppendLine("Material policy: PREPARE may create a missing custom VMAT scaffold, but must never overwrite an existing authored custom VMAT.");
             log.AppendLine("Render-mesh policy: preserve retail RenderMeshList/bodygroups/LODs; overlay artist DMX at the original render-mesh resource path.");
 
             manifest.SourceVmdl = sourceCopy.DestinationVmdlPath;
@@ -189,6 +231,12 @@ public sealed class PrepareAuthoringService
                 dmxMaterialReferences.Count,
                 patchResult.ExistingMaterialRemapCount,
                 patchResult.AddedMaterialRemapCount,
+                compatibilityRemaps.Count,
+                customMaterials.CustomMaterialCount,
+                customMaterials.CreatedVmatCount,
+                customMaterials.PreservedVmatCount,
+                customMaterials.TextureSourceCount,
+                customMaterials.MaterialContentFolder,
                 sourceCopy.FilesCopied,
                 gameOutputCleaned,
                 logPath);
