@@ -33,10 +33,12 @@ internal static class BuildFeature
             AutoSize = true,
         };
 
+        var buildProgressBar = AddBuildProgressBar(form);
         var actionButtons = new[] { prepareButton, buildAndTestButton, launchCsdkButton };
 
         prepareButton.Click += async (_, _) => await RunPrepareAsync(form, actionButtons);
-        buildAndTestButton.Click += async (_, _) => await RunBuildAndTestAsync(form, actionButtons);
+        buildAndTestButton.Click += async (_, _) =>
+            await RunBuildAndTestAsync(form, actionButtons, buildProgressBar);
         launchCsdkButton.Click += (_, _) => LaunchCsdk(form);
 
         topBar.Controls.Add(prepareButton);
@@ -122,7 +124,10 @@ internal static class BuildFeature
         }
     }
 
-    private static async Task RunBuildAndTestAsync(MainForm form, IReadOnlyList<Button> actionButtons)
+    private static async Task RunBuildAndTestAsync(
+        MainForm form,
+        IReadOnlyList<Button> actionButtons,
+        ToolStripProgressBar? progressBar)
     {
         var manifest = ProjectStore.TryLoadLastProject();
         if (manifest is null || !Directory.Exists(manifest.ProjectFolder))
@@ -138,31 +143,26 @@ internal static class BuildFeature
 
         SetButtonsEnabled(actionButtons, false);
         var originalTitle = form.Text;
+        using var animator = new BuildProgressAnimator(form, progressBar, originalTitle);
 
         try
         {
-            var progress = new Progress<BuildAndTestProgress>(update =>
-            {
-                form.Text = $"Deadlimit — {update.Message}";
-            });
+            animator.Start();
+            var progress = new Progress<BuildAndTestProgress>(animator.Update);
 
             var service = new BuildAndTestService(new DeadlimitPaths());
             var result = await Task.Run(() => service.BuildAsync(manifest, progress));
+            animator.Update(new BuildAndTestProgress("Build & Test complete.", 100));
 
-            MessageBox.Show(
-                form,
-                $"Build & Test complete.\n\n" +
+            var summary =
                 $"Addon: {result.AddonName}\n" +
                 $"Mode: {(result.FullRebuild ? "clean/full" : "incremental")}\n" +
                 $"Compiled sources: {result.CompiledSourceCount}\n" +
                 $"Stale compiled outputs removed: {result.RemovedCompiledOutputCount}\n" +
-                $"AG2 restored this run: {(result.Ag2Applied ? "yes" : "not needed")}\n\n" +
-                $"VPK deployed directly to retail Deadlock:\n{result.VpkPath}\n\n" +
-                $"If Deadlock was already running, restart it to load the new VPK.\n\n" +
-                $"Log: {result.LogPath}",
-                "Deadlimit",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+                $"AG2 restored this run: {(result.Ag2Applied ? "yes" : "not needed")}";
+
+            using var dialog = new BuildTestSuccessDialog(result.VpkPath, summary);
+            dialog.ShowDialog(form);
         }
         catch (Exception ex)
         {
@@ -178,6 +178,34 @@ internal static class BuildFeature
             form.Text = originalTitle;
             SetButtonsEnabled(actionButtons, true);
         }
+    }
+
+    private static ToolStripProgressBar? AddBuildProgressBar(MainForm form)
+    {
+        var statusStrip = FindDescendants<StatusStrip>(form).FirstOrDefault();
+        if (statusStrip is null)
+        {
+            return null;
+        }
+
+        var spacer = new ToolStripStatusLabel
+        {
+            Spring = true,
+        };
+
+        var progressBar = new ToolStripProgressBar
+        {
+            Minimum = 0,
+            Maximum = 100,
+            Value = 0,
+            Width = 180,
+            Visible = false,
+            Style = ProgressBarStyle.Blocks,
+        };
+
+        statusStrip.Items.Add(spacer);
+        statusStrip.Items.Add(progressBar);
+        return progressBar;
     }
 
     private static void LaunchCsdk(MainForm form)
@@ -235,6 +263,99 @@ internal static class BuildFeature
             foreach (var descendant in FindDescendants<T>(child))
             {
                 yield return descendant;
+            }
+        }
+    }
+
+    private sealed class BuildProgressAnimator : IDisposable
+    {
+        private static readonly string[] SpinnerFrames = ["|", "/", "—", "\\"];
+
+        private readonly Form _form;
+        private readonly ToolStripProgressBar? _progressBar;
+        private readonly string _baseTitle;
+        private readonly System.Windows.Forms.Timer _timer;
+
+        private int _percent;
+        private int _frameIndex;
+        private string _message = "Starting Build & Test...";
+        private bool _disposed;
+
+        public BuildProgressAnimator(
+            Form form,
+            ToolStripProgressBar? progressBar,
+            string baseTitle)
+        {
+            _form = form;
+            _progressBar = progressBar;
+            _baseTitle = baseTitle;
+            _timer = new System.Windows.Forms.Timer
+            {
+                Interval = 120,
+            };
+            _timer.Tick += (_, _) =>
+            {
+                _frameIndex = (_frameIndex + 1) % SpinnerFrames.Length;
+                Render();
+            };
+        }
+
+        public void Start()
+        {
+            if (_progressBar is not null)
+            {
+                _progressBar.Value = 0;
+                _progressBar.Visible = true;
+            }
+
+            _timer.Start();
+            Render();
+        }
+
+        public void Update(BuildAndTestProgress update)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _percent = Math.Clamp(update.Percent, 0, 100);
+            _message = update.Message;
+
+            if (_progressBar is not null)
+            {
+                _progressBar.Value = _percent;
+            }
+
+            Render();
+        }
+
+        private void Render()
+        {
+            if (_disposed || _form.IsDisposed)
+            {
+                return;
+            }
+
+            var spinner = _percent >= 100 ? "✓" : SpinnerFrames[_frameIndex];
+            _form.Text = $"{_baseTitle} — [{_percent}% {spinner}] - {_message}";
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _timer.Stop();
+            _timer.Dispose();
+
+            if (_progressBar is not null)
+            {
+                _progressBar.Visible = false;
+                _progressBar.Value = 0;
             }
         }
     }
