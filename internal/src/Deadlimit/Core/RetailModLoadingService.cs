@@ -16,11 +16,11 @@ public sealed class RetailModLoadingService
         RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Singleline | RegexOptions.Compiled);
 
     private static readonly Regex AddonsGamePathRegex = new(
-        @"(?im)^\s*Game\s+\"?citadel[\\/]addons\"?\s*(?://.*)?$",
+        "(?im)^\\s*Game\\s+\"?citadel[\\\\/]addons\"?\\s*(?://.*)?$",
         RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Compiled);
 
     private static readonly Regex CitadelGamePathRegex = new(
-        @"(?im)^(?<indent>\s*)Game\s+\"?citadel\"?\s*(?://.*)?$",
+        "(?im)^(?<indent>\\s*)Game\\s+\"?citadel\"?\\s*(?://.*)?$",
         RegexOptions.IgnoreCase | RegexOptions.Multiline | RegexOptions.Compiled);
 
     private readonly DeadlimitPaths _paths;
@@ -71,7 +71,9 @@ public sealed class RetailModLoadingService
             + patchedBody
             + text[(searchPathsMatch.Groups["body"].Index + searchPathsMatch.Groups["body"].Length)..];
 
-        if (!AddonsGamePathRegex.IsMatch(SearchPathsBlockRegex.Match(patchedText).Groups["body"].Value))
+        var validationMatch = SearchPathsBlockRegex.Match(patchedText);
+        if (!validationMatch.Success
+            || !AddonsGamePathRegex.IsMatch(validationMatch.Groups["body"].Value))
         {
             throw new InvalidOperationException(
                 "Deadlimit prepared a gameinfo.gi patch, but validation did not detect the required 'Game citadel/addons' entry. " +
