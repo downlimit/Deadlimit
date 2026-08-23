@@ -65,18 +65,8 @@ internal static class UiTheme
                 break;
 
             case Form:
-                control.BackColor = GrayBackground;
-                control.ForeColor = GrayText;
-                break;
-
             case GroupBox:
-                control.BackColor = GrayBackground;
-                control.ForeColor = GrayText;
-                break;
-
             case Panel:
-            case TableLayoutPanel:
-            case FlowLayoutPanel:
                 control.BackColor = GrayBackground;
                 control.ForeColor = GrayText;
                 break;
