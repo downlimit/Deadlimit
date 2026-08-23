@@ -50,7 +50,7 @@ internal sealed class SettingsForm : Form
         _themeCombo.Items.Add(new ThemeItem("system", UiText.T("System theme", "Системная тема")));
         _themeCombo.Items.Add(new ThemeItem("light", UiText.T("Light", "Светлая")));
         _themeCombo.Items.Add(new ThemeItem("gray", UiText.T("Gray", "Серая")));
-        _themeCombo.Items.Add(new ThemeItem("dark", UiText.T("Dark", "Тёмная")));
+        _themeCombo.Items.Add(new ThemeItem("dark", UiText.T("Original theme", "Исходная тема")));
         _themeCombo.SelectedIndex = settings.UiTheme switch
         {
             "light" => 1,
