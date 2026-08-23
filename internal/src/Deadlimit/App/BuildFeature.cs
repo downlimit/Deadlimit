@@ -33,6 +33,23 @@ internal static class BuildFeature
             AutoSize = true,
         };
 
+        var toolTip = new ToolTip
+        {
+            AutoPopDelay = 12000,
+            InitialDelay = 450,
+            ReshowDelay = 100,
+            ShowAlways = true,
+        };
+        toolTip.SetToolTip(
+            prepareButton,
+            "Prepare authoring content for CSDK/Material Editor. Clears compiled output for this addon so CSDK rebuilds it cleanly.");
+        toolTip.SetToolTip(
+            buildAndTestButton,
+            "Normal in-game iteration: prepare changes, compile, deploy VPK. Hold SHIFT while clicking to force a full clean rebuild.");
+        toolTip.SetToolTip(
+            launchCsdkButton,
+            "Launch Reduced CSDK12 for ModelDoc, Material Editor and other authoring tools.");
+
         var buildProgressBar = AddBuildProgressBar(form);
         var actionButtons = new[] { prepareButton, buildAndTestButton, launchCsdkButton };
 
@@ -141,9 +158,13 @@ internal static class BuildFeature
             return;
         }
 
+        var forceFullRebuild = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
         SetButtonsEnabled(actionButtons, false);
         var originalTitle = form.Text;
         using var animator = new BuildProgressAnimator(form, progressBar, originalTitle);
+
+        string? forceStatePath = null;
+        string? forceStateBackupPath = null;
 
         try
         {
@@ -154,13 +175,54 @@ internal static class BuildFeature
             var modLoading = await Task.Run(() =>
                 new RetailModLoadingService(paths).EnsureEnabled(manifest));
 
-            var progress = new Progress<BuildAndTestProgress>(animator.Update);
-            var service = new BuildAndTestService(paths);
-            var result = await Task.Run(() => service.BuildAsync(manifest, progress));
+            animator.Update(new BuildAndTestProgress("Checking retail VPK release slot...", 1));
+            var slotGuard = new VpkSlotOwnershipService(paths);
+            var slotCheck = await Task.Run(() => slotGuard.EnsureSlotAvailable(manifest));
+
+            if (forceFullRebuild)
+            {
+                animator.Update(new BuildAndTestProgress("SHIFT detected — forcing a clean/full rebuild...", 2));
+                forceStatePath = Path.Combine(
+                    ProjectStore.GetMetadataFolder(manifest.ProjectFolder),
+                    "build-test-state.json");
+
+                if (File.Exists(forceStatePath))
+                {
+                    forceStateBackupPath = forceStatePath + $".force-backup-{Guid.NewGuid():N}";
+                    File.Move(forceStatePath, forceStateBackupPath);
+                }
+            }
+
+            BuildAndTestResult result;
+            try
+            {
+                var progress = new Progress<BuildAndTestProgress>(animator.Update);
+                var service = new BuildAndTestService(paths);
+                result = await Task.Run(() => service.BuildAsync(manifest, progress));
+            }
+            catch
+            {
+                RestoreForceBuildState(forceStatePath, forceStateBackupPath);
+                throw;
+            }
+
+            if (forceStateBackupPath is not null && File.Exists(forceStateBackupPath))
+            {
+                File.Delete(forceStateBackupPath);
+                forceStateBackupPath = null;
+            }
+
+            await Task.Run(() => slotGuard.RecordSuccessfulDeployment(manifest, result.VpkPath));
             animator.Update(new BuildAndTestProgress("Build & Test complete.", 100));
 
             var modLoadingSummary = modLoading.Patched
                 ? "\nRetail mod loading: repaired automatically. Restart Deadlock once if it was already running."
+                : string.Empty;
+            var legacySlotSummary = slotCheck.LegacyOwnershipAdopted
+                ? "\nVPK slot ownership: adopted from the previous Deadlimit build state."
+                : string.Empty;
+            var forceSummary = forceFullRebuild
+                ? "\nForced full rebuild: yes (SHIFT)."
                 : string.Empty;
 
             var summary =
@@ -169,13 +231,16 @@ internal static class BuildFeature
                 $"Compiled sources: {result.CompiledSourceCount}\n" +
                 $"Stale compiled outputs removed: {result.RemovedCompiledOutputCount}\n" +
                 $"AG2 restored this run: {(result.Ag2Applied ? "yes" : "not needed")}" +
-                modLoadingSummary;
+                forceSummary +
+                modLoadingSummary +
+                legacySlotSummary;
 
             using var dialog = new BuildTestSuccessDialog(result.VpkPath, summary);
             dialog.ShowDialog(form);
         }
         catch (Exception ex)
         {
+            RestoreForceBuildState(forceStatePath, forceStateBackupPath);
             MessageBox.Show(
                 form,
                 ex.Message,
@@ -188,6 +253,22 @@ internal static class BuildFeature
             form.Text = originalTitle;
             SetButtonsEnabled(actionButtons, true);
         }
+    }
+
+    private static void RestoreForceBuildState(string? statePath, string? backupPath)
+    {
+        if (string.IsNullOrWhiteSpace(statePath)
+            || string.IsNullOrWhiteSpace(backupPath)
+            || !File.Exists(backupPath))
+        {
+            return;
+        }
+
+        if (File.Exists(statePath))
+        {
+            File.Delete(statePath);
+        }
+        File.Move(backupPath, statePath);
     }
 
     private static ToolStripProgressBar? AddBuildProgressBar(MainForm form)
