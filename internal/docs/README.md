@@ -6,14 +6,16 @@ Deadlimit is a Windows desktop tool for building and testing Deadlock character 
 
 1. **Extract** — choose a Deadlock hero and export/decompile the relevant source assets into a working folder.
 2. **Author** — point Deadlimit at a folder containing DMX model files and textures; create a project; prepare a CSDK workspace; open the model/material authoring stage for shader and texture setup.
-3. **Iterate in game** — after authoring is established, use one `BUILD & TEST` action to prepare changes, compile, restore required model post-processing, package the VPK, and deploy it directly to retail Deadlock addons.
+3. **Iterate in game** — after authoring is established, use one `BUILD & TEST` action to prepare changes, compile, restore required model post-processing, package the VPK, and deploy it directly to retail Deadlock addons. If retail Deadlock is currently running, Deadlimit must close it first because the loaded VPK is file-locked by the game.
 
 The user-facing normal iteration loop is:
 
 ```text
 Export DMX / save textures
 → BUILD & TEST
-→ restart/test in Deadlock
+→ if Deadlock was running: allow Deadlimit to close it
+→ compile/deploy
+→ launch/test in Deadlock
 ```
 
 ## Documentation map
@@ -27,6 +29,7 @@ Export DMX / save textures
 - `TEXTURES.md` — inherited CUSTOM VMAT scaffolding, project-root PNG naming conventions, automatic texture rebinding, managed add/remove behavior, and safe fallbacks.
 - `OUTPUT_LIFECYCLE.md` — authoritative `content` vs disposable compiled `game` contract, clean authoring PREPARE behavior, and incremental BUILD & TEST stale-output handling.
 - `BUILD_TEST.md` — accepted one-click daily iteration transaction: incremental prepare/compile, AG2 restoration, VPK packaging and direct retail addons deployment.
+- `RUNNING_GAME.md` — live-confirmed retail VPK file-lock behavior when Deadlock is running and the resulting close-before-deploy contract.
 - `ARCHITECTURE.md` — environment roots, architecture, pipeline structure, and confirmed technical facts.
 - `ROADMAP.md` — implementation stages and acceptance criteria.
 
