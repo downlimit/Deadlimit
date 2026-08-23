@@ -49,6 +49,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
 
 attrib +h +s "%ROOT%internal" >nul 2>nul
 attrib +h +s "%ROOT%.git" >nul 2>nul
+if exist "%ROOT%.github" attrib +h +s "%ROOT%.github" >nul 2>nul
 attrib +h +s "%ROOT%Deadlimit.cmd" >nul 2>nul
 if exist "%UPDATER%" attrib +h +s "%UPDATER%" >nul 2>nul
 if exist "%ROOT%src" attrib +h +s "%ROOT%src" >nul 2>nul
