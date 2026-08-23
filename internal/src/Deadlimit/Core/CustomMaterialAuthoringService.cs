@@ -182,7 +182,7 @@ public sealed class CustomMaterialAuthoringService
 
                 log.AppendLine(
                     $"Custom VMAT created from retail character template with sanitized texture inputs: {customReference} -> {targetResource} | template {templateMaterialResource} | VPK {retailTemplateVpk}");
-                log.AppendLine($"  inherited Texture* references sanitized/defaulted: {sanitizedCount}");
+                log.AppendLine($"  inherited texture-source paths neutralized: {sanitizedCount}");
             }
 
             remaps.Add(new VmdlMaterialRemap(customReference, targetResource));
@@ -192,7 +192,7 @@ public sealed class CustomMaterialAuthoringService
         log.AppendLine($"Custom textures auto-bound during VMAT creation: {autoBoundTextures}");
         log.AppendLine("Custom VMAT policy: create only when missing; never overwrite an existing addon-owned VMAT during PREPARE FOR CSDK.");
         log.AppendLine("Custom VMAT scaffold policy: inherit the current hero character material so shader, outline/NPR colors, strengths, thicknesses and other non-texture tuning survive, but never inherit unresolved hero texture-source paths.");
-        log.AppendLine("Custom texture policy: matching project PNGs replace inherited texture inputs automatically; standard missing PBR inputs use Source 2 defaults and all other missing Texture* effect/mask inputs fall back to a black mask so inherited effects cannot light up the entire custom surface by accident.");
+        log.AppendLine("Custom texture policy: matching project PNGs replace inherited texture inputs automatically; missing standard PBR texture paths use Source 2 defaults and all other missing Texture* effect/mask paths fall back to a black mask so inherited effects cannot light up the entire custom surface by accident. Non-path vector/scalar Texture* values are preserved.");
 
         return new CustomMaterialAuthoringResult(
             remaps,
@@ -293,16 +293,17 @@ public sealed class CustomMaterialAuthoringService
         out int boundCount,
         out int sanitizedCount)
     {
-        boundCount = 0;
-        sanitizedCount = 0;
-
+        var localBoundCount = 0;
+        var localSanitizedCount = 0;
         var materialToken = NormalizeMatchToken(GetResourceLeaf(customReference));
 
         var patched = TextureAssignmentRegex.Replace(retailTemplateText, match =>
         {
             var key = match.Groups["key"].Value;
+            var originalValue = match.Groups["value"].Value;
             var replacement = ResolveTextureReplacement(
                 key,
+                originalValue,
                 materialToken,
                 customMaterialCount,
                 rootPngFiles,
@@ -312,15 +313,18 @@ public sealed class CustomMaterialAuthoringService
 
             if (replacement.AutoBound)
             {
-                boundCount++;
+                localBoundCount++;
             }
-            else
+            else if (replacement.Sanitized)
             {
-                sanitizedCount++;
+                localSanitizedCount++;
             }
 
-            return $"{match.Groups["indent"].Value}{key} \"{replacement.ResourcePath}\"{match.Groups["tail"].Value}";
+            return $"{match.Groups["indent"].Value}{key} \"{replacement.Value}\"{match.Groups["tail"].Value}";
         });
+
+        boundCount = localBoundCount;
+        sanitizedCount = localSanitizedCount;
 
         return $"{GeneratedMarker}{Environment.NewLine}" +
                "// Initial scaffold: non-texture values are inherited from the current retail character material; texture-source paths are rebound or neutralized by Deadlimit. After creation Material Editor owns this file and Deadlimit will not overwrite it." +
@@ -329,6 +333,7 @@ public sealed class CustomMaterialAuthoringService
 
     private static TextureReplacement ResolveTextureReplacement(
         string key,
+        string originalValue,
         string materialToken,
         int customMaterialCount,
         IReadOnlyList<string> rootPngFiles,
@@ -338,7 +343,7 @@ public sealed class CustomMaterialAuthoringService
     {
         if (standardBindings.TryGetValue(key, out var standard) && !string.IsNullOrWhiteSpace(standard))
         {
-            return new TextureReplacement(standard, true);
+            return new TextureReplacement(standard, AutoBound: true, Sanitized: false);
         }
 
         var specialty = ResolveSpecialtyTextureBinding(
@@ -351,10 +356,27 @@ public sealed class CustomMaterialAuthoringService
         if (specialty is not null)
         {
             log.AppendLine($"Custom specialty texture auto-bind {key} -> {specialty}");
-            return new TextureReplacement(specialty, true);
+            return new TextureReplacement(specialty, AutoBound: true, Sanitized: false);
         }
 
-        return new TextureReplacement(GetTextureFallback(key), false);
+        if (!LooksLikeTextureSourcePath(originalValue))
+        {
+            return new TextureReplacement(originalValue, AutoBound: false, Sanitized: false);
+        }
+
+        return new TextureReplacement(GetTextureFallback(key), AutoBound: false, Sanitized: true);
+    }
+
+    private static bool LooksLikeTextureSourcePath(string value)
+    {
+        var extension = Path.GetExtension(value.Replace('\\', '/'));
+        return extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".tga", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".vtex", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".tif", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".tiff", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ResolveSpecialtyTextureBinding(
@@ -612,5 +634,5 @@ public sealed class CustomMaterialAuthoringService
         string ResourcePath,
         string FileName);
 
-    private sealed record TextureReplacement(string ResourcePath, bool AutoBound);
+    private sealed record TextureReplacement(string Value, bool AutoBound, bool Sanitized);
 }
