@@ -8,7 +8,8 @@ internal static class BuildFeature
     {
         var topBar = FindDescendants<FlowLayoutPanel>(form)
             .FirstOrDefault(panel => panel.Controls.OfType<Button>()
-                .Any(button => string.Equals(button.Text, "EXTRACT HERO SOURCE", StringComparison.Ordinal)));
+                .Any(button => string.Equals(button.Text, "EXTRACT HERO SOURCE", StringComparison.Ordinal)
+                    || string.Equals(button.Text, "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ", StringComparison.Ordinal)));
 
         if (topBar is null)
         {
@@ -17,19 +18,19 @@ internal static class BuildFeature
 
         var prepareButton = new Button
         {
-            Text = "PREPARE FOR CSDK",
+            Text = UiText.T("PREPARE FOR CSDK", "ПОДГОТОВИТЬ ДЛЯ CSDK"),
             AutoSize = true,
         };
 
         var buildAndTestButton = new Button
         {
-            Text = "BUILD & TEST",
+            Text = UiText.T("BUILD & TEST", "СОБРАТЬ И ТЕСТИРОВАТЬ"),
             AutoSize = true,
         };
 
         var launchCsdkButton = new Button
         {
-            Text = "LAUNCH CSDK",
+            Text = UiText.T("LAUNCH CSDK", "ЗАПУСТИТЬ CSDK"),
             AutoSize = true,
         };
 
@@ -42,13 +43,19 @@ internal static class BuildFeature
         };
         toolTip.SetToolTip(
             prepareButton,
-            "Prepare authoring content for CSDK/Material Editor. Clears compiled output for this addon so CSDK rebuilds it cleanly.");
+            UiText.T(
+                "Prepare authoring content for CSDK/Material Editor. Clears compiled output for this addon so CSDK rebuilds it cleanly.",
+                "Подготовить authoring-контент для CSDK/Material Editor. Очищает compiled output текущего аддона для чистой пересборки CSDK."));
         toolTip.SetToolTip(
             buildAndTestButton,
-            "Normal in-game iteration: prepare changes, compile, deploy VPK. Hold SHIFT while clicking to force a full clean rebuild.");
+            UiText.T(
+                "Normal in-game iteration: prepare changes, compile, deploy VPK. Hold SHIFT while clicking to force a full clean rebuild.",
+                "Обычный игровой цикл: подготовить изменения, скомпилировать и установить VPK. Удерживайте SHIFT при клике для полной чистой пересборки."));
         toolTip.SetToolTip(
             launchCsdkButton,
-            "Launch Reduced CSDK12 for ModelDoc, Material Editor and other authoring tools.");
+            UiText.T(
+                "Launch Reduced CSDK12 for ModelDoc, Material Editor and other authoring tools.",
+                "Запустить Reduced CSDK12 для ModelDoc, Material Editor и других authoring-инструментов."));
 
         var buildProgressBar = AddBuildProgressBar(form);
         var actionButtons = new[] { prepareButton, buildAndTestButton, launchCsdkButton };
@@ -70,7 +77,9 @@ internal static class BuildFeature
         {
             MessageBox.Show(
                 form,
-                "Save the current Deadlimit project before running PREPARE FOR CSDK.",
+                UiText.T(
+                    "Save the current Deadlimit project before running PREPARE FOR CSDK.",
+                    "Сохраните текущий проект Deadlimit перед запуском ПОДГОТОВИТЬ ДЛЯ CSDK."),
                 "Deadlimit",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
@@ -91,19 +100,24 @@ internal static class BuildFeature
             var result = await service.PrepareAsync(manifest, progress);
 
             var gameState = result.GameOutputCleaned
-                ? "Existing compiled output for this addon was removed."
-                : "No previous compiled output for this addon existed.";
+                ? UiText.T("Existing compiled output for this addon was removed.", "Старый compiled output этого аддона удалён.")
+                : UiText.T("No previous compiled output for this addon existed.", "Предыдущего compiled output для этого аддона не было.");
 
             var customMaterialSummary = result.CustomMaterialCount == 0
-                ? "Custom materials detected: 0\n"
-                : $"Custom materials detected: {result.CustomMaterialCount}\n" +
-                  $"Custom VMAT created: {result.CustomVmatCreatedCount}\n" +
-                  $"Custom VMAT preserved: {result.CustomVmatPreservedCount}\n" +
-                  $"Texture PNG sources refreshed: {result.TextureSourceCount}\n" +
-                  $"Custom material folder:\n{result.CustomMaterialContentFolder}\n";
+                ? UiText.T("Custom materials detected: 0\n", "Новых custom-материалов: 0\n")
+                : UiText.T(
+                    $"Custom materials detected: {result.CustomMaterialCount}\n" +
+                    $"Custom VMAT created: {result.CustomVmatCreatedCount}\n" +
+                    $"Custom VMAT preserved: {result.CustomVmatPreservedCount}\n" +
+                    $"Texture PNG sources refreshed: {result.TextureSourceCount}\n" +
+                    $"Custom material folder:\n{result.CustomMaterialContentFolder}\n",
+                    $"Custom-материалов найдено: {result.CustomMaterialCount}\n" +
+                    $"Создано VMAT: {result.CustomVmatCreatedCount}\n" +
+                    $"Сохранено существующих VMAT: {result.CustomVmatPreservedCount}\n" +
+                    $"Обновлено PNG-текстур: {result.TextureSourceCount}\n" +
+                    $"Папка custom-материалов:\n{result.CustomMaterialContentFolder}\n");
 
-            MessageBox.Show(
-                form,
+            var message = UiText.T(
                 $"Authoring content prepared.\n\n" +
                 $"Addon: {result.AddonName}\n" +
                 $"DMX overlays: {result.DmxCount}\n" +
@@ -119,6 +133,25 @@ internal static class BuildFeature
                 $"CSDK game output: CLEAN. {gameState}\n" +
                 $"Deadlimit did not compile it; use LAUNCH CSDK while authoring, or BUILD & TEST for the normal in-game iteration loop.\n\n" +
                 $"Log: {result.LogPath}",
+                $"Authoring-контент подготовлен.\n\n" +
+                $"Аддон: {result.AddonName}\n" +
+                $"DMX overlays: {result.DmxCount}\n" +
+                $"Материалов в DMX найдено: {result.DmxMaterialReferenceCount}\n" +
+                $"VMDL remaps сохранено: {result.ExistingMaterialRemapCount}\n" +
+                $"Compatibility remaps создано: {result.CompatibilityRemapCount}\n" +
+                $"VMDL remaps добавлено: {result.AddedMaterialRemapCount}\n" +
+                $"Всего VMDL remaps: {result.ExistingMaterialRemapCount + result.AddedMaterialRemapCount}\n" +
+                customMaterialSummary +
+                $"Retail source файлов скопировано: {result.RetailSourceFilesCopied}\n\n" +
+                $"CSDK content:\n{result.AddonContentRoot}\n\n" +
+                $"Исходник модели:\n{result.SourceVmdlPath}\n\n" +
+                $"CSDK game output: CLEAN. {gameState}\n" +
+                $"Deadlimit его не компилировал; для authoring используйте ЗАПУСТИТЬ CSDK, для обычной игровой итерации — СОБРАТЬ И ТЕСТИРОВАТЬ.\n\n" +
+                $"Лог: {result.LogPath}");
+
+            MessageBox.Show(
+                form,
+                message,
                 "Deadlimit",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
@@ -130,7 +163,7 @@ internal static class BuildFeature
             MessageBox.Show(
                 form,
                 ex.Message,
-                "Prepare failed",
+                UiText.T("Prepare failed", "Ошибка подготовки"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -151,7 +184,9 @@ internal static class BuildFeature
         {
             MessageBox.Show(
                 form,
-                "Save the current Deadlimit project before running BUILD & TEST.",
+                UiText.T(
+                    "Save the current Deadlimit project before running BUILD & TEST.",
+                    "Сохраните текущий проект Deadlimit перед запуском СБОРКИ И ТЕСТА."),
                 "Deadlimit",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
@@ -171,17 +206,25 @@ internal static class BuildFeature
             animator.Start();
             var paths = new DeadlimitPaths();
 
-            animator.Update(new BuildAndTestProgress("Checking retail Deadlock mod loading...", 1));
+            animator.Update(new BuildAndTestProgress(
+                UiText.T("Checking retail Deadlock mod loading...", "Проверка загрузки модов в retail Deadlock..."),
+                1));
             var modLoading = await Task.Run(() =>
                 new RetailModLoadingService(paths).EnsureEnabled(manifest));
 
-            animator.Update(new BuildAndTestProgress("Checking retail VPK release slot...", 1));
+            animator.Update(new BuildAndTestProgress(
+                UiText.T("Checking retail VPK release slot...", "Проверка retail VPK-слота..."),
+                1));
             var slotGuard = new VpkSlotOwnershipService(paths);
             var slotCheck = await Task.Run(() => slotGuard.EnsureSlotAvailable(manifest));
 
             if (forceFullRebuild)
             {
-                animator.Update(new BuildAndTestProgress("SHIFT detected — forcing a clean/full rebuild...", 2));
+                animator.Update(new BuildAndTestProgress(
+                    UiText.T(
+                        "SHIFT detected — forcing a clean/full rebuild...",
+                        "SHIFT — принудительная полная чистая пересборка..."),
+                    2));
                 forceStatePath = Path.Combine(
                     ProjectStore.GetMetadataFolder(manifest.ProjectFolder),
                     "build-test-state.json");
@@ -213,27 +256,38 @@ internal static class BuildFeature
             }
 
             await Task.Run(() => slotGuard.RecordSuccessfulDeployment(manifest, result.VpkPath));
-            animator.Update(new BuildAndTestProgress("Build & Test complete.", 100));
+            animator.Update(new BuildAndTestProgress(
+                UiText.T("Build & Test complete.", "Сборка и тест готовы."),
+                100));
 
             var modLoadingSummary = modLoading.Patched
-                ? "\nRetail mod loading: repaired automatically. Restart Deadlock once if it was already running."
+                ? UiText.T(
+                    "\nRetail mod loading: repaired automatically. Restart Deadlock once if it was already running.",
+                    "\nЗагрузка retail-модов: автоматически восстановлена. Если Deadlock уже был запущен, один раз перезапустите его.")
                 : string.Empty;
             var legacySlotSummary = slotCheck.LegacyOwnershipAdopted
-                ? "\nVPK slot ownership: adopted from the previous Deadlimit build state."
+                ? UiText.T(
+                    "\nVPK slot ownership: adopted from the previous Deadlimit build state.",
+                    "\nVPK-слот: владение принято из предыдущего состояния сборки Deadlimit.")
                 : string.Empty;
             var forceSummary = forceFullRebuild
-                ? "\nForced full rebuild: yes (SHIFT)."
+                ? UiText.T("\nForced full rebuild: yes (SHIFT).", "\nПринудительная полная пересборка: да (SHIFT).")
                 : string.Empty;
 
-            var summary =
+            var summary = UiText.T(
                 $"Addon: {result.AddonName}\n" +
                 $"Mode: {(result.FullRebuild ? "clean/full" : "incremental")}\n" +
                 $"Compiled sources: {result.CompiledSourceCount}\n" +
                 $"Stale compiled outputs removed: {result.RemovedCompiledOutputCount}\n" +
-                $"AG2 restored this run: {(result.Ag2Applied ? "yes" : "not needed")}" +
-                forceSummary +
-                modLoadingSummary +
-                legacySlotSummary;
+                $"AG2 restored this run: {(result.Ag2Applied ? "yes" : "not needed")}",
+                $"Аддон: {result.AddonName}\n" +
+                $"Режим: {(result.FullRebuild ? "clean/full" : "incremental")}\n" +
+                $"Скомпилировано source-файлов: {result.CompiledSourceCount}\n" +
+                $"Удалено устаревших compiled outputs: {result.RemovedCompiledOutputCount}\n" +
+                $"AG2 восстановлен: {(result.Ag2Applied ? "да" : "не требовалось")}")
+                + forceSummary
+                + modLoadingSummary
+                + legacySlotSummary;
 
             using var dialog = new BuildTestSuccessDialog(result.VpkPath, summary);
             dialog.ShowDialog(form);
@@ -244,7 +298,7 @@ internal static class BuildFeature
             MessageBox.Show(
                 form,
                 ex.Message,
-                "Build & Test failed",
+                UiText.T("Build & Test failed", "Ошибка сборки и теста"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -306,8 +360,10 @@ internal static class BuildFeature
         {
             MessageBox.Show(
                 form,
-                $"CSDK launcher was not found:\n{paths.CsdkLauncherPath}\n\nOpen SETTINGS and select the Reduced_CSDK_12 root.",
-                "CSDK launcher not found",
+                UiText.T(
+                    $"CSDK launcher was not found:\n{paths.CsdkLauncherPath}\n\nOpen SETTINGS and select the Reduced_CSDK_12 root.",
+                    $"CSDK launcher не найден:\n{paths.CsdkLauncherPath}\n\nОткройте НАСТРОЙКИ и выберите корень Reduced_CSDK_12."),
+                UiText.T("CSDK launcher not found", "CSDK launcher не найден"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
             return;
@@ -327,7 +383,7 @@ internal static class BuildFeature
             MessageBox.Show(
                 form,
                 ex.Message,
-                "Could not launch CSDK",
+                UiText.T("Could not launch CSDK", "Не удалось запустить CSDK"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -369,7 +425,7 @@ internal static class BuildFeature
 
         private int _percent;
         private int _frameIndex;
-        private string _message = "Starting Build & Test...";
+        private string _message = UiText.T("Starting Build & Test...", "Запуск сборки и теста...");
         private bool _disposed;
 
         public BuildProgressAnimator(
