@@ -153,7 +153,8 @@ public sealed class CustomMaterialAuthoringService
         string destinationVmatPath,
         CancellationToken cancellationToken)
     {
-        var compiledResourcePath = ToCompiledMaterialResourcePath(templateMaterialResource);
+        var compiledResourcePaths = ToCompiledMaterialResourcePaths(templateMaterialResource)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var vpkCandidates = EnumerateRetailVpks(manifest).ToArray();
 
         foreach (var vpkPath in vpkCandidates)
@@ -171,7 +172,7 @@ public sealed class CustomMaterialAuthoringService
             foreach (var entry in packageEntries.SelectMany(group => group.Value))
             {
                 var entryPath = NormalizeResourcePath(entry.GetFullPath());
-                if (!string.Equals(entryPath, compiledResourcePath, StringComparison.OrdinalIgnoreCase))
+                if (!compiledResourcePaths.Contains(entryPath))
                 {
                     continue;
                 }
@@ -195,7 +196,8 @@ public sealed class CustomMaterialAuthoringService
         }
 
         throw new InvalidOperationException(
-            $"Could not find retail material template '{compiledResourcePath}' in the configured Deadlock VPKs. " +
+            $"Could not find retail material template '{templateMaterialResource}' in the configured Deadlock VPKs. " +
+            $"Tried: {string.Join(", ", compiledResourcePaths)}. " +
             "Run EXTRACT HERO SOURCE against the current retail build and verify the Project8Staging path in SETTINGS.");
     }
 
@@ -258,20 +260,30 @@ public sealed class CustomMaterialAuthoringService
         }
     }
 
-    private static string ToCompiledMaterialResourcePath(string vmatResourcePath)
+    private static IReadOnlyList<string> ToCompiledMaterialResourcePaths(string vmatResourcePath)
     {
         var normalized = NormalizeResourcePath(vmatResourcePath);
-        if (!normalized.StartsWith("materials/", StringComparison.OrdinalIgnoreCase))
-        {
-            normalized = $"materials/{normalized}";
-        }
-
         if (!normalized.EndsWith(".vmat", StringComparison.OrdinalIgnoreCase))
         {
             normalized += ".vmat";
         }
 
-        return normalized + "_c";
+        var candidates = new List<string>();
+        if (normalized.StartsWith("materials/", StringComparison.OrdinalIgnoreCase))
+        {
+            candidates.Add(normalized + "_c");
+            candidates.Add(normalized["materials/".Length..] + "_c");
+        }
+        else
+        {
+            candidates.Add($"materials/{normalized}_c");
+            candidates.Add(normalized + "_c");
+        }
+
+        return candidates
+            .Select(NormalizeResourcePath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static string GetResourceLeaf(string resourcePath)
