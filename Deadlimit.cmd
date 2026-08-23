@@ -6,7 +6,7 @@ set "UPDATER_SHORTCUT=%ROOT%Updater.lnk"
 set "OLD_UPDATER_SHORTCUT=%ROOT%Deadlimit Updater.lnk"
 set "ICON=%ROOT%internal\assets\Deadlimit_128_v3.ico"
 set "UPDATER_ICON=%ROOT%internal\assets\Updater_128_v3.ico"
-set "BOOTSTRAP=%ROOT%Deadlimit.cmd"
+set "LAUNCHER=%ROOT%internal\DeadlimitLauncher.vbs"
 set "UPDATER=%ROOT%DEADLIMIT_LocalUpdater.bat"
 
 if not exist "%ICON%" (
@@ -19,6 +19,11 @@ if not exist "%UPDATER_ICON%" (
     pause
     exit /b 1
 )
+if not exist "%LAUNCHER%" (
+    echo ERROR: Deadlimit hidden launcher not found.
+    pause
+    exit /b 1
+)
 
 if exist "%OLD_UPDATER_SHORTCUT%" del /f /q "%OLD_UPDATER_SHORTCUT%" >nul 2>nul
 if exist "%SHORTCUT%" del /f /q "%SHORTCUT%" >nul 2>nul
@@ -27,7 +32,8 @@ if exist "%UPDATER_SHORTCUT%" del /f /q "%UPDATER_SHORTCUT%" >nul 2>nul
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$w = New-Object -ComObject WScript.Shell;" ^
   "$s = $w.CreateShortcut('%SHORTCUT%');" ^
-  "$s.TargetPath = '%BOOTSTRAP%';" ^
+  "$s.TargetPath = "$env:SystemRoot\System32\wscript.exe";" ^
+  "$s.Arguments = '""%LAUNCHER%""';" ^
   "$s.WorkingDirectory = '%ROOT%';" ^
   "$s.IconLocation = '%ICON%,0';" ^
   "$s.Description = 'Deadlimit';" ^
@@ -53,5 +59,5 @@ ie4uinit.exe -show >nul 2>nul
 
 if /I "%~1"=="--refresh-only" exit /b 0
 
-cd /d "%ROOT%"
-dotnet run --project internal\src\Deadlimit
+start "" wscript.exe //B //NoLogo "%LAUNCHER%"
+exit /b 0
