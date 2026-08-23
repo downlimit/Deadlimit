@@ -2,10 +2,11 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using SteamDatabase.ValvePak;
 
 namespace Deadlimit.Core;
 
-public sealed record BuildAndTestProgress(string Message);
+public sealed record BuildAndTestProgress(string Message, int Percent);
 
 public sealed record BuildAndTestResult(
     string AddonName,
@@ -87,18 +88,19 @@ public sealed class BuildAndTestService
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            Report(progress, 2, "Starting Build & Test...");
 
             if (canIncrement && Directory.Exists(addonGameRoot))
             {
                 preservedGameBackup = addonGameRoot + $".deadlimit-backup-{Guid.NewGuid():N}";
-                progress?.Report(new BuildAndTestProgress("Preserving previous compiled output for incremental prepare..."));
+                Report(progress, 4, "Preserving previous compiled output for incremental prepare...");
                 Directory.Move(addonGameRoot, preservedGameBackup);
                 log.AppendLine($"Preserved previous game output: {preservedGameBackup}");
             }
 
-            progress?.Report(new BuildAndTestProgress("Preparing current DMX, materials and textures..."));
-            var prepareProgress = new Progress<PrepareAuthoringProgress>(update =>
-                progress?.Report(new BuildAndTestProgress(update.Message)));
+            Report(progress, 6, "Preparing current DMX, materials and textures...");
+            var prepareProgress = new InlineProgress<PrepareAuthoringProgress>(update =>
+                Report(progress, MapPrepareProgress(update.Message), update.Message));
 
             PrepareAuthoringResult prepare;
             try
@@ -121,11 +123,12 @@ public sealed class BuildAndTestService
                 }
             }
 
+            Report(progress, 30, "Authoring content synchronized.");
             log.AppendLine($"Prepare log: {prepare.LogPath}");
             log.AppendLine($"Prepared content root: {prepare.AddonContentRoot}");
 
             cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(new BuildAndTestProgress("Comparing prepared content with the previous successful build..."));
+            Report(progress, 33, "Comparing prepared content with the previous successful build...");
 
             var currentHashes = HashContentTree(prepare.AddonContentRoot, cancellationToken);
             var previousHashes = previousState?.ContentHashes
@@ -151,6 +154,7 @@ public sealed class BuildAndTestService
             var removedCompiledOutputs = 0;
             if (fullRebuild)
             {
+                Report(progress, 36, "Preparing clean compiled output for the first/full build...");
                 if (Directory.Exists(addonGameRoot))
                 {
                     Directory.Delete(addonGameRoot, recursive: true);
@@ -186,12 +190,14 @@ public sealed class BuildAndTestService
 
             if (compileTargets.Count > 0)
             {
-                progress?.Report(new BuildAndTestProgress($"Compiling {compileTargets.Count} changed asset(s)..."));
-                await CompileInBatchesAsync(compileTargets, log, cancellationToken);
+                Report(progress, 40, $"Compiling {compileTargets.Count} changed asset(s)...");
+                await CompileInBatchesAsync(compileTargets, log, progress, cancellationToken);
+                Report(progress, 79, "Verifying compiled outputs...");
                 VerifyCompiledOutputs(prepare.AddonContentRoot, addonGameRoot, compileTargets);
             }
             else
             {
+                Report(progress, 79, "No Source 2 compile inputs changed; reusing verified compiled output...");
                 log.AppendLine("No compile inputs changed and all expected direct outputs exist; ResourceCompiler skipped.");
             }
 
@@ -201,7 +207,7 @@ public sealed class BuildAndTestService
 
             if (mainModelWasCompiled)
             {
-                progress?.Report(new BuildAndTestProgress("Restoring AnimGraph2 / NmSkeleton on the compiled character model..."));
+                Report(progress, 83, "Restoring AnimGraph2 / NmSkeleton on the compiled character model...");
                 ApplyAg2(manifest, compiledMainModel, log, cancellationToken);
                 ag2Applied = true;
             }
@@ -215,25 +221,24 @@ public sealed class BuildAndTestService
             ProjectStore.Save(manifest);
 
             cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(new BuildAndTestProgress("Packing VPK directly into retail Deadlock addons..."));
+            Report(progress, 90, "Packing VPK directly into retail Deadlock addons...");
 
             var retailAddonsRoot = Path.Combine(_paths.RetailDeadlockRoot, "game", "citadel", "addons");
             Directory.CreateDirectory(retailAddonsRoot);
             var vpkPath = Path.Combine(retailAddonsRoot, $"pak{releaseSlot:D2}_dir.vpk");
 
-            await PackVpkAsync(addonGameRoot, vpkPath, log, cancellationToken);
+            PackVpk(addonGameRoot, vpkPath, log, progress, cancellationToken);
 
             SaveState(statePath, new BuildTestState
             {
                 ContentHashes = currentHashes,
             });
 
+            Report(progress, 100, "Build & Test complete.");
             log.AppendLine();
             log.AppendLine("RESULT: BUILD & TEST SUCCESS");
             log.AppendLine($"VPK deployed: {vpkPath}");
             File.WriteAllText(logPath, log.ToString());
-
-            progress?.Report(new BuildAndTestProgress("Build & Test complete. VPK is ready in retail Deadlock addons."));
 
             return new BuildAndTestResult(
                 prepare.AddonName,
@@ -287,10 +292,6 @@ public sealed class BuildAndTestService
         if (!File.Exists(_paths.ResourceCompilerPath))
         {
             throw new FileNotFoundException("Validated bin_cs2 ResourceCompiler was not found.", _paths.ResourceCompilerPath);
-        }
-        if (!File.Exists(_paths.VpkPackerPath))
-        {
-            throw new FileNotFoundException("CSDKCfgVPK packer was not found.", _paths.VpkPackerPath);
         }
         if (!Directory.Exists(_paths.RetailDeadlockRoot))
         {
@@ -411,6 +412,7 @@ public sealed class BuildAndTestService
     private async Task CompileInBatchesAsync(
         IReadOnlyCollection<string> sources,
         StringBuilder log,
+        IProgress<BuildAndTestProgress>? progress,
         CancellationToken cancellationToken)
     {
         var ordered = sources
@@ -418,10 +420,15 @@ public sealed class BuildAndTestService
             .ThenBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        var batchCount = (ordered.Length + CompileBatchSize - 1) / CompileBatchSize;
         for (var offset = 0; offset < ordered.Length; offset += CompileBatchSize)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var batchIndex = offset / CompileBatchSize;
             var batch = ordered.Skip(offset).Take(CompileBatchSize).ToArray();
+            var beforePercent = 40 + (int)Math.Floor(36.0 * batchIndex / Math.Max(1, batchCount));
+            Report(progress, beforePercent, $"Compiling Source 2 assets — batch {batchIndex + 1}/{batchCount}...");
+
             var arguments = new List<string>(batch.Length * 2 + 1);
             foreach (var source in batch)
             {
@@ -436,12 +443,15 @@ public sealed class BuildAndTestService
                 Path.GetDirectoryName(_paths.ResourceCompilerPath)!,
                 cancellationToken);
 
-            AppendProcessLog(log, $"ResourceCompiler batch {offset / CompileBatchSize + 1}", result);
+            AppendProcessLog(log, $"ResourceCompiler batch {batchIndex + 1}", result);
             if (!result.Success)
             {
                 throw new InvalidOperationException(
                     $"ResourceCompiler failed with exit code {result.ExitCode}. See the Build & Test log.");
             }
+
+            var afterPercent = 40 + (int)Math.Ceiling(36.0 * (batchIndex + 1) / Math.Max(1, batchCount));
+            Report(progress, afterPercent, $"Compiled Source 2 assets — batch {batchIndex + 1}/{batchCount}.");
         }
     }
 
@@ -524,37 +534,87 @@ public sealed class BuildAndTestService
         ProjectStore.Save(manifest);
     }
 
-    private async Task PackVpkAsync(
+    private static void PackVpk(
         string addonGameRoot,
         string outputVpk,
         StringBuilder log,
+        IProgress<BuildAndTestProgress>? progress,
         CancellationToken cancellationToken)
     {
-        if (!Directory.Exists(addonGameRoot)
-            || !Directory.EnumerateFiles(addonGameRoot, "*", SearchOption.AllDirectories).Any())
+        if (!Directory.Exists(addonGameRoot))
+        {
+            throw new InvalidOperationException(
+                $"Cannot create VPK because the compiled addon game folder is missing: {addonGameRoot}");
+        }
+
+        var files = Directory.EnumerateFiles(addonGameRoot, "*", SearchOption.AllDirectories)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (files.Length == 0)
         {
             throw new InvalidOperationException(
                 $"Cannot create VPK because the compiled addon game folder is empty: {addonGameRoot}");
         }
 
-        DeletePreviousVpkFamily(outputVpk, log);
+        var targetDirectory = Path.GetDirectoryName(outputVpk)!;
+        Directory.CreateDirectory(targetDirectory);
+        var targetBase = Path.GetFileName(outputVpk);
+        const string suffix = "_dir.vpk";
+        targetBase = targetBase.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+            ? targetBase[..^suffix.Length]
+            : Path.GetFileNameWithoutExtension(targetBase);
+        var temporaryVpk = Path.Combine(
+            targetDirectory,
+            $"{targetBase}_deadlimit_{Guid.NewGuid():N}_dir.vpk");
 
-        var result = await RunProcessAsync(
-            _paths.VpkPackerPath,
-            [addonGameRoot, outputVpk],
-            Path.GetDirectoryName(_paths.VpkPackerPath)!,
-            cancellationToken);
-
-        AppendProcessLog(log, "CSDKCfgVPK", result);
-        if (!result.Success)
+        try
         {
-            throw new InvalidOperationException(
-                $"CSDKCfgVPK failed with exit code {result.ExitCode}. See the Build & Test log.");
+            using (var package = new Package { Version = 2 })
+            {
+                for (var index = 0; index < files.Length; index++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var file = files[index];
+                    var relative = NormalizeRelativePath(Path.GetRelativePath(addonGameRoot, file));
+                    package.AddFile(relative, File.ReadAllBytes(file));
+
+                    var percent = 90 + (int)Math.Floor(6.0 * (index + 1) / files.Length);
+                    Report(progress, percent, $"Packing VPK — {index + 1}/{files.Length} files...");
+                }
+
+                Report(progress, 97, "Writing VPK archive...");
+                package.Write(temporaryVpk);
+            }
+
+            if (!File.Exists(temporaryVpk))
+            {
+                throw new InvalidOperationException(
+                    $"ValvePak completed without an exception, but the temporary VPK was not created: {temporaryVpk}");
+            }
+
+            Report(progress, 98, "Verifying VPK checksums...");
+            using (var verificationPackage = new Package())
+            {
+                verificationPackage.Read(temporaryVpk);
+                verificationPackage.VerifyHashes();
+                verificationPackage.VerifyFileChecksums();
+            }
+
+            DeletePreviousVpkFamily(outputVpk, log);
+            File.Move(temporaryVpk, outputVpk);
+            log.AppendLine();
+            log.AppendLine("[ValvePak in-process packaging]");
+            log.AppendLine($"Packed files: {files.Length}");
+            log.AppendLine("VPK version: 2");
+            log.AppendLine($"Output: {outputVpk}");
+            Report(progress, 99, "VPK deployed to retail Deadlock addons.");
         }
-        if (!File.Exists(outputVpk))
+        finally
         {
-            throw new InvalidOperationException(
-                $"CSDKCfgVPK exited successfully, but the expected VPK was not created: {outputVpk}");
+            if (File.Exists(temporaryVpk))
+            {
+                File.Delete(temporaryVpk);
+            }
         }
     }
 
@@ -797,6 +857,37 @@ public sealed class BuildAndTestService
     private static string QuoteForLog(string value) =>
         value.Any(char.IsWhiteSpace) ? $"\"{value}\"" : value;
 
+    private static int MapPrepareProgress(string message)
+    {
+        if (message.StartsWith("Cleaning stale", StringComparison.OrdinalIgnoreCase))
+        {
+            return 8;
+        }
+        if (message.StartsWith("Refreshing retail", StringComparison.OrdinalIgnoreCase))
+        {
+            return 12;
+        }
+        if (message.StartsWith("Overlaying artist", StringComparison.OrdinalIgnoreCase))
+        {
+            return 17;
+        }
+        if (message.StartsWith("Preparing addon-owned", StringComparison.OrdinalIgnoreCase))
+        {
+            return 22;
+        }
+        if (message.StartsWith("Applying narrow", StringComparison.OrdinalIgnoreCase))
+        {
+            return 27;
+        }
+        return 10;
+    }
+
+    private static void Report(
+        IProgress<BuildAndTestProgress>? progress,
+        int percent,
+        string message) =>
+        progress?.Report(new BuildAndTestProgress(message, Math.Clamp(percent, 0, 100)));
+
     private static string MakeAddonName(string projectName)
     {
         var sb = new StringBuilder();
@@ -841,6 +932,18 @@ public sealed class BuildAndTestService
     {
         public int SchemaVersion { get; set; } = 1;
         public Dictionary<string, string> ContentHashes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed class InlineProgress<T> : IProgress<T>
+    {
+        private readonly Action<T> _report;
+
+        public InlineProgress(Action<T> report)
+        {
+            _report = report;
+        }
+
+        public void Report(T value) => _report(value);
     }
 
     private sealed record ProcessResult(
