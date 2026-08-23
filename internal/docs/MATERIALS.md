@@ -122,38 +122,38 @@ The generic detection mechanism is implemented without an Ivy-specific hardcoded
 
 ## 2026-08-23 — Stage 2 CUSTOM material authoring slice
 
-### External state checked before implementation
+`PREPARE FOR CSDK` handles unresolved Wall Worm-style custom material references whose DMX value has the form `materials/<name>` without a `.vmat` extension.
 
-Current CSDK12 documentation still defines `content/citadel_addons/<addon>` as the editable source workspace, `game/citadel_addons/<addon>` as compiled output, and Material Editor as the editor/compiler path for `.vmat` assets. No current external change invalidates the authoring design used here.
+For each such reference it:
 
-### Implemented behavior
-
-`PREPARE FOR CSDK` now handles unresolved Wall Worm-style custom material references whose DMX value has the form `materials/<name>` without a `.vmat` extension.
-
-For each such reference it now:
-
-1. allocates a deterministic addon-owned resource path:
-
-```text
-materials/<addon>/<custom_name>.vmat
-```
-
+1. allocates `materials/<addon>/<custom_name>.vmat`;
 2. adds a VMDL remap from the DMX custom reference to that addon-owned VMAT;
-3. when the VMAT does not yet exist, decompiles the uniquely inferred retail body/skin/head/face material from the configured retail Deadlock VPK and uses that as a character-compatible starting scaffold;
-4. when the VMAT already exists, preserves it byte-for-byte and does not regenerate it;
-5. refreshes project-root PNG files into:
+3. when the VMAT is missing, decompiles the uniquely inferred current retail body/skin/head/face material as the compatibility template;
+4. preserves an existing addon-owned VMAT byte-for-byte on later PREPARE runs;
+5. refreshes project-root PNG files into `content/citadel_addons/<addon>/materials/<addon>/textures/`.
 
-```text
-content/citadel_addons/<addon>/materials/<addon>/textures/
-```
+The retail-template strategy is deliberate: the custom material should inherit the hero/build-compatible shader and useful non-texture tuning instead of starting from an unrelated generic shader.
 
-6. leaves texture-slot assignment inside the authored VMAT under Material Editor control.
+### V3 hybrid inheritance rule
 
-The retail-template strategy is deliberate: Deadlimit does not guess a generic Source 2 shader name when it can inherit a character material already proven compatible with the current hero/build.
+The first live retail-template VMAT opened in Material Editor, but retail source texture paths were unresolved inside addon `content`. Missing/inappropriate NPR/rim/highlight masks could also make the custom costume surface glow aggressively.
+
+The accepted rule is now:
+
+- copy the retail character material's shader, feature flags, outline/NPR/rim/highlight colors, thicknesses, strengths, radii, scalar/vector tuning and other non-texture settings;
+- do **not** carry unavailable retail texture-source paths into the new CUSTOM VMAT;
+- if a project PNG matches the custom material and texture semantic, bind it automatically;
+- if a standard PBR texture is absent, use the appropriate Source 2 default texture;
+- if another inherited `Texture*` effect/mask source is absent, replace that source path with `materials/default/default_black_mask.tga` so the inherited numeric effect configuration cannot illuminate the full custom surface;
+- preserve non-path `Texture*` vector/scalar values instead of converting them into textures.
+
+The current material version is not hardcoded as Ivy `v3` or `v1`: Deadlimit inherits whichever unique current retail surface material the hero/DMX pipeline resolves.
+
+Detailed filename binding rules are in `TEXTURES.md`.
 
 ### Preservation contract
 
-`PREPARE FOR CSDK` may overwrite derived copies of project-root PNG source files, because the project root is authoritative for those inputs.
+`PREPARE FOR CSDK` may overwrite derived copies of project-root PNG files, because the project root is authoritative for those inputs.
 
 `PREPARE FOR CSDK` must **never overwrite an existing addon-owned CUSTOM VMAT**. The edited VMAT in CSDK content is authoritative after its first creation.
 
@@ -161,28 +161,9 @@ The current `PREPARE` cleanup still applies only to `game/citadel_addons/<curren
 
 ### Current validation status
 
-Implementation is complete in code. Live validation is pending on the current Ivy project.
+CUSTOM routing and VMAT persistence are live-confirmed on the current Ivy project: the material exists, opens in Material Editor, VMDL has five total remaps, and repeated PREPARE reported `Custom VMAT preserved: 1`.
 
-Expected first-run result for the current project:
-
-```text
-DMX material references detected: 5
-Compatibility remaps generated: 4
-Custom materials detected: 1
-Custom VMAT created: 1
-Custom VMAT preserved: 0
-VMDL remaps added: 5
-Total VMDL remaps: 5
-```
-
-Expected second `PREPARE FOR CSDK` after editing/saving the custom VMAT:
-
-```text
-Custom VMAT created: 0
-Custom VMAT preserved: 1
-```
-
-That second run is the critical proof that author-authored Material Editor changes are not destroyed.
+The new V3 hybrid template sanitization/automatic texture binding is implemented but still needs one live regeneration test, because existing authored CUSTOM VMATs are intentionally not overwritten.
 
 ## Constraints
 
