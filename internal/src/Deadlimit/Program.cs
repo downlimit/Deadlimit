@@ -7,6 +7,7 @@ namespace Deadlimit;
 internal static class Program
 {
     private static readonly Icon AppIcon = LoadAppIcon();
+    private static readonly Size MainWindowSize = new(972, 672);
 
     [STAThread]
     private static void Main()
@@ -20,6 +21,11 @@ internal static class Program
         var form = new MainForm
         {
             Icon = AppIcon,
+            Size = MainWindowSize,
+            MinimumSize = MainWindowSize,
+            MaximumSize = MainWindowSize,
+            FormBorderStyle = FormBorderStyle.FixedSingle,
+            MaximizeBox = false,
         };
         BuildFeature.Attach(form);
         UiTheme.ApplyCustomPalette(form, settings.UiTheme);
