@@ -2,6 +2,16 @@
 
 Deadlimit stores machine-local interface preferences in `%LOCALAPPDATA%\Deadlimit\settings.json`.
 
+## Projects library
+
+Settings includes a machine-local `Projects folder / Папка проектов` path. The main window shows the immediate child directories of that folder as a vertical project library.
+
+The library hides directories that contain configured tool roots when those roots are inside the projects folder. This includes Reduced CSDK12, DeadlockTools and retail Deadlock. The Deadlimit directory is also excluded, including the current application directory when it is located under the projects root.
+
+Selecting a library entry loads its existing `.deadlimit/project.json` metadata when present. A plain folder without metadata is still selectable and can be initialized by filling the project fields and pressing `SAVE PROJECT / СОХРАНИТЬ ПРОЕКТ`.
+
+The library and the selected project's DMX/PNG scan refresh automatically when the application regains focus, after settings changes and after project saves. The previous NEW PROJECT, OPEN PROJECT and RESCAN actions are therefore not exposed in the main UI.
+
 ## Theme
 
 Available interface themes:

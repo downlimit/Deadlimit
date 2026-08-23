@@ -4,6 +4,7 @@ namespace Deadlimit.App;
 
 internal sealed class SettingsForm : Form
 {
+    private readonly TextBox _projectsRootText = new() { Dock = DockStyle.Fill };
     private readonly TextBox _csdkRootText = new() { Dock = DockStyle.Fill };
     private readonly TextBox _deadlockToolsRootText = new() { Dock = DockStyle.Fill };
     private readonly TextBox _retailDeadlockRootText = new() { Dock = DockStyle.Fill };
@@ -33,12 +34,13 @@ internal sealed class SettingsForm : Form
         Text = UiText.T("Deadlimit Settings", "Настройки Deadlimit");
         StartPosition = FormStartPosition.CenterParent;
         Width = 840;
-        Height = 400;
-        MinimumSize = new Size(720, 380);
+        Height = 440;
+        MinimumSize = new Size(720, 420);
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
 
+        _projectsRootText.Text = settings.ProjectsRoot;
         _csdkRootText.Text = paths.CsdkRoot;
         _deadlockToolsRootText.Text = paths.DeadlockToolsRoot;
         _retailDeadlockRootText.Text = paths.RetailDeadlockRoot;
@@ -85,8 +87,8 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             Dock = DockStyle.Fill,
             Text = UiText.T(
-                "Machine-local tool paths, interface language and theme. Language and theme changes are applied after Deadlimit restarts.",
-                "Локальные пути к инструментам, язык и тема интерфейса. Смена языка и темы применяется после перезапуска Deadlimit."),
+                "Projects folder, machine-local tool paths, interface language and theme. Language and theme changes are applied after Deadlimit restarts.",
+                "Папка проектов, локальные пути к инструментам, язык и тема интерфейса. Смена языка и темы применяется после перезапуска Deadlimit."),
             Margin = new Padding(0, 0, 0, 12),
         };
         root.Controls.Add(description, 0, 0);
@@ -95,18 +97,19 @@ internal sealed class SettingsForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 3,
-            RowCount = 5,
+            RowCount = 6,
             AutoSize = true,
         };
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        AddPathRow(grid, 0, "Reduced CSDK12", _csdkRootText, UiText.T("Select Reduced_CSDK_12 root", "Выберите корень Reduced_CSDK_12"));
-        AddPathRow(grid, 1, "DeadlockTools", _deadlockToolsRootText, UiText.T("Select DeadlockTools root", "Выберите корень DeadlockTools"));
-        AddPathRow(grid, 2, UiText.T("Retail Deadlock", "Retail Deadlock"), _retailDeadlockRootText, UiText.T("Select Steam Project8Staging root", "Выберите корень Steam Project8Staging"));
-        AddLanguageRow(grid, 3);
-        AddThemeRow(grid, 4);
+        AddPathRow(grid, 0, UiText.T("Projects folder", "Папка проектов"), _projectsRootText, UiText.T("Select projects folder", "Выберите папку проектов"));
+        AddPathRow(grid, 1, "Reduced CSDK12", _csdkRootText, UiText.T("Select Reduced_CSDK_12 root", "Выберите корень Reduced_CSDK_12"));
+        AddPathRow(grid, 2, "DeadlockTools", _deadlockToolsRootText, UiText.T("Select DeadlockTools root", "Выберите корень DeadlockTools"));
+        AddPathRow(grid, 3, UiText.T("Retail Deadlock", "Retail Deadlock"), _retailDeadlockRootText, UiText.T("Select Steam Project8Staging root", "Выберите корень Steam Project8Staging"));
+        AddLanguageRow(grid, 4);
+        AddThemeRow(grid, 5);
         root.Controls.Add(grid, 0, 1);
 
         var buttons = new FlowLayoutPanel
@@ -219,6 +222,7 @@ internal sealed class SettingsForm : Form
         var selectedTheme = (_themeCombo.SelectedItem as ThemeItem)?.Code ?? "system";
         var candidate = new ToolPathSettings
         {
+            ProjectsRoot = _projectsRootText.Text.Trim(),
             CsdkRoot = _csdkRootText.Text.Trim(),
             DeadlockToolsRoot = _deadlockToolsRootText.Text.Trim(),
             RetailDeadlockRoot = _retailDeadlockRootText.Text.Trim(),
@@ -258,6 +262,14 @@ internal sealed class SettingsForm : Form
 
     private static bool ValidatePaths(ToolPathSettings candidate, out string error)
     {
+        if (!Directory.Exists(candidate.ProjectsRoot))
+        {
+            error = UiText.T(
+                $"Projects folder does not exist:\n{candidate.ProjectsRoot}",
+                $"Папка проектов не существует:\n{candidate.ProjectsRoot}");
+            return false;
+        }
+
         if (!Directory.Exists(candidate.CsdkRoot))
         {
             error = UiText.T(

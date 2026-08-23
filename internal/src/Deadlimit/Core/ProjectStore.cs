@@ -2,6 +2,7 @@ namespace Deadlimit.Core;
 
 public sealed class ToolPathSettings
 {
+    public string ProjectsRoot { get; set; } = DeadlimitPaths.DefaultWorkspaceRoot;
     public string CsdkRoot { get; set; } = string.Empty;
     public string DeadlockToolsRoot { get; set; } = string.Empty;
     public string RetailDeadlockRoot { get; set; } = string.Empty;
@@ -67,18 +68,33 @@ public static class ProjectStore
         manifest.UpdatedUtc = DateTimeOffset.UtcNow;
         var json = JsonSerializer.Serialize(manifest, JsonOptions);
         File.WriteAllText(Path.Combine(metadataFolder, ManifestFileName), json);
-        SaveLastProject(manifest.ProjectFolder);
+        RememberLastProject(manifest.ProjectFolder);
     }
 
     public static ProjectManifest? TryLoadLastProject()
     {
+        var folder = GetLastProjectFolder();
+        return string.IsNullOrWhiteSpace(folder) ? null : TryLoad(folder);
+    }
+
+    public static string? GetLastProjectFolder()
+    {
         var settings = LoadSettings();
-        if (string.IsNullOrWhiteSpace(settings.LastProjectFolder))
+        return string.IsNullOrWhiteSpace(settings.LastProjectFolder)
+            ? null
+            : settings.LastProjectFolder;
+    }
+
+    public static void RememberLastProject(string projectFolder)
+    {
+        if (string.IsNullOrWhiteSpace(projectFolder))
         {
-            return null;
+            return;
         }
 
-        return TryLoad(settings.LastProjectFolder);
+        var settings = LoadSettings();
+        settings.LastProjectFolder = Path.GetFullPath(projectFolder.Trim());
+        SaveSettings(settings);
     }
 
     public static ToolPathSettings GetToolPathSettings()
@@ -86,6 +102,7 @@ public static class ProjectStore
         var settings = LoadSettings();
         return new ToolPathSettings
         {
+            ProjectsRoot = NormalizeOptionalPath(settings.ProjectsRoot),
             CsdkRoot = settings.CsdkRoot,
             DeadlockToolsRoot = settings.DeadlockToolsRoot,
             RetailDeadlockRoot = settings.RetailDeadlockRoot,
@@ -97,18 +114,12 @@ public static class ProjectStore
     public static void SaveToolPathSettings(ToolPathSettings toolPaths)
     {
         var settings = LoadSettings();
+        settings.ProjectsRoot = NormalizeOptionalPath(toolPaths.ProjectsRoot);
         settings.CsdkRoot = NormalizeOptionalPath(toolPaths.CsdkRoot);
         settings.DeadlockToolsRoot = NormalizeOptionalPath(toolPaths.DeadlockToolsRoot);
         settings.RetailDeadlockRoot = NormalizeOptionalPath(toolPaths.RetailDeadlockRoot);
         settings.UiLanguage = NormalizeUiLanguage(toolPaths.UiLanguage);
         settings.UiTheme = NormalizeUiTheme(toolPaths.UiTheme);
-        SaveSettings(settings);
-    }
-
-    private static void SaveLastProject(string projectFolder)
-    {
-        var settings = LoadSettings();
-        settings.LastProjectFolder = projectFolder;
         SaveSettings(settings);
     }
 
@@ -175,6 +186,7 @@ public static class ProjectStore
     private sealed class LocalSettings
     {
         public string LastProjectFolder { get; set; } = string.Empty;
+        public string ProjectsRoot { get; set; } = DeadlimitPaths.DefaultWorkspaceRoot;
         public string CsdkRoot { get; set; } = string.Empty;
         public string DeadlockToolsRoot { get; set; } = string.Empty;
         public string RetailDeadlockRoot { get; set; } = string.Empty;
