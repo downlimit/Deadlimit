@@ -148,18 +148,28 @@ internal static class BuildFeature
         try
         {
             animator.Start();
-            var progress = new Progress<BuildAndTestProgress>(animator.Update);
+            var paths = new DeadlimitPaths();
 
-            var service = new BuildAndTestService(new DeadlimitPaths());
+            animator.Update(new BuildAndTestProgress("Checking retail Deadlock mod loading...", 1));
+            var modLoading = await Task.Run(() =>
+                new RetailModLoadingService(paths).EnsureEnabled(manifest));
+
+            var progress = new Progress<BuildAndTestProgress>(animator.Update);
+            var service = new BuildAndTestService(paths);
             var result = await Task.Run(() => service.BuildAsync(manifest, progress));
             animator.Update(new BuildAndTestProgress("Build & Test complete.", 100));
+
+            var modLoadingSummary = modLoading.Patched
+                ? "\nRetail mod loading: repaired automatically. Restart Deadlock once if it was already running."
+                : string.Empty;
 
             var summary =
                 $"Addon: {result.AddonName}\n" +
                 $"Mode: {(result.FullRebuild ? "clean/full" : "incremental")}\n" +
                 $"Compiled sources: {result.CompiledSourceCount}\n" +
                 $"Stale compiled outputs removed: {result.RemovedCompiledOutputCount}\n" +
-                $"AG2 restored this run: {(result.Ag2Applied ? "yes" : "not needed")}";
+                $"AG2 restored this run: {(result.Ag2Applied ? "yes" : "not needed")}" +
+                modLoadingSummary;
 
             using var dialog = new BuildTestSuccessDialog(result.VpkPath, summary);
             dialog.ShowDialog(form);
