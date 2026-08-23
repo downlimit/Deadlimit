@@ -6,7 +6,7 @@ internal sealed class BuildTestSuccessDialog : Form
 
     public BuildTestSuccessDialog(string vpkPath, string summary)
     {
-        var deadlockRunning = IsDeadlockRunning();
+        var deadlockRunning = DeadlockProcessService.IsRunning();
 
         Text = UiText.T("Build & Test complete", "Сборка и тест готовы");
         StartPosition = FormStartPosition.CenterParent;
@@ -40,8 +40,8 @@ internal sealed class BuildTestSuccessDialog : Form
             MaximumSize = new Size(720, 0),
             Text = deadlockRunning
                 ? UiText.T(
-                    "Deadlock is already running. Try reselecting/reloading the hero first; restart the game only if it keeps the old cached asset.",
-                    "Deadlock уже запущен. Сначала попробуйте выбрать другого героя и вернуться обратно; перезапускайте игру только если она продолжает держать старый asset в кеше.")
+                    "Deadlock is already running now. The new VPK was deployed successfully before this dialog appeared.",
+                    "Deadlock уже запущен. Новый VPK был успешно установлен до появления этого окна.")
                 : UiText.T(
                     "Deadlock is not running. Launch it when you are ready to test the new VPK.",
                     "Deadlock не запущен. Запустите игру, когда будете готовы проверить новый VPK."),
@@ -91,10 +91,6 @@ internal sealed class BuildTestSuccessDialog : Form
         AcceptButton = deadlockRunning ? okButton : launchButton;
         CancelButton = okButton;
     }
-
-    private static bool IsDeadlockRunning() =>
-        System.Diagnostics.Process.GetProcessesByName("deadlock").Length > 0
-        || System.Diagnostics.Process.GetProcessesByName("project8").Length > 0;
 
     private void LaunchDeadlock()
     {
