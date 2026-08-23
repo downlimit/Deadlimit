@@ -49,8 +49,8 @@ internal static class BuildFeature
         toolTip.SetToolTip(
             buildAndTestButton,
             UiText.T(
-                "Normal in-game iteration: prepare changes, compile, deploy VPK. Hold SHIFT while clicking to force a full clean rebuild.",
-                "Обычный игровой цикл: подготовить изменения, скомпилировать и установить VPK. Удерживайте SHIFT при клике для полной чистой пересборки."));
+                "Normal in-game iteration: prepare changes, compile, deploy VPK. If Deadlock is running, it must be closed because it locks the loaded VPK. Hold SHIFT while clicking to force a full clean rebuild.",
+                "Обычный игровой цикл: подготовить изменения, скомпилировать и установить VPK. Если Deadlock запущен, его нужно закрыть: игра блокирует загруженный VPK. Удерживайте SHIFT при клике для полной чистой пересборки."));
         toolTip.SetToolTip(
             launchCsdkButton,
             UiText.T(
@@ -193,6 +193,24 @@ internal static class BuildFeature
             return;
         }
 
+        var deadlockWasRunning = DeadlockProcessService.IsRunning();
+        if (deadlockWasRunning)
+        {
+            var closeAnswer = MessageBox.Show(
+                form,
+                UiText.T(
+                    "Deadlock is running and has the loaded VPK locked, so Deadlimit cannot replace the current mod archive while the game is open.\n\nClose Deadlock automatically and continue BUILD & TEST?",
+                    "Deadlock сейчас запущен и блокирует загруженный VPK, поэтому Deadlimit не может заменить текущий архив мода, пока игра открыта.\n\nАвтоматически закрыть Deadlock и продолжить СБОРКУ И ТЕСТ?"),
+                UiText.T("Deadlock must be closed", "Нужно закрыть Deadlock"),
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Information);
+
+            if (closeAnswer != DialogResult.Yes)
+            {
+                return;
+            }
+        }
+
         var forceFullRebuild = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
         SetButtonsEnabled(actionButtons, false);
         var originalTitle = form.Text;
@@ -205,6 +223,21 @@ internal static class BuildFeature
         {
             animator.Start();
             var paths = new DeadlimitPaths();
+
+            if (deadlockWasRunning)
+            {
+                animator.Update(new BuildAndTestProgress(
+                    UiText.T("Closing Deadlock to unlock the current VPK...", "Закрытие Deadlock для разблокировки текущего VPK..."),
+                    0));
+
+                var stopped = await DeadlockProcessService.CloseAsync();
+                if (!stopped)
+                {
+                    throw new InvalidOperationException(UiText.T(
+                        "Deadlock did not close, so the current VPK may still be locked. Close the game manually and run BUILD & TEST again.",
+                        "Deadlock не удалось закрыть, поэтому текущий VPK всё ещё может быть заблокирован. Закройте игру вручную и снова запустите СБОРКУ И ТЕСТ."));
+                }
+            }
 
             animator.Update(new BuildAndTestProgress(
                 UiText.T("Checking retail Deadlock mod loading...", "Проверка загрузки модов в retail Deadlock..."),
@@ -262,8 +295,8 @@ internal static class BuildFeature
 
             var modLoadingSummary = modLoading.Patched
                 ? UiText.T(
-                    "\nRetail mod loading: repaired automatically. Restart Deadlock once if it was already running.",
-                    "\nЗагрузка retail-модов: автоматически восстановлена. Если Deadlock уже был запущен, один раз перезапустите его.")
+                    "\nRetail mod loading: repaired automatically. The next Deadlock launch will use the repaired search path.",
+                    "\nЗагрузка retail-модов: автоматически восстановлена. Следующий запуск Deadlock будет использовать исправленный search path.")
                 : string.Empty;
             var legacySlotSummary = slotCheck.LegacyOwnershipAdopted
                 ? UiText.T(
@@ -272,6 +305,9 @@ internal static class BuildFeature
                 : string.Empty;
             var forceSummary = forceFullRebuild
                 ? UiText.T("\nForced full rebuild: yes (SHIFT).", "\nПринудительная полная пересборка: да (SHIFT).")
+                : string.Empty;
+            var closedGameSummary = deadlockWasRunning
+                ? UiText.T("\nDeadlock was closed automatically to unlock the VPK.", "\nDeadlock был автоматически закрыт для разблокировки VPK.")
                 : string.Empty;
 
             var summary = UiText.T(
@@ -287,7 +323,8 @@ internal static class BuildFeature
                 $"AG2 восстановлен: {(result.Ag2Applied ? "да" : "не требовалось")}")
                 + forceSummary
                 + modLoadingSummary
-                + legacySlotSummary;
+                + legacySlotSummary
+                + closedGameSummary;
 
             using var dialog = new BuildTestSuccessDialog(result.VpkPath, summary);
             dialog.ShowDialog(form);
