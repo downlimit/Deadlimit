@@ -16,6 +16,8 @@ Selecting a library entry loads its existing `.deadlimit/project.json` metadata 
 
 For compatibility with existing project JSON files, the manifest may still contain `ProjectName`, but Deadlimit derives and normalizes that value from the project folder name whenever metadata is loaded or saved.
 
+The project panel places `SAVE PROJECT / СОХРАНИТЬ ПРОЕКТ` in the right action column directly below the hero-list refresh action. `Release ID` has a hover tip explaining that valid IDs are `01-99` and map to the deployed retail VPK name `pak##_dir.vpk`.
+
 The library and the selected project's DMX/PNG scan refresh automatically when the application regains focus, after settings changes and after project saves. The previous NEW PROJECT, OPEN PROJECT and RESCAN actions are therefore not exposed in the main UI.
 
 ## Theme
