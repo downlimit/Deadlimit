@@ -12,7 +12,7 @@ edit project-root DMX / PNG
 → restore required AG2/NmSkeleton data on a freshly compiled character model
 → create VPK
 → write VPK directly into retail Deadlock game/citadel/addons
-→ restart Deadlock if it was already running
+→ optionally launch Deadlock from the completion dialog
 ```
 
 The authoring path remains separate:
@@ -37,7 +37,75 @@ Release ID: 01
 → <Retail Deadlock>/game/citadel/addons/pak01_dir.vpk
 ```
 
-`BUILD & TEST` invokes the CSDK12 VPK packer directly against the current addon's compiled `game/citadel_addons/<addon>` folder. The previous `pak##_dir.vpk` and its numeric chunk siblings are removed immediately before successful repacking.
+BUILD & TEST now creates the VPK **in-process** through the already embedded ValvePak library rather than launching `CSDKCfgVPK.exe`. Current ValvePak explicitly supports creating new VPK archives with `Package.AddFile(...)` and `Package.Write(...)`; new packages default to VPK version 2.
+
+This change is intentional UX behavior: the external CSDKCfgVPK success MessageBox cannot provide Deadlimit-owned actions or progress. In-process packing removes that extra modal window and lets Deadlimit own the complete transaction.
+
+Packaging is transactional:
+
+```text
+compiled addon game folder
+→ build temporary VPK version 2
+→ verify archive hashes + file CRCs
+→ remove previous configured pak##_dir.vpk / old numeric chunks
+→ move verified temporary VPK into final retail slot
+```
+
+### Completion UX
+
+Successful BUILD & TEST ends in a Deadlimit-owned dialog with two actions:
+
+```text
+OK
+→ close the dialog
+
+LAUNCH DEADLOCK GAME
+→ launch Steam URI steam://rungameid/1422450
+→ close the dialog
+```
+
+`OK` remains the default Enter/Escape action so the game cannot be launched accidentally from a stray key press.
+
+The Steam app ID was rechecked against Valve's current official Deadlock Steam listing on 2026-08-23: `1422450`.
+
+### Overall progress UX
+
+BUILD & TEST reports one overall 0–100 progress value across the whole transaction rather than showing independent per-tool progress.
+
+The window title remains the compact high-visibility status surface and now has an animated spinner:
+
+```text
+Deadlimit — [34% \] - Comparing prepared content...
+Deadlimit — [56% |] - Compiling Source 2 assets — batch 2/4...
+Deadlimit — [98% /] - Verifying VPK checksums...
+```
+
+Spinner frames rotate as:
+
+```text
+|  /  —  \
+```
+
+At 100% the spinner becomes a check mark.
+
+A real horizontal progress bar is also shown on the right side of Deadlimit's existing status bar while BUILD & TEST is running. The standard Windows/WinForms caption is not custom-drawn, so the title itself stays textual; no fragile custom non-client title-bar rendering is introduced.
+
+Progress weighting is based on real pipeline phases:
+
+```text
+0–30   prepare / source synchronization
+33–39  diff + clean/incremental decision
+40–76  ResourceCompiler batches
+79     compiled-output verification
+83     AG2/NmSkeleton restoration when needed
+90–96  files added to VPK
+97     VPK write
+98     VPK verification
+99     retail deployment
+100    success
+```
+
+This means compilation and VPK file packing advance according to actual batch/file counts rather than a purely time-based fake animation. The spinner continues moving while an individual external compile/process call is busy.
 
 ### Incremental compile contract
 
@@ -97,30 +165,25 @@ The skeleton path is discovered from the current project's extracted retail VMDL
 Checked 2026-08-23:
 
 - current CSDK12 documents `content/citadel_addons/<addon>` as authoring source and `game/citadel_addons/<addon>` as compiled output;
-- CSDK12 exposes `Compile All Assets` and `Create VPK` without requiring the Asset Browser/Material Editor authoring loop;
-- the current public Deadlock-Mod-Compiler independently uses `game/bin_cs2/win64/resourcecompiler.exe`, `game/bin/win64/CSDKCfgVPK.exe`, repeated `-i` compilation batches, and supports packing directly to retail `game/citadel/addons`;
+- the current ValvePak API supports creating VPKs in-process and defaults new packages to VPK version 2;
+- Valve's current official Deadlock Steam page is app `1422450`;
 - current Deadlock modding guidance still identifies Dotryen DeadlockTools AG2 restoration as required for CSDK12 character replacements.
 
 ### Validation status
 
-Implementation: complete in code.
+The previous external `CSDKCfgVPK.exe` path successfully produced the retail `pak01_dir.vpk` in the live Ivy Build & Test run on 2026-08-23.
 
-Live local validation of the new one-click transaction is still pending. The first acceptance test should use the current Ivy project and verify:
+The replacement in-process ValvePak packaging, new completion dialog and overall progress UI are implemented but still require one local acceptance run after Updater.
+
+Acceptance check:
 
 ```text
-BUILD & TEST
-→ main model + custom material compile
-→ AG2 succeeds
-→ pak01_dir.vpk (or configured Release ID) appears directly in retail addons
-→ Deadlock loads the replacement
-
-then change only one PNG
-→ BUILD & TEST reports incremental mode
-→ recompiles only the required material dependency set
-→ repacks the same retail VPK slot
-
-then change only the artist DMX skinning
-→ BUILD & TEST recompiles the model path
-→ reapplies AG2
-→ repacks the same retail VPK slot
+Updater
+→ BUILD & TEST
+→ no separate CSDKCfgVPK "Success" dialog appears
+→ title visibly animates [percent spinner] + current stage
+→ bottom status-bar progress advances
+→ final Deadlimit dialog offers OK / LAUNCH DEADLOCK GAME
+→ pak##_dir.vpk exists in retail addons
+→ LAUNCH DEADLOCK GAME opens Deadlock through Steam
 ```
