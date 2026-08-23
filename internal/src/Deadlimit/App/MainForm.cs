@@ -4,6 +4,11 @@ namespace Deadlimit.App;
 
 public sealed class MainForm : Form
 {
+    private readonly ListBox _projectLibrary = new()
+    {
+        Dock = DockStyle.Fill,
+        IntegralHeight = false,
+    };
     private readonly TextBox _projectFolderText = new() { Dock = DockStyle.Fill, ReadOnly = true };
     private readonly TextBox _projectNameText = new() { Dock = DockStyle.Fill };
     private readonly TextBox _heroText = new() { Dock = DockStyle.Fill };
@@ -14,7 +19,7 @@ public sealed class MainForm : Form
     private readonly ListBox _assetList = new() { Dock = DockStyle.Fill };
     private readonly ToolStripStatusLabel _statusLabel = new()
     {
-        Text = UiText.T("Select or create a project.", "Выберите или создайте проект."),
+        Text = UiText.T("Select a project from the library.", "Выберите проект в библиотеке."),
     };
     private readonly Button _extractHeroButton = new()
     {
@@ -23,6 +28,8 @@ public sealed class MainForm : Form
     };
 
     private ProjectManifest? _loadedManifest;
+    private bool _refreshingProjectLibrary;
+    private bool _libraryInitialized;
 
     public MainForm()
     {
@@ -33,7 +40,18 @@ public sealed class MainForm : Form
         MinimumSize = new Size(800, 540);
 
         BuildUi();
-        Shown += (_, _) => RestoreLastProject();
+        Shown += (_, _) =>
+        {
+            _libraryInitialized = true;
+            InitializeProjectLibrary();
+        };
+        Activated += (_, _) =>
+        {
+            if (_libraryInitialized)
+            {
+                RefreshProjectLibrary(preserveSelection: true, rescanSelected: true);
+            }
+        };
     }
 
     private void BuildUi()
@@ -41,14 +59,42 @@ public sealed class MainForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 4,
+            ColumnCount = 2,
+            RowCount = 2,
             Padding = new Padding(14),
         };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 210));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var libraryGroup = new GroupBox
+        {
+            Text = UiText.T("Projects", "Проекты"),
+            Dock = DockStyle.Fill,
+            Padding = new Padding(10),
+            Margin = new Padding(0, 0, 10, 0),
+        };
+        _projectLibrary.SelectedIndexChanged += (_, _) =>
+        {
+            if (_refreshingProjectLibrary || _projectLibrary.SelectedItem is not ProjectLibraryItem item)
+            {
+                return;
+            }
+
+            SelectProjectFolder(item.Folder, rememberSelection: true, showStatus: true);
+        };
+        libraryGroup.Controls.Add(_projectLibrary);
+
+        var workspace = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 1,
+            RowCount = 3,
+        };
+        workspace.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        workspace.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        workspace.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var topBar = new FlowLayoutPanel
         {
@@ -59,27 +105,6 @@ public sealed class MainForm : Form
             Padding = new Padding(0, 0, 0, 10),
         };
 
-        var newButton = new Button
-        {
-            Text = UiText.T("NEW PROJECT", "НОВЫЙ ПРОЕКТ"),
-            AutoSize = true,
-        };
-        newButton.Click += (_, _) => NewProject();
-
-        var openButton = new Button
-        {
-            Text = UiText.T("OPEN PROJECT", "ОТКРЫТЬ ПРОЕКТ"),
-            AutoSize = true,
-        };
-        openButton.Click += (_, _) => OpenProject();
-
-        var rescanButton = new Button
-        {
-            Text = UiText.T("RESCAN", "ПЕРЕСКАНИРОВАТЬ"),
-            AutoSize = true,
-        };
-        rescanButton.Click += (_, _) => RefreshScan(showStatus: true);
-
         var settingsButton = new Button
         {
             Text = UiText.T("SETTINGS", "НАСТРОЙКИ"),
@@ -88,9 +113,6 @@ public sealed class MainForm : Form
         settingsButton.Click += (_, _) => ShowSettings();
         _extractHeroButton.Click += async (_, _) => await ExtractHeroSourceAsync();
 
-        topBar.Controls.Add(newButton);
-        topBar.Controls.Add(openButton);
-        topBar.Controls.Add(rescanButton);
         topBar.Controls.Add(_extractHeroButton);
         topBar.Controls.Add(settingsButton);
 
@@ -115,29 +137,14 @@ public sealed class MainForm : Form
 
         AddField(projectGrid, 0, UiText.T("Folder", "Папка"), _projectFolderText);
 
-        var folderButtons = new FlowLayoutPanel
-        {
-            AutoSize = true,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            Margin = new Padding(0),
-            Anchor = AnchorStyles.Left,
-        };
-        var browseButton = new Button
-        {
-            Text = UiText.T("BROWSE", "ОБЗОР"),
-            AutoSize = true,
-        };
-        browseButton.Click += (_, _) => BrowseProjectFolder();
         var openFolderButton = new Button
         {
-            Text = UiText.T("OPEN", "ОТКРЫТЬ"),
+            Text = UiText.T("OPEN FOLDER", "ОТКРЫТЬ ПАПКУ"),
             AutoSize = true,
+            Anchor = AnchorStyles.Left,
         };
         openFolderButton.Click += (_, _) => OpenProjectFolder();
-        folderButtons.Controls.Add(browseButton);
-        folderButtons.Controls.Add(openFolderButton);
-        projectGrid.Controls.Add(folderButtons, 2, 0);
+        projectGrid.Controls.Add(openFolderButton, 2, 0);
 
         AddField(projectGrid, 1, UiText.T("Project name", "Имя проекта"), _projectNameText);
         AddField(projectGrid, 2, UiText.T("Hero", "Герой"), _heroText);
@@ -145,7 +152,7 @@ public sealed class MainForm : Form
 
         var saveButton = new Button
         {
-            Text = UiText.T("CREATE / SAVE PROJECT", "СОЗДАТЬ / СОХРАНИТЬ ПРОЕКТ"),
+            Text = UiText.T("SAVE PROJECT", "СОХРАНИТЬ ПРОЕКТ"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 10, 0, 0),
@@ -189,13 +196,17 @@ public sealed class MainForm : Form
         assetsLayout.Controls.Add(_assetList, 0, 2);
         assetsGroup.Controls.Add(assetsLayout);
 
+        workspace.Controls.Add(topBar, 0, 0);
+        workspace.Controls.Add(projectGroup, 0, 1);
+        workspace.Controls.Add(assetsGroup, 0, 2);
+
         var statusStrip = new StatusStrip();
         statusStrip.Items.Add(_statusLabel);
 
-        root.Controls.Add(topBar, 0, 0);
-        root.Controls.Add(projectGroup, 0, 1);
-        root.Controls.Add(assetsGroup, 0, 2);
-        root.Controls.Add(statusStrip, 0, 3);
+        root.Controls.Add(libraryGroup, 0, 0);
+        root.Controls.Add(workspace, 1, 0);
+        root.Controls.Add(statusStrip, 0, 1);
+        root.SetColumnSpan(statusStrip, 2);
         Controls.Add(root);
 
         ClearProjectView();
@@ -216,92 +227,165 @@ public sealed class MainForm : Form
         grid.Controls.Add(control, 1, row);
     }
 
-    private void RestoreLastProject()
+    private void InitializeProjectLibrary()
     {
+        RefreshProjectLibrary(
+            preserveSelection: false,
+            rescanSelected: false,
+            preferredFolder: ProjectStore.GetLastProjectFolder());
+    }
+
+    private void RefreshProjectLibrary(
+        bool preserveSelection,
+        bool rescanSelected,
+        string? preferredFolder = null)
+    {
+        var settings = ProjectStore.GetToolPathSettings();
+        var projectsRoot = settings.ProjectsRoot;
+
+        if (!Directory.Exists(projectsRoot))
+        {
+            _refreshingProjectLibrary = true;
+            _projectLibrary.Items.Clear();
+            _refreshingProjectLibrary = false;
+            ClearProjectView();
+            SetStatus(UiText.T(
+                "Projects folder is unavailable. Set it in Settings.",
+                "Папка проектов недоступна. Укажите её в настройках."));
+            return;
+        }
+
+        var previousFolder = preserveSelection
+            ? (_projectLibrary.SelectedItem as ProjectLibraryItem)?.Folder ?? _projectFolderText.Text.Trim()
+            : preferredFolder;
+
         try
         {
-            var manifest = ProjectStore.TryLoadLastProject();
-            if (manifest is null || !Directory.Exists(manifest.ProjectFolder))
+            var paths = new DeadlimitPaths(settings);
+            var folders = Directory.EnumerateDirectories(projectsRoot)
+                .Where(folder => !ShouldHideLibraryFolder(folder, projectsRoot, paths))
+                .OrderBy(folder => Path.GetFileName(folder), StringComparer.OrdinalIgnoreCase)
+                .Select(folder => new ProjectLibraryItem(Path.GetFileName(folder), Path.GetFullPath(folder)))
+                .ToList();
+
+            var targetIndex = -1;
+            if (!string.IsNullOrWhiteSpace(previousFolder))
             {
+                targetIndex = folders.FindIndex(item => PathsEqual(item.Folder, previousFolder));
+            }
+
+            if (targetIndex < 0 && folders.Count > 0)
+            {
+                targetIndex = 0;
+            }
+
+            _refreshingProjectLibrary = true;
+            _projectLibrary.BeginUpdate();
+            try
+            {
+                _projectLibrary.Items.Clear();
+                foreach (var item in folders)
+                {
+                    _projectLibrary.Items.Add(item);
+                }
+
+                _projectLibrary.SelectedIndex = targetIndex;
+            }
+            finally
+            {
+                _projectLibrary.EndUpdate();
+                _refreshingProjectLibrary = false;
+            }
+
+            if (targetIndex < 0)
+            {
+                ClearProjectView();
+                SetStatus(UiText.T(
+                    "No project folders found.",
+                    "Папки проектов не найдены."));
                 return;
             }
 
-            LoadManifest(manifest);
+            var selected = folders[targetIndex];
+            if (PathsEqual(_projectFolderText.Text, selected.Folder))
+            {
+                if (rescanSelected)
+                {
+                    RefreshScan(showStatus: false);
+                }
+                return;
+            }
+
+            SelectProjectFolder(selected.Folder, rememberSelection: true, showStatus: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
             SetStatus(UiText.T(
-                $"Opened last project: {manifest.ProjectName}",
-                $"Открыт последний проект: {manifest.ProjectName}"));
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
-        {
-            SetStatus(UiText.T("Could not reopen the last project.", "Не удалось открыть последний проект."));
+                $"Could not refresh project library: {ex.Message}",
+                $"Не удалось обновить библиотеку проектов: {ex.Message}"));
         }
     }
 
-    private void NewProject()
+    private static bool ShouldHideLibraryFolder(
+        string folder,
+        string projectsRoot,
+        DeadlimitPaths paths)
     {
-        var folder = ChooseFolder(UiText.T(
-            "Select the folder that contains your project's DMX and PNG files",
-            "Выберите папку проекта с файлами DMX и PNG"));
-        if (folder is null)
+        var name = Path.GetFileName(folder);
+        if (string.Equals(name, "Deadlimit", StringComparison.OrdinalIgnoreCase))
         {
-            return;
+            return true;
         }
 
-        var existing = ProjectStore.TryLoad(folder);
-        if (existing is not null)
+        var excludedPaths = new[]
         {
-            LoadManifest(existing);
-            SetStatus(UiText.T(
-                "This folder already contains a Deadlimit project; opened it instead.",
-                "В этой папке уже есть проект Deadlimit; он был открыт."));
-            return;
-        }
+            paths.CsdkRoot,
+            paths.DeadlockToolsRoot,
+            paths.RetailDeadlockRoot,
+            DeadlimitPaths.DefaultDeadlimitRoot,
+            AppContext.BaseDirectory,
+        };
 
-        _loadedManifest = null;
-        _projectFolderText.Text = folder;
-        _projectNameText.Text = new DirectoryInfo(folder).Name;
-        _heroText.Clear();
-        _releaseTargetText.Clear();
-        RefreshScan(showStatus: false);
-        SetStatus(UiText.T(
-            "New project folder selected. Enter the hero and save the project.",
-            "Выбрана папка нового проекта. Укажите героя и сохраните проект."));
+        return excludedPaths.Any(path =>
+            !string.IsNullOrWhiteSpace(path)
+            && IsSameOrDescendant(path, projectsRoot)
+            && IsSameOrDescendant(path, folder));
     }
 
-    private void OpenProject()
+    private static bool IsSameOrDescendant(string path, string parent)
     {
-        var folder = ChooseFolder(UiText.T(
-            "Select an existing Deadlimit project folder",
-            "Выберите папку существующего проекта Deadlimit"));
-        if (folder is null)
+        var fullPath = NormalizeComparablePath(path);
+        var fullParent = NormalizeComparablePath(parent);
+        if (string.Equals(fullPath, fullParent, StringComparison.OrdinalIgnoreCase))
         {
-            return;
+            return true;
         }
 
-        var manifest = ProjectStore.TryLoad(folder);
-        if (manifest is null)
-        {
-            MessageBox.Show(
-                this,
-                UiText.T(
-                    "No Deadlimit project metadata was found in this folder. Use NEW PROJECT to initialize it.",
-                    "В этой папке не найдены метаданные проекта Deadlimit. Используйте НОВЫЙ ПРОЕКТ для инициализации."),
-                "Deadlimit",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            return;
-        }
-
-        LoadManifest(manifest);
-        SetStatus(UiText.T(
-            $"Opened project: {manifest.ProjectName}",
-            $"Открыт проект: {manifest.ProjectName}"));
+        return fullPath.StartsWith(
+            fullParent + Path.DirectorySeparatorChar,
+            StringComparison.OrdinalIgnoreCase);
     }
 
-    private void BrowseProjectFolder()
+    private static bool PathsEqual(string? left, string? right)
     {
-        var folder = ChooseFolder(UiText.T("Select project folder", "Выберите папку проекта"));
-        if (folder is null)
+        if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right))
+        {
+            return false;
+        }
+
+        return string.Equals(
+            NormalizeComparablePath(left),
+            NormalizeComparablePath(right),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeComparablePath(string path) =>
+        Path.GetFullPath(path.Trim())
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+    private void SelectProjectFolder(string folder, bool rememberSelection, bool showStatus)
+    {
+        if (!Directory.Exists(folder))
         {
             return;
         }
@@ -310,20 +394,38 @@ public sealed class MainForm : Form
         if (manifest is not null)
         {
             LoadManifest(manifest);
-            SetStatus(UiText.T(
-                $"Opened project: {manifest.ProjectName}",
-                $"Открыт проект: {manifest.ProjectName}"));
+            if (rememberSelection)
+            {
+                ProjectStore.RememberLastProject(folder);
+            }
+
+            if (showStatus)
+            {
+                SetStatus(UiText.T(
+                    $"Selected project: {manifest.ProjectName}",
+                    $"Выбран проект: {manifest.ProjectName}"));
+            }
             return;
         }
 
         _loadedManifest = null;
-        _projectFolderText.Text = folder;
-        if (string.IsNullOrWhiteSpace(_projectNameText.Text))
+        _projectFolderText.Text = Path.GetFullPath(folder);
+        _projectNameText.Text = new DirectoryInfo(folder).Name;
+        _heroText.Clear();
+        _releaseTargetText.Clear();
+        RefreshScan(showStatus: false);
+
+        if (rememberSelection)
         {
-            _projectNameText.Text = new DirectoryInfo(folder).Name;
+            ProjectStore.RememberLastProject(folder);
         }
 
-        RefreshScan(showStatus: true);
+        if (showStatus)
+        {
+            SetStatus(UiText.T(
+                "Project folder selected. Enter the hero and save project metadata.",
+                "Папка проекта выбрана. Укажите героя и сохраните метаданные проекта."));
+        }
     }
 
     private void OpenProjectFolder()
@@ -363,16 +465,17 @@ public sealed class MainForm : Form
         using var dialog = new SettingsForm();
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
-            if (dialog.LanguageChanged)
+            if (dialog.RestartRequired)
             {
                 Application.Restart();
                 Close();
                 return;
             }
 
+            RefreshProjectLibrary(preserveSelection: true, rescanSelected: true);
             SetStatus(UiText.T(
-                "Tool paths saved. New actions will use the updated paths immediately.",
-                "Пути к инструментам сохранены. Новые действия сразу используют обновлённые пути."));
+                "Settings saved. Project library and tool paths refreshed.",
+                "Настройки сохранены. Библиотека проектов и пути к инструментам обновлены."));
         }
     }
 
@@ -380,6 +483,7 @@ public sealed class MainForm : Form
     {
         if (TrySaveProject())
         {
+            RefreshProjectLibrary(preserveSelection: true, rescanSelected: true);
             SetStatus(UiText.T(
                 $"Saved. DMX: {_loadedManifest!.DmxFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}.",
                 $"Сохранено. DMX: {_loadedManifest!.DmxFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}."));
@@ -590,6 +694,7 @@ public sealed class MainForm : Form
 
     private void ClearProjectView()
     {
+        _loadedManifest = null;
         _projectFolderText.Clear();
         _projectNameText.Clear();
         _heroText.Clear();
@@ -598,20 +703,8 @@ public sealed class MainForm : Form
         _dmxCountLabel.Text = "DMX: 0";
         _pngCountLabel.Text = "PNG: 0";
         _sourceFolderLabel.Text = UiText.T(
-            "Hero source destination: 0source (created on demand by hero extraction).",
-            "Папка исходников героя: 0source (создаётся по запросу при извлечении)." );
-    }
-
-    private static string? ChooseFolder(string description)
-    {
-        using var dialog = new FolderBrowserDialog
-        {
-            Description = description,
-            ShowNewFolderButton = true,
-            UseDescriptionForTitle = true,
-        };
-
-        return dialog.ShowDialog() == DialogResult.OK ? dialog.SelectedPath : null;
+            "Select a project folder from the library.",
+            "Выберите папку проекта в библиотеке.");
     }
 
     private void ShowValidation(string message)
@@ -626,4 +719,9 @@ public sealed class MainForm : Form
 
     private static string? NullIfWhiteSpace(string value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private sealed record ProjectLibraryItem(string Name, string Folder)
+    {
+        public override string ToString() => Name;
+    }
 }
