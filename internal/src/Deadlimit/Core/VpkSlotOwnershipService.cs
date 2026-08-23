@@ -172,8 +172,18 @@ public sealed class VpkSlotOwnershipService
 
     private static string ComputeSha256(string path)
     {
-        using var stream = File.OpenRead(path);
-        return Convert.ToHexString(SHA256.HashData(stream));
+        try
+        {
+            using var stream = File.OpenRead(path);
+            return Convert.ToHexString(SHA256.HashData(stream));
+        }
+        catch (IOException ex)
+        {
+            throw new InvalidOperationException(
+                $"The retail VPK is currently locked by another process and cannot be inspected or replaced:\n\n{path}\n\n" +
+                "Close Deadlock and any VPK viewer using this archive, then run BUILD & TEST again.",
+                ex);
+        }
     }
 
     private static string NormalizePath(string path) =>
