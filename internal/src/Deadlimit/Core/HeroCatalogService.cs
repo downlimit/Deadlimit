@@ -306,7 +306,7 @@ public sealed class HeroCatalogService
         }
 
         var words = normalized
-            .Split(['_', '-', ' '], StringSplitOptions.RemoveEmptyEntries)
+            .Split(new[] { '_', '-', ' ' }, StringSplitOptions.RemoveEmptyEntries)
             .Select(word => word.Equals("and", StringComparison.OrdinalIgnoreCase)
                 ? "&"
                 : char.ToUpperInvariant(word[0]) + word[1..].ToLowerInvariant());
@@ -315,10 +315,10 @@ public sealed class HeroCatalogService
 
     private static string? GetStringProperty(string block, string propertyName)
     {
-        var match = Regex.Match(
-            block,
-            $@"(?m)^\s*{Regex.Escape(propertyName)}\s*=\s*(?:[A-Za-z_]+:)?\"(?<value>(?:\\.|[^\"])*)\"",
-            RegexOptions.CultureInvariant);
+        var pattern = "(?m)^\\s*"
+            + Regex.Escape(propertyName)
+            + "\\s*=\\s*(?:[A-Za-z_]+:)?\"(?<value>(?:\\\\.|[^\"])*)\"";
+        var match = Regex.Match(block, pattern, RegexOptions.CultureInvariant);
         if (!match.Success)
         {
             return null;
@@ -330,9 +330,12 @@ public sealed class HeroCatalogService
 
     private static bool? GetBoolProperty(string block, string propertyName)
     {
+        var pattern = "(?m)^\\s*"
+            + Regex.Escape(propertyName)
+            + "\\s*=\\s*(?<value>true|false)\\s*$";
         var match = Regex.Match(
             block,
-            $@"(?m)^\s*{Regex.Escape(propertyName)}\s*=\s*(?<value>true|false)\s*$",
+            pattern,
             RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
         return match.Success
             ? bool.Parse(match.Groups["value"].Value)
