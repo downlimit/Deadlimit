@@ -27,9 +27,13 @@ game    = disposable compiled output
 
 `game/citadel_addons/<addon>` must never be treated as an independent source of truth.
 
-### PREPARE FOR CSDK cleanup
+## Two output policies
 
-Before changing the current addon's prepared authoring content, `PREPARE FOR CSDK` removes the entire compiled output directory for **that addon only**:
+Deadlimit now has two deliberately different transactions.
+
+### PREPARE FOR CSDK — clean authoring transaction
+
+The standalone authoring action remains conservative. Before changing the current addon's prepared content it removes the entire compiled output directory for **that addon only**:
 
 ```text
 Reduced_CSDK_12/game/citadel_addons/<current_addon>
@@ -42,46 +46,93 @@ It does not delete:
 - another addon's compiled output;
 - retail Deadlock files.
 
-If the current addon's output cannot be removed because files are locked or inaccessible, PREPARE must fail visibly rather than leave a mixed stale/current runtime state.
+If the current addon's output cannot be removed because files are locked or inaccessible, PREPARE fails visibly rather than leaving a mixed stale/current authoring state.
 
-Deleting the whole current-addon output is intentional. Deadlimit does not try to infer a one-to-one mapping between source files and every compiled derivative (`.vtex_c`, `.vmat_c`, `.vmdl_c`, dependencies, generated resources, etc.). A clean rebuild is safer than retaining orphaned compiled files.
+This mode is intended for material/shader/ModelDoc authoring, where correctness is more important than retaining previous compiled artifacts.
 
-### Texture removal lifecycle
+### BUILD & TEST — incremental runtime transaction
 
-For Deadlimit-managed CUSTOM materials, the project-root PNG set is authoritative.
+The normal repeated in-game iteration action preserves the last successful compiled addon output while it runs the same authoring preparation over `content`.
 
-Example:
+After preparation it compares the current prepared content against `.deadlimit/build-test-state.json`, which contains hashes from the last successful BUILD & TEST.
+
+The incremental rule is:
+
+```text
+unchanged source
+→ keep existing compiled output
+
+changed direct source
+→ recompile that source
+
+changed DMX dependency
+→ recompile VMDL source(s)
+
+changed image dependency
+→ recompile VMAT source(s)
+
+removed source with proven output mapping
+→ delete that compiled output
+
+removed source without proven output mapping
+→ abandon incremental retention and perform a clean addon rebuild
+```
+
+The first BUILD & TEST has no trusted prior snapshot, so it performs a clean/full build and establishes the baseline.
+
+The build snapshot is updated only after compile, required AG2 restoration and VPK packaging all succeed. A failed transaction therefore cannot declare partially built output current.
+
+## Texture removal lifecycle
+
+For Deadlimit-managed CUSTOM materials, the project-root PNG set remains authoritative.
+
+Example in the normal daily path:
 
 ```text
 project root contains builder_metal.png
-→ PREPARE copies it into addon content
+→ BUILD & TEST preparation copies it into addon content
 → managed VMAT binds TextureMetalness
-→ CSDK rebuild produces current compiled output in game
+→ changed image/material state is compiled
+→ VPK is repacked directly to retail addons
 
 later builder_metal.png is removed from project root
-→ PREPARE removes the stale derived PNG from addon content
+→ preparation removes the stale derived PNG from addon content
 → managed VMAT returns the slot to its safe default and disables required texture combo state
-→ PREPARE has already cleared game/citadel_addons/<addon>
-→ next CSDK rebuild cannot retain the obsolete compiled metal texture
+→ incremental cleanup removes the old mapped .vtex_c
+→ VMAT is recompiled
+→ the retail VPK is replaced without the obsolete texture
 ```
 
-Thus file addition, update and deletion all converge on one state:
+Thus file addition, update and deletion converge on the current authoritative source without requiring a full rebuild for ordinary mapped texture changes.
+
+## Retail VPK deployment
+
+BUILD & TEST packages:
 
 ```text
-project root / authored content
-→ PREPARE synchronizes authoritative content
-→ current addon game output is clean
-→ CSDK rebuilds game from the new content state
+Reduced_CSDK_12/game/citadel_addons/<addon>
 ```
 
-### Current implementation status
+directly to the configured retail Deadlock installation:
+
+```text
+<Retail Deadlock>/game/citadel/addons/pak##_dir.vpk
+```
+
+where `##` is the project's Release ID (`01` through `99`). Existing numeric chunks for that same slot are removed before repacking.
+
+## Current implementation status
 
 Confirmed in current code:
 
-- `PrepareAuthoringService` deletes `game/citadel_addons/<current_addon>` recursively at the start of PREPARE when it exists;
-- the deletion is scoped from the configured CSDK `game` root plus the normalized current addon name;
+- standalone `PrepareAuthoringService` still deletes `game/citadel_addons/<current_addon>` recursively at the start of PREPARE when it exists;
+- that deletion is scoped to the configured CSDK `game` root plus the normalized current addon name;
 - `CustomMaterialAuthoringService.SyncTextureSourceFolder` removes derived PNG files that no longer exist in the project root;
-- Deadlimit-managed V4 VMATs reconcile texture assignments on every PREPARE, including add/remove behavior;
-- PREPARE does not compile; CSDK12 owns rebuilding the clean `game` output from `content`.
+- Deadlimit-managed V4 VMATs reconcile texture assignments on every preparation, including add/remove behavior;
+- `BuildAndTestService` preserves previous addon game output around PREPARE only when a prior successful Build & Test state exists;
+- changed prepared content is hashed and compiled incrementally;
+- known removed source outputs are pruned, while ambiguous removals force a clean rebuild;
+- freshly recompiled character VMDLs receive the previously validated DeadlockTools `add ag2` post-process using a skeleton reference discovered from the project's own `0source`;
+- `CSDKCfgVPK.exe` packs the compiled addon directly into retail `game/citadel/addons`.
 
-This lifecycle is an implementation invariant for later `RELEASE` / `RELEASE & TEST` work as well: release-time compilation may use a different transaction, but stale compiled artifacts must never survive merely because their source was deleted.
+Live local validation of the complete BUILD & TEST transaction is pending; until that test succeeds, the new transaction is implemented but not yet experimentally confirmed.
