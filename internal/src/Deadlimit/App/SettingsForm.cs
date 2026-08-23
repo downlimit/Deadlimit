@@ -7,25 +7,42 @@ internal sealed class SettingsForm : Form
     private readonly TextBox _csdkRootText = new() { Dock = DockStyle.Fill };
     private readonly TextBox _deadlockToolsRootText = new() { Dock = DockStyle.Fill };
     private readonly TextBox _retailDeadlockRootText = new() { Dock = DockStyle.Fill };
+    private readonly ComboBox _languageCombo = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        Anchor = AnchorStyles.Left,
+        Width = 180,
+    };
+
+    private readonly string _initialLanguage;
 
     public SettingsForm()
     {
-        Text = "Deadlimit Settings";
+        var paths = new DeadlimitPaths();
+        var settings = ProjectStore.GetToolPathSettings();
+        _initialLanguage = settings.UiLanguage;
+
+        Text = UiText.T("Deadlimit Settings", "Настройки Deadlimit");
         StartPosition = FormStartPosition.CenterParent;
         Width = 840;
-        Height = 310;
-        MinimumSize = new Size(720, 300);
+        Height = 360;
+        MinimumSize = new Size(720, 340);
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
 
-        var paths = new DeadlimitPaths();
         _csdkRootText.Text = paths.CsdkRoot;
         _deadlockToolsRootText.Text = paths.DeadlockToolsRoot;
         _retailDeadlockRootText.Text = paths.RetailDeadlockRoot;
 
+        _languageCombo.Items.Add(new LanguageItem("en", "English"));
+        _languageCombo.Items.Add(new LanguageItem("ru", "Русский"));
+        _languageCombo.SelectedIndex = string.Equals(settings.UiLanguage, "ru", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+
         BuildUi();
     }
+
+    public bool LanguageChanged { get; private set; }
 
     private void BuildUi()
     {
@@ -44,7 +61,9 @@ internal sealed class SettingsForm : Form
         {
             AutoSize = true,
             Dock = DockStyle.Fill,
-            Text = "These machine-local paths are used by extraction, authoring preparation, CSDK launch, and later release actions.",
+            Text = UiText.T(
+                "Machine-local tool paths and interface language. Language changes are applied after Deadlimit restarts.",
+                "Локальные пути к инструментам и язык интерфейса. Смена языка применяется после перезапуска Deadlimit."),
             Margin = new Padding(0, 0, 0, 12),
         };
         root.Controls.Add(description, 0, 0);
@@ -53,16 +72,17 @@ internal sealed class SettingsForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 3,
-            RowCount = 3,
+            RowCount = 4,
             AutoSize = true,
         };
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        AddPathRow(grid, 0, "Reduced CSDK12", _csdkRootText, "Select Reduced_CSDK_12 root");
-        AddPathRow(grid, 1, "DeadlockTools", _deadlockToolsRootText, "Select DeadlockTools root");
-        AddPathRow(grid, 2, "Retail Deadlock", _retailDeadlockRootText, "Select Steam Project8Staging root");
+        AddPathRow(grid, 0, "Reduced CSDK12", _csdkRootText, UiText.T("Select Reduced_CSDK_12 root", "Выберите корень Reduced_CSDK_12"));
+        AddPathRow(grid, 1, "DeadlockTools", _deadlockToolsRootText, UiText.T("Select DeadlockTools root", "Выберите корень DeadlockTools"));
+        AddPathRow(grid, 2, UiText.T("Retail Deadlock", "Retail Deadlock"), _retailDeadlockRootText, UiText.T("Select Steam Project8Staging root", "Выберите корень Steam Project8Staging"));
+        AddLanguageRow(grid, 3);
         root.Controls.Add(grid, 0, 1);
 
         var buttons = new FlowLayoutPanel
@@ -76,13 +96,13 @@ internal sealed class SettingsForm : Form
 
         var cancelButton = new Button
         {
-            Text = "CANCEL",
+            Text = UiText.T("CANCEL", "ОТМЕНА"),
             AutoSize = true,
             DialogResult = DialogResult.Cancel,
         };
         var saveButton = new Button
         {
-            Text = "SAVE",
+            Text = UiText.T("SAVE", "СОХРАНИТЬ"),
             AutoSize = true,
         };
         saveButton.Click += (_, _) => SaveSettings();
@@ -117,7 +137,7 @@ internal sealed class SettingsForm : Form
 
         var browseButton = new Button
         {
-            Text = "BROWSE",
+            Text = UiText.T("BROWSE", "ОБЗОР"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
         };
@@ -135,13 +155,32 @@ internal sealed class SettingsForm : Form
         grid.Controls.Add(browseButton, 2, row);
     }
 
+    private void AddLanguageRow(TableLayoutPanel grid, int row)
+    {
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var caption = new Label
+        {
+            Text = UiText.T("Interface language", "Язык интерфейса"),
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 9, 12, 9),
+        };
+
+        _languageCombo.Margin = new Padding(0, 5, 8, 5);
+        grid.Controls.Add(caption, 0, row);
+        grid.Controls.Add(_languageCombo, 1, row);
+    }
+
     private void SaveSettings()
     {
+        var selectedLanguage = (_languageCombo.SelectedItem as LanguageItem)?.Code ?? "en";
         var candidate = new ToolPathSettings
         {
             CsdkRoot = _csdkRootText.Text.Trim(),
             DeadlockToolsRoot = _deadlockToolsRootText.Text.Trim(),
             RetailDeadlockRoot = _retailDeadlockRootText.Text.Trim(),
+            UiLanguage = selectedLanguage,
         };
 
         if (!ValidatePaths(candidate, out var error))
@@ -149,7 +188,7 @@ internal sealed class SettingsForm : Form
             MessageBox.Show(
                 this,
                 error,
-                "Invalid tool paths",
+                UiText.T("Invalid settings", "Некорректные настройки"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
             return;
@@ -158,6 +197,7 @@ internal sealed class SettingsForm : Form
         try
         {
             ProjectStore.SaveToolPathSettings(candidate);
+            LanguageChanged = !string.Equals(_initialLanguage, selectedLanguage, StringComparison.OrdinalIgnoreCase);
             DialogResult = DialogResult.OK;
             Close();
         }
@@ -166,7 +206,7 @@ internal sealed class SettingsForm : Form
             MessageBox.Show(
                 this,
                 ex.Message,
-                "Could not save settings",
+                UiText.T("Could not save settings", "Не удалось сохранить настройки"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -176,39 +216,51 @@ internal sealed class SettingsForm : Form
     {
         if (!Directory.Exists(candidate.CsdkRoot))
         {
-            error = $"Reduced CSDK12 folder does not exist:\n{candidate.CsdkRoot}";
+            error = UiText.T(
+                $"Reduced CSDK12 folder does not exist:\n{candidate.CsdkRoot}",
+                $"Папка Reduced CSDK12 не существует:\n{candidate.CsdkRoot}");
             return false;
         }
 
         var candidatePaths = new DeadlimitPaths(candidate);
         if (!File.Exists(candidatePaths.CsdkLauncherPath))
         {
-            error = $"csdkcfg.exe was not found in the selected Reduced CSDK12 root:\n{candidatePaths.CsdkLauncherPath}";
+            error = UiText.T(
+                $"csdkcfg.exe was not found in the selected Reduced CSDK12 root:\n{candidatePaths.CsdkLauncherPath}",
+                $"csdkcfg.exe не найден в выбранном корне Reduced CSDK12:\n{candidatePaths.CsdkLauncherPath}");
             return false;
         }
 
         if (!Directory.Exists(candidate.DeadlockToolsRoot))
         {
-            error = $"DeadlockTools folder does not exist:\n{candidate.DeadlockToolsRoot}";
+            error = UiText.T(
+                $"DeadlockTools folder does not exist:\n{candidate.DeadlockToolsRoot}",
+                $"Папка DeadlockTools не существует:\n{candidate.DeadlockToolsRoot}");
             return false;
         }
 
         if (!File.Exists(candidatePaths.DeadlockToolsExePath))
         {
-            error = $"DeadlockTools.exe was not found at the expected build path:\n{candidatePaths.DeadlockToolsExePath}";
+            error = UiText.T(
+                $"DeadlockTools.exe was not found at the expected build path:\n{candidatePaths.DeadlockToolsExePath}",
+                $"DeadlockTools.exe не найден по ожидаемому пути:\n{candidatePaths.DeadlockToolsExePath}");
             return false;
         }
 
         if (!Directory.Exists(candidate.RetailDeadlockRoot))
         {
-            error = $"Retail Deadlock folder does not exist:\n{candidate.RetailDeadlockRoot}";
+            error = UiText.T(
+                $"Retail Deadlock folder does not exist:\n{candidate.RetailDeadlockRoot}",
+                $"Папка retail Deadlock не существует:\n{candidate.RetailDeadlockRoot}");
             return false;
         }
 
         var retailCitadel = Path.Combine(candidate.RetailDeadlockRoot, "game", "citadel");
         if (!Directory.Exists(retailCitadel))
         {
-            error = $"The selected retail folder does not contain game\\citadel:\n{candidate.RetailDeadlockRoot}";
+            error = UiText.T(
+                $"The selected retail folder does not contain game\\citadel:\n{candidate.RetailDeadlockRoot}",
+                $"В выбранной retail-папке нет game\\citadel:\n{candidate.RetailDeadlockRoot}");
             return false;
         }
 
@@ -226,5 +278,10 @@ internal sealed class SettingsForm : Form
         };
 
         return dialog.ShowDialog() == DialogResult.OK ? dialog.SelectedPath : null;
+    }
+
+    private sealed record LanguageItem(string Code, string Label)
+    {
+        public override string ToString() => Label;
     }
 }
