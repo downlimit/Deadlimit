@@ -77,7 +77,7 @@ internal sealed class BuildTestSuccessDialog : Form
         root.Controls.Add(buttons, 0, 2);
         Controls.Add(root);
 
-        AcceptButton = launchButton;
+        AcceptButton = okButton;
         CancelButton = okButton;
     }
 
