@@ -29,6 +29,7 @@ internal static class Program
         };
         BuildFeature.Attach(form);
         ProjectLibraryFeature.Attach(form);
+        HeroCatalogFeature.Attach(form);
         UiTheme.ApplyCustomPalette(form, settings.UiTheme);
         form.Shown += (_, _) => form.BeginInvoke((Action)(() => form.ActiveControl = null));
         Application.Run(form);
