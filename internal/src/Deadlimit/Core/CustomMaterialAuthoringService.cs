@@ -17,7 +17,8 @@ public sealed record CustomMaterialAuthoringResult(
 
 public sealed class CustomMaterialAuthoringService
 {
-    private const string GeneratedMarker = "// DEADLIMIT_GENERATED_CUSTOM_VMAT_V3";
+    private const string GeneratedMarker = "// DEADLIMIT_GENERATED_CUSTOM_VMAT_V4";
+    private const string ManagedComment = "// Deadlimit manages Texture* source assignments in this generated VMAT from project-root PNGs on every PREPARE. Non-texture Material Editor edits remain authoritative.";
     private const string DefaultColor = "materials/default/default_color.tga";
     private const string DefaultNormal = "materials/default/default_normal.tga";
     private const string DefaultRoughness = "materials/default/default_rough.tga";
@@ -35,6 +36,18 @@ public sealed class CustomMaterialAuthoringService
 
     private static readonly Regex TextureAssignmentRegex = new(
         "^(?<indent>\\s*)(?<key>Texture[A-Za-z0-9_]+)\\s+\\\"(?<value>[^\\\"]+)\\\"(?<tail>\\s*)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
+
+    private static readonly Regex GeneratedMarkerRegex = new(
+        @"\A// DEADLIMIT_GENERATED_CUSTOM_VMAT_V\d+\r?\n",
+        RegexOptions.Compiled);
+
+    private static readonly Regex InitialScaffoldCommentRegex = new(
+        @"^// Initial scaffold:.*\r?\n?",
+        RegexOptions.Compiled | RegexOptions.Multiline);
+
+    private static readonly Regex StringParameterRegex = new(
+        "^(?<indent>\\s*)(?<key>[A-Za-z0-9_]+)\\s+\\\"(?<value>[^\\\"]*)\\\"(?<tail>\\s*)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
 
     private readonly DeadlimitPaths _paths;
@@ -84,12 +97,6 @@ public sealed class CustomMaterialAuthoringService
                 Array.Empty<string>());
         }
 
-        if (string.IsNullOrWhiteSpace(templateMaterialResource))
-        {
-            throw new InvalidOperationException(
-                "Custom material creation needs one unique retail body/skin/head/face material to inherit shader and non-texture character settings from, but no safe template could be inferred.");
-        }
-
         cancellationToken.ThrowIfCancellationRequested();
         Directory.CreateDirectory(materialContentFolder);
 
@@ -100,11 +107,7 @@ public sealed class CustomMaterialAuthoringService
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        foreach (var sourcePng in rootPngFiles)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            File.Copy(sourcePng, Path.Combine(textureFolder, Path.GetFileName(sourcePng)), overwrite: true);
-        }
+        SyncTextureSourceFolder(rootPngFiles, textureFolder, cancellationToken, log);
 
         var textureCandidates = rootPngFiles
             .Select(path => ParseTextureCandidate(path, materialResourceFolder))
@@ -113,7 +116,7 @@ public sealed class CustomMaterialAuthoringService
             .ToArray();
 
         log.AppendLine($"Custom materials detected: {customReferences.Length}");
-        log.AppendLine($"Custom texture sources refreshed from project root: {rootPngFiles.Length}");
+        log.AppendLine($"Custom texture sources synchronized from project root: {rootPngFiles.Length}");
         log.AppendLine($"Custom texture source folder: {textureFolder}");
         log.AppendLine("Custom texture naming: <material>_color|diffuse|basecolor|albedo, _normal, _rough|roughness, _ao|occlusion, _metal|metalness|metallic; specialty Texture* fields may also bind by matching the material prefix plus the Texture parameter semantic name.");
 
@@ -123,6 +126,7 @@ public sealed class CustomMaterialAuthoringService
         var created = 0;
         var preserved = 0;
         var autoBoundTextures = 0;
+        var managedUpdates = 0;
 
         string? retailTemplateText = null;
         string? retailTemplateVpk = null;
@@ -144,13 +148,53 @@ public sealed class CustomMaterialAuthoringService
 
             Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
 
+            var standardBindings = ResolveTextureBindings(
+                customReference,
+                customReferences.Length,
+                textureCandidates,
+                log);
+
             if (File.Exists(targetPath))
             {
-                preserved++;
-                log.AppendLine($"Custom VMAT preserved: {customReference} -> {targetResource}");
+                var existing = File.ReadAllText(targetPath);
+                if (IsDeadlimitManagedVmat(existing))
+                {
+                    var reconciled = ReconcileManagedVmat(
+                        existing,
+                        customReference,
+                        customReferences.Length,
+                        rootPngFiles,
+                        materialResourceFolder,
+                        standardBindings,
+                        log,
+                        out var boundCount,
+                        out var sanitizedCount);
+
+                    if (!string.Equals(existing, reconciled, StringComparison.Ordinal))
+                    {
+                        File.WriteAllText(targetPath, reconciled);
+                        managedUpdates++;
+                    }
+
+                    autoBoundTextures += boundCount;
+                    preserved++;
+                    log.AppendLine($"Custom VMAT managed texture inputs reconciled: {customReference} -> {targetResource}");
+                    log.AppendLine($"  managed texture fallbacks/defaults applied: {sanitizedCount}");
+                }
+                else
+                {
+                    preserved++;
+                    log.AppendLine($"Custom VMAT preserved as artist-owned/unmanaged: {customReference} -> {targetResource}");
+                }
             }
             else
             {
+                if (string.IsNullOrWhiteSpace(templateMaterialResource))
+                {
+                    throw new InvalidOperationException(
+                        $"Custom material '{customReference}' needs a new VMAT, but Deadlimit could not infer one unique retail body/skin/head/face material to inherit shader and non-texture character settings from.");
+                }
+
                 if (retailTemplateText is null)
                 {
                     (retailTemplateText, retailTemplateVpk) = DecompileRetailMaterialTemplate(
@@ -158,12 +202,6 @@ public sealed class CustomMaterialAuthoringService
                         templateMaterialResource,
                         cancellationToken);
                 }
-
-                var standardBindings = ResolveTextureBindings(
-                    customReference,
-                    customReferences.Length,
-                    textureCandidates,
-                    log);
 
                 var generated = BuildInheritedVmat(
                     retailTemplateText,
@@ -181,18 +219,20 @@ public sealed class CustomMaterialAuthoringService
                 autoBoundTextures += boundCount;
 
                 log.AppendLine(
-                    $"Custom VMAT created from retail character template with sanitized texture inputs: {customReference} -> {targetResource} | template {templateMaterialResource} | VPK {retailTemplateVpk}");
-                log.AppendLine($"  inherited texture-source paths neutralized: {sanitizedCount}");
+                    $"Custom VMAT created from retail character template with managed texture inputs: {customReference} -> {targetResource} | template {templateMaterialResource} | VPK {retailTemplateVpk}");
+                log.AppendLine($"  inherited texture-source paths neutralized/defaulted: {sanitizedCount}");
             }
 
             remaps.Add(new VmdlMaterialRemap(customReference, targetResource));
             vmatResources.Add(targetResource);
         }
 
-        log.AppendLine($"Custom textures auto-bound during VMAT creation: {autoBoundTextures}");
-        log.AppendLine("Custom VMAT policy: create only when missing; never overwrite an existing addon-owned VMAT during PREPARE FOR CSDK.");
+        log.AppendLine($"Custom textures auto-bound in current PREPARE: {autoBoundTextures}");
+        log.AppendLine($"Existing Deadlimit-managed VMAT files updated in current PREPARE: {managedUpdates}");
+        log.AppendLine("Custom VMAT ownership policy: files carrying a DEADLIMIT_GENERATED_CUSTOM_VMAT marker remain texture-managed by Deadlimit; PREPARE may update only their Texture* source assignments and required texture-enable combo state. Non-texture Material Editor edits are preserved.");
+        log.AppendLine("Custom VMAT ownership policy: an existing addon-owned VMAT without a Deadlimit generated marker is artist-owned/unmanaged and is never rewritten by PREPARE.");
         log.AppendLine("Custom VMAT scaffold policy: inherit the current hero character material so shader, outline/NPR colors, strengths, thicknesses and other non-texture tuning survive, but never inherit unresolved hero texture-source paths.");
-        log.AppendLine("Custom texture policy: matching project PNGs replace inherited texture inputs automatically; missing standard PBR texture paths use Source 2 defaults and all other missing Texture* effect/mask paths fall back to a black mask so inherited effects cannot light up the entire custom surface by accident. Non-path vector/scalar Texture* values are preserved.");
+        log.AppendLine("Custom texture policy: the project-root PNG set is authoritative for Deadlimit-managed texture slots on every PREPARE. Adding a matching PNG binds it; removing that PNG reverts the managed slot to its safe default/fallback. Derived PNG copies absent from the project root are removed from the addon texture-source folder.");
 
         return new CustomMaterialAuthoringResult(
             remaps,
@@ -202,6 +242,40 @@ public sealed class CustomMaterialAuthoringService
             rootPngFiles.Length,
             materialContentFolder,
             vmatResources);
+    }
+
+    private static void SyncTextureSourceFolder(
+        IReadOnlyList<string> rootPngFiles,
+        string textureFolder,
+        CancellationToken cancellationToken,
+        StringBuilder log)
+    {
+        var sourceNames = rootPngFiles
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var removed = 0;
+        foreach (var derivedPng in Directory.EnumerateFiles(textureFolder, "*.png", SearchOption.TopDirectoryOnly))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (sourceNames.Contains(Path.GetFileName(derivedPng)))
+            {
+                continue;
+            }
+
+            File.Delete(derivedPng);
+            removed++;
+        }
+
+        foreach (var sourcePng in rootPngFiles)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Copy(sourcePng, Path.Combine(textureFolder, Path.GetFileName(sourcePng)), overwrite: true);
+        }
+
+        log.AppendLine($"Derived custom PNG files removed because source PNG disappeared from project root: {removed}");
     }
 
     private (string Text, string VpkPath) DecompileRetailMaterialTemplate(
@@ -293,11 +367,76 @@ public sealed class CustomMaterialAuthoringService
         out int boundCount,
         out int sanitizedCount)
     {
+        var body = ReconcileTextureInputs(
+            retailTemplateText,
+            customReference,
+            customMaterialCount,
+            rootPngFiles,
+            materialResourceFolder,
+            standardBindings,
+            log,
+            out boundCount,
+            out sanitizedCount);
+
+        body = EnsureStandardTextureAssignments(body, standardBindings);
+        body = ReconcileMetalnessTextureCombo(body, HasBinding(standardBindings, "TextureMetalness"));
+
+        return GeneratedMarker + Environment.NewLine +
+               ManagedComment + Environment.NewLine +
+               body.TrimStart('\r', '\n');
+    }
+
+    private static string ReconcileManagedVmat(
+        string existingText,
+        string customReference,
+        int customMaterialCount,
+        IReadOnlyList<string> rootPngFiles,
+        string materialResourceFolder,
+        IReadOnlyDictionary<string, string?> standardBindings,
+        StringBuilder log,
+        out int boundCount,
+        out int sanitizedCount)
+    {
+        var body = GeneratedMarkerRegex.Replace(existingText, string.Empty, 1);
+        body = InitialScaffoldCommentRegex.Replace(body, string.Empty);
+        body = body.Replace(ManagedComment + "\r\n", string.Empty, StringComparison.Ordinal)
+            .Replace(ManagedComment + "\n", string.Empty, StringComparison.Ordinal);
+
+        body = ReconcileTextureInputs(
+            body,
+            customReference,
+            customMaterialCount,
+            rootPngFiles,
+            materialResourceFolder,
+            standardBindings,
+            log,
+            out boundCount,
+            out sanitizedCount);
+
+        body = EnsureStandardTextureAssignments(body, standardBindings);
+        body = ReconcileMetalnessTextureCombo(body, HasBinding(standardBindings, "TextureMetalness"));
+
+        return GeneratedMarker + Environment.NewLine +
+               ManagedComment + Environment.NewLine +
+               body.TrimStart('\r', '\n');
+    }
+
+    private static string ReconcileTextureInputs(
+        string sourceText,
+        string customReference,
+        int customMaterialCount,
+        IReadOnlyList<string> rootPngFiles,
+        string materialResourceFolder,
+        IReadOnlyDictionary<string, string?> standardBindings,
+        StringBuilder log,
+        out int boundCount,
+        out int sanitizedCount)
+    {
         var localBoundCount = 0;
         var localSanitizedCount = 0;
         var materialToken = NormalizeMatchToken(GetResourceLeaf(customReference));
 
-        var patched = TextureAssignmentRegex.Replace(retailTemplateText, match =>
+        var patched = TextureAssignmentRegex.Replace(sourceText, match =>
         {
             var key = match.Groups["key"].Value;
             var originalValue = match.Groups["value"].Value;
@@ -325,11 +464,91 @@ public sealed class CustomMaterialAuthoringService
 
         boundCount = localBoundCount;
         sanitizedCount = localSanitizedCount;
-
-        return $"{GeneratedMarker}{Environment.NewLine}" +
-               "// Initial scaffold: non-texture values are inherited from the current retail character material; texture-source paths are rebound or neutralized by Deadlimit. After creation Material Editor owns this file and Deadlimit will not overwrite it." +
-               Environment.NewLine + patched;
+        return patched;
     }
+
+    private static string EnsureStandardTextureAssignments(
+        string text,
+        IReadOnlyDictionary<string, string?> standardBindings)
+    {
+        var missing = new List<string>();
+        foreach (var slot in TextureSlots)
+        {
+            var exists = TextureAssignmentRegex.Matches(text)
+                .Any(match => string.Equals(match.Groups["key"].Value, slot.Key, StringComparison.OrdinalIgnoreCase));
+            if (exists)
+            {
+                continue;
+            }
+
+            var value = standardBindings.TryGetValue(slot.Key, out var bound) && !string.IsNullOrWhiteSpace(bound)
+                ? bound
+                : slot.DefaultResource;
+            missing.Add($"    {slot.Key} \"{value}\"");
+        }
+
+        if (missing.Count == 0)
+        {
+            return text;
+        }
+
+        var closingBrace = text.LastIndexOf('}');
+        if (closingBrace < 0)
+        {
+            throw new InvalidDataException("Generated/inherited VMAT did not contain a closing Layer0 brace.");
+        }
+
+        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var insertion = string.Join(newline, missing) + newline;
+        return text.Insert(closingBrace, insertion);
+    }
+
+    private static string ReconcileMetalnessTextureCombo(string text, bool hasMetalnessTexture)
+    {
+        var desired = hasMetalnessTexture ? "1" : "0";
+        var patched = UpsertStringParameter(text, "F_METALNESS_TEXTURE", desired);
+
+        if (hasMetalnessTexture && !HasStringParameter(patched, "F_SPECULAR"))
+        {
+            patched = UpsertStringParameter(patched, "F_SPECULAR", "1");
+        }
+
+        return patched;
+    }
+
+    private static bool HasStringParameter(string text, string key) =>
+        StringParameterRegex.Matches(text)
+            .Any(match => string.Equals(match.Groups["key"].Value, key, StringComparison.OrdinalIgnoreCase));
+
+    private static string UpsertStringParameter(string text, string key, string value)
+    {
+        var matches = StringParameterRegex.Matches(text)
+            .Cast<Match>()
+            .Where(match => string.Equals(match.Groups["key"].Value, key, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        if (matches.Length > 0)
+        {
+            var first = matches[0];
+            return text[..first.Index] +
+                   $"{first.Groups["indent"].Value}{key} \"{value}\"{first.Groups["tail"].Value}" +
+                   text[(first.Index + first.Length)..];
+        }
+
+        var closingBrace = text.LastIndexOf('}');
+        if (closingBrace < 0)
+        {
+            throw new InvalidDataException("Generated/inherited VMAT did not contain a closing Layer0 brace.");
+        }
+
+        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        return text.Insert(closingBrace, $"    {key} \"{value}\"{newline}");
+    }
+
+    private static bool HasBinding(IReadOnlyDictionary<string, string?> bindings, string key) =>
+        bindings.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value);
+
+    private static bool IsDeadlimitManagedVmat(string text) => GeneratedMarkerRegex.IsMatch(text);
 
     private static TextureReplacement ResolveTextureReplacement(
         string key,
@@ -341,9 +560,15 @@ public sealed class CustomMaterialAuthoringService
         IReadOnlyDictionary<string, string?> standardBindings,
         StringBuilder log)
     {
-        if (standardBindings.TryGetValue(key, out var standard) && !string.IsNullOrWhiteSpace(standard))
+        var knownSlot = TextureSlots.FirstOrDefault(slot => string.Equals(slot.Key, key, StringComparison.OrdinalIgnoreCase));
+        if (knownSlot is not null)
         {
-            return new TextureReplacement(standard, AutoBound: true, Sanitized: false);
+            if (standardBindings.TryGetValue(key, out var standard) && !string.IsNullOrWhiteSpace(standard))
+            {
+                return new TextureReplacement(standard, AutoBound: true, Sanitized: false);
+            }
+
+            return new TextureReplacement(knownSlot.DefaultResource, AutoBound: false, Sanitized: true);
         }
 
         var specialty = ResolveSpecialtyTextureBinding(
