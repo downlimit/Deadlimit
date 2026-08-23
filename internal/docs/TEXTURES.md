@@ -1,46 +1,45 @@
 # Deadlimit — Custom texture binding
 
-## 2026-08-23 — Stage 2 clean PBR scaffold
+## 2026-08-23 — Stage 2 inherited character-material scaffold
 
-### Pipeline evidence that triggered the change
+### Pipeline evidence that triggered the rule
 
-The first live CUSTOM-material scaffold was created by decompiling the retail Ivy body material. It opened in CSDK12 Material Editor, but it retained many hero-specific texture references and feature settings (NPR/rim/highlight/etc.). Those retail texture source files were not present inside the addon content tree, so Material Editor reported missing files such as Ivy body rim/rough/AO textures. The inherited feature state also made the custom costume material visually noisy/glowy.
+The first live CUSTOM material was created by decompiling Ivy's retail body material. That proved the retail material is a useful compatibility template, but copying it unchanged also copied many hero texture-source paths. Those source PNG/TGA files do not exist inside the addon `content` tree, so Material Editor reported missing-file errors for retail roughness/rim/AO/etc. The inherited NPR/rim/highlight settings could then light the new costume surface aggressively because their masks were missing or inappropriate.
 
-This means a whole retail hero material is a bad default scaffold for a new artist-owned costume material even though it is shader-compatible.
+The important distinction is therefore:
+
+- **non-texture material tuning is valuable and should be inherited**;
+- **retail texture-source paths must not be inherited blindly**.
 
 ### Fresh external state
 
-Current CSDK12 documentation still uses Material Editor + `.vmat` sources in `content/citadel_addons/<addon>`. Current Source 2/CS2 shader import settings use conventional semantic texture inputs such as `TextureColor`, `TextureNormal`, `TextureRoughness`, `TextureAmbientOcclusion`, and `TextureMetalness`, with `_color`, `_normal`, `_rough`, `_ao`, and `_metal` filename conventions. Current Source 2 core content also exposes default fallback textures under `materials/default/`.
+Current CSDK12 still uses `.vmat` sources in `content/citadel_addons/<addon>` and Material Editor for authoring/compilation. Current Source 2 materials still expose conventional inputs such as `TextureColor`, `TextureNormal`, `TextureRoughness`, `TextureAmbientOcclusion`, and `TextureMetalness`, with default resources under `materials/default/`.
 
-### New creation rule
+### V3 creation rule
 
-A missing CUSTOM VMAT is now created as a **clean PBR scaffold**, not as a copy of the hero body material.
+A missing CUSTOM VMAT is now created from the uniquely inferred current retail character material (for example the body/skin/head/face material actually referenced by the current hero/model), then Deadlimit sanitizes **only its texture inputs**.
 
-Deadlimit first attempts to read the shader name from the installed CSDK core `materials/default/default.vmat`. If unavailable it falls back to `shaders/complex.shader`.
+This intentionally preserves the retail material's:
 
-The initial scaffold contains only ordinary PBR inputs and neutral/default values. It intentionally does not inherit hero-specific NPR, rim-light, highlight, self-illum, tint-mask, or other specialty texture references.
+- shader;
+- NPR/outline/highlight/rim feature configuration;
+- outline colors and other color/vector values;
+- outline/rim/highlight strengths, thicknesses, radii and similar scalar tuning;
+- other non-texture flags and parameters.
 
-Default fallbacks:
-
-```text
-TextureColor            -> materials/default/default_color.tga
-TextureNormal           -> materials/default/default_normal.tga
-TextureRoughness        -> materials/default/default_rough.tga
-TextureAmbientOcclusion -> materials/default/default_ao.tga
-Metalness               -> scalar 0 unless a metalness map is supplied
-```
+Deadlimit does not hardcode a specific `v1`/`v3` material generation. It inherits whichever defensible current retail character material is resolved by the current hero/DMX pipeline.
 
 ### Automatic project-root PNG binding
 
-Project-root PNG files continue to be copied to:
+Project-root PNG files are copied to:
 
 ```text
 content/citadel_addons/<addon>/materials/<addon>/textures/
 ```
 
-When a CUSTOM VMAT is first created, Deadlimit matches texture filenames to the custom material name.
+When the CUSTOM VMAT is first created, matching filenames replace the inherited texture path automatically.
 
-Supported suffixes:
+Supported standard suffixes:
 
 ```text
 Color:      _color, _diffuse, _basecolor, _base_color, _albedo
@@ -61,24 +60,41 @@ builder_ao.png          -> TextureAmbientOcclusion
 builder_metal.png       -> TextureMetalness
 ```
 
-If the project has exactly one CUSTOM material and exactly one PNG candidate for a semantic slot, Deadlimit may use that unique candidate even when the filename prefix differs. This is deliberately limited to the unambiguous single-material case.
+For specialty inherited `Texture*` fields Deadlimit also supports semantic-name matching. Example: a retail parameter `TextureRimLightMask` can bind `builder_rimlightmask.png` (or `builder_rimlight.png`) when the match is unambiguous.
 
-Ambiguous matches fail closed and use the default fallback instead of guessing.
+If there is exactly one CUSTOM material and exactly one candidate for a semantic slot, a unique-project fallback may be used even if the filename prefix differs. Ambiguous matches fail closed.
+
+### Missing texture inputs
+
+Retail texture-source paths are never left pointing at unavailable hero PNG/TGA files in a newly generated CUSTOM VMAT.
+
+When no project texture matches:
+
+```text
+TextureColor            -> materials/default/default_color.tga
+TextureNormal           -> materials/default/default_normal.tga
+TextureRoughness        -> materials/default/default_rough.tga
+TextureAmbientOcclusion -> materials/default/default_ao.tga
+TextureMetalness        -> materials/default/default_black_mask.tga
+other Texture* masks/effect inputs -> materials/default/default_black_mask.tga
+```
+
+Using a black fallback for specialty effect/mask textures is deliberate: it preserves the inherited numeric/color tuning but prevents missing rim/self-illum/highlight/etc. masks from enabling the whole custom surface and producing the "red/glowing Warframe" failure class.
 
 ### Preservation contract
 
-Generated V2 scaffolds contain this marker:
+Generated V3 scaffolds contain:
 
 ```text
-// DEADLIMIT_GENERATED_CUSTOM_VMAT_V2
+// DEADLIMIT_GENERATED_CUSTOM_VMAT_V3
 ```
 
-This marker is diagnostic only. The authoritative rule remains: **PREPARE FOR CSDK never overwrites an existing addon-owned CUSTOM VMAT.** Once created, Material Editor owns that VMAT.
+The marker is diagnostic only. The authoritative rule remains: **PREPARE FOR CSDK never overwrites an existing addon-owned CUSTOM VMAT.** Once Material Editor has saved it, that file is artist-owned.
 
-Therefore existing CUSTOM VMATs created by the older retail-template implementation are preserved rather than silently migrated. Recreating one with the new clean scaffold requires deleting/resetting that specific generated VMAT intentionally; this avoids destroying artist edits.
+Existing V1/V2/custom-edited VMATs are not silently migrated. To test a newer generator for one material, that specific generated VMAT must be intentionally deleted/reset first.
 
 ### Validation status
 
 Implementation: complete.
 
-Live validation of the new V2 scaffold in the current Ivy project: pending.
+Live validation of V3 on the current Ivy project: pending.
