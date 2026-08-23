@@ -6,14 +6,14 @@ Deadlimit is a Windows desktop tool for building and testing Deadlock character 
 
 1. **Extract** — choose a Deadlock hero and export/decompile the relevant source assets into a working folder.
 2. **Author** — point Deadlimit at a folder containing DMX model files and textures; create a project; prepare a CSDK workspace; open the model/material authoring stage for shader and texture setup.
-3. **Release** — compile changed resources, apply required post-processing, validate the build, package a VPK, and place it in the configured test/deploy location.
+3. **Iterate in game** — after authoring is established, use one `BUILD & TEST` action to prepare changes, compile, restore required model post-processing, package the VPK, and deploy it directly to retail Deadlock addons.
 
-The user-facing goal is that routine iteration becomes:
+The user-facing normal iteration loop is:
 
 ```text
 Export DMX / save textures
-→ Deadlimit: Release
-→ test in Deadlock
+→ BUILD & TEST
+→ restart/test in Deadlock
 ```
 
 ## Documentation map
@@ -25,7 +25,8 @@ Export DMX / save textures
 - `EXTRACTION.md` — current retail hero discovery/decompilation implementation, Source 2 Viewer integration, safety rules, evidence, and dependency-closure hypothesis.
 - `MATERIALS.md` — REUSE/CUSTOM material routing, confirmed VMDL remap evidence, and automatic compatibility-repair rules such as the generic eye fallback detector.
 - `TEXTURES.md` — inherited CUSTOM VMAT scaffolding, project-root PNG naming conventions, automatic texture rebinding, managed add/remove behavior, and safe fallbacks.
-- `OUTPUT_LIFECYCLE.md` — authoritative `content` vs disposable compiled `game` contract, current-addon stale-output cleanup, and deletion lifecycle for removed source assets.
+- `OUTPUT_LIFECYCLE.md` — authoritative `content` vs disposable compiled `game` contract, clean authoring PREPARE behavior, and incremental BUILD & TEST stale-output handling.
+- `BUILD_TEST.md` — accepted one-click daily iteration transaction: incremental prepare/compile, AG2 restoration, VPK packaging and direct retail addons deployment.
 - `ARCHITECTURE.md` — environment roots, architecture, pipeline structure, and confirmed technical facts.
 - `ROADMAP.md` — implementation stages and acceptance criteria.
 
