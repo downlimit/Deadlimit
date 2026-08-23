@@ -147,7 +147,7 @@ internal static class BuildFeature
             });
 
             var service = new BuildAndTestService(new DeadlimitPaths());
-            var result = await service.BuildAsync(manifest, progress);
+            var result = await Task.Run(() => service.BuildAsync(manifest, progress));
 
             MessageBox.Show(
                 form,
