@@ -8,8 +8,9 @@ Goal: preserve project context and establish reproducible development workflow.
 - connect local `C:\WorkProjects\Deadlock\Deadlimit` workspace;
 - define project manifest format;
 - add a minimal host and environment diagnostics;
-- detect configured CSDK/Deadlock/DeadlockTools paths;
-- record tool versions in diagnostics.
+- configure CSDK/Deadlock/DeadlockTools paths in local settings;
+- record tool versions in diagnostics;
+- expose convenience actions for opening the project folder and launching CSDK12.
 
 ## Stage 1 — Project ingestion and CSDK authoring preparation
 
@@ -26,8 +27,6 @@ Validated locally on 2026-08-22:
 - remember and reopen the last project;
 - reserve `0source` as the on-demand retail hero extraction destination without creating it during ordinary project creation.
 
-Acceptance was confirmed with a real project: project metadata survived close/relaunch and the same project reopened automatically.
-
 The exact project-folder contract is documented in `WORKSPACE.md`.
 
 ### Stage 1A.1 — Hero extraction validation slice — ACCEPTED FOR MODEL-FOLDER EXTRACTION
@@ -41,73 +40,79 @@ Validated locally on 2026-08-22:
 - the resulting hero source folder contained the decompiled main VMDL and many DMX resources;
 - existing artist root assets were not part of the extraction transaction.
 
+`0source` is the pristine read-only retail baseline for authoring reconstruction. Deadlimit patches only copies in CSDK content.
+
 This accepts the extraction mechanism and destination contract needed by Stage 1B. It does not yet claim complete material/texture/shared dependency closure. That broader extraction completeness remains a Stage 4 concern unless an earlier stage exposes a concrete missing dependency first. See `EXTRACTION.md`.
 
-### Stage 1B — Prepare for CSDK authoring — CURRENT
-
-The earlier headless `PREPARE + COMPILE` experiment successfully proved that the current project's DMX can compile and that the Wall Worm material-remap mechanism is exercised. That experiment is retained as evidence in `BUILD.md`, but it is no longer the intended authoring workflow.
+### Stage 1B — Prepare for CSDK authoring — ACCEPTED FOR CURRENT IVY PIPELINE
 
 Current architecture:
 
 ```text
 artist project root
 → Deadlimit PREPARE FOR CSDK
+→ delete only stale game/citadel_addons/<current addon>
+→ reconstruct authoring source from pristine 0source
 → Reduced_CSDK_12\content\citadel_addons\<addon>
 → launch CSDK12
 → CSDK tools compile content into game automatically
 ```
 
-`PREPARE FOR CSDK` must:
+Validated locally on the current Ivy project:
 
-- take artist-owned top-level DMX files from the saved project;
-- derive the addon name and replacement model resource path;
-- prepare/update only `content\citadel_addons\<addon>`;
-- copy required retail authoring source context from `0source`;
-- generate the project-owned render-mesh node(s);
-- generate the narrow Wall Worm material remaps without rewriting artist DMX;
-- keep current CSDK12-incompatible `NmSkeletonList` and `AnimGraph2List` out of source ModelDoc;
-- persist the prepared source VMDL path and logs;
-- never delete or compile `game\citadel_addons\<addon>` during this action.
+- artist DMX overlays the intended retail render mesh;
+- retail VMDL document/version/root structure is preserved;
+- current CSDK12-incompatible `NmSkeletonList` and `AnimGraph2List` source nodes are excluded;
+- retail render meshes/bodygroups/LODs remain intact;
+- retail `AnimationList` and source animation files survive, restoring sequence preview;
+- Wall Worm material-path repairs are generated without modifying the artist DMX;
+- the generic dev eye fallback is remapped to the uniquely inferred body material and visually fixes Ivy's black eyes;
+- CSDK12 owns normal compilation from `content` to `game`;
+- `PREPARE FOR CSDK` does not invoke ResourceCompiler or compiled-binary AG2 fixes.
 
-CSDK12 owns normal authoring compilation from `content` to `game`. Direct runtime compilation and post-compile AG2 patching move to the later Release/Test transaction, where Deadlimit can control the full operation intentionally.
+Stage 1B is accepted for the current Ivy pipeline. Cross-hero validation remains future compatibility work rather than a blocker for Stage 2.
 
-Acceptance for Stage 1B:
+## Stage 2 — Authoring workspace and materials — CURRENT
+
+Goal: support the intended intermediate shader/material authoring stage without destroying artist edits.
+
+### Stage 2A — CUSTOM VMAT scaffold and preservation — IMPLEMENTED, LIVE VALIDATION NEXT
+
+`PREPARE FOR CSDK` now:
+
+- keeps retail materials as REUSE through the existing compatibility routing;
+- detects the observed Wall Worm custom-slot form `materials/<custom_name>` with no `.vmat` extension;
+- routes each detected custom slot to an addon-owned `materials/<addon>/<custom_name>.vmat`;
+- creates a missing custom VMAT by decompiling the uniquely inferred retail body/skin/head/face material as a character-compatible starting scaffold;
+- copies project-root PNG inputs to `materials/<addon>/textures/` inside CSDK content;
+- never overwrites an existing addon-owned custom VMAT;
+- keeps the addon content tree persistent across repeated prepares while cleaning only compiled game output.
+
+Immediate live validation:
 
 ```text
-PREPARE FOR CSDK
-→ launch CSDK12
-→ addon source appears correctly
-→ CSDK compiles it
-→ model is inspectable in authoring tools
+Updater
+→ PREPARE FOR CSDK
+→ expect one CUSTOM material and one newly created VMAT
+→ LAUNCH CSDK
+→ inspect model/custom material in Material Editor
+→ edit + save VMAT
+→ close CSDK
+→ PREPARE FOR CSDK again
+→ expect created 0 / preserved 1
+→ reopen CSDK and verify authored VMAT changes survived
 ```
 
-Current visual issues under investigation are recorded in `BUILD.md`: black eyes and missing sequence preview.
+Acceptance for Stage 2A: the current project can route the custom costume material into a valid editable VMAT, CSDK can compile it, and a second prepare preserves user-authored VMAT changes.
 
-## Stage 2 — Authoring workspace and materials — NEXT
+### Remaining Stage 2 work after 2A acceptance
 
-Goal: support the intended intermediate shader/material authoring stage.
+- validate texture source visibility/selection in Material Editor;
+- decide whether filename heuristics are reliable enough for optional automatic texture-slot assignment;
+- expand CUSTOM classification only when another real DMX encoding is observed;
+- provide a direct action to open the relevant material in the Source 2 authoring tools if useful.
 
-Immediate next validation:
-
-```text
-open prepared addon in CSDK12
-→ inspect generated VMDL/model
-→ verify reused retail materials
-→ identify custom material slots
-→ establish custom VMAT + texture authoring behavior
-→ preserve authored VMAT changes across later prepare/release operations
-```
-
-Then automate:
-
-- classify imported model materials as REUSE or CUSTOM;
-- preserve retail material references;
-- create addon-owned VMAT scaffolding for new custom materials;
-- create/organize texture source directories and descriptors where required;
-- never overwrite existing authored custom VMAT files;
-- provide an action to open the relevant Source 2 authoring tools.
-
-Acceptance: a project containing original hero body materials plus a custom costume material can be prepared, edited in Material Editor, saved, closed, and reopened without losing authored material changes.
+Full Stage 2 acceptance: a project containing original hero body materials plus a custom costume material can be prepared, edited in Material Editor, saved, closed, prepared again, and reopened without losing authored material changes.
 
 ## Stage 3 — Release / test pipeline
 
@@ -150,7 +155,7 @@ Final primary actions:
 EXTRACT HERO
 NEW PROJECT
 PREPARE FOR CSDK
-OPEN CSDK
+LAUNCH CSDK
 RELEASE
 RELEASE & TEST
 ```
