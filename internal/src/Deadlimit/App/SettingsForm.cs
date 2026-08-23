@@ -47,7 +47,7 @@ internal sealed class SettingsForm : Form
         _languageCombo.Items.Add(new LanguageItem("ru", "Русский"));
         _languageCombo.SelectedIndex = string.Equals(settings.UiLanguage, "ru", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
 
-        _themeCombo.Items.Add(new ThemeItem("system", UiText.T("Windows theme", "Тема Windows")));
+        _themeCombo.Items.Add(new ThemeItem("system", UiText.T("System theme", "Системная тема")));
         _themeCombo.Items.Add(new ThemeItem("light", UiText.T("Light", "Светлая")));
         _themeCombo.Items.Add(new ThemeItem("gray", UiText.T("Gray", "Серая")));
         _themeCombo.Items.Add(new ThemeItem("dark", UiText.T("Dark", "Тёмная")));
