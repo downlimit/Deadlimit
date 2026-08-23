@@ -121,6 +121,8 @@ directly to the configured retail Deadlock installation:
 
 where `##` is the project's Release ID (`01` through `99`). Existing numeric chunks for that same slot are removed before repacking.
 
+Packaging is now owned in-process by Deadlimit through ValvePak rather than the external CSDKCfgVPK GUI. The archive is built as VPK version 2 in a temporary retail-adjacent file, hash/file checksums are verified, and only then is the previous configured retail VPK replaced. This prevents the external packer's modal success dialog from interrupting the one-action BUILD & TEST workflow.
+
 ## Current implementation status
 
 Confirmed in current code:
@@ -133,6 +135,7 @@ Confirmed in current code:
 - changed prepared content is hashed and compiled incrementally;
 - known removed source outputs are pruned, while ambiguous removals force a clean rebuild;
 - freshly recompiled character VMDLs receive the previously validated DeadlockTools `add ag2` post-process using a skeleton reference discovered from the project's own `0source`;
-- `CSDKCfgVPK.exe` packs the compiled addon directly into retail `game/citadel/addons`.
+- ValvePak creates and verifies the final VPK in-process, then Deadlimit deploys it transactionally into retail `game/citadel/addons`;
+- Build & Test reports overall percentage progress to the UI while compiling/packing.
 
-Live local validation of the complete BUILD & TEST transaction is pending; until that test succeeds, the new transaction is implemented but not yet experimentally confirmed.
+Live local validation of the new in-process VPK transaction and progress/completion UX is pending. The previous CSDKCfgVPK-based transaction already produced a working retail `pak01_dir.vpk`; the next acceptance run determines whether the silent ValvePak replacement is behaviorally equivalent for the current Deadlock addon loader.
