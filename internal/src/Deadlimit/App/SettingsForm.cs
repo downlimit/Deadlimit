@@ -13,20 +13,28 @@ internal sealed class SettingsForm : Form
         Anchor = AnchorStyles.Left,
         Width = 180,
     };
+    private readonly ComboBox _themeCombo = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        Anchor = AnchorStyles.Left,
+        Width = 180,
+    };
 
     private readonly string _initialLanguage;
+    private readonly string _initialTheme;
 
     public SettingsForm()
     {
         var paths = new DeadlimitPaths();
         var settings = ProjectStore.GetToolPathSettings();
         _initialLanguage = settings.UiLanguage;
+        _initialTheme = settings.UiTheme;
 
         Text = UiText.T("Deadlimit Settings", "Настройки Deadlimit");
         StartPosition = FormStartPosition.CenterParent;
         Width = 840;
-        Height = 360;
-        MinimumSize = new Size(720, 340);
+        Height = 400;
+        MinimumSize = new Size(720, 380);
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
@@ -39,10 +47,25 @@ internal sealed class SettingsForm : Form
         _languageCombo.Items.Add(new LanguageItem("ru", "Русский"));
         _languageCombo.SelectedIndex = string.Equals(settings.UiLanguage, "ru", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
 
+        _themeCombo.Items.Add(new ThemeItem("system", UiText.T("Windows theme", "Тема Windows")));
+        _themeCombo.Items.Add(new ThemeItem("light", UiText.T("Light", "Светлая")));
+        _themeCombo.Items.Add(new ThemeItem("gray", UiText.T("Gray", "Серая")));
+        _themeCombo.Items.Add(new ThemeItem("dark", UiText.T("Dark", "Тёмная")));
+        _themeCombo.SelectedIndex = settings.UiTheme switch
+        {
+            "light" => 1,
+            "gray" => 2,
+            "dark" => 3,
+            _ => 0,
+        };
+
         BuildUi();
+        UiTheme.ApplyCustomPalette(this, settings.UiTheme);
     }
 
-    public bool LanguageChanged { get; private set; }
+    public bool RestartRequired { get; private set; }
+
+    public bool LanguageChanged => RestartRequired;
 
     private void BuildUi()
     {
@@ -62,8 +85,8 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             Dock = DockStyle.Fill,
             Text = UiText.T(
-                "Machine-local tool paths and interface language. Language changes are applied after Deadlimit restarts.",
-                "Локальные пути к инструментам и язык интерфейса. Смена языка применяется после перезапуска Deadlimit."),
+                "Machine-local tool paths, interface language and theme. Language and theme changes are applied after Deadlimit restarts.",
+                "Локальные пути к инструментам, язык и тема интерфейса. Смена языка и темы применяется после перезапуска Deadlimit."),
             Margin = new Padding(0, 0, 0, 12),
         };
         root.Controls.Add(description, 0, 0);
@@ -72,7 +95,7 @@ internal sealed class SettingsForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 3,
-            RowCount = 4,
+            RowCount = 5,
             AutoSize = true,
         };
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -83,6 +106,7 @@ internal sealed class SettingsForm : Form
         AddPathRow(grid, 1, "DeadlockTools", _deadlockToolsRootText, UiText.T("Select DeadlockTools root", "Выберите корень DeadlockTools"));
         AddPathRow(grid, 2, UiText.T("Retail Deadlock", "Retail Deadlock"), _retailDeadlockRootText, UiText.T("Select Steam Project8Staging root", "Выберите корень Steam Project8Staging"));
         AddLanguageRow(grid, 3);
+        AddThemeRow(grid, 4);
         root.Controls.Add(grid, 0, 1);
 
         var buttons = new FlowLayoutPanel
@@ -172,15 +196,34 @@ internal sealed class SettingsForm : Form
         grid.Controls.Add(_languageCombo, 1, row);
     }
 
+    private void AddThemeRow(TableLayoutPanel grid, int row)
+    {
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var caption = new Label
+        {
+            Text = UiText.T("Interface theme", "Тема интерфейса"),
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 9, 12, 9),
+        };
+
+        _themeCombo.Margin = new Padding(0, 5, 8, 5);
+        grid.Controls.Add(caption, 0, row);
+        grid.Controls.Add(_themeCombo, 1, row);
+    }
+
     private void SaveSettings()
     {
         var selectedLanguage = (_languageCombo.SelectedItem as LanguageItem)?.Code ?? "en";
+        var selectedTheme = (_themeCombo.SelectedItem as ThemeItem)?.Code ?? "system";
         var candidate = new ToolPathSettings
         {
             CsdkRoot = _csdkRootText.Text.Trim(),
             DeadlockToolsRoot = _deadlockToolsRootText.Text.Trim(),
             RetailDeadlockRoot = _retailDeadlockRootText.Text.Trim(),
             UiLanguage = selectedLanguage,
+            UiTheme = selectedTheme,
         };
 
         if (!ValidatePaths(candidate, out var error))
@@ -197,7 +240,8 @@ internal sealed class SettingsForm : Form
         try
         {
             ProjectStore.SaveToolPathSettings(candidate);
-            LanguageChanged = !string.Equals(_initialLanguage, selectedLanguage, StringComparison.OrdinalIgnoreCase);
+            RestartRequired = !string.Equals(_initialLanguage, selectedLanguage, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(_initialTheme, selectedTheme, StringComparison.OrdinalIgnoreCase);
             DialogResult = DialogResult.OK;
             Close();
         }
@@ -281,6 +325,11 @@ internal sealed class SettingsForm : Form
     }
 
     private sealed record LanguageItem(string Code, string Label)
+    {
+        public override string ToString() => Label;
+    }
+
+    private sealed record ThemeItem(string Code, string Label)
     {
         public override string ToString() => Label;
     }
