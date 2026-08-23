@@ -14,4 +14,8 @@
     <PackageReference Include="ValveResourceFormat" Version="20.0.6980" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\assets\Deadlimit_128_v3.ico" LogicalName="Deadlimit.AppIcon.ico" />
+  </ItemGroup>
+
 </Project>
