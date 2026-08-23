@@ -23,6 +23,7 @@ internal static class ProjectLibraryFeature
 
         WidenLibraryColumn(libraryGroup);
         ConfigureLibraryFormatting(library);
+        ConfigureLibraryDoubleClick(form, library);
         AddCreateProjectButton(form, libraryGroup, library);
     }
 
@@ -65,13 +66,55 @@ internal static class ProjectLibraryFeature
                 : manifest.ReleaseTarget.Trim();
 
             var marker = manifest is not null ? "◆" : hasMetadataFile ? "!" : "◇";
-            var state = manifest is not null
-                ? UiText.T("PROJECT", "ПРОЕКТ")
-                : hasMetadataFile
-                    ? UiText.T("JSON ERROR", "ОШИБКА JSON")
-                    : UiText.T("FOLDER", "ПАПКА");
+            var errorSuffix = hasMetadataFile && manifest is null
+                ? $"   · {UiText.T("JSON ERROR", "ОШИБКА JSON")}"
+                : string.Empty;
 
-            e.Value = $"{marker}  ID {id}   {folderName}   · {state}";
+            e.Value = $"{marker}  ID {id}   {folderName}{errorSuffix}";
+        };
+    }
+
+    private static void ConfigureLibraryDoubleClick(MainForm form, ListBox library)
+    {
+        library.MouseDoubleClick += (_, e) =>
+        {
+            var index = library.IndexFromPoint(e.Location);
+            if (index < 0)
+            {
+                return;
+            }
+
+            var folderName = library.Items[index]?.ToString();
+            var projectsRoot = ProjectStore.GetToolPathSettings().ProjectsRoot;
+            if (string.IsNullOrWhiteSpace(folderName) || string.IsNullOrWhiteSpace(projectsRoot))
+            {
+                return;
+            }
+
+            var folder = Path.Combine(projectsRoot, folderName);
+            if (!Directory.Exists(folder))
+            {
+                return;
+            }
+
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"\"{folder}\"",
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                MessageBox.Show(
+                    form,
+                    ex.Message,
+                    UiText.T("Could not open project folder", "Не удалось открыть папку проекта"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
         };
     }
 
