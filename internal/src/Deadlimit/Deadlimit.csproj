@@ -7,7 +7,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <ApplicationIcon>..\..\assets\Deadlimit_128_v3.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\assets\Deadlimit_128_v4.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,7 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="..\..\assets\Deadlimit_128_v3.ico" LogicalName="Deadlimit.AppIcon.ico" />
+    <EmbeddedResource Include="..\..\assets\Deadlimit_128_v4.ico" LogicalName="Deadlimit.AppIcon.ico" />
   </ItemGroup>
 
 </Project>
