@@ -16,7 +16,9 @@ Selecting a library entry loads its existing `.deadlimit/project.json` metadata 
 
 For compatibility with existing project JSON files, the manifest may still contain `ProjectName`, but Deadlimit derives and normalizes that value from the project folder name whenever metadata is loaded or saved.
 
-The project panel places `SAVE PROJECT / СОХРАНИТЬ ПРОЕКТ` in the right action column directly below the hero-list refresh action. `Release ID` has a hover tip explaining that valid IDs are `01-99` and map to the deployed retail VPK name `pak##_dir.vpk`.
+The project panel places the folder actions on the project-folder row: a compact `📂` button opens the selected project folder and `EXTRACT HERO SOURCE / ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ` sits immediately to its right. `SAVE PROJECT / СОХРАНИТЬ ПРОЕКТ` remains in the right action column directly below the hero-list refresh action.
+
+`Release ID` is a numeric `01-99` spinner rather than free-form text. The up/down arrows change it by one, existing blank projects remain blank until an ID is chosen, and the control preserves the two-digit presentation. Its hover tip explains that the value maps to the deployed retail VPK name `pak##_dir.vpk`.
 
 The library and the selected project's DMX/PNG scan refresh automatically when the application regains focus, after settings changes and after project saves. The previous NEW PROJECT, OPEN PROJECT and RESCAN actions are therefore not exposed in the main UI.
 

@@ -104,6 +104,12 @@ internal static class UiTheme
                 textBox.ForeColor = palette.Text;
                 break;
 
+            case NumericUpDown numericUpDown:
+                numericUpDown.BorderStyle = BorderStyle.FixedSingle;
+                numericUpDown.BackColor = palette.Input;
+                numericUpDown.ForeColor = palette.Text;
+                break;
+
             case ListBox listBox:
                 // Native WinForms list borders can pick up the Windows accent/focus color.
                 // The enclosing Deadlimit section already provides the visual boundary.
