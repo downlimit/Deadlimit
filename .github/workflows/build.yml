@@ -18,3 +18,20 @@ jobs:
         run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
       - name: Build
         run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+      - name: Startup smoke diagnostic
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path 'internal/src/Deadlimit/bin/Release/net10.0-windows/Deadlimit.exe'
+          $stdout = Join-Path $env:RUNNER_TEMP 'deadlimit-stdout.txt'
+          $stderr = Join-Path $env:RUNNER_TEMP 'deadlimit-stderr.txt'
+          $process = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          Start-Sleep -Seconds 5
+          if ($process.HasExited) {
+            Write-Host 'Deadlimit exited during startup.'
+            Write-Host "Exit code: $($process.ExitCode)"
+            if (Test-Path $stdout) { Get-Content $stdout }
+            if (Test-Path $stderr) { Get-Content $stderr }
+            throw 'Startup smoke failed.'
+          }
+          Stop-Process -Id $process.Id -Force
+          Write-Host 'Deadlimit stayed alive for the startup smoke window.'
