@@ -39,7 +39,9 @@ internal static class Program
         ProjectHeaderFeature.Attach(form);
         ProjectFilesFeature.Attach(form);
         UiTheme.ApplyCustomPalette(form, settings.UiTheme);
+        WindowProgressFeature.Attach(form);
         SteamStatusFeature.Attach(form, settings.UiTheme);
+        SettingsVersionFeature.Attach();
         form.Shown += (_, _) => form.BeginInvoke((Action)(() => form.ActiveControl = null));
 
         if (!startupSmoke)
