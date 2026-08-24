@@ -359,7 +359,7 @@ internal static class BuildFeature
         {
             File.Delete(statePath);
         }
-        File.Move(backupPath, forceStatePath: null);
+        File.Move(backupPath, statePath);
     }
 
     private static ToolStripProgressBar? AddBuildProgressBar(MainForm form)
