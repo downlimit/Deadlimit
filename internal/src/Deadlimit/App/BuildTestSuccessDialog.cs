@@ -2,13 +2,9 @@ namespace Deadlimit.App;
 
 internal sealed class BuildTestSuccessDialog : Form
 {
-    private const string DeadlockSteamUri = "steam://rungameid/1422450";
-
     public BuildTestSuccessDialog(string vpkPath, string summary)
     {
-        var deadlockRunning = DeadlockProcessService.IsRunning();
-
-        Text = UiText.T("Build & Test complete", "Сборка и тест готовы");
+        Text = UiText.T("Build for test complete", "Сборка для теста готова");
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -23,7 +19,7 @@ internal sealed class BuildTestSuccessDialog : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
-            RowCount = 3,
+            RowCount = 2,
         };
 
         var message = new Label
@@ -31,20 +27,6 @@ internal sealed class BuildTestSuccessDialog : Form
             AutoSize = true,
             MaximumSize = new Size(720, 0),
             Text = $"{summary}\n\nVPK:\n{vpkPath}",
-            Margin = new Padding(0, 0, 0, 14),
-        };
-
-        var hint = new Label
-        {
-            AutoSize = true,
-            MaximumSize = new Size(720, 0),
-            Text = deadlockRunning
-                ? UiText.T(
-                    "Deadlock is already running now. The new VPK was deployed successfully before this dialog appeared.",
-                    "Deadlock уже запущен. Новый VPK был успешно установлен до появления этого окна.")
-                : UiText.T(
-                    "Deadlock is not running. Launch it when you are ready to test the new VPK.",
-                    "Deadlock не запущен. Запустите игру, когда будете готовы проверить новый VPK."),
             Margin = new Padding(0, 0, 0, 16),
         };
 
@@ -55,19 +37,8 @@ internal sealed class BuildTestSuccessDialog : Form
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false,
             Dock = DockStyle.Fill,
-            Margin = new Padding(0),
+            Margin = Padding.Empty,
         };
-
-        var launchButton = new Button
-        {
-            Text = deadlockRunning
-                ? UiText.T("DEADLOCK IS RUNNING", "DEADLOCK УЖЕ ЗАПУЩЕН")
-                : UiText.T("LAUNCH DEADLOCK GAME", "ЗАПУСТИТЬ DEADLOCK"),
-            AutoSize = true,
-            Enabled = !deadlockRunning,
-            Margin = new Padding(8, 0, 0, 0),
-        };
-        launchButton.Click += (_, _) => LaunchDeadlock();
 
         var okButton = new Button
         {
@@ -80,41 +51,13 @@ internal sealed class BuildTestSuccessDialog : Form
             Close();
         };
 
-        buttons.Controls.Add(launchButton);
         buttons.Controls.Add(okButton);
 
         root.Controls.Add(message, 0, 0);
-        root.Controls.Add(hint, 0, 1);
-        root.Controls.Add(buttons, 0, 2);
+        root.Controls.Add(buttons, 0, 1);
         Controls.Add(root);
 
-        AcceptButton = deadlockRunning ? okButton : launchButton;
+        AcceptButton = okButton;
         CancelButton = okButton;
-    }
-
-    private void LaunchDeadlock()
-    {
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = DeadlockSteamUri,
-                UseShellExecute = true,
-            });
-
-            DialogResult = DialogResult.OK;
-            Close();
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
-        {
-            MessageBox.Show(
-                this,
-                ex.Message,
-                UiText.T(
-                    "Could not launch Deadlock through Steam",
-                    "Не удалось запустить Deadlock через Steam"),
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
-        }
     }
 }
