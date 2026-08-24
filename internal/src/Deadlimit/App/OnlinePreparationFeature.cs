@@ -5,11 +5,8 @@ namespace Deadlimit.App;
 internal static class OnlinePreparationFeature
 {
     private const string OnlineButtonText = "ONLINE PREARAION";
-    private const int LeftMouseButtonDown = 0x0201;
-    private const int LeftMouseButtonUp = 0x0202;
 
     private static OnlinePreparationSession? _session;
-    private static ShiftPrepareMessageFilter? _messageFilter;
     private static ToolTip? _toolTip;
     private static Button? _prepareButton;
     private static MainForm? _form;
@@ -38,11 +35,7 @@ internal static class OnlinePreparationFeature
             ShowAlways = true,
         };
 
-        _messageFilter = new ShiftPrepareMessageFilter(
-            prepareButton,
-            ToggleOnlinePreparationAsync);
-        Application.AddMessageFilter(_messageFilter);
-
+        prepareButton.MouseDown += OnPrepareMouseDown;
         prepareButton.Click += (_, _) =>
         {
             if (_session is not null)
@@ -54,22 +47,44 @@ internal static class OnlinePreparationFeature
         form.FormClosed += (_, _) => Detach();
     }
 
-    private static async Task ToggleOnlinePreparationAsync()
+    private static void OnPrepareMouseDown(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left
+            || (Control.ModifierKeys & Keys.Shift) != Keys.Shift
+            || _toggleBusy
+            || _prepareButton is null
+            || _prepareButton.IsDisposed)
+        {
+            return;
+        }
+
+        // Suppress the native Button click before WM_LBUTTONUP can turn this
+        // gesture into the normal PREPARE FOR CSDK Click handler.
+        var wasEnabled = _prepareButton.Enabled;
+        _prepareButton.Enabled = false;
+        _prepareButton.Capture = false;
+        _ = ToggleOnlinePreparationAsync(wasEnabled);
+    }
+
+    private static async Task ToggleOnlinePreparationAsync(bool prepareButtonWasEnabled)
     {
         if (_toggleBusy || _form is null || _prepareButton is null)
         {
+            RestorePrepareButtonEnabled(prepareButtonWasEnabled);
             return;
         }
 
         if (_session is not null)
         {
             StopSession();
+            RestorePrepareButtonEnabled(prepareButtonWasEnabled);
             return;
         }
 
         var manifest = ProjectStore.TryLoadLastProject();
         if (manifest is null || !Directory.Exists(manifest.ProjectFolder))
         {
+            RestorePrepareButtonEnabled(prepareButtonWasEnabled);
             MessageBox.Show(
                 _form,
                 UiText.T(
@@ -85,6 +100,7 @@ internal static class OnlinePreparationFeature
         var originalTitle = _form.Text;
         var buttons = FindActionButtons(_prepareButton).ToArray();
         var enabledStates = buttons.ToDictionary(button => button, button => button.Enabled);
+        enabledStates[_prepareButton] = prepareButtonWasEnabled;
 
         try
         {
@@ -141,6 +157,14 @@ internal static class OnlinePreparationFeature
             }
 
             _toggleBusy = false;
+        }
+    }
+
+    private static void RestorePrepareButtonEnabled(bool enabled)
+    {
+        if (_prepareButton is not null && !_prepareButton.IsDisposed)
+        {
+            _prepareButton.Enabled = enabled;
         }
     }
 
@@ -253,10 +277,9 @@ internal static class OnlinePreparationFeature
     {
         StopSession();
 
-        if (_messageFilter is not null)
+        if (_prepareButton is not null && !_prepareButton.IsDisposed)
         {
-            Application.RemoveMessageFilter(_messageFilter);
-            _messageFilter = null;
+            _prepareButton.MouseDown -= OnPrepareMouseDown;
         }
 
         _toolTip?.Dispose();
@@ -298,37 +321,6 @@ internal static class OnlinePreparationFeature
             {
                 yield return descendant;
             }
-        }
-    }
-
-    private sealed class ShiftPrepareMessageFilter(
-        Button button,
-        Func<Task> toggleAsync) : IMessageFilter
-    {
-        private bool _capturingShiftClick;
-
-        public bool PreFilterMessage(ref Message m)
-        {
-            if (m.HWnd != button.Handle)
-            {
-                return false;
-            }
-
-            if (m.Msg == LeftMouseButtonDown
-                && (Control.ModifierKeys & Keys.Shift) == Keys.Shift)
-            {
-                _capturingShiftClick = true;
-                _ = toggleAsync();
-                return true;
-            }
-
-            if (m.Msg == LeftMouseButtonUp && _capturingShiftClick)
-            {
-                _capturingShiftClick = false;
-                return true;
-            }
-
-            return false;
         }
     }
 }
