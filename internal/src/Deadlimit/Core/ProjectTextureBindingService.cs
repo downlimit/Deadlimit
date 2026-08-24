@@ -186,13 +186,12 @@ internal static class ProjectTextureBindingService
                 text = EnableMetalnessTexture(text);
             }
 
-            var sanitizeDeadlimitDerivedPaths = true;
             text = SanitizeMissingTextureSources(
                 text,
                 addonContentRoot,
                 materialResourceFolder,
                 firstManagedPass,
-                sanitizeDeadlimitDerivedPaths,
+                sanitizeDeadlimitDerivedPaths: true,
                 log,
                 out var currentSanitized);
             sanitizedTextures += currentSanitized;
@@ -408,8 +407,18 @@ internal static class ProjectTextureBindingService
         var raw = key.StartsWith("Texture", StringComparison.OrdinalIgnoreCase)
             ? key["Texture".Length..]
             : key;
-        raw = raw.TrimEnd(char.IsDigit);
+        raw = TrimTrailingDigits(raw);
         return CanonicalizeSemantic(NormalizeMatchToken(raw));
+    }
+
+    private static string TrimTrailingDigits(string value)
+    {
+        var end = value.Length;
+        while (end > 0 && char.IsDigit(value[end - 1]))
+        {
+            end--;
+        }
+        return value[..end];
     }
 
     private static string CanonicalizeSemantic(string semantic)
@@ -435,7 +444,9 @@ internal static class ProjectTextureBindingService
         {
             return "metalness";
         }
-        if (semantic is "ao" or "ambientocclusion" || semantic.Contains("occlusion", StringComparison.Ordinal))
+        if (string.Equals(semantic, "ao", StringComparison.Ordinal)
+            || string.Equals(semantic, "ambientocclusion", StringComparison.Ordinal)
+            || semantic.Contains("occlusion", StringComparison.Ordinal))
         {
             return "ao";
         }
