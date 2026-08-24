@@ -71,6 +71,19 @@ internal static class HeroCatalogFeature
         grid.Controls.Add(combo, 1, 2);
         grid.Controls.Add(heroActions, 2, 2);
 
+        var actionColumnWidth = grid.GetControlFromPosition(2, 0)?.PreferredSize.Width ?? 0;
+        if (actionColumnWidth > 0)
+        {
+            heroActions.AutoSize = false;
+            heroActions.Width = actionColumnWidth;
+            heroActions.Height = 32;
+            refreshButton.AutoSize = false;
+            refreshButton.Width = Math.Max(
+                1,
+                actionColumnWidth - lockButton.Width - lockButton.Margin.Horizontal - refreshButton.Margin.Horizontal);
+            refreshButton.Height = 24;
+        }
+
         var toolTip = new ToolTip
         {
             ShowAlways = true,
@@ -221,6 +234,13 @@ internal static class HeroCatalogFeature
                 || string.Equals(button.Text, "СОХРАНИТЬ ПРОЕКТ", StringComparison.Ordinal));
         if (saveButton is not null)
         {
+            if (actionColumnWidth > 0)
+            {
+                saveButton.AutoSize = false;
+                saveButton.Width = actionColumnWidth;
+                saveButton.Height = 24;
+            }
+
             saveButton.Click += (_, _) => form.BeginInvoke((Action)(() =>
             {
                 var folder = folderText.Text.Trim();
