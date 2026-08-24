@@ -1,3 +1,4 @@
+using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using Deadlimit.Core;
 
@@ -14,12 +15,10 @@ internal static class ProjectHeaderFeature
     private const string DeadlockSteamUri = "steam://rungameid/1422450";
 
     private static readonly Color DefaultHeaderColor = Color.FromArgb(36, 39, 43);
-    private static readonly Color CsdkColor = Color.FromArgb(91, 45, 196);
-    private static readonly Color CsdkHoverColor = Color.FromArgb(108, 55, 220);
-    private static readonly Color CsdkPressedColor = Color.FromArgb(74, 35, 164);
-    private static readonly Color GameColor = Color.FromArgb(63, 187, 55);
-    private static readonly Color GameHoverColor = Color.FromArgb(74, 205, 65);
-    private static readonly Color GamePressedColor = Color.FromArgb(48, 154, 42);
+    private static readonly Color CsdkGradientStart = Color.FromArgb(0x58, 0x31, 0xC7);
+    private static readonly Color CsdkGradientEnd = Color.FromArgb(0x9E, 0x1D, 0xC3);
+    private static readonly Color GameGradientStart = Color.FromArgb(0x4C, 0xC7, 0x31);
+    private static readonly Color GameGradientEnd = Color.FromArgb(0x13, 0xA5, 0x44);
 
     public static void Attach(MainForm form)
     {
@@ -73,9 +72,15 @@ internal static class ProjectHeaderFeature
         workspace.RowStyles[0].Height = HeaderRowHeight;
         workspace.Controls.Add(header, 0, 0);
 
-        settingsButton.AutoSize = true;
+        settingsButton.AutoSize = false;
+        settingsButton.Size = new Size(30, 22);
+        settingsButton.Text = "⚙";
+        settingsButton.Font = new Font("Segoe UI Symbol", 9.5F, FontStyle.Regular, GraphicsUnit.Point);
+        settingsButton.TextAlign = ContentAlignment.MiddleCenter;
         settingsButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         settingsButton.Margin = Padding.Empty;
+        settingsButton.Padding = Padding.Empty;
+        settingsButton.TabStop = false;
 
         prepareButton.AutoSize = false;
         prepareButton.Size = new Size(ActionWidth, PrepareHeight);
@@ -84,6 +89,7 @@ internal static class ProjectHeaderFeature
 
         buildButton.AutoSize = false;
         buildButton.Size = new Size(ActionWidth, PrepareHeight);
+        buildButton.Text = UiText.T("BUILD FOR TEST", "СОБРАТЬ ДЛЯ ТЕСТА");
         buildButton.TextAlign = ContentAlignment.MiddleCenter;
         buildButton.Margin = Padding.Empty;
 
@@ -118,11 +124,17 @@ internal static class ProjectHeaderFeature
             InitialDelay = 350,
             AutoPopDelay = 7000,
         };
+        toolTip.SetToolTip(settingsButton, UiText.T("Settings", "Настройки"));
         toolTip.SetToolTip(
             launchGameButton,
             UiText.T(
                 "Launch retail Deadlock through Steam.",
                 "Запустить retail Deadlock через Steam."));
+        toolTip.SetToolTip(
+            header,
+            UiText.T(
+                "Double-click the project cover to open its artwork folder.",
+                "Дважды щёлкните по обложке проекта, чтобы открыть папку с её изображением."));
 
         void PositionControls()
         {
@@ -153,10 +165,57 @@ internal static class ProjectHeaderFeature
             ReplaceBackgroundImage(header, TryLoadImage(path));
         }
 
+        void OpenHeaderFolder()
+        {
+            var folder = folderText.Text.Trim();
+            if (!Directory.Exists(folder))
+            {
+                return;
+            }
+
+            try
+            {
+                var imagePath = EnsureHeaderImage(folder, header.ClientSize);
+                var artworkFolder = Path.GetDirectoryName(imagePath);
+                if (string.IsNullOrWhiteSpace(artworkFolder) || !Directory.Exists(artworkFolder))
+                {
+                    return;
+                }
+
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "explorer.exe",
+                    Arguments = $"\"{artworkFolder}\"",
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception ex) when (ex is IOException
+                or UnauthorizedAccessException
+                or ArgumentException
+                or System.ComponentModel.Win32Exception
+                or InvalidOperationException
+                or System.Runtime.InteropServices.ExternalException)
+            {
+                MessageBox.Show(
+                    form,
+                    ex.Message,
+                    UiText.T("Could not open artwork folder", "Не удалось открыть папку обложки"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
         header.Resize += (_, _) =>
         {
             PositionControls();
             RefreshHeaderImage();
+        };
+        header.MouseDoubleClick += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                OpenHeaderFolder();
+            }
         };
         folderText.TextChanged += (_, _) => RefreshHeaderImage();
         form.Activated += (_, _) => RefreshHeaderImage();
@@ -165,8 +224,8 @@ internal static class ProjectHeaderFeature
         {
             PositionControls();
             RefreshHeaderImage();
-            ConfigureAccentButton(launchCsdkButton, CsdkColor, CsdkHoverColor, CsdkPressedColor);
-            ConfigureAccentButton(launchGameButton, GameColor, GameHoverColor, GamePressedColor);
+            ConfigureGradientButton(launchCsdkButton, CsdkGradientStart, CsdkGradientEnd);
+            ConfigureGradientButton(launchGameButton, GameGradientStart, GameGradientEnd);
         };
 
         PositionControls();
@@ -228,48 +287,98 @@ internal static class ProjectHeaderFeature
         previous?.Dispose();
     }
 
-    private static void ConfigureAccentButton(
-        Button button,
-        Color normal,
-        Color hover,
-        Color pressed)
+    private static void ConfigureGradientButton(Button button, Color gradientStart, Color gradientEnd)
     {
+        var hovered = false;
+        var pressed = false;
+
         button.UseVisualStyleBackColor = false;
         button.FlatStyle = FlatStyle.Flat;
-        button.ForeColor = Color.White;
-        button.BackColor = normal;
         button.FlatAppearance.BorderSize = 0;
-        button.FlatAppearance.MouseOverBackColor = hover;
-        button.FlatAppearance.MouseDownBackColor = pressed;
+        button.ForeColor = Color.White;
+        button.BackColor = gradientStart;
+
+        button.Paint += (_, e) =>
+        {
+            var start = gradientStart;
+            var end = gradientEnd;
+            if (hovered)
+            {
+                start = IncreaseSaturationAndValue(start, saturationFactor: 1.05, valueFactor: 1.10);
+                end = IncreaseSaturationAndValue(end, saturationFactor: 1.05, valueFactor: 1.10);
+            }
+            if (pressed)
+            {
+                start = IncreaseSaturationAndValue(start, saturationFactor: 1.0, valueFactor: 0.90);
+                end = IncreaseSaturationAndValue(end, saturationFactor: 1.0, valueFactor: 0.90);
+            }
+
+            using var brush = new LinearGradientBrush(button.ClientRectangle, start, end, LinearGradientMode.Horizontal);
+            e.Graphics.FillRectangle(brush, button.ClientRectangle);
+            TextRenderer.DrawText(
+                e.Graphics,
+                button.Text,
+                button.Font,
+                button.ClientRectangle,
+                Color.White,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix);
+        };
 
         button.MouseEnter += (_, _) =>
         {
-            button.ForeColor = Color.White;
-            button.BackColor = hover;
-            button.FlatAppearance.BorderSize = 0;
+            hovered = true;
+            button.Invalidate();
         };
         button.MouseLeave += (_, _) =>
         {
-            button.ForeColor = Color.White;
-            button.BackColor = normal;
-            button.FlatAppearance.BorderSize = 0;
+            hovered = false;
+            pressed = false;
+            button.Invalidate();
         };
         button.MouseDown += (_, e) =>
         {
             if (e.Button == MouseButtons.Left)
             {
-                button.ForeColor = Color.White;
-                button.BackColor = pressed;
-                button.FlatAppearance.BorderSize = 0;
+                pressed = true;
+                button.Invalidate();
             }
         };
         button.MouseUp += (_, _) =>
         {
-            var pointer = button.PointToClient(Cursor.Position);
-            button.ForeColor = Color.White;
-            button.BackColor = button.ClientRectangle.Contains(pointer) ? hover : normal;
-            button.FlatAppearance.BorderSize = 0;
+            pressed = false;
+            button.Invalidate();
         };
+    }
+
+    private static Color IncreaseSaturationAndValue(Color color, double saturationFactor, double valueFactor)
+    {
+        var hue = color.GetHue();
+        var saturation = Math.Clamp(color.GetSaturation() * saturationFactor, 0.0, 1.0);
+        var value = Math.Clamp(Math.Max(color.R, Math.Max(color.G, color.B)) / 255.0 * valueFactor, 0.0, 1.0);
+        return ColorFromHsv(hue, saturation, value);
+    }
+
+    private static Color ColorFromHsv(double hue, double saturation, double value)
+    {
+        var chroma = value * saturation;
+        var sector = hue / 60.0;
+        var x = chroma * (1.0 - Math.Abs(sector % 2.0 - 1.0));
+
+        (double r, double g, double b) = sector switch
+        {
+            < 1 => (chroma, x, 0),
+            < 2 => (x, chroma, 0),
+            < 3 => (0, chroma, x),
+            < 4 => (0, x, chroma),
+            < 5 => (x, 0, chroma),
+            _ => (chroma, 0, x),
+        };
+
+        var m = value - chroma;
+        return Color.FromArgb(
+            (int)Math.Round((r + m) * 255),
+            (int)Math.Round((g + m) * 255),
+            (int)Math.Round((b + m) * 255));
     }
 
     private static void LaunchDeadlock(MainForm form)
