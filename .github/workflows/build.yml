@@ -18,3 +18,5 @@ jobs:
         run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
       - name: Build
         run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+      - name: Startup smoke
+        run: dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --startup-smoke
