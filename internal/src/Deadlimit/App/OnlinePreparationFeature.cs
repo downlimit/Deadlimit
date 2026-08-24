@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Deadlimit.Core;
 
 namespace Deadlimit.App;
@@ -5,6 +6,7 @@ namespace Deadlimit.App;
 internal static class OnlinePreparationFeature
 {
     private const string OnlineButtonText = "ONLINE PREARAION";
+    private const int VkShift = 0x10;
 
     private static OnlinePreparationSession? _session;
     private static ToolTip? _toolTip;
@@ -12,6 +14,9 @@ internal static class OnlinePreparationFeature
     private static MainForm? _form;
     private static string? _normalButtonText;
     private static bool _toggleBusy;
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
 
     public static void Attach(MainForm form)
     {
@@ -50,7 +55,7 @@ internal static class OnlinePreparationFeature
     private static void OnPrepareMouseDown(object? sender, MouseEventArgs e)
     {
         if (e.Button != MouseButtons.Left
-            || (Control.ModifierKeys & Keys.Shift) != Keys.Shift
+            || !IsShiftDown()
             || _toggleBusy
             || _prepareButton is null
             || _prepareButton.IsDisposed)
@@ -58,13 +63,17 @@ internal static class OnlinePreparationFeature
             return;
         }
 
-        // Suppress the native Button click before WM_LBUTTONUP can turn this
-        // gesture into the normal PREPARE FOR CSDK Click handler.
+        // Read SHIFT directly from Win32 keyboard state. WinForms ModifierKeys was
+        // observed to miss this gesture on the PREPARE button in the real app.
+        // Disabling before mouse-up prevents the regular Click/PREPARE path.
         var wasEnabled = _prepareButton.Enabled;
         _prepareButton.Enabled = false;
         _prepareButton.Capture = false;
         _ = ToggleOnlinePreparationAsync(wasEnabled);
     }
+
+    private static bool IsShiftDown() =>
+        (GetAsyncKeyState(VkShift) & 0x8000) != 0;
 
     private static async Task ToggleOnlinePreparationAsync(bool prepareButtonWasEnabled)
     {
