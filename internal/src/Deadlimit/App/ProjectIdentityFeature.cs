@@ -269,22 +269,19 @@ internal static class ProjectIdentityFeature
 
     private sealed class ReleaseIdNumericUpDown : NumericUpDown
     {
-        private bool _hasReleaseValue;
-
         public ReleaseIdNumericUpDown()
         {
-            Minimum = 1;
+            Minimum = 0;
             Maximum = 99;
             Increment = 1;
             ReadOnly = false;
             ThousandsSeparator = false;
             TextAlign = HorizontalAlignment.Left;
-            Value = 1;
-            _hasReleaseValue = false;
-            Text = string.Empty;
+            Value = 0;
+            UpdateEditText();
         }
 
-        public string ReleaseText => _hasReleaseValue
+        public string ReleaseText => Value > 0
             ? ((int)Value).ToString("00")
             : string.Empty;
 
@@ -292,93 +289,26 @@ internal static class ProjectIdentityFeature
         {
             if (int.TryParse(value?.Trim(), out var parsed) && parsed is >= 1 and <= 99)
             {
-                _hasReleaseValue = true;
-                if (Value != parsed)
-                {
-                    Value = parsed;
-                }
-                else
-                {
-                    UpdateEditText();
-                }
-                return;
-            }
-
-            _hasReleaseValue = false;
-            Text = string.Empty;
-        }
-
-        public void CommitTypedValue()
-        {
-            ValidateEditText();
-        }
-
-        public override void UpButton()
-        {
-            CommitTypedValue();
-            if (!_hasReleaseValue)
-            {
-                ActivateFromBlank();
-                return;
-            }
-
-            base.UpButton();
-        }
-
-        public override void DownButton()
-        {
-            CommitTypedValue();
-            if (!_hasReleaseValue)
-            {
-                ActivateFromBlank();
-                return;
-            }
-
-            base.DownButton();
-        }
-
-        protected override void ValidateEditText()
-        {
-            var raw = Text.Trim();
-            if (raw.Length == 0)
-            {
-                _hasReleaseValue = false;
-                Text = string.Empty;
-                return;
-            }
-
-            if (int.TryParse(raw, out var parsed) && parsed is >= 1 and <= 99)
-            {
-                _hasReleaseValue = true;
-                if (Value != parsed)
-                {
-                    Value = parsed;
-                }
+                Value = parsed;
                 UpdateEditText();
                 return;
             }
 
+            Value = 0;
+            UpdateEditText();
+        }
+
+        public void CommitTypedValue()
+        {
+            base.ValidateEditText();
             UpdateEditText();
         }
 
         protected override void UpdateEditText()
         {
-            Text = _hasReleaseValue
+            Text = Value > 0
                 ? ((int)Value).ToString("00")
                 : string.Empty;
-        }
-
-        private void ActivateFromBlank()
-        {
-            _hasReleaseValue = true;
-            var previousValue = Value;
-            Value = Minimum;
-            UpdateEditText();
-
-            if (Value == previousValue)
-            {
-                OnValueChanged(EventArgs.Empty);
-            }
         }
     }
 }
