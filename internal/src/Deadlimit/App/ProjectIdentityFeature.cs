@@ -39,8 +39,66 @@ internal static class ProjectIdentityFeature
         projectNameLabel.Dispose();
 
         HideRow(grid, projectNameRow);
+        ConfigureFolderAndExtractionActions(form, grid);
         MoveSaveButtonUnderHeroRefresh(grid);
-        AddReleaseIdTip(grid);
+        ReplaceReleaseIdWithNumericControl(grid);
+    }
+
+    private static void ConfigureFolderAndExtractionActions(MainForm form, TableLayoutPanel grid)
+    {
+        var openFolderButton = grid.Controls
+            .OfType<Button>()
+            .FirstOrDefault(button =>
+                string.Equals(button.Text, "OPEN FOLDER", StringComparison.Ordinal)
+                || string.Equals(button.Text, "ОТКРЫТЬ ПАПКУ", StringComparison.Ordinal));
+        var extractButton = FindDescendants<Button>(form)
+            .FirstOrDefault(button =>
+                string.Equals(button.Text, "EXTRACT HERO SOURCE", StringComparison.Ordinal)
+                || string.Equals(button.Text, "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ", StringComparison.Ordinal));
+        if (openFolderButton is null || extractButton is null)
+        {
+            return;
+        }
+
+        grid.Controls.Remove(openFolderButton);
+        extractButton.Parent?.Controls.Remove(extractButton);
+
+        openFolderButton.Text = "📂";
+        openFolderButton.AutoSize = false;
+        openFolderButton.Width = 42;
+        openFolderButton.Height = 31;
+        openFolderButton.Font = new Font("Segoe UI Emoji", 15F, FontStyle.Regular, GraphicsUnit.Point);
+        openFolderButton.TextAlign = ContentAlignment.MiddleCenter;
+        openFolderButton.Margin = new Padding(0, 4, 6, 4);
+        openFolderButton.Anchor = AnchorStyles.Left;
+        openFolderButton.TabStop = false;
+
+        extractButton.Margin = new Padding(0, 4, 0, 4);
+        extractButton.Anchor = AnchorStyles.Left;
+
+        var actions = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            Anchor = AnchorStyles.Left,
+        };
+        actions.Controls.Add(openFolderButton);
+        actions.Controls.Add(extractButton);
+        grid.Controls.Add(actions, 2, 0);
+
+        var toolTip = new ToolTip
+        {
+            ShowAlways = true,
+            InitialDelay = 300,
+            AutoPopDelay = 6000,
+        };
+        toolTip.SetToolTip(
+            openFolderButton,
+            UiText.T("Open project folder", "Открыть папку проекта"));
     }
 
     private static void MoveSaveButtonUnderHeroRefresh(TableLayoutPanel grid)
@@ -63,7 +121,7 @@ internal static class ProjectIdentityFeature
         HideRow(grid, oldRow);
     }
 
-    private static void AddReleaseIdTip(TableLayoutPanel grid)
+    private static void ReplaceReleaseIdWithNumericControl(TableLayoutPanel grid)
     {
         var releaseLabel = grid.Controls
             .OfType<Label>()
@@ -74,10 +132,48 @@ internal static class ProjectIdentityFeature
         }
 
         var row = grid.GetRow(releaseLabel);
-        var releaseText = grid.GetControlFromPosition(1, row);
+        if (grid.GetControlFromPosition(1, row) is not TextBox backingReleaseText)
+        {
+            return;
+        }
+
+        var releaseId = new ReleaseIdNumericUpDown
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(0, 4, 8, 4),
+        };
+
+        var syncing = false;
+
+        void SyncFromBacking()
+        {
+            syncing = true;
+            try
+            {
+                releaseId.SetReleaseText(backingReleaseText.Text);
+            }
+            finally
+            {
+                syncing = false;
+            }
+        }
+
+        backingReleaseText.TextChanged += (_, _) => SyncFromBacking();
+        releaseId.ValueChanged += (_, _) =>
+        {
+            if (!syncing)
+            {
+                backingReleaseText.Text = releaseId.ReleaseText;
+            }
+        };
+
+        grid.Controls.Remove(backingReleaseText);
+        grid.Controls.Add(releaseId, 1, row);
+        SyncFromBacking();
+
         var tipText = UiText.T(
-            "Release slot 01-99. It becomes the retail VPK file name: pak##_dir.vpk.",
-            "Слот релиза 01-99. Он входит в имя retail VPK-файла: pak##_dir.vpk.");
+            "Release slot 01-99. Use the arrows to change it by one. It becomes the retail VPK file name: pak##_dir.vpk.",
+            "Слот релиза 01-99. Стрелками значение меняется на единицу. Он входит в имя retail VPK-файла: pak##_dir.vpk.");
 
         var toolTip = new ToolTip
         {
@@ -86,10 +182,7 @@ internal static class ProjectIdentityFeature
             AutoPopDelay = 8000,
         };
         toolTip.SetToolTip(releaseLabel, tipText);
-        if (releaseText is not null)
-        {
-            toolTip.SetToolTip(releaseText, tipText);
-        }
+        toolTip.SetToolTip(releaseId, tipText);
     }
 
     private static void HideRow(TableLayoutPanel grid, int row)
@@ -147,6 +240,90 @@ internal static class ProjectIdentityFeature
             foreach (var nested in FindDescendants<T>(child))
             {
                 yield return nested;
+            }
+        }
+    }
+
+    private sealed class ReleaseIdNumericUpDown : NumericUpDown
+    {
+        private bool _hasReleaseValue;
+
+        public ReleaseIdNumericUpDown()
+        {
+            Minimum = 1;
+            Maximum = 99;
+            Increment = 1;
+            ReadOnly = true;
+            ThousandsSeparator = false;
+            TextAlign = HorizontalAlignment.Left;
+            Value = 1;
+            _hasReleaseValue = false;
+            Text = string.Empty;
+        }
+
+        public string ReleaseText => _hasReleaseValue
+            ? ((int)Value).ToString("00")
+            : string.Empty;
+
+        public void SetReleaseText(string? value)
+        {
+            if (int.TryParse(value?.Trim(), out var parsed) && parsed is >= 1 and <= 99)
+            {
+                _hasReleaseValue = true;
+                if (Value != parsed)
+                {
+                    Value = parsed;
+                }
+                else
+                {
+                    UpdateEditText();
+                }
+                return;
+            }
+
+            _hasReleaseValue = false;
+            Text = string.Empty;
+        }
+
+        public override void UpButton()
+        {
+            if (!_hasReleaseValue)
+            {
+                ActivateFromBlank();
+                return;
+            }
+
+            base.UpButton();
+        }
+
+        public override void DownButton()
+        {
+            if (!_hasReleaseValue)
+            {
+                ActivateFromBlank();
+                return;
+            }
+
+            base.DownButton();
+        }
+
+        protected override void UpdateEditText()
+        {
+            Text = _hasReleaseValue
+                ? ((int)Value).ToString("00")
+                : string.Empty;
+        }
+
+        private void ActivateFromBlank()
+        {
+            _hasReleaseValue = true;
+            var previousValue = Value;
+            Value = Minimum;
+            UpdateEditText();
+
+            if (Value == previousValue)
+            {
+                OnValueChanged(EventArgs.Empty);
             }
         }
     }
