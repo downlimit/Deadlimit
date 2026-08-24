@@ -190,8 +190,14 @@ internal static class ProjectLibraryFeature
         {
             ShowAlways = true,
             InitialDelay = 350,
+            ReshowDelay = 100,
+            AutoPopDelay = 10000,
         };
-        toolTip.SetToolTip(addButton, UiText.T("Create project folder", "Создать папку проекта"));
+        toolTip.SetToolTip(
+            addButton,
+            UiText.T(
+                "Create a new empty project folder inside the configured Projects folder.\n\nThe folder name becomes the project name. Choose a hero and Release ID, then save the project metadata.",
+                "Создать новую пустую папку проекта внутри настроенной Папки проектов.\n\nИмя папки станет именем проекта. После создания выберите героя и Release ID, затем сохраните метаданные проекта."));
 
         addButton.Click += (_, _) => CreateProjectFolder(form, library);
         libraryGroup.Controls.Add(addButton);
@@ -320,6 +326,24 @@ internal static class ProjectLibraryFeature
                 AutoSize = true,
             };
             createButton.Click += (_, _) => TryCreate();
+
+            var toolTip = new ToolTip
+            {
+                ShowAlways = true,
+                InitialDelay = 350,
+                ReshowDelay = 100,
+                AutoPopDelay = 10000,
+            };
+            toolTip.SetToolTip(
+                createButton,
+                UiText.T(
+                    "Create the folder and add it to the Library.\n\nThe project is not initialized until you choose a hero and save it.",
+                    "Создать папку и добавить её в Библиотеку.\n\nПроект будет инициализирован только после выбора героя и сохранения."));
+            toolTip.SetToolTip(
+                cancelButton,
+                UiText.T(
+                    "Close this dialog without creating a project folder.",
+                    "Закрыть окно без создания папки проекта."));
 
             buttons.Controls.Add(cancelButton);
             buttons.Controls.Add(createButton);
