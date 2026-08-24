@@ -97,12 +97,12 @@ internal static class ProjectHeaderFeature
 
         var launchDeadlockButton = new Button
         {
-            Text = UiText.T("▶  LAUNCH DEADLOCK", "▶  ЗАПУСК DEADLOCK"),
+            Text = UiText.T("▶  LAUNCH GAME", "▶  ЗАПУСК ИГРЫ"),
             AutoSize = false,
             Width = 178,
             Height = 38,
             Anchor = AnchorStyles.Top,
-            Margin = new Padding(0, 0, 0, 0),
+            Margin = Padding.Empty,
             TabStop = false,
         };
         StyleLaunchButton(launchDeadlockButton, Color.FromArgb(73, 178, 57));
@@ -174,16 +174,51 @@ internal static class ProjectHeaderFeature
 
     private static void StyleLaunchButton(Button button, Color background)
     {
+        var hover = Color.FromArgb(
+            Math.Min(255, background.R + 12),
+            Math.Min(255, background.G + 12),
+            Math.Min(255, background.B + 12));
+        var pressed = Color.FromArgb(
+            Math.Max(0, background.R - 14),
+            Math.Max(0, background.G - 14),
+            Math.Max(0, background.B - 14));
+
+        void Apply(Color color)
+        {
+            button.BackColor = color;
+            button.ForeColor = Color.White;
+            button.FlatAppearance.BorderSize = 0;
+            button.FlatAppearance.BorderColor = color;
+            button.FlatAppearance.MouseOverBackColor = hover;
+            button.FlatAppearance.MouseDownBackColor = pressed;
+        }
+
         button.AutoSize = false;
         button.Width = 178;
         button.Height = 38;
+        button.UseVisualStyleBackColor = false;
         button.FlatStyle = FlatStyle.Flat;
-        button.FlatAppearance.BorderSize = 0;
-        button.BackColor = background;
-        button.ForeColor = Color.White;
         button.Font = new Font("Segoe UI", 9.5F, FontStyle.Bold, GraphicsUnit.Point);
         button.Margin = Padding.Empty;
         button.TabStop = false;
+        Apply(background);
+
+        // Existing BuildFeature buttons were already themed before this feature rearranges
+        // them. These handlers run after the theme handlers and keep the Steam-like accent.
+        button.MouseEnter += (_, _) => Apply(hover);
+        button.MouseLeave += (_, _) => Apply(background);
+        button.MouseDown += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                Apply(pressed);
+            }
+        };
+        button.MouseUp += (_, _) =>
+        {
+            var pointer = button.PointToClient(Cursor.Position);
+            Apply(button.ClientRectangle.Contains(pointer) ? hover : background);
+        };
     }
 
     private static Button? FindButton(Control root, string english, string russian) =>
