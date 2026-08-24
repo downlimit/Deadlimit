@@ -26,6 +26,7 @@ public sealed record PrepareAuthoringResult(
 public sealed class PrepareAuthoringService
 {
     private const string GenericEyeFallbackMaterial = "materials/dev/vertcolor_pbr_basic.vmat";
+    private const string ManagedVmatMarkerPrefix = "// DEADLIMIT_GENERATED_CUSTOM_VMAT_V";
 
     private static readonly Regex InvalidMaterialRegex = new(
         @"materials/models/[A-Za-z0-9_./\\-]+\.vmat",
@@ -177,6 +178,13 @@ public sealed class PrepareAuthoringService
                 log,
                 cancellationToken);
 
+            var finalTextureRepairs = FinalizeManagedCustomMaterials(
+                customMaterials,
+                addonContentRoot,
+                log,
+                cancellationToken);
+            log.AppendLine($"Managed custom VMAT final texture-source repairs: {finalTextureRepairs}");
+
             var generatedRemaps = compatibilityRemaps
                 .Concat(customMaterials.Remaps)
                 .GroupBy(remap => remap.From, StringComparer.OrdinalIgnoreCase)
@@ -248,6 +256,63 @@ public sealed class PrepareAuthoringService
             File.WriteAllText(logPath, log.ToString());
             throw;
         }
+    }
+
+    private static int FinalizeManagedCustomMaterials(
+        CustomMaterialAuthoringResult customMaterials,
+        string addonContentRoot,
+        StringBuilder log,
+        CancellationToken cancellationToken)
+    {
+        var repairedCount = 0;
+
+        foreach (var vmatResourcePath in customMaterials.VmatResourcePaths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var vmatPath = Path.Combine(
+                addonContentRoot,
+                vmatResourcePath.Replace('/', Path.DirectorySeparatorChar));
+
+            if (!File.Exists(vmatPath))
+            {
+                throw new FileNotFoundException(
+                    $"Custom VMAT reported by PREPARE was not found for final validation: {vmatResourcePath}",
+                    vmatPath);
+            }
+
+            var text = File.ReadAllText(vmatPath);
+            if (!text.StartsWith(ManagedVmatMarkerPrefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var repaired = ManagedVmatTextureSafetyNet.RepairMissingTextureSources(
+                text,
+                addonContentRoot,
+                log,
+                out var currentRepairs);
+
+            if (!string.Equals(text, repaired, StringComparison.Ordinal))
+            {
+                File.WriteAllText(vmatPath, repaired);
+            }
+
+            repairedCount += currentRepairs;
+
+            var unresolved = ManagedVmatTextureSafetyNet.FindMissingTextureSources(
+                repaired,
+                addonContentRoot);
+
+            if (unresolved.Count > 0)
+            {
+                throw new InvalidDataException(
+                    $"Managed custom VMAT '{vmatResourcePath}' still references missing texture source(s) after the final PREPARE safety pass: " +
+                    string.Join(", ", unresolved));
+            }
+        }
+
+        return repairedCount;
     }
 
     private void ValidateEnvironment(ProjectManifest manifest)
