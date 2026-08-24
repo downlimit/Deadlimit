@@ -131,7 +131,20 @@ internal static class ProjectHeaderFeature
         {
             Size = settingsButton.Size,
         };
-        var prepareOverlay = new HeaderOverlayButton(prepareButton, prepareButton.Text, prepareButton.Font)
+        var prepareOverlay = new HeaderOverlayButton(
+            prepareButton,
+            prepareButton.Text,
+            prepareButton.Font,
+            clickInterceptor: () =>
+            {
+                if ((Control.ModifierKeys & Keys.Shift) != Keys.Shift)
+                {
+                    return false;
+                }
+
+                OnlinePreparationFeature.ToggleFromVisiblePrepareButton();
+                return true;
+            })
         {
             Size = prepareButton.Size,
         };
@@ -168,8 +181,8 @@ internal static class ProjectHeaderFeature
         toolTip.SetToolTip(
             prepareOverlay,
             UiText.T(
-                "Prepare the selected project's authoring content for Reduced CSDK12.\n\nDeadlimit refreshes CSDK content and clears compiled output for this addon. This action does not launch CSDK.",
-                "Подготовить authoring-контент выбранного проекта для Reduced CSDK12.\n\nDeadlimit обновляет CSDK content и очищает compiled output этого аддона. Эта кнопка не запускает CSDK."));
+                "Prepare the selected project's authoring content for Reduced CSDK12.\n\nNormal click runs full PREPARE FOR CSDK. Hold SHIFT while clicking to enable or disable ONLINE PREPARATION, which live-syncs changed existing DMX and texture files into CSDK content.",
+                "Подготовить authoring-контент выбранного проекта для Reduced CSDK12.\n\nОбычный клик запускает полный PREPARE FOR CSDK. Удерживайте SHIFT при клике, чтобы включить или выключить ONLINE PREPARATION: изменённые существующие DMX и текстуры будут синхронизироваться в CSDK content автоматически."));
         toolTip.SetToolTip(
             buildOverlay,
             UiText.T(
@@ -180,11 +193,6 @@ internal static class ProjectHeaderFeature
             UiText.T(
                 $"Launch retail Deadlock through Steam.\n\nHold SHIFT while clicking to copy '{CameraLockCommand}' to the clipboard without launching the game.",
                 $"Запустить retail Deadlock через Steam.\n\nУдерживайте SHIFT при клике, чтобы скопировать '{CameraLockCommand}' в буфер обмена без запуска игры."));
-        toolTip.SetToolTip(
-            header,
-            UiText.T(
-                "This image is the current project's editable cover.\n\nDouble-click the cover to open the hidden .deadlimit folder containing project-header.png. Replace that PNG to customize the header.",
-                "Это редактируемая обложка текущего проекта.\n\nДважды щёлкните по обложке, чтобы открыть скрытую папку .deadlimit с файлом project-header.png. Замените этот PNG, чтобы изменить шапку."));
 
         void PositionControls()
         {
@@ -612,10 +620,15 @@ internal static class ProjectHeaderFeature
     private sealed class HeaderOverlayButton : Control
     {
         private readonly Button _source;
+        private readonly Func<bool>? _clickInterceptor;
         private bool _hovered;
         private bool _pressed;
 
-        public HeaderOverlayButton(Button source, string text, Font font)
+        public HeaderOverlayButton(
+            Button source,
+            string text,
+            Font font,
+            Func<bool>? clickInterceptor = null)
         {
             SetStyle(
                 ControlStyles.UserPaint
@@ -626,6 +639,7 @@ internal static class ProjectHeaderFeature
             SetStyle(ControlStyles.Selectable, false);
 
             _source = source;
+            _clickInterceptor = clickInterceptor;
             Text = text;
             Font = font;
             ForeColor = Color.White;
@@ -635,11 +649,17 @@ internal static class ProjectHeaderFeature
 
             Enabled = source.Enabled;
             source.EnabledChanged += SourceEnabledChanged;
+            source.TextChanged += SourceTextChanged;
         }
 
         protected override void OnClick(EventArgs e)
         {
             base.OnClick(e);
+            if (_clickInterceptor?.Invoke() == true)
+            {
+                return;
+            }
+
             if (_source.Enabled)
             {
                 _source.PerformClick();
@@ -711,6 +731,7 @@ internal static class ProjectHeaderFeature
             if (disposing)
             {
                 _source.EnabledChanged -= SourceEnabledChanged;
+                _source.TextChanged -= SourceTextChanged;
             }
             base.Dispose(disposing);
         }
@@ -718,6 +739,12 @@ internal static class ProjectHeaderFeature
         private void SourceEnabledChanged(object? sender, EventArgs e)
         {
             Enabled = _source.Enabled;
+            Invalidate();
+        }
+
+        private void SourceTextChanged(object? sender, EventArgs e)
+        {
+            Text = _source.Text;
             Invalidate();
         }
     }
