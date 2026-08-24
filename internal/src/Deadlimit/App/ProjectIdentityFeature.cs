@@ -1,3 +1,5 @@
+using System.Drawing;
+
 namespace Deadlimit.App;
 
 internal static class ProjectIdentityFeature
