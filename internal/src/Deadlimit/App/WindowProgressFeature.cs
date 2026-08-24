@@ -44,7 +44,7 @@ internal static class WindowProgressFeature
         // BUILD FOR TEST historically wrote "[42% spinner] - message" into the title.
         // The percent already has its own label beside the bottom progress bar, so only
         // route the human-readable operation message into the status line.
-        if (progressText.StartsWith('[', StringComparison.Ordinal))
+        if (progressText.StartsWith("[", StringComparison.Ordinal))
         {
             var separator = progressText.IndexOf("] - ", StringComparison.Ordinal);
             if (separator >= 0)
