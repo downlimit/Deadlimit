@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Deadlimit.Core;
 
 namespace Deadlimit.App;
@@ -6,7 +5,6 @@ namespace Deadlimit.App;
 internal static class OnlinePreparationFeature
 {
     private const string OnlineButtonText = "ONLINE PREARAION";
-    private const int VkShift = 0x10;
 
     private static OnlinePreparationSession? _session;
     private static ToolTip? _toolTip;
@@ -14,9 +12,6 @@ internal static class OnlinePreparationFeature
     private static MainForm? _form;
     private static string? _normalButtonText;
     private static bool _toggleBusy;
-
-    [DllImport("user32.dll")]
-    private static extern short GetAsyncKeyState(int vKey);
 
     public static void Attach(MainForm form)
     {
@@ -40,7 +35,6 @@ internal static class OnlinePreparationFeature
             ShowAlways = true,
         };
 
-        prepareButton.MouseDown += OnPrepareMouseDown;
         prepareButton.Click += (_, _) =>
         {
             if (_session is not null)
@@ -52,48 +46,37 @@ internal static class OnlinePreparationFeature
         form.FormClosed += (_, _) => Detach();
     }
 
-    private static void OnPrepareMouseDown(object? sender, MouseEventArgs e)
+    /// <summary>
+    /// Called by the visible project-header PREPARE overlay when SHIFT+click is detected.
+    /// The overlay consumes that gesture, so the hidden native PREPARE button does not run
+    /// the regular full PREPARE action as well.
+    /// </summary>
+    internal static void ToggleFromVisiblePrepareButton()
     {
-        if (e.Button != MouseButtons.Left
-            || !IsShiftDown()
-            || _toggleBusy
-            || _prepareButton is null
-            || _prepareButton.IsDisposed)
+        if (_toggleBusy || _form is null || _prepareButton is null || _prepareButton.IsDisposed)
         {
             return;
         }
 
-        // Read SHIFT directly from Win32 keyboard state. WinForms ModifierKeys was
-        // observed to miss this gesture on the PREPARE button in the real app.
-        // Disabling before mouse-up prevents the regular Click/PREPARE path.
-        var wasEnabled = _prepareButton.Enabled;
-        _prepareButton.Enabled = false;
-        _prepareButton.Capture = false;
-        _ = ToggleOnlinePreparationAsync(wasEnabled);
+        _ = ToggleOnlinePreparationAsync();
     }
 
-    private static bool IsShiftDown() =>
-        (GetAsyncKeyState(VkShift) & 0x8000) != 0;
-
-    private static async Task ToggleOnlinePreparationAsync(bool prepareButtonWasEnabled)
+    private static async Task ToggleOnlinePreparationAsync()
     {
-        if (_toggleBusy || _form is null || _prepareButton is null)
+        if (_toggleBusy || _form is null || _prepareButton is null || _prepareButton.IsDisposed)
         {
-            RestorePrepareButtonEnabled(prepareButtonWasEnabled);
             return;
         }
 
         if (_session is not null)
         {
             StopSession();
-            RestorePrepareButtonEnabled(prepareButtonWasEnabled);
             return;
         }
 
         var manifest = ProjectStore.TryLoadLastProject();
         if (manifest is null || !Directory.Exists(manifest.ProjectFolder))
         {
-            RestorePrepareButtonEnabled(prepareButtonWasEnabled);
             MessageBox.Show(
                 _form,
                 UiText.T(
@@ -109,7 +92,6 @@ internal static class OnlinePreparationFeature
         var originalTitle = _form.Text;
         var buttons = FindActionButtons(_prepareButton).ToArray();
         var enabledStates = buttons.ToDictionary(button => button, button => button.Enabled);
-        enabledStates[_prepareButton] = prepareButtonWasEnabled;
 
         try
         {
@@ -166,14 +148,6 @@ internal static class OnlinePreparationFeature
             }
 
             _toggleBusy = false;
-        }
-    }
-
-    private static void RestorePrepareButtonEnabled(bool enabled)
-    {
-        if (_prepareButton is not null && !_prepareButton.IsDisposed)
-        {
-            _prepareButton.Enabled = enabled;
         }
     }
 
@@ -285,11 +259,6 @@ internal static class OnlinePreparationFeature
     private static void Detach()
     {
         StopSession();
-
-        if (_prepareButton is not null && !_prepareButton.IsDisposed)
-        {
-            _prepareButton.MouseDown -= OnPrepareMouseDown;
-        }
 
         _toolTip?.Dispose();
         _toolTip = null;
