@@ -5,6 +5,7 @@ namespace Deadlimit.App;
 internal static class SteamStatusFeature
 {
     private const int StatusHeight = 40;
+    private const int StatusTopGap = 8;
 
     public static void Attach(MainForm form, string theme)
     {
@@ -27,13 +28,14 @@ internal static class SteamStatusFeature
 
         var row = root.GetRow(statusStrip);
         var palette = ResolvePalette(theme);
+        var rightInset = GetWorkspaceRightInset(root);
 
         root.Controls.Remove(statusStrip);
         statusStrip.Visible = false;
         if (row >= 0 && row < root.RowStyles.Count)
         {
             root.RowStyles[row].SizeType = SizeType.Absolute;
-            root.RowStyles[row].Height = StatusHeight;
+            root.RowStyles[row].Height = StatusHeight + StatusTopGap;
         }
 
         var bar = new TableLayoutPanel
@@ -41,7 +43,7 @@ internal static class SteamStatusFeature
             Dock = DockStyle.Fill,
             ColumnCount = 5,
             RowCount = 1,
-            Margin = Padding.Empty,
+            Margin = new Padding(0, StatusTopGap, rightInset, 0),
             Padding = Padding.Empty,
             BackColor = palette.Bar,
         };
@@ -230,6 +232,29 @@ internal static class SteamStatusFeature
 
         UpdateContext();
         UpdateOperation();
+    }
+
+    private static int GetWorkspaceRightInset(TableLayoutPanel root)
+    {
+        if (root.ColumnCount < 2)
+        {
+            return 0;
+        }
+
+        var workspace = root.GetControlFromPosition(root.ColumnCount - 1, 0);
+        if (workspace is null)
+        {
+            return 0;
+        }
+
+        var projectFiles = FindDescendants<GroupBox>(workspace)
+            .FirstOrDefault(group =>
+                string.Equals(group.Text, "Project files", StringComparison.Ordinal)
+                || string.Equals(group.Text, "Файлы проекта", StringComparison.Ordinal)
+                || string.Equals(group.Text, "Detected in project root", StringComparison.Ordinal)
+                || string.Equals(group.Text, "Найдено в корне проекта", StringComparison.Ordinal));
+
+        return Math.Max(0, workspace.Margin.Right + (projectFiles?.Margin.Right ?? 0));
     }
 
     private static Label CreateZoneLabel(ContentAlignment alignment, Color color) => new()
