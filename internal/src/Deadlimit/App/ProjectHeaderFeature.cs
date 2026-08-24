@@ -12,7 +12,8 @@ internal static class ProjectHeaderFeature
     private const int PrepareHeight = 24;
     private const int LaunchHeight = 40;
     private const string HeaderFileName = "project-header.png";
-    private const string DeadlockSteamUri = "steam://rungameid/1422450";
+    private const string DeadlockSteamAppId = "1422450";
+    private const string DeadlockSteamUri = "steam://rungameid/" + DeadlockSteamAppId;
 
     private static readonly Color DefaultHeaderColor = Color.FromArgb(36, 39, 43);
     private static readonly Color CsdkGradientStart = Color.FromArgb(0x58, 0x31, 0xC7);
@@ -392,6 +393,11 @@ internal static class ProjectHeaderFeature
 
     private static void LaunchDeadlock(MainForm form)
     {
+        if (TryLaunchDeadlockThroughSteamExecutable())
+        {
+            return;
+        }
+
         try
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
@@ -409,6 +415,85 @@ internal static class ProjectHeaderFeature
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
+    }
+
+    private static bool TryLaunchDeadlockThroughSteamExecutable()
+    {
+        var steamExecutable = FindSteamExecutable();
+        if (steamExecutable is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = steamExecutable,
+                Arguments = $"-applaunch {DeadlockSteamAppId}",
+                UseShellExecute = false,
+            };
+
+            var steamDirectory = Path.GetDirectoryName(steamExecutable);
+            if (!string.IsNullOrWhiteSpace(steamDirectory))
+            {
+                startInfo.WorkingDirectory = steamDirectory;
+            }
+
+            System.Diagnostics.Process.Start(startInfo);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
+    }
+
+    private static string? FindSteamExecutable()
+    {
+        var steamProcesses = System.Diagnostics.Process.GetProcessesByName("steam");
+        try
+        {
+            foreach (var process in steamProcesses)
+            {
+                try
+                {
+                    var path = process.MainModule?.FileName;
+                    if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                    {
+                        return path;
+                    }
+                }
+                catch (InvalidOperationException)
+                {
+                }
+                catch (System.ComponentModel.Win32Exception)
+                {
+                }
+                catch (NotSupportedException)
+                {
+                }
+            }
+        }
+        finally
+        {
+            foreach (var process in steamProcesses)
+            {
+                process.Dispose();
+            }
+        }
+
+        var candidates = new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Steam", "steam.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Steam", "steam.exe"),
+        };
+
+        return candidates.FirstOrDefault(File.Exists);
     }
 
     private static Button? FindButton(Control root, string english, string russian) =>
