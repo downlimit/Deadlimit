@@ -127,9 +127,6 @@ internal static class SteamStatusFeature
         var folderText = projectGroup is null
             ? null
             : FindDescendants<TextBox>(projectGroup).FirstOrDefault(textBox => textBox.ReadOnly);
-        var heroCombo = projectGroup is null
-            ? null
-            : FindDescendants<ComboBox>(projectGroup).FirstOrDefault();
         var releaseId = projectGroup is null
             ? null
             : FindDescendants<NumericUpDown>(projectGroup).FirstOrDefault();
@@ -148,9 +145,13 @@ internal static class SteamStatusFeature
             if (!Directory.Exists(folder))
             {
                 leftLabel.Text = UiText.T("◇  Library", "◇  Библиотека");
-                rightLabel.Text = UiText.T("No project selected", "Проект не выбран");
+                rightLabel.Text = "ID —   ·   pak##_dir.vpk";
                 toolTip.SetToolTip(leftLabel, string.Empty);
-                toolTip.SetToolTip(rightLabel, string.Empty);
+                toolTip.SetToolTip(
+                    rightLabel,
+                    UiText.T(
+                        "Release ID determines the retail VPK file name.\n\nFor example: ID 05 → pak05_dir.vpk.",
+                        "Release ID определяет имя retail VPK-файла.\n\nНапример: ID 05 → pak05_dir.vpk."));
                 return;
             }
 
@@ -161,26 +162,23 @@ internal static class SteamStatusFeature
             toolTip.SetToolTip(leftLabel, folder);
 
             var manifest = ProjectStore.TryLoad(folder);
-            var hero = heroCombo?.Text.Trim();
-            if (string.IsNullOrWhiteSpace(hero))
-            {
-                hero = manifest?.Hero;
-            }
-
             var release = releaseId?.Text.Trim();
             if (string.IsNullOrWhiteSpace(release))
             {
                 release = manifest?.ReleaseTarget;
             }
 
-            var heroText = string.IsNullOrWhiteSpace(hero) ? "—" : hero;
             var releaseText = string.IsNullOrWhiteSpace(release) ? "—" : release;
-            rightLabel.Text = $"{heroText}   ·   ID {releaseText}";
+            var vpkName = int.TryParse(release, out var slot) && slot is >= 1 and <= 99
+                ? $"pak{slot:D2}_dir.vpk"
+                : "pak##_dir.vpk";
+
+            rightLabel.Text = $"ID {releaseText}   ·   {vpkName}";
             toolTip.SetToolTip(
                 rightLabel,
                 UiText.T(
-                    $"Hero: {heroText}\nRelease ID: {releaseText}",
-                    $"Герой: {heroText}\nRelease ID: {releaseText}"));
+                    $"Release ID: {releaseText}\nRetail VPK: {vpkName}\n\nChanging the ID changes the VPK slot/file name.",
+                    $"Release ID: {releaseText}\nRetail VPK: {vpkName}\n\nИзменение ID меняет VPK-слот и имя файла."));
         }
 
         void UpdateOperation()
@@ -206,10 +204,6 @@ internal static class SteamStatusFeature
         if (folderText is not null)
         {
             folderText.TextChanged += (_, _) => UpdateContext();
-        }
-        if (heroCombo is not null)
-        {
-            heroCombo.SelectedIndexChanged += (_, _) => UpdateContext();
         }
         if (releaseId is not null)
         {
