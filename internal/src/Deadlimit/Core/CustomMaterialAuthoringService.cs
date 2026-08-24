@@ -35,7 +35,7 @@ public sealed class CustomMaterialAuthoringService
     ];
 
     private static readonly Regex TextureAssignmentRegex = new(
-        "^(?<indent>\\s*)(?<key>Texture[A-Za-z0-9_]+)\\s+\\\"(?<value>[^\\\"]+)\\\"(?<tail>\\s*)$",
+        "^(?<indent>[ \\t]*)(?<key>Texture[A-Za-z0-9_]+)(?<separator>[ \\t]*(?:=[ \\t]*)?(?:resource[ \\t]*:[ \\t]*)?)\\\"(?<value>[^\\\"]+)\\\"(?<tail>[^\\r\\n]*)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
 
     private static readonly Regex GeneratedMarkerRegex = new(
@@ -459,7 +459,7 @@ public sealed class CustomMaterialAuthoringService
                 localSanitizedCount++;
             }
 
-            return $"{match.Groups["indent"].Value}{key} \"{replacement.Value}\"{match.Groups["tail"].Value}";
+            return $"{match.Groups["indent"].Value}{key}{match.Groups["separator"].Value}\"{replacement.Value}\"{match.Groups["tail"].Value}";
         });
 
         boundCount = localBoundCount;
@@ -589,7 +589,9 @@ public sealed class CustomMaterialAuthoringService
             return new TextureReplacement(originalValue, AutoBound: false, Sanitized: false);
         }
 
-        return new TextureReplacement(GetTextureFallback(key), AutoBound: false, Sanitized: true);
+        var fallback = GetTextureFallback(key);
+        log.AppendLine($"Custom inherited texture source neutralized {key}: {originalValue} -> {fallback}");
+        return new TextureReplacement(fallback, AutoBound: false, Sanitized: true);
     }
 
     private static bool LooksLikeTextureSourcePath(string value)
@@ -663,7 +665,42 @@ public sealed class CustomMaterialAuthoringService
     private static string GetTextureFallback(string key)
     {
         var known = TextureSlots.FirstOrDefault(slot => string.Equals(slot.Key, key, StringComparison.OrdinalIgnoreCase));
-        return known?.DefaultResource ?? DefaultBlackMask;
+        if (known is not null)
+        {
+            return known.DefaultResource;
+        }
+
+        var semantic = NormalizeMatchToken(key.StartsWith("Texture", StringComparison.OrdinalIgnoreCase)
+            ? key["Texture".Length..]
+            : key);
+
+        if (semantic.Contains("normal", StringComparison.Ordinal))
+        {
+            return DefaultNormal;
+        }
+        if (semantic.Contains("rough", StringComparison.Ordinal))
+        {
+            return DefaultRoughness;
+        }
+        if (semantic.Contains("ambientocclusion", StringComparison.Ordinal)
+            || semantic.Contains("occlusion", StringComparison.Ordinal)
+            || string.Equals(semantic, "ao", StringComparison.Ordinal)
+            || semantic.StartsWith("ao", StringComparison.Ordinal))
+        {
+            return DefaultAo;
+        }
+        if (semantic.Contains("color", StringComparison.Ordinal)
+            || semantic.Contains("albedo", StringComparison.Ordinal)
+            || semantic.Contains("diffuse", StringComparison.Ordinal))
+        {
+            return DefaultColor;
+        }
+        if (semantic.Contains("metal", StringComparison.Ordinal))
+        {
+            return DefaultBlackMask;
+        }
+
+        return DefaultBlackMask;
     }
 
     private static IReadOnlyDictionary<string, string?> ResolveTextureBindings(
