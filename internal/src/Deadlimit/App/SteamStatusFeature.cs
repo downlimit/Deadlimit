@@ -160,10 +160,12 @@ internal static class SteamStatusFeature
             var projectName = Path.GetFileName(folder.TrimEnd(
                 Path.DirectorySeparatorChar,
                 Path.AltDirectorySeparatorChar));
-            leftLabel.Text = $"◆  {projectName}";
+            var manifest = ProjectStore.TryLoad(folder);
+            var hasMetadataFile = File.Exists(ProjectStore.GetManifestPath(folder));
+            var marker = manifest is not null ? "◆" : hasMetadataFile ? "!" : "◇";
+            leftLabel.Text = $"{marker}  {projectName}";
             toolTip.SetToolTip(leftLabel, folder);
 
-            var manifest = ProjectStore.TryLoad(folder);
             var release = releaseId?.Text.Trim();
             if (string.IsNullOrWhiteSpace(release))
             {
@@ -214,8 +216,6 @@ internal static class SteamStatusFeature
         }
         form.Activated += (_, _) => UpdateContext();
 
-        // ToolStripProgressBar does not expose a useful ValueChanged event, so mirror its
-        // short-lived build animation at the same cadence as the existing spinner.
         var timer = new System.Windows.Forms.Timer
         {
             Interval = 120,

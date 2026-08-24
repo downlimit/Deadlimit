@@ -149,12 +149,8 @@ internal static class BuildFeature
                 $"Deadlimit его не компилировал; для authoring используйте ЗАПУСК CSDK, а для компиляции и установки retail VPK — СОБРАТЬ ДЛЯ ТЕСТА. Игру запускайте отдельно, когда будете готовы.\n\n" +
                 $"Лог: {result.LogPath}");
 
-            MessageBox.Show(
-                form,
-                message,
-                "Deadlimit",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            using var dialog = BuildTestSuccessDialog.CreatePrepareSummary(message);
+            dialog.ShowDialog(form);
         }
         catch (Exception ex) when (ex is IOException
             or UnauthorizedAccessException
