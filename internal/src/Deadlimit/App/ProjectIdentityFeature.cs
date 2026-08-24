@@ -67,14 +67,16 @@ internal static class ProjectIdentityFeature
 
         openFolderButton.Text = "📂";
         openFolderButton.AutoSize = false;
-        openFolderButton.Width = 42;
-        openFolderButton.Height = 31;
-        openFolderButton.Font = new Font("Segoe UI Emoji", 15F, FontStyle.Regular, GraphicsUnit.Point);
+        openFolderButton.Width = 34;
+        openFolderButton.Height = 24;
+        openFolderButton.Font = new Font("Segoe UI Emoji", 11F, FontStyle.Regular, GraphicsUnit.Point);
         openFolderButton.TextAlign = ContentAlignment.MiddleCenter;
         openFolderButton.Margin = new Padding(0, 4, 6, 4);
         openFolderButton.Anchor = AnchorStyles.Left;
         openFolderButton.TabStop = false;
 
+        extractButton.Text = UiText.T("EXTRACT SOURCE", "ИЗВЛЕЧЬ ИСХОДНИКИ");
+        extractButton.AutoSize = true;
         extractButton.Margin = new Padding(0, 4, 0, 4);
         extractButton.Anchor = AnchorStyles.Left;
 
@@ -160,13 +162,32 @@ internal static class ProjectIdentityFeature
             }
         }
 
-        backingReleaseText.TextChanged += (_, _) => SyncFromBacking();
-        releaseId.ValueChanged += (_, _) =>
+        void SyncToBacking()
         {
             if (!syncing)
             {
                 backingReleaseText.Text = releaseId.ReleaseText;
             }
+        }
+
+        backingReleaseText.TextChanged += (_, _) => SyncFromBacking();
+        releaseId.ValueChanged += (_, _) => SyncToBacking();
+        releaseId.Validated += (_, _) =>
+        {
+            releaseId.CommitTypedValue();
+            SyncToBacking();
+        };
+        releaseId.KeyDown += (_, e) =>
+        {
+            if (e.KeyCode != Keys.Enter)
+            {
+                return;
+            }
+
+            releaseId.CommitTypedValue();
+            SyncToBacking();
+            e.Handled = true;
+            e.SuppressKeyPress = true;
         };
 
         grid.Controls.Remove(backingReleaseText);
@@ -174,8 +195,8 @@ internal static class ProjectIdentityFeature
         SyncFromBacking();
 
         var tipText = UiText.T(
-            "Release slot 01-99. Use the arrows to change it by one. It becomes the retail VPK file name: pak##_dir.vpk.",
-            "Слот релиза 01-99. Стрелками значение меняется на единицу. Он входит в имя retail VPK-файла: pak##_dir.vpk.");
+            "Release slot 01-99. Type a number or use the arrows to change it by one. It becomes the retail VPK file name: pak##_dir.vpk.",
+            "Слот релиза 01-99. Введите число вручную или меняйте его стрелками на единицу. Он входит в имя retail VPK-файла: pak##_dir.vpk.");
 
         var toolTip = new ToolTip
         {
@@ -255,7 +276,7 @@ internal static class ProjectIdentityFeature
             Minimum = 1;
             Maximum = 99;
             Increment = 1;
-            ReadOnly = true;
+            ReadOnly = false;
             ThousandsSeparator = false;
             TextAlign = HorizontalAlignment.Left;
             Value = 1;
@@ -287,8 +308,14 @@ internal static class ProjectIdentityFeature
             Text = string.Empty;
         }
 
+        public void CommitTypedValue()
+        {
+            ValidateEditText();
+        }
+
         public override void UpButton()
         {
+            CommitTypedValue();
             if (!_hasReleaseValue)
             {
                 ActivateFromBlank();
@@ -300,6 +327,7 @@ internal static class ProjectIdentityFeature
 
         public override void DownButton()
         {
+            CommitTypedValue();
             if (!_hasReleaseValue)
             {
                 ActivateFromBlank();
@@ -307,6 +335,30 @@ internal static class ProjectIdentityFeature
             }
 
             base.DownButton();
+        }
+
+        protected override void ValidateEditText()
+        {
+            var raw = Text.Trim();
+            if (raw.Length == 0)
+            {
+                _hasReleaseValue = false;
+                Text = string.Empty;
+                return;
+            }
+
+            if (int.TryParse(raw, out var parsed) && parsed is >= 1 and <= 99)
+            {
+                _hasReleaseValue = true;
+                if (Value != parsed)
+                {
+                    Value = parsed;
+                }
+                UpdateEditText();
+                return;
+            }
+
+            UpdateEditText();
         }
 
         protected override void UpdateEditText()
