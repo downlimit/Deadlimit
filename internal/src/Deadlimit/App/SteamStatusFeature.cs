@@ -192,12 +192,12 @@ internal static class SteamStatusFeature
             progress.Visible = progressVisible;
             if (progressVisible && progressSource is not null)
             {
-                progress.Value = progressSource.Value;
+                progress.SetValue(progressSource.Value);
                 percentLabel.Text = $"{progressSource.Value}%";
             }
             else
             {
-                progress.Value = 0;
+                progress.SetValue(0);
                 percentLabel.Text = string.Empty;
             }
         }
@@ -341,20 +341,16 @@ internal static class SteamStatusFeature
             TabStop = false;
         }
 
-        public int Value
+        public void SetValue(int value)
         {
-            get => _value;
-            set
+            var clamped = Math.Clamp(value, 0, 100);
+            if (_value == clamped)
             {
-                var clamped = Math.Clamp(value, 0, 100);
-                if (_value == clamped)
-                {
-                    return;
-                }
-
-                _value = clamped;
-                Invalidate();
+                return;
             }
+
+            _value = clamped;
+            Invalidate();
         }
 
         protected override void OnPaint(PaintEventArgs e)
