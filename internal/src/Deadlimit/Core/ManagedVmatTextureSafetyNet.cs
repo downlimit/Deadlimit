@@ -12,12 +12,8 @@ internal static class ManagedVmatTextureSafetyNet
     private const string DefaultBlackMask = "materials/default/default_black_mask.tga";
 
     private static readonly Regex TextureSourceReferenceRegex = new(
-        @"(?<prefix>\b(?<key>Texture[A-Za-z0-9_]+)\b(?:(?!\bTexture[A-Za-z0-9_]+\b).){0,2048}?"")(?<value>[^""]+)(?<suffix>"")",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Singleline);
-
-    private static readonly Regex QuotedTextureSourceRegex = new(
-        "\\\"(?<value>[^\\\"\\r\\n]+\\.(?:png|tga|vtex|jpg|jpeg|tif|tiff))\\\"",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        "^(?<prefix>[ \\t]*(?:\\\"(?<quotedKey>Texture[A-Za-z0-9_]+)\\\"|(?<bareKey>Texture[A-Za-z0-9_]+))[ \\t]*(?:=[ \\t]*)?(?:resource[ \\t]*:[ \\t]*)?\\\")(?<value>[^\\\"\\r\\n]+)(?<suffix>\\\"[^\\r\\n]*)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
 
     public static string RepairMissingTextureSources(
         string text,
@@ -36,7 +32,7 @@ internal static class ManagedVmatTextureSafetyNet
                 return match.Value;
             }
 
-            var key = match.Groups["key"].Value;
+            var key = GetTextureKey(match);
             var fallback = GetTextureFallback(key);
             localRepairedCount++;
             log.AppendLine($"Managed VMAT final safety-net repair {key}: {value} -> {fallback}");
@@ -49,13 +45,20 @@ internal static class ManagedVmatTextureSafetyNet
 
     public static IReadOnlyList<string> FindMissingTextureSources(string text, string addonContentRoot)
     {
-        return QuotedTextureSourceRegex.Matches(text)
+        return TextureSourceReferenceRegex.Matches(text)
             .Cast<Match>()
             .Select(match => match.Groups["value"].Value)
+            .Where(LooksLikeTextureSourcePath)
             .Where(value => !IsKnownSafeDefault(value))
             .Where(value => !TextureSourceExists(addonContentRoot, value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static string GetTextureKey(Match match)
+    {
+        var quoted = match.Groups["quotedKey"];
+        return quoted.Success ? quoted.Value : match.Groups["bareKey"].Value;
     }
 
     private static bool TextureSourceExists(string addonContentRoot, string value)
@@ -83,7 +86,6 @@ internal static class ManagedVmatTextureSafetyNet
         var extension = Path.GetExtension(value.Replace('\\', '/'));
         return extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".tga", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".vtex", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".tif", StringComparison.OrdinalIgnoreCase)
