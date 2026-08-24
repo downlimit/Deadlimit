@@ -33,6 +33,7 @@ internal static class Program
         ProjectHeaderFeature.Attach(form);
         ProjectFilesFeature.Attach(form);
         UiTheme.ApplyCustomPalette(form, settings.UiTheme);
+        SteamStatusFeature.Attach(form, settings.UiTheme);
         form.Shown += (_, _) => form.BeginInvoke((Action)(() => form.ActiveControl = null));
         Application.Run(form);
     }
