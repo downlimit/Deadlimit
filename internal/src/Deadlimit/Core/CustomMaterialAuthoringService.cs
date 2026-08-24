@@ -19,6 +19,9 @@ public sealed class CustomMaterialAuthoringService
 {
     private const string GeneratedMarker = "// DEADLIMIT_GENERATED_CUSTOM_VMAT_V4";
     private const string ManagedComment = "// Deadlimit manages Texture* source assignments in this generated VMAT from project-root PNGs on every PREPARE. Non-texture Material Editor edits remain authoritative.";
+    private const string VertexColorGeneratedMarker = "// DEADLIMIT_VERTEXCOLOR_VMAT_V1";
+    private const string VertexColorManagedComment = "// Deadlimit vertex-color material: mesh vertex color drives base color; project color textures are intentionally ignored.";
+    private const string VertexColorTemplateMaterial = "materials/dev/vertcolor_pbr_basic.vmat";
     private const string DefaultColor = "materials/default/default_color.tga";
     private const string DefaultNormal = "materials/default/default_normal.tga";
     private const string DefaultRoughness = "materials/default/default_rough.tga";
@@ -40,6 +43,10 @@ public sealed class CustomMaterialAuthoringService
 
     private static readonly Regex GeneratedMarkerRegex = new(
         @"\A// DEADLIMIT_GENERATED_CUSTOM_VMAT_V\d+\r?\n",
+        RegexOptions.Compiled);
+
+    private static readonly Regex VertexColorGeneratedMarkerRegex = new(
+        @"\A// DEADLIMIT_VERTEXCOLOR_VMAT_V\d+\r?\n",
         RegexOptions.Compiled);
 
     private static readonly Regex InitialScaffoldCommentRegex = new(
@@ -119,6 +126,7 @@ public sealed class CustomMaterialAuthoringService
         log.AppendLine($"Custom texture sources synchronized from project root: {rootPngFiles.Length}");
         log.AppendLine($"Custom texture source folder: {textureFolder}");
         log.AppendLine("Custom texture naming: <material>_color|diffuse|basecolor|albedo, _normal, _rough|roughness, _ao|occlusion, _metal|metalness|metallic; specialty Texture* fields may also bind by matching the material prefix plus the Texture parameter semantic name.");
+        log.AppendLine("Vertex-color naming: any custom material whose name contains 'vertexcolor' (prefix, suffix, or middle; case-insensitive) is prepared from the retail vertcolor_pbr_basic material and does not consume project color textures.");
 
         var usedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var remaps = new List<VmdlMaterialRemap>();
@@ -130,6 +138,8 @@ public sealed class CustomMaterialAuthoringService
 
         string? retailTemplateText = null;
         string? retailTemplateVpk = null;
+        string? vertexColorTemplateText = null;
+        string? vertexColorTemplateVpk = null;
 
         foreach (var customReference in customReferences)
         {
@@ -148,16 +158,41 @@ public sealed class CustomMaterialAuthoringService
 
             Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
 
-            var standardBindings = ResolveTextureBindings(
-                customReference,
-                customReferences.Length,
-                textureCandidates,
-                log);
+            var vertexColorMode = IsVertexColorMaterialReference(customReference);
+            IReadOnlyDictionary<string, string?> standardBindings = vertexColorMode
+                ? new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+                : ResolveTextureBindings(
+                    customReference,
+                    customReferences.Length,
+                    textureCandidates,
+                    log);
 
             if (File.Exists(targetPath))
             {
                 var existing = File.ReadAllText(targetPath);
-                if (IsDeadlimitManagedVmat(existing))
+                if (vertexColorMode && (IsVertexColorManagedVmat(existing) || IsDeadlimitManagedVmat(existing)))
+                {
+                    var reconciled = ReconcileVertexColorVmat(
+                        existing,
+                        customReference,
+                        customReferences.Length,
+                        materialResourceFolder,
+                        log,
+                        out var boundCount,
+                        out var sanitizedCount);
+
+                    if (!string.Equals(existing, reconciled, StringComparison.Ordinal))
+                    {
+                        File.WriteAllText(targetPath, reconciled);
+                        managedUpdates++;
+                    }
+
+                    autoBoundTextures += boundCount;
+                    preserved++;
+                    log.AppendLine($"Vertex-color VMAT reconciled: {customReference} -> {targetResource}");
+                    log.AppendLine($"  texture fallbacks/defaults applied: {sanitizedCount}");
+                }
+                else if (IsDeadlimitManagedVmat(existing))
                 {
                     var reconciled = ReconcileManagedVmat(
                         existing,
@@ -186,6 +221,33 @@ public sealed class CustomMaterialAuthoringService
                     preserved++;
                     log.AppendLine($"Custom VMAT preserved as artist-owned/unmanaged: {customReference} -> {targetResource}");
                 }
+            }
+            else if (vertexColorMode)
+            {
+                if (vertexColorTemplateText is null)
+                {
+                    (vertexColorTemplateText, vertexColorTemplateVpk) = DecompileRetailMaterialTemplate(
+                        manifest,
+                        VertexColorTemplateMaterial,
+                        cancellationToken);
+                }
+
+                var generated = BuildVertexColorVmat(
+                    vertexColorTemplateText,
+                    customReference,
+                    customReferences.Length,
+                    materialResourceFolder,
+                    log,
+                    out var boundCount,
+                    out var sanitizedCount);
+
+                File.WriteAllText(targetPath, generated);
+                created++;
+                autoBoundTextures += boundCount;
+
+                log.AppendLine(
+                    $"Vertex-color VMAT created from retail template: {customReference} -> {targetResource} | template {VertexColorTemplateMaterial} | VPK {vertexColorTemplateVpk}");
+                log.AppendLine($"  inherited texture-source paths neutralized/defaulted: {sanitizedCount}");
             }
             else
             {
@@ -230,6 +292,7 @@ public sealed class CustomMaterialAuthoringService
         log.AppendLine($"Custom textures auto-bound in current PREPARE: {autoBoundTextures}");
         log.AppendLine($"Existing Deadlimit-managed VMAT files updated in current PREPARE: {managedUpdates}");
         log.AppendLine("Custom VMAT ownership policy: files carrying a DEADLIMIT_GENERATED_CUSTOM_VMAT marker remain texture-managed by Deadlimit; PREPARE may update only their Texture* source assignments and required texture-enable combo state. Non-texture Material Editor edits are preserved.");
+        log.AppendLine("Custom VMAT ownership policy: files carrying a DEADLIMIT_VERTEXCOLOR_VMAT marker are managed only for vertex-color behavior; project texture auto-binding intentionally skips them.");
         log.AppendLine("Custom VMAT ownership policy: an existing addon-owned VMAT without a Deadlimit generated marker is artist-owned/unmanaged and is never rewritten by PREPARE.");
         log.AppendLine("Custom VMAT scaffold policy: inherit the current hero character material so shader, outline/NPR colors, strengths, thicknesses and other non-texture tuning survive, but never inherit unresolved hero texture-source paths.");
         log.AppendLine("Custom texture policy: the project-root PNG set is authoritative for Deadlimit-managed texture slots on every PREPARE. Adding a matching PNG binds it; removing that PNG reverts the managed slot to its safe default/fallback. Derived PNG copies absent from the project root are removed from the addon texture-source folder.");
@@ -386,6 +449,36 @@ public sealed class CustomMaterialAuthoringService
                body.TrimStart('\r', '\n');
     }
 
+    private static string BuildVertexColorVmat(
+        string retailTemplateText,
+        string customReference,
+        int customMaterialCount,
+        string materialResourceFolder,
+        StringBuilder log,
+        out int boundCount,
+        out int sanitizedCount)
+    {
+        var noBindings = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        var body = ReconcileTextureInputs(
+            retailTemplateText,
+            customReference,
+            customMaterialCount,
+            Array.Empty<string>(),
+            materialResourceFolder,
+            noBindings,
+            log,
+            out boundCount,
+            out sanitizedCount);
+
+        body = EnsureStandardTextureAssignments(body, noBindings);
+        body = ReconcileMetalnessTextureCombo(body, hasMetalnessTexture: false);
+        body = UpsertStringParameter(body, "F_VERTEX_COLOR", "1");
+
+        return VertexColorGeneratedMarker + Environment.NewLine +
+               VertexColorManagedComment + Environment.NewLine +
+               body.TrimStart('\r', '\n');
+    }
+
     private static string ReconcileManagedVmat(
         string existingText,
         string customReference,
@@ -418,6 +511,44 @@ public sealed class CustomMaterialAuthoringService
 
         return GeneratedMarker + Environment.NewLine +
                ManagedComment + Environment.NewLine +
+               body.TrimStart('\r', '\n');
+    }
+
+    private static string ReconcileVertexColorVmat(
+        string existingText,
+        string customReference,
+        int customMaterialCount,
+        string materialResourceFolder,
+        StringBuilder log,
+        out int boundCount,
+        out int sanitizedCount)
+    {
+        var body = VertexColorGeneratedMarkerRegex.Replace(existingText, string.Empty, 1);
+        body = GeneratedMarkerRegex.Replace(body, string.Empty, 1);
+        body = InitialScaffoldCommentRegex.Replace(body, string.Empty);
+        body = body.Replace(VertexColorManagedComment + "\r\n", string.Empty, StringComparison.Ordinal)
+            .Replace(VertexColorManagedComment + "\n", string.Empty, StringComparison.Ordinal)
+            .Replace(ManagedComment + "\r\n", string.Empty, StringComparison.Ordinal)
+            .Replace(ManagedComment + "\n", string.Empty, StringComparison.Ordinal);
+
+        var noBindings = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        body = ReconcileTextureInputs(
+            body,
+            customReference,
+            customMaterialCount,
+            Array.Empty<string>(),
+            materialResourceFolder,
+            noBindings,
+            log,
+            out boundCount,
+            out sanitizedCount);
+
+        body = EnsureStandardTextureAssignments(body, noBindings);
+        body = ReconcileMetalnessTextureCombo(body, hasMetalnessTexture: false);
+        body = UpsertStringParameter(body, "F_VERTEX_COLOR", "1");
+
+        return VertexColorGeneratedMarker + Environment.NewLine +
+               VertexColorManagedComment + Environment.NewLine +
                body.TrimStart('\r', '\n');
     }
 
@@ -549,6 +680,14 @@ public sealed class CustomMaterialAuthoringService
         bindings.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value);
 
     private static bool IsDeadlimitManagedVmat(string text) => GeneratedMarkerRegex.IsMatch(text);
+
+    private static bool IsVertexColorManagedVmat(string text) => VertexColorGeneratedMarkerRegex.IsMatch(text);
+
+    private static bool IsVertexColorMaterialReference(string reference)
+    {
+        var leaf = Path.GetFileNameWithoutExtension(GetResourceLeaf(reference));
+        return NormalizeMatchToken(leaf).Contains("vertexcolor", StringComparison.Ordinal);
+    }
 
     private static TextureReplacement ResolveTextureReplacement(
         string key,
