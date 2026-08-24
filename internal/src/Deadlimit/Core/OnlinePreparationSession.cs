@@ -135,7 +135,7 @@ internal sealed class OnlinePreparationSession : IDisposable
                 "ONLINE PREPARATION found no root-level DMX files in the current project.");
         }
 
-        var dmxMappings = RetailVmdlInheritance.ResolveArtistDmxTargets(
+        var dmxMappings = ArtistDmxTargetResolver.Resolve(
             sourceVmdlFullPath,
             manifest.Hero,
             rootDmxFiles);
