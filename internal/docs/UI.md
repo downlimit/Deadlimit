@@ -24,6 +24,12 @@ Hero selection is unlocked while a folder has not yet been initialized as a save
 
 The library and the selected project's DMX/PNG scan refresh automatically when the application regains focus, after settings changes and after project saves. The previous NEW PROJECT, OPEN PROJECT and RESCAN actions are therefore not exposed in the main UI.
 
+## Project header
+
+The workspace header follows a Steam-library-style hierarchy. `SETTINGS / НАСТРОЙКИ` sits in the upper-right corner. The lower-left action pair is `PREPARE FOR CSDK / ПОДГОТОВИТЬ ДЛЯ CSDK` above a large purple `LAUNCH CSDK / ЗАПУСК CSDK` button. The lower-right pair is `BUILD & TEST / СОБРАТЬ И ТЕСТИРОВАТЬ` above a large green `LAUNCH GAME / ЗАПУСК ИГРЫ` button. The game button launches Deadlock through Steam using app id `1422450`.
+
+Each selected project owns a header image at `.deadlimit/project-header.png`. For a newly created project folder, Deadlimit creates the hidden `.deadlimit` directory and a plain dark-gray PNG sized to the live header area. Existing projects receive the same template the first time they are selected if the image is missing. Users can enable hidden items in Explorer, edit or replace that PNG in an image editor, and Deadlimit reloads the artwork when the application regains focus. The file is loaded without holding a persistent lock so it can be overwritten while Deadlimit is running.
+
 ## Theme
 
 Available interface themes:
