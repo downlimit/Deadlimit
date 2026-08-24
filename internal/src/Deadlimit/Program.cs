@@ -6,19 +6,24 @@ namespace Deadlimit;
 
 internal static class Program
 {
+    private const string StartupSmokeArgument = "--startup-smoke";
+
     private static readonly Icon AppIcon = LoadAppIcon();
     private static readonly Size MainWindowSize = new(972, 672);
 
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
+        var startupSmoke = args.Any(argument =>
+            string.Equals(argument, StartupSmokeArgument, StringComparison.OrdinalIgnoreCase));
+
         var settings = ProjectStore.GetToolPathSettings();
         UiTheme.ConfigureApplication(settings.UiTheme);
 
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
-        var form = new MainForm
+        using var form = new MainForm
         {
             Icon = AppIcon,
             Size = MainWindowSize,
@@ -35,6 +40,23 @@ internal static class Program
         UiTheme.ApplyCustomPalette(form, settings.UiTheme);
         SteamStatusFeature.Attach(form, settings.UiTheme);
         form.Shown += (_, _) => form.BeginInvoke((Action)(() => form.ActiveControl = null));
+
+        if (!startupSmoke)
+        {
+            Application.Run(form);
+            return;
+        }
+
+        using var smokeTimer = new System.Windows.Forms.Timer
+        {
+            Interval = 500,
+        };
+        smokeTimer.Tick += (_, _) =>
+        {
+            smokeTimer.Stop();
+            form.Close();
+        };
+        form.Shown += (_, _) => smokeTimer.Start();
         Application.Run(form);
     }
 

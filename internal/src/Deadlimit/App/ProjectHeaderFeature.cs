@@ -118,6 +118,7 @@ internal static class ProjectHeaderFeature
             if ((Control.ModifierKeys & Keys.Shift) == Keys.Shift)
             {
                 TryCopyCameraLockCommand(form);
+                return;
             }
 
             LaunchDeadlock(form);
@@ -177,8 +178,8 @@ internal static class ProjectHeaderFeature
         toolTip.SetToolTip(
             launchGameButton,
             UiText.T(
-                $"Launch retail Deadlock through Steam.\n\nHold SHIFT while clicking to also copy '{CameraLockCommand}' to the clipboard for visual testing.",
-                $"Запустить retail Deadlock через Steam.\n\nУдерживайте SHIFT при клике, чтобы дополнительно скопировать '{CameraLockCommand}' в буфер обмена для визуального теста."));
+                $"Launch retail Deadlock through Steam.\n\nHold SHIFT while clicking to copy '{CameraLockCommand}' to the clipboard without launching the game.",
+                $"Запустить retail Deadlock через Steam.\n\nУдерживайте SHIFT при клике, чтобы скопировать '{CameraLockCommand}' в буфер обмена без запуска игры."));
         toolTip.SetToolTip(
             header,
             UiText.T(
@@ -616,14 +617,6 @@ internal static class ProjectHeaderFeature
 
         public HeaderOverlayButton(Button source, string text, Font font)
         {
-            _source = source;
-            Text = text;
-            Font = font;
-            ForeColor = Color.White;
-            BackColor = Color.Transparent;
-            Cursor = Cursors.Hand;
-            TabStop = false;
-
             SetStyle(
                 ControlStyles.UserPaint
                 | ControlStyles.AllPaintingInWmPaint
@@ -631,6 +624,14 @@ internal static class ProjectHeaderFeature
                 | ControlStyles.SupportsTransparentBackColor,
                 true);
             SetStyle(ControlStyles.Selectable, false);
+
+            _source = source;
+            Text = text;
+            Font = font;
+            ForeColor = Color.White;
+            BackColor = Color.Transparent;
+            Cursor = Cursors.Hand;
+            TabStop = false;
 
             Enabled = source.Enabled;
             source.EnabledChanged += SourceEnabledChanged;
