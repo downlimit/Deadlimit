@@ -4,6 +4,8 @@ namespace Deadlimit.App;
 
 internal static class ProjectLibraryFeature
 {
+    private static readonly Color SelectedProjectBackColor = Color.FromArgb(0x3E, 0x4E, 0x69);
+
     public static void Attach(MainForm form)
     {
         ProjectIdentityFeature.Attach(form);
@@ -11,11 +13,15 @@ internal static class ProjectLibraryFeature
         var libraryGroup = FindDescendants<GroupBox>(form)
             .FirstOrDefault(group =>
                 string.Equals(group.Text, "Projects", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Проекты", StringComparison.Ordinal));
+                || string.Equals(group.Text, "Проекты", StringComparison.Ordinal)
+                || string.Equals(group.Text, "Library", StringComparison.Ordinal)
+                || string.Equals(group.Text, "Библиотека", StringComparison.Ordinal));
         if (libraryGroup is null)
         {
             return;
         }
+
+        libraryGroup.Text = UiText.T("Library", "Библиотека");
 
         var library = libraryGroup.Controls.OfType<ListBox>().FirstOrDefault();
         if (library is null)
@@ -45,35 +51,61 @@ internal static class ProjectLibraryFeature
     private static void ConfigureLibraryFormatting(ListBox library)
     {
         library.FormattingEnabled = true;
-        library.Format += (_, e) =>
+        library.Format += (_, e) => e.Value = GetLibraryDisplayText(e.ListItem);
+
+        library.DrawMode = DrawMode.OwnerDrawFixed;
+        library.ItemHeight = Math.Max(18, library.Font.Height + 4);
+        library.DrawItem += (_, e) =>
         {
-            var folderName = e.ListItem?.ToString();
-            if (string.IsNullOrWhiteSpace(folderName))
+            if (e.Index < 0 || e.Index >= library.Items.Count)
             {
                 return;
             }
 
-            var settings = ProjectStore.GetToolPathSettings();
-            if (string.IsNullOrWhiteSpace(settings.ProjectsRoot))
-            {
-                return;
-            }
+            var selected = (e.State & DrawItemState.Selected) == DrawItemState.Selected;
+            using var background = new SolidBrush(selected ? SelectedProjectBackColor : library.BackColor);
+            e.Graphics.FillRectangle(background, e.Bounds);
 
-            var folder = Path.Combine(settings.ProjectsRoot, folderName);
-            var manifest = ProjectStore.TryLoad(folder);
-            var hasMetadataFile = File.Exists(ProjectStore.GetManifestPath(folder));
-
-            var id = string.IsNullOrWhiteSpace(manifest?.ReleaseTarget)
-                ? "—"
-                : manifest.ReleaseTarget.Trim();
-
-            var marker = manifest is not null ? "◆" : hasMetadataFile ? "!" : "◇";
-            var errorSuffix = hasMetadataFile && manifest is null
-                ? $"   · {UiText.T("JSON ERROR", "ОШИБКА JSON")}"
-                : string.Empty;
-
-            e.Value = $"{marker}  ID {id}   {folderName}{errorSuffix}";
+            var textColor = selected ? Color.White : library.ForeColor;
+            var textBounds = new Rectangle(e.Bounds.X + 3, e.Bounds.Y, Math.Max(0, e.Bounds.Width - 6), e.Bounds.Height);
+            TextRenderer.DrawText(
+                e.Graphics,
+                GetLibraryDisplayText(library.Items[e.Index]),
+                library.Font,
+                textBounds,
+                textColor,
+                TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         };
+    }
+
+    private static string GetLibraryDisplayText(object? item)
+    {
+        var folderName = item?.ToString();
+        if (string.IsNullOrWhiteSpace(folderName))
+        {
+            return string.Empty;
+        }
+
+        var settings = ProjectStore.GetToolPathSettings();
+        if (string.IsNullOrWhiteSpace(settings.ProjectsRoot))
+        {
+            return folderName;
+        }
+
+        var folder = Path.Combine(settings.ProjectsRoot, folderName);
+        var manifest = ProjectStore.TryLoad(folder);
+        var hasMetadataFile = File.Exists(ProjectStore.GetManifestPath(folder));
+
+        var id = string.IsNullOrWhiteSpace(manifest?.ReleaseTarget)
+            ? "—"
+            : manifest.ReleaseTarget.Trim();
+
+        var marker = manifest is not null ? "◆" : hasMetadataFile ? "!" : "◇";
+        var errorSuffix = hasMetadataFile && manifest is null
+            ? $"   · {UiText.T("JSON ERROR", "ОШИБКА JSON")}"
+            : string.Empty;
+
+        return $"{marker}  ID {id}   {folderName}{errorSuffix}";
     }
 
     private static void ConfigureLibraryDoubleClick(MainForm form, ListBox library)
@@ -126,11 +158,22 @@ internal static class ProjectLibraryFeature
 
         var addButton = new Button
         {
-            Text = "+",
+            Text = string.Empty,
             Width = 26,
             Height = 23,
             TabStop = false,
             Anchor = AnchorStyles.Top | AnchorStyles.Right,
+            Padding = Padding.Empty,
+        };
+        addButton.Paint += (_, e) =>
+        {
+            TextRenderer.DrawText(
+                e.Graphics,
+                "+",
+                addButton.Font,
+                addButton.ClientRectangle,
+                addButton.ForeColor,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix);
         };
 
         void PositionButton()
