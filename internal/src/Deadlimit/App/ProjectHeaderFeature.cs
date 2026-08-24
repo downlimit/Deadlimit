@@ -14,6 +14,7 @@ internal static class ProjectHeaderFeature
     private const string HeaderFileName = "project-header.png";
     private const string DeadlockSteamAppId = "1422450";
     private const string DeadlockSteamUri = "steam://rungameid/" + DeadlockSteamAppId;
+    private const string CameraLockCommand = "cl_lock_camera true";
 
     private static readonly Color DefaultHeaderColor = Color.FromArgb(36, 39, 43);
     private static readonly Color CsdkGradientStart = Color.FromArgb(0x58, 0x31, 0xC7);
@@ -69,31 +70,30 @@ internal static class ProjectHeaderFeature
             BackColor = DefaultHeaderColor,
             BackgroundImageLayout = ImageLayout.Stretch,
         };
+        header.Paint += (_, e) => DrawVignette(header, e.Graphics);
 
         workspace.RowStyles[0].SizeType = SizeType.Absolute;
         workspace.RowStyles[0].Height = HeaderRowHeight;
         workspace.Controls.Add(header, 0, 0);
 
+        // Keep the original buttons alive and selectable off-screen because their existing
+        // Click handlers own the actual application actions. The visible translucent header
+        // controls proxy those clicks without letting an opaque native Button cover the art.
         settingsButton.AutoSize = false;
         settingsButton.Size = new Size(30, 22);
-        settingsButton.Text = "⚙";
-        settingsButton.Font = new Font("Segoe UI Symbol", 9.5F, FontStyle.Regular, GraphicsUnit.Point);
-        settingsButton.TextAlign = ContentAlignment.MiddleCenter;
-        settingsButton.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        settingsButton.Margin = Padding.Empty;
-        settingsButton.Padding = Padding.Empty;
+        settingsButton.Location = new Point(-1000, -1000);
         settingsButton.TabStop = false;
 
         prepareButton.AutoSize = false;
         prepareButton.Size = new Size(ActionWidth, PrepareHeight);
-        prepareButton.TextAlign = ContentAlignment.MiddleCenter;
-        prepareButton.Margin = Padding.Empty;
+        prepareButton.Location = new Point(-1000, -1000);
+        prepareButton.TabStop = false;
 
         buildButton.AutoSize = false;
         buildButton.Size = new Size(ActionWidth, PrepareHeight);
         buildButton.Text = UiText.T("BUILD FOR TEST", "СОБРАТЬ ДЛЯ ТЕСТА");
-        buildButton.TextAlign = ContentAlignment.MiddleCenter;
-        buildButton.Margin = Padding.Empty;
+        buildButton.Location = new Point(-1000, -1000);
+        buildButton.TabStop = false;
 
         launchCsdkButton.AutoSize = false;
         launchCsdkButton.Size = new Size(ActionWidth, LaunchHeight);
@@ -101,6 +101,7 @@ internal static class ProjectHeaderFeature
         launchCsdkButton.TextAlign = ContentAlignment.MiddleCenter;
         launchCsdkButton.Font = new Font(launchCsdkButton.Font, FontStyle.Bold);
         launchCsdkButton.Margin = Padding.Empty;
+        launchCsdkButton.TabStop = false;
 
         var launchGameButton = new Button
         {
@@ -112,13 +113,44 @@ internal static class ProjectHeaderFeature
             Margin = Padding.Empty,
             TabStop = false,
         };
-        launchGameButton.Click += (_, _) => LaunchDeadlock(form);
+        launchGameButton.Click += (_, _) =>
+        {
+            if ((Control.ModifierKeys & Keys.Shift) == Keys.Shift)
+            {
+                TryCopyCameraLockCommand(form);
+            }
+
+            LaunchDeadlock(form);
+        };
+
+        var settingsOverlay = new HeaderOverlayButton(
+            settingsButton,
+            "⚙",
+            new Font("Segoe UI Symbol", 10F, FontStyle.Regular, GraphicsUnit.Point))
+        {
+            Size = settingsButton.Size,
+        };
+        var prepareOverlay = new HeaderOverlayButton(prepareButton, prepareButton.Text, prepareButton.Font)
+        {
+            Size = prepareButton.Size,
+        };
+        var buildOverlay = new HeaderOverlayButton(buildButton, buildButton.Text, buildButton.Font)
+        {
+            Size = buildButton.Size,
+        };
 
         header.Controls.Add(settingsButton);
         header.Controls.Add(prepareButton);
         header.Controls.Add(buildButton);
         header.Controls.Add(launchCsdkButton);
         header.Controls.Add(launchGameButton);
+        header.Controls.Add(settingsOverlay);
+        header.Controls.Add(prepareOverlay);
+        header.Controls.Add(buildOverlay);
+
+        settingsOverlay.BringToFront();
+        prepareOverlay.BringToFront();
+        buildOverlay.BringToFront();
 
         var toolTip = new ToolTip
         {
@@ -128,15 +160,25 @@ internal static class ProjectHeaderFeature
             AutoPopDelay = 10000,
         };
         toolTip.SetToolTip(
-            settingsButton,
+            settingsOverlay,
             UiText.T(
                 "Open Deadlimit settings.\n\nConfigure the projects folder, tool locations, interface language and theme.",
                 "Открыть настройки Deadlimit.\n\nЗдесь задаются папка проектов, пути к инструментам, язык и тема интерфейса."));
         toolTip.SetToolTip(
+            prepareOverlay,
+            UiText.T(
+                "Prepare the selected project's authoring content for Reduced CSDK12.\n\nDeadlimit refreshes CSDK content and clears compiled output for this addon. This action does not launch CSDK.",
+                "Подготовить authoring-контент выбранного проекта для Reduced CSDK12.\n\nDeadlimit обновляет CSDK content и очищает compiled output этого аддона. Эта кнопка не запускает CSDK."));
+        toolTip.SetToolTip(
+            buildOverlay,
+            UiText.T(
+                "Compile the current project and deploy its VPK into retail Deadlock.\n\nThis action does not launch the game. Hold SHIFT while clicking to force a full clean rebuild.",
+                "Скомпилировать текущий проект и установить его VPK в retail Deadlock.\n\nЭта кнопка не запускает игру. Удерживайте SHIFT при клике для полной чистой пересборки."));
+        toolTip.SetToolTip(
             launchGameButton,
             UiText.T(
-                "Launch retail Deadlock through Steam.\n\nThis button only starts the game; it does not build or redeploy the current project.",
-                "Запустить retail Deadlock через Steam.\n\nЭта кнопка только запускает игру и не собирает заново текущий проект."));
+                $"Launch retail Deadlock through Steam.\n\nHold SHIFT while clicking to also copy '{CameraLockCommand}' to the clipboard for visual testing.",
+                $"Запустить retail Deadlock через Steam.\n\nУдерживайте SHIFT при клике, чтобы дополнительно скопировать '{CameraLockCommand}' в буфер обмена для визуального теста."));
         toolTip.SetToolTip(
             header,
             UiText.T(
@@ -145,17 +187,17 @@ internal static class ProjectHeaderFeature
 
         void PositionControls()
         {
-            settingsButton.Location = new Point(
-                Math.Max(0, header.ClientSize.Width - settingsButton.Width - 8),
+            settingsOverlay.Location = new Point(
+                Math.Max(0, header.ClientSize.Width - settingsOverlay.Width - 8),
                 8);
 
             var launchY = Math.Max(72, header.ClientSize.Height - LaunchHeight - 12);
             var prepareY = Math.Max(40, launchY - PrepareHeight - 6);
             var rightX = Math.Max(SidePadding, header.ClientSize.Width - SidePadding - ActionWidth);
 
-            prepareButton.Location = new Point(SidePadding, prepareY);
+            prepareOverlay.Location = new Point(SidePadding, prepareY);
             launchCsdkButton.Location = new Point(SidePadding, launchY);
-            buildButton.Location = new Point(rightX, prepareY);
+            buildOverlay.Location = new Point(rightX, prepareY);
             launchGameButton.Location = new Point(rightX, launchY);
         }
 
@@ -170,6 +212,7 @@ internal static class ProjectHeaderFeature
 
             var path = EnsureHeaderImage(folder, header.ClientSize);
             ReplaceBackgroundImage(header, TryLoadImage(path));
+            header.Invalidate();
         }
 
         void OpenHeaderFolder()
@@ -294,6 +337,29 @@ internal static class ProjectHeaderFeature
         previous?.Dispose();
     }
 
+    private static void DrawVignette(Control header, Graphics graphics)
+    {
+        if (header.ClientSize.Width <= 1 || header.ClientSize.Height <= 1)
+        {
+            return;
+        }
+
+        using var path = new GraphicsPath();
+        path.AddRectangle(new Rectangle(0, 0, header.ClientSize.Width, header.ClientSize.Height));
+        using var brush = new PathGradientBrush(path)
+        {
+            CenterColor = Color.FromArgb(0, 0, 0, 0),
+            CenterPoint = new PointF(header.ClientSize.Width / 2F, header.ClientSize.Height / 2F),
+            FocusScales = new PointF(0.55F, 0.55F),
+        };
+
+        var edgeColor = Color.FromArgb(84, 0, 0, 0); // 33% opacity.
+        var surround = new Color[path.PointCount];
+        Array.Fill(surround, edgeColor);
+        brush.SurroundColors = surround;
+        graphics.FillRectangle(brush, header.ClientRectangle);
+    }
+
     private static void ConfigureGradientButton(Button button, Color gradientStart, Color gradientEnd)
     {
         var hovered = false;
@@ -304,9 +370,12 @@ internal static class ProjectHeaderFeature
         button.FlatAppearance.BorderSize = 0;
         button.ForeColor = Color.White;
         button.BackColor = gradientStart;
+        button.TabStop = false;
 
         button.Paint += (_, e) =>
         {
+            button.FlatAppearance.BorderSize = 0;
+
             var start = gradientStart;
             var end = gradientEnd;
             if (hovered)
@@ -334,12 +403,14 @@ internal static class ProjectHeaderFeature
         button.MouseEnter += (_, _) =>
         {
             hovered = true;
+            button.FlatAppearance.BorderSize = 0;
             button.Invalidate();
         };
         button.MouseLeave += (_, _) =>
         {
             hovered = false;
             pressed = false;
+            button.FlatAppearance.BorderSize = 0;
             button.Invalidate();
         };
         button.MouseDown += (_, e) =>
@@ -347,12 +418,14 @@ internal static class ProjectHeaderFeature
             if (e.Button == MouseButtons.Left)
             {
                 pressed = true;
+                button.FlatAppearance.BorderSize = 0;
                 button.Invalidate();
             }
         };
         button.MouseUp += (_, _) =>
         {
             pressed = false;
+            button.FlatAppearance.BorderSize = 0;
             button.Invalidate();
         };
     }
@@ -389,6 +462,23 @@ internal static class ProjectHeaderFeature
             (int)Math.Round((r + m) * 255),
             (int)Math.Round((g + m) * 255),
             (int)Math.Round((b + m) * 255));
+    }
+
+    private static void TryCopyCameraLockCommand(MainForm form)
+    {
+        try
+        {
+            Clipboard.SetText(CameraLockCommand);
+        }
+        catch (System.Runtime.InteropServices.ExternalException ex)
+        {
+            MessageBox.Show(
+                form,
+                ex.Message,
+                UiText.T("Could not copy camera command", "Не удалось скопировать команду камеры"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
     }
 
     private static void LaunchDeadlock(MainForm form)
@@ -515,6 +605,119 @@ internal static class ProjectHeaderFeature
             {
                 yield return nested;
             }
+        }
+    }
+
+    private sealed class HeaderOverlayButton : Control
+    {
+        private readonly Button _source;
+        private bool _hovered;
+        private bool _pressed;
+
+        public HeaderOverlayButton(Button source, string text, Font font)
+        {
+            _source = source;
+            Text = text;
+            Font = font;
+            ForeColor = Color.White;
+            BackColor = Color.Transparent;
+            Cursor = Cursors.Hand;
+            TabStop = false;
+
+            SetStyle(
+                ControlStyles.UserPaint
+                | ControlStyles.AllPaintingInWmPaint
+                | ControlStyles.OptimizedDoubleBuffer
+                | ControlStyles.SupportsTransparentBackColor,
+                true);
+            SetStyle(ControlStyles.Selectable, false);
+
+            Enabled = source.Enabled;
+            source.EnabledChanged += SourceEnabledChanged;
+        }
+
+        protected override void OnClick(EventArgs e)
+        {
+            base.OnClick(e);
+            if (_source.Enabled)
+            {
+                _source.PerformClick();
+            }
+        }
+
+        protected override void OnMouseEnter(EventArgs e)
+        {
+            _hovered = true;
+            Invalidate();
+            base.OnMouseEnter(e);
+        }
+
+        protected override void OnMouseLeave(EventArgs e)
+        {
+            _hovered = false;
+            _pressed = false;
+            Invalidate();
+            base.OnMouseLeave(e);
+        }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                _pressed = true;
+                Invalidate();
+            }
+            base.OnMouseDown(e);
+        }
+
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            _pressed = false;
+            Invalidate();
+            base.OnMouseUp(e);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            base.OnPaint(e);
+
+            var overlay = !Enabled
+                ? Color.FromArgb(150, 35, 35, 35)
+                : _pressed
+                    ? Color.FromArgb(215, 28, 28, 28)
+                    : _hovered
+                        ? Color.FromArgb(205, 58, 58, 58)
+                        : Color.FromArgb(179, 42, 42, 42); // 70% opacity.
+
+            using var brush = new SolidBrush(overlay);
+            e.Graphics.FillRectangle(brush, ClientRectangle);
+
+            TextRenderer.DrawText(
+                e.Graphics,
+                Text,
+                Font,
+                ClientRectangle,
+                Enabled ? Color.White : Color.FromArgb(145, 145, 145),
+                TextFormatFlags.HorizontalCenter
+                | TextFormatFlags.VerticalCenter
+                | TextFormatFlags.NoPadding
+                | TextFormatFlags.NoPrefix
+                | TextFormatFlags.SingleLine);
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _source.EnabledChanged -= SourceEnabledChanged;
+            }
+            base.Dispose(disposing);
+        }
+
+        private void SourceEnabledChanged(object? sender, EventArgs e)
+        {
+            Enabled = _source.Enabled;
+            Invalidate();
         }
     }
 }
