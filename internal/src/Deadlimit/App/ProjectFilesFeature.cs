@@ -58,11 +58,13 @@ internal static class ProjectFilesFeature
         {
             Dock = DockStyle.Fill,
             IntegralHeight = false,
+            HorizontalScrollbar = true,
         };
         var pngList = new ListBox
         {
             Dock = DockStyle.Fill,
             IntegralHeight = false,
+            HorizontalScrollbar = true,
         };
 
         var root = new TableLayoutPanel
@@ -78,20 +80,31 @@ internal static class ProjectFilesFeature
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var fileColumns = new TableLayoutPanel
+        // FlowLayoutPanel gives this section a wheel-scrollable overflow path if more
+        // file-format columns are added later (animations, Source 2 authoring files, etc.).
+        var fileColumns = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
-            RowCount = 1,
+            AutoScroll = true,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = true,
             Margin = Padding.Empty,
             Padding = Padding.Empty,
         };
-        fileColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        fileColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        fileColumns.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        fileColumns.Controls.Add(CreateFileColumn("DMX", dmxList, new Padding(0, 0, 5, 0)), 0, 0);
-        fileColumns.Controls.Add(CreateFileColumn("PNG", pngList, new Padding(5, 0, 0, 0)), 1, 0);
+        var dmxColumn = CreateFileColumn("DMX", dmxList, new Padding(0, 0, 5, 0));
+        var pngColumn = CreateFileColumn("PNG", pngList, new Padding(5, 0, 0, 0));
+        fileColumns.Controls.Add(dmxColumn);
+        fileColumns.Controls.Add(pngColumn);
+
+        void ResizeColumns()
+        {
+            var width = Math.Max(120, (fileColumns.ClientSize.Width - 12) / 2);
+            var height = Math.Max(70, fileColumns.ClientSize.Height - 4);
+            dmxColumn.Size = new Size(width, height);
+            pngColumn.Size = new Size(width, height);
+        }
+        fileColumns.SizeChanged += (_, _) => ResizeColumns();
 
         root.Controls.Add(summaryLabel, 0, 0);
         root.Controls.Add(sourceCountLabel, 0, 1);
@@ -194,6 +207,7 @@ internal static class ProjectFilesFeature
             };
         }
 
+        ResizeColumns();
         Refresh();
     }
 
@@ -201,7 +215,6 @@ internal static class ProjectFilesFeature
     {
         var panel = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 2,
             Margin = margin,

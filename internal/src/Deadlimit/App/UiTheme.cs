@@ -176,6 +176,7 @@ internal static class UiTheme
         button.UseVisualStyleBackColor = false;
         button.FlatStyle = FlatStyle.Flat;
         button.ForeColor = palette.ButtonText;
+        button.TabStop = false;
 
         SetButtonNormal(button, palette);
 
@@ -204,6 +205,28 @@ internal static class UiTheme
                 SetButtonNormal(button, palette);
             }
         };
+
+        // Native WinForms keeps keyboard focus on the last clicked Button and can then
+        // draw an extra focus/default outline. Deadlimit is mouse-driven, so release that
+        // focus after every button action while preserving hover/pressed feedback.
+        button.Click += (_, _) => ClearButtonFocus(button);
+    }
+
+    private static void ClearButtonFocus(Button button)
+    {
+        var form = button.FindForm();
+        if (form is null || form.IsDisposed || !form.IsHandleCreated)
+        {
+            return;
+        }
+
+        form.BeginInvoke((Action)(() =>
+        {
+            if (!form.IsDisposed)
+            {
+                form.ActiveControl = null;
+            }
+        }));
     }
 
     private static void SetButtonNormal(Button button, Palette palette)
