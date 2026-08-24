@@ -279,10 +279,10 @@ internal static class SteamStatusFeature
         if (dark)
         {
             return new StatusPalette(
-                Bar: Color.FromArgb(23, 29, 37),
-                Separator: Color.FromArgb(43, 52, 64),
-                Text: Color.FromArgb(143, 152, 160),
-                StrongText: Color.FromArgb(199, 213, 224),
+                Bar: Color.FromArgb(33, 33, 33),
+                Separator: Color.FromArgb(63, 63, 63),
+                Text: Color.FromArgb(160, 160, 160),
+                StrongText: Color.FromArgb(210, 210, 210),
                 Track: Color.FromArgb(11, 16, 22),
                 Progress: Color.FromArgb(26, 159, 255));
         }
@@ -290,19 +290,19 @@ internal static class SteamStatusFeature
         if (normalized == "gray")
         {
             return new StatusPalette(
-                Bar: Color.FromArgb(48, 53, 61),
-                Separator: Color.FromArgb(74, 81, 92),
-                Text: Color.FromArgb(187, 194, 202),
-                StrongText: Color.FromArgb(231, 234, 238),
+                Bar: Color.FromArgb(65, 65, 65),
+                Separator: Color.FromArgb(96, 96, 96),
+                Text: Color.FromArgb(184, 184, 184),
+                StrongText: Color.FromArgb(226, 226, 226),
                 Track: Color.FromArgb(30, 34, 40),
                 Progress: Color.FromArgb(63, 169, 240));
         }
 
         return new StatusPalette(
-            Bar: Color.FromArgb(229, 233, 238),
-            Separator: Color.FromArgb(195, 201, 208),
-            Text: Color.FromArgb(80, 88, 98),
-            StrongText: Color.FromArgb(35, 42, 51),
+            Bar: Color.FromArgb(248, 248, 248),
+            Separator: Color.FromArgb(190, 190, 190),
+            Text: Color.FromArgb(86, 86, 86),
+            StrongText: Color.FromArgb(34, 34, 34),
             Track: Color.FromArgb(201, 207, 214),
             Progress: Color.FromArgb(34, 132, 205));
     }
