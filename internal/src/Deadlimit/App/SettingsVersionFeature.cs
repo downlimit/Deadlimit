@@ -46,10 +46,35 @@ internal static class SettingsVersionFeature
         {
             Name = VersionValueName,
             Text = $"{UiText.T("Version", "Версия")} {GetDisplayVersion()}",
-            AutoSize = true,
-            Margin = new Padding(12, 7, 12, 0),
+            AutoSize = false,
+            Height = saveButton.GetPreferredSize(Size.Empty).Height,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Margin = new Padding(0, 0, 12, 0),
         };
         footer.Controls.Add(versionLabel);
+
+        void UpdateVersionLayout()
+        {
+            var occupiedWidth = footer.Controls
+                .Cast<Control>()
+                .Where(control => !ReferenceEquals(control, versionLabel))
+                .Sum(control => control.Width + control.Margin.Horizontal);
+            var preferredWidth = versionLabel.GetPreferredSize(Size.Empty).Width;
+            var availableWidth = Math.Max(
+                preferredWidth,
+                footer.DisplayRectangle.Width
+                    - footer.Padding.Horizontal
+                    - occupiedWidth
+                    - versionLabel.Margin.Horizontal);
+
+            if (versionLabel.Width != availableWidth)
+            {
+                versionLabel.Width = availableWidth;
+            }
+        }
+
+        footer.Layout += (_, _) => UpdateVersionLayout();
+        UpdateVersionLayout();
 
         var textBoxes = FindDescendants<TextBox>(form).ToArray();
         var comboBoxes = FindDescendants<ComboBox>(form).ToArray();
