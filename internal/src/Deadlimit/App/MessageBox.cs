@@ -28,13 +28,65 @@ internal sealed record DeadlimitDialogButton(
 // same themed dialog so app-generated modal windows stay visually consistent.
 internal static class MessageBox
 {
+    private static bool _removeHeroExtractionBackupAfterSuccess;
+
     public static DialogResult Show(
         IWin32Window owner,
         string text,
         string caption,
         MessageBoxButtons buttons,
-        MessageBoxIcon icon) =>
-        ToDialogResult(ShowCore(owner, text, caption, CreateButtons(buttons)));
+        MessageBoxIcon icon)
+    {
+        if (IsHeroSourceRefreshPrompt(text, caption, buttons))
+        {
+            var choice = ShowCore(
+                owner,
+                text,
+                caption,
+                [
+                    new DeadlimitDialogButton(
+                        UiText.T("YES", "ДА"),
+                        DeadlimitDialogChoice.Yes,
+                        IsDefault: true),
+                    new DeadlimitDialogButton(
+                        UiText.T("YES, NO BACKUP", "ДА, БЕЗ БЭКАПА"),
+                        DeadlimitDialogChoice.YesWithoutBackup),
+                    new DeadlimitDialogButton(
+                        UiText.T("NO", "НЕТ"),
+                        DeadlimitDialogChoice.No,
+                        IsCancel: true),
+                ]);
+
+            _removeHeroExtractionBackupAfterSuccess =
+                choice == DeadlimitDialogChoice.YesWithoutBackup;
+
+            return choice is DeadlimitDialogChoice.Yes or DeadlimitDialogChoice.YesWithoutBackup
+                ? DialogResult.Yes
+                : DialogResult.No;
+        }
+
+        if (IsHeroSourceSuccess(text))
+        {
+            if (_removeHeroExtractionBackupAfterSuccess)
+            {
+                var cleanupError = TryRemovePreviousHeroSourceBackup();
+                if (!string.IsNullOrWhiteSpace(cleanupError))
+                {
+                    text += UiText.T(
+                        $"\n\nBackup cleanup warning:\n{cleanupError}",
+                        $"\n\nНе удалось удалить backup:\n{cleanupError}");
+                }
+            }
+
+            _removeHeroExtractionBackupAfterSuccess = false;
+        }
+        else if (IsHeroSourceFailure(caption))
+        {
+            _removeHeroExtractionBackupAfterSuccess = false;
+        }
+
+        return ToDialogResult(ShowCore(owner, text, caption, CreateButtons(buttons)));
+    }
 
     public static DialogResult Show(
         IWin32Window owner,
@@ -68,6 +120,55 @@ internal static class MessageBox
         string caption,
         params DeadlimitDialogButton[] buttons) =>
         ShowCore(owner, text, caption, buttons);
+
+    private static bool IsHeroSourceRefreshPrompt(
+        string text,
+        string caption,
+        MessageBoxButtons buttons) =>
+        buttons == MessageBoxButtons.YesNo
+        && (string.Equals(caption, "Refresh hero source", StringComparison.Ordinal)
+            || string.Equals(caption, "Обновить исходники героя", StringComparison.Ordinal)
+            || text.StartsWith("0source already contains files.", StringComparison.Ordinal)
+            || text.StartsWith("0source уже содержит файлы.", StringComparison.Ordinal));
+
+    private static bool IsHeroSourceSuccess(string text) =>
+        text.StartsWith("Hero source refreshed successfully.", StringComparison.Ordinal)
+        || text.StartsWith("Исходники героя успешно обновлены.", StringComparison.Ordinal);
+
+    private static bool IsHeroSourceFailure(string caption) =>
+        string.Equals(caption, "Hero source extraction failed", StringComparison.Ordinal)
+        || string.Equals(caption, "Ошибка извлечения исходников героя", StringComparison.Ordinal);
+
+    private static string? TryRemovePreviousHeroSourceBackup()
+    {
+        var projectFolder = ProjectStore.GetLastProjectFolder();
+        if (string.IsNullOrWhiteSpace(projectFolder))
+        {
+            return UiText.T(
+                "The current project folder could not be resolved.",
+                "Не удалось определить папку текущего проекта.");
+        }
+
+        try
+        {
+            var previousFolder = Path.Combine(
+                ProjectStore.GetMetadataFolder(projectFolder),
+                "0source.previous");
+            if (Directory.Exists(previousFolder))
+            {
+                Directory.Delete(previousFolder, recursive: true);
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException
+            or UnauthorizedAccessException
+            or ArgumentException
+            or NotSupportedException)
+        {
+            return ex.Message;
+        }
+    }
 
     private static DeadlimitDialogChoice ShowCore(
         IWin32Window? owner,
