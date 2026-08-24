@@ -319,12 +319,29 @@ internal static class ProjectLibraryFeature
             try
             {
                 Directory.CreateDirectory(folder);
+                ProjectArtworkService.EnsureDefaultHeader(folder);
                 CreatedFolder = Path.GetFullPath(folder);
                 DialogResult = DialogResult.OK;
                 Close();
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            catch (Exception ex) when (ex is IOException
+                or UnauthorizedAccessException
+                or ArgumentException
+                or NotSupportedException
+                or System.Runtime.InteropServices.ExternalException)
             {
+                try
+                {
+                    if (Directory.Exists(folder))
+                    {
+                        Directory.Delete(folder, recursive: true);
+                    }
+                }
+                catch
+                {
+                    // Preserve the original creation error; cleanup is best-effort only.
+                }
+
                 ShowError(ex.Message);
             }
         }
