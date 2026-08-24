@@ -15,11 +15,11 @@ internal static class SettingsVersionFeature
     {
         foreach (var settingsForm in Application.OpenForms.OfType<SettingsForm>())
         {
-            EnsureVersionRow(settingsForm);
+            EnsureFooterEnhancements(settingsForm);
         }
     }
 
-    private static void EnsureVersionRow(SettingsForm form)
+    private static void EnsureFooterEnhancements(SettingsForm form)
     {
         if (FindDescendants<Label>(form).Any(label =>
                 string.Equals(label.Name, VersionValueName, StringComparison.Ordinal)))
@@ -27,39 +27,72 @@ internal static class SettingsVersionFeature
             return;
         }
 
-        var grid = FindDescendants<TableLayoutPanel>(form)
+        var footer = FindDescendants<FlowLayoutPanel>(form)
             .FirstOrDefault(panel =>
-                panel.ColumnCount == 4
-                && FindDescendants<TextBox>(panel).Count() >= 4);
-        if (grid is null)
+                panel.Controls.OfType<Button>().Any(IsSaveButton)
+                && panel.Controls.OfType<Button>().Any(IsCancelButton));
+        if (footer is null)
         {
             return;
         }
 
-        var row = grid.RowCount;
-        grid.RowCount++;
-        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-        var caption = new Label
+        var saveButton = footer.Controls.OfType<Button>().FirstOrDefault(IsSaveButton);
+        if (saveButton is null)
         {
-            Text = UiText.T("Version", "Версия"),
-            AutoSize = true,
-            Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 9, 12, 9),
-        };
-        var value = new Label
+            return;
+        }
+
+        var versionLabel = new Label
         {
             Name = VersionValueName,
-            Text = GetDisplayVersion(),
+            Text = $"{UiText.T("Version", "Версия")} {GetDisplayVersion()}",
             AutoSize = true,
-            Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 9, 8, 9),
+            Margin = new Padding(12, 7, 12, 0),
         };
+        footer.Controls.Add(versionLabel);
 
-        grid.Controls.Add(caption, 0, row);
-        grid.Controls.Add(value, 1, row);
-        grid.SetColumnSpan(value, 3);
+        var textBoxes = FindDescendants<TextBox>(form).ToArray();
+        var comboBoxes = FindDescendants<ComboBox>(form).ToArray();
+        var initialText = textBoxes.ToDictionary(
+            textBox => textBox,
+            textBox => textBox.Text.Trim());
+        var initialSelection = comboBoxes.ToDictionary(
+            comboBox => comboBox,
+            comboBox => comboBox.SelectedIndex);
+
+        void UpdateSaveEnabled()
+        {
+            var textChanged = initialText.Any(pair =>
+                !string.Equals(
+                    pair.Key.Text.Trim(),
+                    pair.Value,
+                    StringComparison.OrdinalIgnoreCase));
+            var selectionChanged = initialSelection.Any(pair =>
+                pair.Key.SelectedIndex != pair.Value);
+
+            saveButton.Enabled = textChanged || selectionChanged;
+        }
+
+        foreach (var textBox in textBoxes)
+        {
+            textBox.TextChanged += (_, _) => UpdateSaveEnabled();
+        }
+
+        foreach (var comboBox in comboBoxes)
+        {
+            comboBox.SelectedIndexChanged += (_, _) => UpdateSaveEnabled();
+        }
+
+        UpdateSaveEnabled();
     }
+
+    private static bool IsSaveButton(Button button) =>
+        string.Equals(button.Text, "SAVE", StringComparison.Ordinal)
+        || string.Equals(button.Text, "СОХРАНИТЬ", StringComparison.Ordinal);
+
+    private static bool IsCancelButton(Button button) =>
+        string.Equals(button.Text, "CANCEL", StringComparison.Ordinal)
+        || string.Equals(button.Text, "ОТМЕНА", StringComparison.Ordinal);
 
     private static string GetDisplayVersion()
     {
