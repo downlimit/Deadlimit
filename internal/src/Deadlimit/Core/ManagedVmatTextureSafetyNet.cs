@@ -12,8 +12,12 @@ internal static class ManagedVmatTextureSafetyNet
     private const string DefaultBlackMask = "materials/default/default_black_mask.tga";
 
     private static readonly Regex TextureSourceReferenceRegex = new(
-        @"(?<prefix>\b(?<key>Texture[A-Za-z0-9_]+)\b(?:(?!\bTexture[A-Za-z0-9_]+\b).){0,512}?"")(?<value>[^""]+)(?<suffix>"")",
+        @"(?<prefix>\b(?<key>Texture[A-Za-z0-9_]+)\b(?:(?!\bTexture[A-Za-z0-9_]+\b).){0,2048}?"")(?<value>[^""]+)(?<suffix>"")",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Singleline);
+
+    private static readonly Regex QuotedTextureSourceRegex = new(
+        "\\\"(?<value>[^\\\"\\r\\n]+\\.(?:png|tga|vtex|jpg|jpeg|tif|tiff))\\\"",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public static string RepairMissingTextureSources(
         string text,
@@ -45,10 +49,9 @@ internal static class ManagedVmatTextureSafetyNet
 
     public static IReadOnlyList<string> FindMissingTextureSources(string text, string addonContentRoot)
     {
-        return TextureSourceReferenceRegex.Matches(text)
+        return QuotedTextureSourceRegex.Matches(text)
             .Cast<Match>()
             .Select(match => match.Groups["value"].Value)
-            .Where(LooksLikeTextureSourcePath)
             .Where(value => !IsKnownSafeDefault(value))
             .Where(value => !TextureSourceExists(addonContentRoot, value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
