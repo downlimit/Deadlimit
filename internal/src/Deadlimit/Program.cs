@@ -33,6 +33,7 @@ internal static class Program
             MaximizeBox = false,
         };
         BuildFeature.Attach(form);
+        OnlinePreparationFeature.Attach(form);
         ExtractionProgressFeature.Attach(form);
         ProjectLibraryFeature.Attach(form);
         HeroCatalogFeature.Attach(form);
