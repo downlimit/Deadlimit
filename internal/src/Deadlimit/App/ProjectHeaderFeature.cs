@@ -353,8 +353,11 @@ internal static class ProjectHeaderFeature
     private static Color IncreaseSaturationAndValue(Color color, double saturationFactor, double valueFactor)
     {
         var hue = color.GetHue();
-        var saturation = Math.Clamp(color.GetSaturation() * saturationFactor, 0.0, 1.0);
-        var value = Math.Clamp(Math.Max(color.R, Math.Max(color.G, color.B)) / 255.0 * valueFactor, 0.0, 1.0);
+        var max = Math.Max(color.R, Math.Max(color.G, color.B)) / 255.0;
+        var min = Math.Min(color.R, Math.Min(color.G, color.B)) / 255.0;
+        var saturation = max <= 0.0 ? 0.0 : (max - min) / max;
+        saturation = Math.Clamp(saturation * saturationFactor, 0.0, 1.0);
+        var value = Math.Clamp(max * valueFactor, 0.0, 1.0);
         return ColorFromHsv(hue, saturation, value);
     }
 
@@ -366,12 +369,12 @@ internal static class ProjectHeaderFeature
 
         (double r, double g, double b) = sector switch
         {
-            < 1 => (chroma, x, 0),
-            < 2 => (x, chroma, 0),
-            < 3 => (0, chroma, x),
-            < 4 => (0, x, chroma),
-            < 5 => (x, 0, chroma),
-            _ => (chroma, 0, x),
+            < 1 => (chroma, x, 0.0),
+            < 2 => (x, chroma, 0.0),
+            < 3 => (0.0, chroma, x),
+            < 4 => (0.0, x, chroma),
+            < 5 => (x, 0.0, chroma),
+            _ => (chroma, 0.0, x),
         };
 
         var m = value - chroma;
