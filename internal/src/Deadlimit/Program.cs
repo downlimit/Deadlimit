@@ -37,6 +37,7 @@ internal static class Program
         ProjectLibraryFeature.Attach(form);
         HeroCatalogFeature.Attach(form);
         ProjectLogsFeature.Attach(form);
+        ProjectSaveStateFeature.Attach(form);
         ProjectHeaderFeature.Attach(form);
         ProjectFilesFeature.Attach(form);
         UiTheme.ApplyCustomPalette(form, settings.UiTheme);
