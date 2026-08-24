@@ -4,6 +4,8 @@ namespace Deadlimit.App;
 
 internal static class ProjectSaveStateFeature
 {
+    private static readonly Dictionary<MainForm, Action> Updaters = [];
+
     public static void Attach(MainForm form)
     {
         var projectGroup = FindDescendants<GroupBox>(form)
@@ -75,6 +77,8 @@ internal static class ProjectSaveStateFeature
             saveButton.Enabled = IsDirty();
         }
 
+        Updaters[form] = UpdateSaveState;
+
         folderText.TextChanged += (_, _) => UpdateSaveState();
         if (heroCombo is not null)
         {
@@ -91,8 +95,17 @@ internal static class ProjectSaveStateFeature
         saveButton.Click += (_, _) => form.BeginInvoke((Action)UpdateSaveState);
         form.Activated += (_, _) => UpdateSaveState();
         form.Shown += (_, _) => UpdateSaveState();
+        form.FormClosed += (_, _) => Updaters.Remove(form);
 
         UpdateSaveState();
+    }
+
+    public static void Refresh(MainForm form)
+    {
+        if (Updaters.TryGetValue(form, out var update))
+        {
+            update();
+        }
     }
 
     private static string NormalizeReleaseId(string? value)
