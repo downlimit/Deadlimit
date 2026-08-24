@@ -168,6 +168,12 @@ public sealed class PrepareAuthoringService
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new PrepareAuthoringProgress("Preparing addon-owned custom materials..."));
 
+            ProjectTextureBindingService.MarkLegacyManagedMaterialsForMigration(
+                addonContentRoot,
+                addonName,
+                log,
+                cancellationToken);
+
             var customMaterials = new CustomMaterialAuthoringService(_paths).Prepare(
                 manifest,
                 addonName,
@@ -178,12 +184,13 @@ public sealed class PrepareAuthoringService
                 log,
                 cancellationToken);
 
-            var finalTextureRepairs = FinalizeManagedCustomMaterials(
-                customMaterials,
+            ProjectTextureBindingService.Synchronize(
+                manifest,
+                addonName,
                 addonContentRoot,
+                customMaterials,
                 log,
                 cancellationToken);
-            log.AppendLine($"Managed custom VMAT final texture-source repairs: {finalTextureRepairs}");
 
             var generatedRemaps = compatibilityRemaps
                 .Concat(customMaterials.Remaps)
@@ -218,7 +225,7 @@ public sealed class PrepareAuthoringService
             log.AppendLine("VMDL policy: preserve the extracted retail document/header/order and patch only proven incompatible or project-owned data.");
             log.AppendLine("Material policy: DMX material-reference count is diagnostic only; VMDL remaps are a separate concept.");
             log.AppendLine("Material policy: preserve retail reuse, generate narrow compatibility repairs, and route unresolved Wall Worm custom slots to addon-owned VMAT files.");
-            log.AppendLine("Material policy: PREPARE may create a missing custom VMAT scaffold, but must never overwrite an existing authored custom VMAT.");
+            log.AppendLine("Material policy: copy retail/template material parameters only when a custom VMAT is first created; later PREPARE runs preserve manual VMAT edits and synchronize only matching project-root texture sources.");
             log.AppendLine("Render-mesh policy: preserve retail RenderMeshList/bodygroups/LODs; overlay artist DMX at the original render-mesh resource path.");
 
             manifest.SourceVmdl = sourceCopy.DestinationVmdlPath;
