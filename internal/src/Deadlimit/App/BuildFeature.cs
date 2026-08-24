@@ -24,7 +24,7 @@ internal static class BuildFeature
 
         var buildAndTestButton = new Button
         {
-            Text = UiText.T("BUILD & TEST", "СОБРАТЬ И ТЕСТИРОВАТЬ"),
+            Text = UiText.T("BUILD FOR TEST", "СОБРАТЬ ДЛЯ ТЕСТА"),
             AutoSize = true,
         };
 
@@ -44,18 +44,18 @@ internal static class BuildFeature
         toolTip.SetToolTip(
             prepareButton,
             UiText.T(
-                "Prepare authoring content for CSDK/Material Editor. Clears compiled output for this addon so CSDK rebuilds it cleanly.",
-                "Подготовить authoring-контент для CSDK/Material Editor. Очищает compiled output текущего аддона для чистой пересборки CSDK."));
+                "Prepare the selected project's authoring content for Reduced CSDK12 / ModelDoc / Material Editor.\n\nDeadlimit refreshes the CSDK content and clears compiled output for this addon so CSDK can rebuild it cleanly. This action does not launch CSDK.",
+                "Подготовить authoring-контент выбранного проекта для Reduced CSDK12 / ModelDoc / Material Editor.\n\nDeadlimit обновляет CSDK content и очищает compiled output этого аддона, чтобы CSDK пересобрал его чисто. Эта кнопка не запускает CSDK."));
         toolTip.SetToolTip(
             buildAndTestButton,
             UiText.T(
-                "Normal in-game iteration: prepare changes, compile, deploy VPK. If Deadlock is running, it must be closed because it locks the loaded VPK. Hold SHIFT while clicking to force a full clean rebuild.",
-                "Обычный игровой цикл: подготовить изменения, скомпилировать и установить VPK. Если Deadlock запущен, его нужно закрыть: игра блокирует загруженный VPK. Удерживайте SHIFT при клике для полной чистой пересборки."));
+                "Compile the current project and deploy its VPK into retail Deadlock so it is ready for testing.\n\nThis action does not launch the game. If Deadlock is already running, it must be closed because the loaded VPK is locked. Hold SHIFT while clicking to force a full clean rebuild.",
+                "Скомпилировать текущий проект и установить его VPK в retail Deadlock, чтобы мод был готов к тесту.\n\nЭта кнопка не запускает игру. Если Deadlock уже запущен, его нужно закрыть: загруженный VPK заблокирован игрой. Удерживайте SHIFT при клике для полной чистой пересборки."));
         toolTip.SetToolTip(
             launchCsdkButton,
             UiText.T(
-                "Launch Reduced CSDK12 for ModelDoc, Material Editor and other authoring tools.",
-                "Запустить Reduced CSDK12 для ModelDoc, Material Editor и других authoring-инструментов."));
+                "Launch the configured Reduced CSDK12 environment.\n\nUse it for ModelDoc, Material Editor and other Source 2 authoring tools. It does not build or deploy the retail VPK.",
+                "Запустить настроенное окружение Reduced CSDK12.\n\nИспользуйте его для ModelDoc, Material Editor и других Source 2 authoring-инструментов. Эта кнопка не собирает и не устанавливает retail VPK."));
 
         var buildProgressBar = AddBuildProgressBar(form);
         var actionButtons = new[] { prepareButton, buildAndTestButton, launchCsdkButton };
@@ -131,7 +131,7 @@ internal static class BuildFeature
                 $"CSDK content:\n{result.AddonContentRoot}\n\n" +
                 $"Model source:\n{result.SourceVmdlPath}\n\n" +
                 $"CSDK game output: CLEAN. {gameState}\n" +
-                $"Deadlimit did not compile it; use LAUNCH CSDK while authoring, or BUILD & TEST for the normal in-game iteration loop.\n\n" +
+                $"Deadlimit did not compile it; use LAUNCH CSDK while authoring, or BUILD FOR TEST when you want to compile and deploy the retail VPK. Launch the game separately when you are ready.\n\n" +
                 $"Log: {result.LogPath}",
                 $"Authoring-контент подготовлен.\n\n" +
                 $"Аддон: {result.AddonName}\n" +
@@ -146,7 +146,7 @@ internal static class BuildFeature
                 $"CSDK content:\n{result.AddonContentRoot}\n\n" +
                 $"Исходник модели:\n{result.SourceVmdlPath}\n\n" +
                 $"CSDK game output: CLEAN. {gameState}\n" +
-                $"Deadlimit его не компилировал; для authoring используйте ЗАПУСТИТЬ CSDK, для обычной игровой итерации — СОБРАТЬ И ТЕСТИРОВАТЬ.\n\n" +
+                $"Deadlimit его не компилировал; для authoring используйте ЗАПУСК CSDK, а для компиляции и установки retail VPK — СОБРАТЬ ДЛЯ ТЕСТА. Игру запускайте отдельно, когда будете готовы.\n\n" +
                 $"Лог: {result.LogPath}");
 
             MessageBox.Show(
@@ -185,8 +185,8 @@ internal static class BuildFeature
             MessageBox.Show(
                 form,
                 UiText.T(
-                    "Save the current Deadlimit project before running BUILD & TEST.",
-                    "Сохраните текущий проект Deadlimit перед запуском СБОРКИ И ТЕСТА."),
+                    "Save the current Deadlimit project before running BUILD FOR TEST.",
+                    "Сохраните текущий проект Deadlimit перед запуском СОБРАТЬ ДЛЯ ТЕСТА."),
                 "Deadlimit",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
@@ -199,8 +199,8 @@ internal static class BuildFeature
             var closeAnswer = MessageBox.Show(
                 form,
                 UiText.T(
-                    "Deadlock is running and has the loaded VPK locked, so Deadlimit cannot replace the current mod archive while the game is open.\n\nClose Deadlock automatically and continue BUILD & TEST?",
-                    "Deadlock сейчас запущен и блокирует загруженный VPK, поэтому Deadlimit не может заменить текущий архив мода, пока игра открыта.\n\nАвтоматически закрыть Deadlock и продолжить СБОРКУ И ТЕСТ?"),
+                    "Deadlock is running and has the loaded VPK locked, so Deadlimit cannot replace the current mod archive while the game is open.\n\nClose Deadlock automatically and continue BUILD FOR TEST?",
+                    "Deadlock сейчас запущен и блокирует загруженный VPK, поэтому Deadlimit не может заменить текущий архив мода, пока игра открыта.\n\nАвтоматически закрыть Deadlock и продолжить СОБРАТЬ ДЛЯ ТЕСТА?"),
                 UiText.T("Deadlock must be closed", "Нужно закрыть Deadlock"),
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Information);
@@ -234,8 +234,8 @@ internal static class BuildFeature
                 if (!stopped)
                 {
                     throw new InvalidOperationException(UiText.T(
-                        "Deadlock did not close, so the current VPK may still be locked. Close the game manually and run BUILD & TEST again.",
-                        "Deadlock не удалось закрыть, поэтому текущий VPK всё ещё может быть заблокирован. Закройте игру вручную и снова запустите СБОРКУ И ТЕСТ."));
+                        "Deadlock did not close, so the current VPK may still be locked. Close the game manually and run BUILD FOR TEST again.",
+                        "Deadlock не удалось закрыть, поэтому текущий VPK всё ещё может быть заблокирован. Закройте игру вручную и снова запустите СОБРАТЬ ДЛЯ ТЕСТА."));
                 }
             }
 
@@ -290,7 +290,7 @@ internal static class BuildFeature
 
             await Task.Run(() => slotGuard.RecordSuccessfulDeployment(manifest, result.VpkPath));
             animator.Update(new BuildAndTestProgress(
-                UiText.T("Build & Test complete.", "Сборка и тест готовы."),
+                UiText.T("Build for test complete.", "Сборка для теста готова."),
                 100));
 
             var modLoadingSummary = modLoading.Patched
@@ -335,7 +335,7 @@ internal static class BuildFeature
             MessageBox.Show(
                 form,
                 ex.Message,
-                UiText.T("Build & Test failed", "Ошибка сборки и теста"),
+                UiText.T("Build for test failed", "Ошибка сборки для теста"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -359,7 +359,7 @@ internal static class BuildFeature
         {
             File.Delete(statePath);
         }
-        File.Move(backupPath, statePath);
+        File.Move(backupPath, forceStatePath: null);
     }
 
     private static ToolStripProgressBar? AddBuildProgressBar(MainForm form)
@@ -462,7 +462,7 @@ internal static class BuildFeature
 
         private int _percent;
         private int _frameIndex;
-        private string _message = UiText.T("Starting Build & Test...", "Запуск сборки и теста...");
+        private string _message = UiText.T("Starting build for test...", "Запуск сборки для теста...");
         private bool _disposed;
 
         public BuildProgressAnimator(
