@@ -14,6 +14,7 @@ internal static class ProjectTextureBindingService
     private const string LegacyGeneratedPrefix = "// DEADLIMIT_GENERATED_CUSTOM_VMAT_V";
     private const string PendingManagedMarker = "// DEADLIMIT_MANAGED_CUSTOM_VMAT_V5_PENDING";
     private const string ManagedMarker = "// DEADLIMIT_MANAGED_CUSTOM_VMAT_V5";
+    private const string VertexColorGeneratedPrefix = "// DEADLIMIT_VERTEXCOLOR_VMAT_V";
     private const string ManagedComment = "// Deadlimit inherited this material once. Later PREPARE runs only synchronize matching project-root textures; manual material parameters remain authoritative.";
 
     private const string DefaultColor = "materials/default/default_color.tga";
@@ -93,8 +94,23 @@ internal static class ProjectTextureBindingService
         CancellationToken cancellationToken)
     {
         var materialResourceFolder = $"materials/{addonName}";
-        var textureFolder = Path.Combine(addonContentRoot, "materials", addonName, "textures");
+        var materialFolder = Path.Combine(addonContentRoot, "materials", addonName);
+        var textureFolder = Path.Combine(materialFolder, "textures");
+        Directory.CreateDirectory(materialFolder);
         Directory.CreateDirectory(textureFolder);
+
+        var desiredMaterialPaths = customMaterials.Remaps
+            .Select(remap => NormalizeResourcePath(remap.To))
+            .Select(resource => Path.GetFullPath(Path.Combine(
+                addonContentRoot,
+                resource.Replace('/', Path.DirectorySeparatorChar))))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var removedStaleMaterials = RemoveStaleManagedMaterials(
+            materialFolder,
+            desiredMaterialPaths,
+            log,
+            cancellationToken);
 
         var projectTextures = Directory.EnumerateFiles(manifest.ProjectFolder, "*", SearchOption.TopDirectoryOnly)
             .Where(path => TextureSourceExtensions.Contains(Path.GetExtension(path)))
@@ -133,6 +149,12 @@ internal static class ProjectTextureBindingService
             }
 
             var original = File.ReadAllText(targetPath);
+            if (original.StartsWith(VertexColorGeneratedPrefix, StringComparison.Ordinal))
+            {
+                log.AppendLine($"Project texture sync skipped vertex-color VMAT: {targetResource}");
+                continue;
+            }
+
             var isLegacyGenerated = original.StartsWith(LegacyGeneratedPrefix, StringComparison.Ordinal);
             var isPendingMigration = original.StartsWith(PendingManagedMarker, StringComparison.Ordinal);
             var isManaged = original.StartsWith(ManagedMarker, StringComparison.Ordinal);
@@ -149,7 +171,6 @@ internal static class ProjectTextureBindingService
 
             var bindings = ResolveMaterialBindings(
                 remap.From,
-                customMaterials.CustomMaterialCount,
                 candidates,
                 log);
 
@@ -181,6 +202,14 @@ internal static class ProjectTextureBindingService
 
             text = ReplaceAssignments(text, replacements);
 
+            text = SanitizeUnmatchedManagedTextureSources(
+                text,
+                materialResourceFolder,
+                bindings,
+                log,
+                out var unmatchedSanitized);
+            sanitizedTextures += unmatchedSanitized;
+
             if (boundSemantics.Contains("metalness"))
             {
                 text = EnableMetalnessTexture(text);
@@ -202,7 +231,10 @@ internal static class ProjectTextureBindingService
             }
         }
 
-        log.AppendLine($"Managed custom VMAT project-texture sync: {managedMaterials} material(s), {boundTextures} texture binding(s), {sanitizedTextures} stale inherited/derived source repair(s), {unresolvedTextures} unmatched project texture(s).");
+        log.AppendLine($"Stale Deadlimit-managed custom VMAT files removed: {removedStaleMaterials}");
+        log.AppendLine($"Managed custom VMAT project-texture sync: {managedMaterials} material(s), {boundTextures} texture binding(s), {sanitizedTextures} stale/mismatched inherited or derived source repair(s), {unresolvedTextures} unmatched project texture(s).");
+        log.AppendLine("Custom texture naming policy: project textures bind only when the filename material prefix exactly matches the custom material name; Deadlimit does not guess based on there being only one material or one texture.");
+        log.AppendLine("Custom VMAT lifecycle policy: Deadlimit-owned generated VMAT files are removed when their material is no longer referenced by the current artist DMX. Artist-owned/unmanaged VMAT files are preserved.");
         log.AppendLine("Custom VMAT parameter policy: retail/template shader and non-texture parameters are inherited only when a VMAT is first created. Later PREPARE runs do not re-apply hero parameters; matching project-root texture files are the only automatic overrides.");
 
         return new ProjectTextureBindingResult(
@@ -211,6 +243,48 @@ internal static class ProjectTextureBindingService
             sanitizedTextures,
             unresolvedTextures);
     }
+
+    private static int RemoveStaleManagedMaterials(
+        string materialFolder,
+        IReadOnlySet<string> desiredMaterialPaths,
+        StringBuilder log,
+        CancellationToken cancellationToken)
+    {
+        if (!Directory.Exists(materialFolder))
+        {
+            return 0;
+        }
+
+        var removed = 0;
+        foreach (var path in Directory.EnumerateFiles(materialFolder, "*.vmat", SearchOption.TopDirectoryOnly))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var fullPath = Path.GetFullPath(path);
+            if (desiredMaterialPaths.Contains(fullPath))
+            {
+                continue;
+            }
+
+            var text = File.ReadAllText(path);
+            if (!IsDeadlimitOwnedMaterial(text))
+            {
+                continue;
+            }
+
+            File.Delete(path);
+            removed++;
+            log.AppendLine($"Removed stale Deadlimit-managed custom VMAT no longer referenced by artist DMX: {Path.GetFileName(path)}");
+        }
+
+        return removed;
+    }
+
+    private static bool IsDeadlimitOwnedMaterial(string text) =>
+        text.StartsWith(LegacyGeneratedPrefix, StringComparison.Ordinal)
+        || text.StartsWith(PendingManagedMarker, StringComparison.Ordinal)
+        || text.StartsWith(ManagedMarker, StringComparison.Ordinal)
+        || text.StartsWith(VertexColorGeneratedPrefix, StringComparison.Ordinal);
 
     private static string ReplaceAssignments(string text, IReadOnlyDictionary<int, string> replacements)
     {
@@ -228,6 +302,48 @@ internal static class ProjectTextureBindingService
 
             return match.Groups["prefix"].Value + replacement + match.Groups["suffix"].Value;
         });
+    }
+
+    private static string SanitizeUnmatchedManagedTextureSources(
+        string text,
+        string materialResourceFolder,
+        IReadOnlyDictionary<string, string> bindings,
+        StringBuilder log,
+        out int sanitizedCount)
+    {
+        var managedTexturePrefix = NormalizeResourcePath(materialResourceFolder + "/textures/");
+        var localSanitized = 0;
+
+        var result = TextureAssignmentRegex.Replace(text, match =>
+        {
+            var value = NormalizeResourcePath(match.Groups["value"].Value);
+            if (!value.StartsWith(managedTexturePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return match.Value;
+            }
+
+            var key = GetTextureKey(match);
+            var slotSemantic = GetSemanticFromTextureKey(key);
+            var hasExactBinding = bindings.Any(binding =>
+                SemanticsCompatible(slotSemantic, binding.Key)
+                && string.Equals(
+                    NormalizeResourcePath(binding.Value),
+                    value,
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (hasExactBinding)
+            {
+                return match.Value;
+            }
+
+            var fallback = GetTextureFallback(key);
+            localSanitized++;
+            log.AppendLine($"Custom VMAT mismatched project texture removed {key}: {match.Groups["value"].Value} -> {fallback}");
+            return match.Groups["prefix"].Value + fallback + match.Groups["suffix"].Value;
+        });
+
+        sanitizedCount = localSanitized;
+        return result;
     }
 
     private static string SanitizeMissingTextureSources(
@@ -289,7 +405,6 @@ internal static class ProjectTextureBindingService
 
     private static IReadOnlyDictionary<string, string> ResolveMaterialBindings(
         string customReference,
-        int customMaterialCount,
         IReadOnlyList<ProjectTextureCandidate> candidates,
         StringBuilder log)
     {
@@ -302,29 +417,15 @@ internal static class ProjectTextureBindingService
                 .Where(candidate => string.Equals(candidate.BaseToken, materialToken, StringComparison.OrdinalIgnoreCase))
                 .ToArray();
 
-            ProjectTextureCandidate? selected = null;
             if (exact.Length == 1)
             {
-                selected = exact[0];
-            }
-            else if (exact.Length > 1)
-            {
-                log.AppendLine($"Project texture binding ambiguous for {customReference} semantic '{semanticGroup.Key}': multiple exact filename matches.");
+                result[semanticGroup.Key] = exact[0].ResourcePath;
                 continue;
             }
-            else if (customMaterialCount == 1)
-            {
-                var unique = semanticGroup.ToArray();
-                if (unique.Length == 1)
-                {
-                    selected = unique[0];
-                    log.AppendLine($"Project texture binding used single-material fallback for {customReference} semantic '{semanticGroup.Key}': {selected.FileName}");
-                }
-            }
 
-            if (selected is not null)
+            if (exact.Length > 1)
             {
-                result[semanticGroup.Key] = selected.ResourcePath;
+                log.AppendLine($"Project texture binding ambiguous for {customReference} semantic '{semanticGroup.Key}': multiple exact filename matches.");
             }
         }
 
