@@ -46,7 +46,8 @@ internal static class ProjectHeaderFeature
 
         var settingsButton = FindButton(topBar, "SETTINGS", "НАСТРОЙКИ");
         var prepareButton = FindButton(topBar, "PREPARE FOR CSDK", "ПОДГОТОВИТЬ ДЛЯ CSDK");
-        var buildButton = FindButton(topBar, "BUILD & TEST", "СОБРАТЬ И ТЕСТИРОВАТЬ");
+        var buildButton = FindButton(topBar, "BUILD FOR TEST", "СОБРАТЬ ДЛЯ ТЕСТА")
+            ?? FindButton(topBar, "BUILD & TEST", "СОБРАТЬ И ТЕСТИРОВАТЬ");
         var launchCsdkButton = FindButton(topBar, "LAUNCH CSDK", "ЗАПУСТИТЬ CSDK");
         if (settingsButton is null || prepareButton is null || buildButton is null || launchCsdkButton is null)
         {
@@ -122,19 +123,24 @@ internal static class ProjectHeaderFeature
         {
             ShowAlways = true,
             InitialDelay = 350,
-            AutoPopDelay = 7000,
+            ReshowDelay = 100,
+            AutoPopDelay = 10000,
         };
-        toolTip.SetToolTip(settingsButton, UiText.T("Settings", "Настройки"));
+        toolTip.SetToolTip(
+            settingsButton,
+            UiText.T(
+                "Open Deadlimit settings.\n\nConfigure the projects folder, tool locations, interface language and theme.",
+                "Открыть настройки Deadlimit.\n\nЗдесь задаются папка проектов, пути к инструментам, язык и тема интерфейса."));
         toolTip.SetToolTip(
             launchGameButton,
             UiText.T(
-                "Launch retail Deadlock through Steam.",
-                "Запустить retail Deadlock через Steam."));
+                "Launch retail Deadlock through Steam.\n\nThis button only starts the game; it does not build or redeploy the current project.",
+                "Запустить retail Deadlock через Steam.\n\nЭта кнопка только запускает игру и не собирает заново текущий проект."));
         toolTip.SetToolTip(
             header,
             UiText.T(
-                "Double-click the project cover to open its artwork folder.",
-                "Дважды щёлкните по обложке проекта, чтобы открыть папку с её изображением."));
+                "This image is the current project's editable cover.\n\nDouble-click the cover to open the hidden .deadlimit folder containing project-header.png. Replace that PNG to customize the header.",
+                "Это редактируемая обложка текущего проекта.\n\nДважды щёлкните по обложке, чтобы открыть скрытую папку .deadlimit с файлом project-header.png. Замените этот PNG, чтобы изменить шапку."));
 
         void PositionControls()
         {

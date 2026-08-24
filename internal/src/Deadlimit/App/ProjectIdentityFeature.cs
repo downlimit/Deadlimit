@@ -94,15 +94,17 @@ internal static class ProjectIdentityFeature
         actions.Controls.Add(extractButton);
         grid.Controls.Add(actions, 2, 0);
 
-        var toolTip = new ToolTip
-        {
-            ShowAlways = true,
-            InitialDelay = 300,
-            AutoPopDelay = 6000,
-        };
+        var toolTip = CreateToolTip();
         toolTip.SetToolTip(
             openFolderButton,
-            UiText.T("Open project folder", "Открыть папку проекта"));
+            UiText.T(
+                "Open the selected project's root folder in Explorer.\n\nDouble-clicking the project in the Library opens the same folder.",
+                "Открыть корневую папку выбранного проекта в Проводнике.\n\nДвойной клик по проекту в Библиотеке открывает ту же папку."));
+        toolTip.SetToolTip(
+            extractButton,
+            UiText.T(
+                "Save the project and extract the selected hero's current source resources from retail Deadlock into 0source.\n\nIf 0source already contains files, Deadlimit asks before refreshing it and keeps the previous copy as a hidden backup until extraction succeeds.",
+                "Сохранить проект и извлечь актуальные исходные ресурсы выбранного героя из retail Deadlock в 0source.\n\nЕсли в 0source уже есть файлы, Deadlimit сначала запросит подтверждение и сохранит предыдущую копию скрытым backup до успешного извлечения."));
     }
 
     private static void MoveSaveButtonUnderHeroRefresh(TableLayoutPanel grid)
@@ -123,6 +125,13 @@ internal static class ProjectIdentityFeature
         saveButton.Margin = new Padding(0, 4, 0, 4);
         grid.Controls.Add(saveButton, 2, 3);
         HideRow(grid, oldRow);
+
+        var toolTip = CreateToolTip();
+        toolTip.SetToolTip(
+            saveButton,
+            UiText.T(
+                "Save this project's metadata, hero, Release ID and current DMX/PNG file list.\n\nAfter a successful save, hero selection is locked again to protect the project from accidental changes.",
+                "Сохранить метаданные проекта, героя, Release ID и текущий список DMX/PNG-файлов.\n\nПосле успешного сохранения выбор героя снова блокируется, чтобы защитить проект от случайной смены."));
     }
 
     private static void ReplaceReleaseIdWithNumericControl(TableLayoutPanel grid)
@@ -195,18 +204,21 @@ internal static class ProjectIdentityFeature
         SyncFromBacking();
 
         var tipText = UiText.T(
-            "Release slot 01-99. Type a number or use the arrows to change it by one. It becomes the retail VPK file name: pak##_dir.vpk.",
-            "Слот релиза 01-99. Введите число вручную или меняйте его стрелками на единицу. Он входит в имя retail VPK-файла: pak##_dir.vpk.");
+            "Retail VPK release slot: 01-99. Type the number directly or change it with the arrows by ±1.\n\nThe slot becomes part of the deployed VPK filename, for example Release ID 07 → pak07_dir.vpk.",
+            "Слот retail VPK: 01-99. Число можно ввести вручную или менять стрелками на ±1.\n\nСлот входит в имя установленного VPK-файла, например Release ID 07 → pak07_dir.vpk.");
 
-        var toolTip = new ToolTip
-        {
-            ShowAlways = true,
-            InitialDelay = 300,
-            AutoPopDelay = 8000,
-        };
+        var toolTip = CreateToolTip();
         toolTip.SetToolTip(releaseLabel, tipText);
         toolTip.SetToolTip(releaseId, tipText);
     }
+
+    private static ToolTip CreateToolTip() => new()
+    {
+        ShowAlways = true,
+        InitialDelay = 300,
+        ReshowDelay = 100,
+        AutoPopDelay = 10000,
+    };
 
     private static void HideRow(TableLayoutPanel grid, int row)
     {

@@ -95,13 +95,16 @@ internal sealed class SettingsForm : Form
 
         var grid = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            ColumnCount = 3,
+            Dock = DockStyle.Top,
+            ColumnCount = 4,
             RowCount = 6,
             AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = Padding.Empty,
         };
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         AddPathRow(grid, 0, UiText.T("Projects folder", "Папка проектов"), _projectsRootText, UiText.T("Select projects folder", "Выберите папку проектов"));
@@ -134,6 +137,18 @@ internal sealed class SettingsForm : Form
         };
         saveButton.Click += (_, _) => SaveSettings();
 
+        var toolTip = CreateToolTip();
+        toolTip.SetToolTip(
+            saveButton,
+            UiText.T(
+                "Validate and save all paths and interface settings.\n\nLanguage or theme changes restart Deadlimit before they take effect.",
+                "Проверить и сохранить все пути и настройки интерфейса.\n\nПосле смены языка или темы Deadlimit перезапустится, чтобы применить изменения."));
+        toolTip.SetToolTip(
+            cancelButton,
+            UiText.T(
+                "Close Settings without saving changes.",
+                "Закрыть настройки без сохранения изменений."));
+
         buttons.Controls.Add(cancelButton);
         buttons.Controls.Add(saveButton);
         root.Controls.Add(buttons, 0, 2);
@@ -162,11 +177,27 @@ internal sealed class SettingsForm : Form
 
         textBox.Margin = new Padding(0, 5, 8, 5);
 
+        var openButton = new Button
+        {
+            Text = "📂",
+            AutoSize = false,
+            Width = 30,
+            Height = 24,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 5, 6, 5),
+            Padding = Padding.Empty,
+            TabStop = false,
+            Font = new Font("Segoe UI Emoji", 10F, FontStyle.Regular, GraphicsUnit.Point),
+            TextAlign = ContentAlignment.MiddleCenter,
+        };
+        openButton.Click += (_, _) => OpenConfiguredFolder(textBox.Text);
+
         var browseButton = new Button
         {
             Text = UiText.T("BROWSE", "ОБЗОР"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 5, 0, 5),
         };
         browseButton.Click += (_, _) =>
         {
@@ -177,9 +208,22 @@ internal sealed class SettingsForm : Form
             }
         };
 
+        var toolTip = CreateToolTip();
+        toolTip.SetToolTip(
+            openButton,
+            UiText.T(
+                "Open the folder currently entered in this row.\n\nThis does not change the configured path.",
+                "Открыть папку, которая сейчас указана в этой строке.\n\nЭто не изменяет сохранённый путь."));
+        toolTip.SetToolTip(
+            browseButton,
+            UiText.T(
+                "Choose a different folder for this setting.\n\nThe new path is applied only after you press SAVE.",
+                "Выбрать другую папку для этой настройки.\n\nНовый путь применится только после нажатия СОХРАНИТЬ."));
+
         grid.Controls.Add(caption, 0, row);
         grid.Controls.Add(textBox, 1, row);
-        grid.Controls.Add(browseButton, 2, row);
+        grid.Controls.Add(openButton, 2, row);
+        grid.Controls.Add(browseButton, 3, row);
     }
 
     private void AddLanguageRow(TableLayoutPanel grid, int row)
@@ -197,6 +241,7 @@ internal sealed class SettingsForm : Form
         _languageCombo.Margin = new Padding(0, 5, 8, 5);
         grid.Controls.Add(caption, 0, row);
         grid.Controls.Add(_languageCombo, 1, row);
+        grid.SetColumnSpan(_languageCombo, 3);
     }
 
     private void AddThemeRow(TableLayoutPanel grid, int row)
@@ -214,6 +259,43 @@ internal sealed class SettingsForm : Form
         _themeCombo.Margin = new Padding(0, 5, 8, 5);
         grid.Controls.Add(caption, 0, row);
         grid.Controls.Add(_themeCombo, 1, row);
+        grid.SetColumnSpan(_themeCombo, 3);
+    }
+
+    private void OpenConfiguredFolder(string path)
+    {
+        var folder = path.Trim();
+        if (!Directory.Exists(folder))
+        {
+            MessageBox.Show(
+                this,
+                UiText.T(
+                    $"The configured folder does not exist:\n{folder}",
+                    $"Указанная папка не существует:\n{folder}"),
+                UiText.T("Folder unavailable", "Папка недоступна"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{folder}\"",
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            MessageBox.Show(
+                this,
+                ex.Message,
+                UiText.T("Could not open folder", "Не удалось открыть папку"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
     }
 
     private void SaveSettings()
@@ -323,6 +405,14 @@ internal sealed class SettingsForm : Form
         error = string.Empty;
         return true;
     }
+
+    private static ToolTip CreateToolTip() => new()
+    {
+        ShowAlways = true,
+        InitialDelay = 350,
+        ReshowDelay = 100,
+        AutoPopDelay = 10000,
+    };
 
     private static string? ChooseFolder(string description, string currentPath)
     {

@@ -51,6 +51,19 @@ internal sealed class BuildTestSuccessDialog : Form
             Close();
         };
 
+        var toolTip = new ToolTip
+        {
+            ShowAlways = true,
+            InitialDelay = 350,
+            ReshowDelay = 100,
+            AutoPopDelay = 10000,
+        };
+        toolTip.SetToolTip(
+            okButton,
+            UiText.T(
+                "Close this build summary.\n\nThe VPK has already been deployed; launch Deadlock separately when you are ready to test it.",
+                "Закрыть сводку сборки.\n\nVPK уже установлен; запустите Deadlock отдельно, когда будете готовы к тесту."));
+
         buttons.Controls.Add(okButton);
 
         root.Controls.Add(message, 0, 0);

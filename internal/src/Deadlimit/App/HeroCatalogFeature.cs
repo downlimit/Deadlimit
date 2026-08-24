@@ -88,13 +88,14 @@ internal static class HeroCatalogFeature
         {
             ShowAlways = true,
             InitialDelay = 350,
-            AutoPopDelay = 7000,
+            ReshowDelay = 100,
+            AutoPopDelay = 10000,
         };
         toolTip.SetToolTip(
             refreshButton,
             UiText.T(
-                "Reload hero names from the installed retail Deadlock build.",
-                "Перечитать список героев из установленной retail-сборки Deadlock."));
+                "Re-read the available hero names from the currently configured retail Deadlock installation.\n\nThe refreshed catalog is cached by Deadlimit; it does not change the hero assigned to the current project.",
+                "Перечитать доступные имена героев из указанной в настройках retail-установки Deadlock.\n\nОбновлённый каталог сохраняется в кэше Deadlimit и сам по себе не меняет героя текущего проекта."));
 
         var syncing = false;
         var hasCatalog = false;
@@ -115,11 +116,11 @@ internal static class HeroCatalogFeature
                 lockButton,
                 heroUnlocked
                     ? UiText.T(
-                        "Hero selection is unlocked. Click to lock it against accidental changes.",
-                        "Выбор героя разблокирован. Нажмите, чтобы защитить его от случайной смены.")
+                        "Hero selection is unlocked, so the project's hero can be changed.\n\nClick the open lock to lock the selection again and protect it from accidental changes.",
+                        "Выбор героя разблокирован, поэтому героя проекта можно изменить.\n\nНажмите на открытый замок, чтобы снова заблокировать выбор и защитить проект от случайной смены.")
                     : UiText.T(
-                        "Hero selection is locked. Click to allow changing the project's hero.",
-                        "Выбор героя заблокирован. Нажмите, чтобы разрешить смену героя проекта."));
+                        "Hero selection is locked to protect this saved project from accidental changes.\n\nClick the closed lock once if you intentionally need to choose a different hero.",
+                        "Выбор героя заблокирован, чтобы защитить сохранённый проект от случайной смены.\n\nНажмите на закрытый замок один раз, если вы намеренно хотите выбрать другого героя."));
         }
 
         void ResetLockForProject()
