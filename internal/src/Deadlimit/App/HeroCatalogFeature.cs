@@ -41,15 +41,15 @@ internal static class HeroCatalogFeature
             Text = UiText.T("REFRESH LIST", "ОБНОВИТЬ СПИСОК"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 0, 5, 0),
+            Margin = new Padding(0, 4, 0, 4),
         };
         var lockButton = new Button
         {
             AutoSize = false,
-            Width = 29,
-            Height = 23,
+            Width = 34,
+            Height = 24,
             Anchor = AnchorStyles.Left,
-            Margin = Padding.Empty,
+            Margin = new Padding(0, 4, 6, 4),
             TabStop = false,
             Font = new Font("Segoe UI Emoji", 10F, FontStyle.Regular, GraphicsUnit.Point),
             TextAlign = ContentAlignment.MiddleCenter,
@@ -64,8 +64,8 @@ internal static class HeroCatalogFeature
             Margin = Padding.Empty,
             Padding = Padding.Empty,
         };
-        heroActions.Controls.Add(refreshButton);
         heroActions.Controls.Add(lockButton);
+        heroActions.Controls.Add(refreshButton);
 
         grid.Controls.Remove(backingHeroText);
         grid.Controls.Add(combo, 1, 2);
