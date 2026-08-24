@@ -21,9 +21,13 @@ internal static class ProjectFilesFeature
             .FirstOrDefault(group =>
                 string.Equals(group.Text, "Project", StringComparison.Ordinal)
                 || string.Equals(group.Text, "Проект", StringComparison.Ordinal));
-        var folderText = projectGroup is null
-            ? null
-            : FindDescendants<TextBox>(projectGroup).FirstOrDefault(textBox => textBox.ReadOnly);
+        if (projectGroup is null)
+        {
+            return;
+        }
+
+        var folderText = FindDescendants<TextBox>(projectGroup)
+            .FirstOrDefault(textBox => textBox.ReadOnly);
         if (folderText is null)
         {
             return;
@@ -141,9 +145,10 @@ internal static class ProjectFilesFeature
                     ? UiText.T($"Hero source: {extractedCount} files", $"Исходники героя: {extractedCount} файлов")
                     : UiText.T("Hero source: not extracted", "Исходники героя: не извлечены");
 
-                var mainModel = string.IsNullOrWhiteSpace(manifest?.RetailMainModel)
+                var retailMainModel = manifest?.RetailMainModel;
+                var mainModel = string.IsNullOrWhiteSpace(retailMainModel)
                     ? null
-                    : manifest.RetailMainModel.Trim();
+                    : retailMainModel.Trim();
                 mainModelLabel.Text = UiText.T(
                     $"Main file: {mainModel ?? "—"}",
                     $"Основной файл: {mainModel ?? "—"}");
