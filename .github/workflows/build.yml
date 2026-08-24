@@ -39,3 +39,13 @@ jobs:
           if (Test-Path $diag) { Write-Host '--- startup diagnostic ---'; Get-Content $diag }
           Stop-Process -Id $process.Id -Force
           Write-Host 'Deadlimit stayed alive for the startup smoke window.'
+      - name: Upload startup diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deadlimit-startup-diagnostic
+          path: |
+            ${{ runner.temp }}\deadlimit-startup.txt
+            ${{ runner.temp }}\deadlimit-stdout.txt
+            ${{ runner.temp }}\deadlimit-stderr.txt
+          if-no-files-found: warn
