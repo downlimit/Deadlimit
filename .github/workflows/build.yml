@@ -24,14 +24,18 @@ jobs:
           $exe = Resolve-Path 'internal/src/Deadlimit/bin/Release/net10.0-windows/Deadlimit.exe'
           $stdout = Join-Path $env:RUNNER_TEMP 'deadlimit-stdout.txt'
           $stderr = Join-Path $env:RUNNER_TEMP 'deadlimit-stderr.txt'
+          $diag = Join-Path $env:RUNNER_TEMP 'deadlimit-startup.txt'
+          $env:DEADLIMIT_STARTUP_DIAGNOSTIC = $diag
           $process = Start-Process -FilePath $exe -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
           Start-Sleep -Seconds 5
           if ($process.HasExited) {
             Write-Host 'Deadlimit exited during startup.'
             Write-Host "Exit code: $($process.ExitCode)"
-            if (Test-Path $stdout) { Get-Content $stdout }
-            if (Test-Path $stderr) { Get-Content $stderr }
+            if (Test-Path $diag) { Write-Host '--- startup diagnostic ---'; Get-Content $diag }
+            if (Test-Path $stdout) { Write-Host '--- stdout ---'; Get-Content $stdout }
+            if (Test-Path $stderr) { Write-Host '--- stderr ---'; Get-Content $stderr }
             throw 'Startup smoke failed.'
           }
+          if (Test-Path $diag) { Write-Host '--- startup diagnostic ---'; Get-Content $diag }
           Stop-Process -Id $process.Id -Force
           Write-Host 'Deadlimit stayed alive for the startup smoke window.'
