@@ -33,7 +33,7 @@ public sealed class PrepareAuthoringService
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex DmxMaterialReferenceRegex = new(
-        @"materials/[A-Za-z0-9_./\\-]+",
+        @"materials/(?:[^\0\r\n\t""]+?\.vmat|[A-Za-z0-9_./\\-]+)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     private static readonly Regex MaterialRemapRegex = new(
@@ -146,6 +146,8 @@ public sealed class PrepareAuthoringService
                 log.AppendLine($"  material {materialReference}");
             }
 
+            var authoringMaterialReferences = ExpandWallWormMaterialAliases(dmxMaterialReferences);
+
             var compatibilityRemaps = DiscoverMaterialRepairs(
                 rootDmxFiles,
                 dmxMaterialReferences,
@@ -178,7 +180,7 @@ public sealed class PrepareAuthoringService
                 manifest,
                 addonName,
                 addonContentRoot,
-                dmxMaterialReferences,
+                authoringMaterialReferences,
                 resolvedMaterialSources,
                 customTemplateMaterial,
                 log,
@@ -192,8 +194,14 @@ public sealed class PrepareAuthoringService
                 log,
                 cancellationToken);
 
+            var exactCustomMaterialRemaps = ResolveExactCustomMaterialRemaps(
+                dmxMaterialReferences,
+                customMaterials.Remaps,
+                log);
+
             var generatedRemaps = compatibilityRemaps
                 .Concat(customMaterials.Remaps)
+                .Concat(exactCustomMaterialRemaps)
                 .GroupBy(remap => remap.From, StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
                 .OrderBy(remap => remap.From, StringComparer.OrdinalIgnoreCase)
@@ -201,6 +209,7 @@ public sealed class PrepareAuthoringService
 
             log.AppendLine($"Compatibility material remaps generated: {compatibilityRemaps.Count}");
             log.AppendLine($"Custom material remaps generated: {customMaterials.Remaps.Count}");
+            log.AppendLine($"Exact custom DMX material remaps generated: {exactCustomMaterialRemaps.Count}");
 
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new PrepareAuthoringProgress("Applying narrow CSDK compatibility patches to retail VMDL..."));
@@ -225,6 +234,7 @@ public sealed class PrepareAuthoringService
             log.AppendLine("VMDL policy: preserve the extracted retail document/header/order and patch only proven incompatible or project-owned data.");
             log.AppendLine("Material policy: DMX material-reference count is diagnostic only; VMDL remaps are a separate concept.");
             log.AppendLine("Material policy: preserve retail reuse, generate narrow compatibility repairs, and route unresolved Wall Worm custom slots to addon-owned VMAT files.");
+            log.AppendLine("Material policy: direct materials/<name>.vmat references from Wall Worm are paired with an extensionless authoring alias, so spaces and the explicit .vmat suffix survive into the final VMDL remap.");
             log.AppendLine("Material policy: copy retail/template material parameters only when a custom VMAT is first created; later PREPARE runs preserve manual VMAT edits and synchronize only matching project-root texture sources.");
             log.AppendLine("Render-mesh policy: preserve retail RenderMeshList/bodygroups/LODs; overlay artist DMX at the original render-mesh resource path.");
 
@@ -351,7 +361,7 @@ public sealed class PrepareAuthoringService
 
             foreach (Match match in DmxMaterialReferenceRegex.Matches(text))
             {
-                var value = match.Value.TrimEnd('/', '.', '-');
+                var value = match.Value.TrimEnd('/', '.', '-', ' ');
                 var extension = Path.GetExtension(value);
 
                 if (extension.Length > 0
@@ -367,6 +377,78 @@ public sealed class PrepareAuthoringService
         return references
             .OrderBy(reference => reference, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static IReadOnlyList<string> ExpandWallWormMaterialAliases(
+        IReadOnlyList<string> dmxMaterialReferences)
+    {
+        var expanded = new HashSet<string>(dmxMaterialReferences, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var reference in dmxMaterialReferences)
+        {
+            if (TryGetDirectRootVmatAlias(reference, out var alias))
+            {
+                expanded.Add(alias);
+            }
+        }
+
+        return expanded
+            .OrderBy(reference => reference, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<VmdlMaterialRemap> ResolveExactCustomMaterialRemaps(
+        IReadOnlyList<string> dmxMaterialReferences,
+        IReadOnlyList<VmdlMaterialRemap> customRemaps,
+        StringBuilder log)
+    {
+        var customByAlias = customRemaps
+            .GroupBy(remap => remap.From, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+        var result = new List<VmdlMaterialRemap>();
+        foreach (var reference in dmxMaterialReferences)
+        {
+            if (!TryGetDirectRootVmatAlias(reference, out var alias)
+                || !customByAlias.TryGetValue(alias, out var customRemap))
+            {
+                continue;
+            }
+
+            result.Add(new VmdlMaterialRemap(reference, customRemap.To));
+            log.AppendLine($"Exact Wall Worm custom material remap: {reference} -> {customRemap.To} (authoring alias {alias})");
+        }
+
+        return result;
+    }
+
+    private static bool TryGetDirectRootVmatAlias(string reference, out string alias)
+    {
+        const string materialPrefix = "materials/";
+        const string vmatExtension = ".vmat";
+
+        alias = string.Empty;
+        var normalized = reference.Replace('\\', '/').TrimStart('/');
+        if (!normalized.StartsWith(materialPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var relative = normalized[materialPrefix.Length..];
+        if (relative.Contains('/')
+            || !relative.EndsWith(vmatExtension, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var name = relative[..^vmatExtension.Length].Trim();
+        if (name.Length == 0)
+        {
+            return false;
+        }
+
+        alias = materialPrefix + name;
+        return true;
     }
 
     private static List<VmdlMaterialRemap> DiscoverMaterialRepairs(
