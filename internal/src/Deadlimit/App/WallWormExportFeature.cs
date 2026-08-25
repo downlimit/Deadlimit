@@ -68,7 +68,7 @@ internal static class WallWormExportFeature
                             "Save the project before preparing the Max exporter.",
                             "Сохраните проект перед подготовкой экспортёра для Max."));
 
-                var scriptPath = WallWormExportScriptService.WriteProjectScript(manifest.ProjectFolder);
+                var scriptPath = WallWormExportScriptService.WriteProjectScript(manifest);
                 var command = WallWormExportScriptService.CreateFileInCommand(scriptPath);
                 Clipboard.SetText(command);
 
