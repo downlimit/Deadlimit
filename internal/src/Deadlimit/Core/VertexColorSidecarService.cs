@@ -543,7 +543,6 @@ public static class VertexColorSidecarService
 
         var sourcePolygonIndexes = Enumerable.Range(0, sources.Count).ToArray();
         var cornerMappings = new int[]?[targets.Count];
-        var exactMatchCount = 0;
         for (var index = 0; index < targets.Count; index++)
         {
             if (targets[index].ControlPoints.Count != sources[index].ControlPoints.Count)
@@ -553,60 +552,6 @@ public static class VertexColorSidecarService
                 return false;
             }
 
-            if (TryMapPolygonCorners(
-                    targets[index].ControlPoints,
-                    sources[index].ControlPoints,
-                    out var cornerMap))
-            {
-                cornerMappings[index] = cornerMap;
-                exactMatchCount++;
-            }
-        }
-
-        var requiredAnchors = Math.Max(1, (int)Math.Ceiling(targets.Count * 0.9));
-        if (exactMatchCount < requiredAnchors)
-        {
-            if (!TryMatchPolygonsByTexcoords(
-                    meshName,
-                    targets,
-                    sources,
-                    targetTexcoords,
-                    targetControlPoints,
-                    out sourcePolygonIndexes,
-                    out cornerMappings,
-                    out mismatchReason)
-                && !TryMatchSplitControlPointPolygons(
-                    meshName,
-                    targets,
-                    sources,
-                    targetControlPoints,
-                    sourceControlPoints,
-                    out sourcePolygonIndexes,
-                    out cornerMappings,
-                    out mismatchReason))
-            {
-                if (TryMatchColorsByTexcoords(
-                        meshName,
-                        targets,
-                        sources,
-                        targetTexcoords,
-                        out colors,
-                        out mismatchReason)
-                    || TryMatchColorsByControlPoints(
-                        meshName,
-                        targets,
-                        sources,
-                        targetControlPoints,
-                        sourceControlPoints,
-                        out colors,
-                        out mismatchReason))
-                {
-                    return true;
-                }
-
-                colors = Array.Empty<DmxColor>();
-                return false;
-            }
         }
 
         var result = new List<DmxColor>();
