@@ -110,9 +110,13 @@ Packaging is transactional:
 compiled addon game folder
 → build temporary VPK version 2
 → verify archive hashes + file CRCs
-→ remove previous configured pak##_dir.vpk / old numeric chunks
-→ move verified temporary VPK into final retail slot
+→ atomically replace matching retail family files while retaining per-file backups
+→ verify archive hashes + file CRCs again from the final retail path
+→ on success remove transaction backups and obsolete numeric chunks
+→ on any deployment/final-verification error restore the previous VPK family
 ```
+
+The directory VPK is deployed after any numeric chunks so it acts as the final family commit point. Backup cleanup failures are logged and leave recoverable `.deadlimit-backup-*` files without invalidating the verified deployed archive.
 
 ### Completion UX and running Deadlock
 

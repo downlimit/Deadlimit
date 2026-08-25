@@ -593,15 +593,9 @@ public sealed class BuildAndTestService
             }
 
             Report(progress, 98, "Verifying VPK checksums...");
-            using (var verificationPackage = new Package())
-            {
-                verificationPackage.Read(temporaryVpk);
-                verificationPackage.VerifyHashes();
-                verificationPackage.VerifyFileChecksums();
-            }
+            VerifyVpk(temporaryVpk);
 
-            DeletePreviousVpkFamily(outputVpk, log);
-            File.Move(temporaryVpk, outputVpk);
+            DeployVerifiedVpkFamily(temporaryVpk, outputVpk, log);
             log.AppendLine();
             log.AppendLine("[ValvePak in-process packaging]");
             log.AppendLine($"Packed files: {files.Length}");
@@ -611,47 +605,218 @@ public sealed class BuildAndTestService
         }
         finally
         {
-            if (File.Exists(temporaryVpk))
+            foreach (var temporaryFile in EnumerateVpkFamily(temporaryVpk))
             {
-                File.Delete(temporaryVpk);
+                try
+                {
+                    File.Delete(temporaryFile);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    log.AppendLine($"Could not remove temporary VPK staging file '{temporaryFile}': {ex.Message}");
+                }
             }
         }
     }
 
-    private static void DeletePreviousVpkFamily(string outputVpk, StringBuilder log)
+    private static void DeployVerifiedVpkFamily(
+        string stagedVpk,
+        string outputVpk,
+        StringBuilder log)
     {
-        var directory = Path.GetDirectoryName(outputVpk)!;
-        var fileName = Path.GetFileName(outputVpk);
-        const string dirSuffix = "_dir.vpk";
-        var baseName = fileName.EndsWith(dirSuffix, StringComparison.OrdinalIgnoreCase)
-            ? fileName[..^dirSuffix.Length]
-            : Path.GetFileNameWithoutExtension(fileName);
-
-        if (File.Exists(outputVpk))
+        var stagedFamily = EnumerateVpkFamily(stagedVpk);
+        if (!stagedFamily.Contains(stagedVpk, StringComparer.OrdinalIgnoreCase))
         {
-            File.Delete(outputVpk);
-            log.AppendLine($"Removed previous deployed VPK: {outputVpk}");
+            throw new FileNotFoundException(
+                "The verified staging VPK disappeared before retail deployment.",
+                stagedVpk);
         }
 
+        var stagedBaseName = GetVpkBaseName(stagedVpk);
+        var outputBaseName = GetVpkBaseName(outputVpk);
+        var outputDirectory = Path.GetDirectoryName(outputVpk)!;
+        var mappings = stagedFamily
+            .Select(path =>
+            {
+                var fileName = Path.GetFileName(path);
+                var targetName = string.Equals(path, stagedVpk, StringComparison.OrdinalIgnoreCase)
+                    ? Path.GetFileName(outputVpk)
+                    : outputBaseName + fileName[stagedBaseName.Length..];
+                return new VpkDeploymentMapping(path, Path.Combine(outputDirectory, targetName));
+            })
+            .OrderBy(mapping => string.Equals(mapping.StagedPath, stagedVpk, StringComparison.OrdinalIgnoreCase)
+                ? 1
+                : 0)
+            .ToArray();
+
+        var targetPaths = mappings
+            .Select(mapping => mapping.TargetPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var obsoletePreviousFiles = EnumerateVpkFamily(outputVpk)
+            .Where(path => !targetPaths.Contains(path))
+            .ToArray();
+        var transactionId = Guid.NewGuid().ToString("N");
+        var completed = new List<VpkDeploymentStep>();
+
+        try
+        {
+            foreach (var mapping in mappings)
+            {
+                var backupPath = File.Exists(mapping.TargetPath)
+                    ? mapping.TargetPath + $".deadlimit-backup-{transactionId}"
+                    : null;
+
+                if (backupPath is null)
+                {
+                    File.Move(mapping.StagedPath, mapping.TargetPath);
+                }
+                else
+                {
+                    File.Replace(
+                        mapping.StagedPath,
+                        mapping.TargetPath,
+                        backupPath,
+                        ignoreMetadataErrors: true);
+                }
+
+                completed.Add(new VpkDeploymentStep(mapping.TargetPath, backupPath));
+            }
+
+            VerifyVpk(outputVpk);
+
+            foreach (var obsoletePath in obsoletePreviousFiles)
+            {
+                TryDeleteDeploymentArtifact(obsoletePath, "obsolete previous VPK chunk", log);
+            }
+
+            foreach (var step in completed)
+            {
+                if (step.BackupPath is not null)
+                {
+                    TryDeleteDeploymentArtifact(step.BackupPath, "verified VPK transaction backup", log);
+                }
+            }
+
+            log.AppendLine(
+                $"Retail VPK transaction committed: {mappings.Length} staged file(s), " +
+                $"{completed.Count(step => step.BackupPath is not null)} previous file backup(s), " +
+                $"{obsoletePreviousFiles.Length} obsolete chunk(s).");
+        }
+        catch (Exception deploymentError)
+        {
+            var rollbackErrors = new List<Exception>();
+            foreach (var step in completed.AsEnumerable().Reverse())
+            {
+                try
+                {
+                    if (step.BackupPath is null)
+                    {
+                        if (File.Exists(step.TargetPath))
+                        {
+                            File.Delete(step.TargetPath);
+                        }
+                    }
+                    else if (File.Exists(step.BackupPath))
+                    {
+                        if (File.Exists(step.TargetPath))
+                        {
+                            File.Replace(
+                                step.BackupPath,
+                                step.TargetPath,
+                                destinationBackupFileName: null,
+                                ignoreMetadataErrors: true);
+                        }
+                        else
+                        {
+                            File.Move(step.BackupPath, step.TargetPath);
+                        }
+                    }
+                }
+                catch (Exception rollbackError) when (rollbackError is IOException
+                    or UnauthorizedAccessException)
+                {
+                    rollbackErrors.Add(rollbackError);
+                }
+            }
+
+            if (rollbackErrors.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Retail VPK deployment failed; the previous VPK family was restored. {deploymentError.Message}",
+                    deploymentError);
+            }
+
+            throw new AggregateException(
+                "Retail VPK deployment failed and its rollback was incomplete. " +
+                "Close programs that may lock the retail addon files and inspect the .deadlimit-backup files before retrying.",
+                new[] { deploymentError }.Concat(rollbackErrors));
+        }
+    }
+
+    private static void VerifyVpk(string path)
+    {
+        using var verificationPackage = new Package();
+        verificationPackage.Read(path);
+        verificationPackage.VerifyHashes();
+        verificationPackage.VerifyFileChecksums();
+    }
+
+    private static IReadOnlyList<string> EnumerateVpkFamily(string dirVpkPath)
+    {
+        var directory = Path.GetDirectoryName(dirVpkPath)!;
         if (!Directory.Exists(directory))
         {
-            return;
+            return Array.Empty<string>();
         }
 
+        var baseName = GetVpkBaseName(dirVpkPath);
         var chunkRegex = new Regex(
             $"^{Regex.Escape(baseName)}_\\d{{3}}\\.vpk$",
             RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
-        foreach (var chunk in Directory.EnumerateFiles(directory, $"{baseName}_*.vpk", SearchOption.TopDirectoryOnly))
+        var result = Directory.EnumerateFiles(directory, $"{baseName}_*.vpk", SearchOption.TopDirectoryOnly)
+            .Where(path => chunkRegex.IsMatch(Path.GetFileName(path)))
+            .ToList();
+        if (File.Exists(dirVpkPath))
         {
-            if (!chunkRegex.IsMatch(Path.GetFileName(chunk)))
+            result.Add(dirVpkPath);
+        }
+
+        return result
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string GetVpkBaseName(string dirVpkPath)
+    {
+        var fileName = Path.GetFileName(dirVpkPath);
+        const string dirSuffix = "_dir.vpk";
+        return fileName.EndsWith(dirSuffix, StringComparison.OrdinalIgnoreCase)
+            ? fileName[..^dirSuffix.Length]
+            : Path.GetFileNameWithoutExtension(fileName);
+    }
+
+    private static void TryDeleteDeploymentArtifact(
+        string path,
+        string description,
+        StringBuilder log)
+    {
+        try
+        {
+            if (File.Exists(path))
             {
-                continue;
+                File.Delete(path);
+                log.AppendLine($"Removed {description}: {path}");
             }
-            File.Delete(chunk);
-            log.AppendLine($"Removed previous deployed VPK chunk: {chunk}");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log.AppendLine($"Could not remove {description} '{path}': {ex.Message}");
         }
     }
+
+    private sealed record VpkDeploymentMapping(string StagedPath, string TargetPath);
+
+    private sealed record VpkDeploymentStep(string TargetPath, string? BackupPath);
 
     private static string GetCompiledMainModelPath(ProjectManifest manifest, string addonGameRoot)
     {
