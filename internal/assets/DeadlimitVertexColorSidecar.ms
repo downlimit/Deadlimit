@@ -50,12 +50,6 @@ fn deadlimitVertexColorFindLatestDmx =
     latestPath
 )
 
-fn deadlimitVertexColorMapChannelSupported node channel =
-(
-    local probe = snapshotAsMesh node
-    meshop.getMapSupport probe channel
-)
-
 fn deadlimitVertexColorSetFbxParam name value =
 (
     local result = FBXExporterSetParam name value
@@ -140,12 +134,6 @@ fn deadlimitVertexColorExportAndApply =
     if selectedGeometry.count == 0 then
         throw "Select at least one geometry object."
 
-    local hasAnyColor = false
-    for node in selectedGeometry while not hasAnyColor do
-        hasAnyColor = deadlimitVertexColorMapChannelSupported node 0
-    if not hasAnyColor then
-        throw "Selected geometry has no Vertex Color in map channel 0."
-
     local folder = getFilenamePath primaryDmx
     local baseName = getFilenameFile primaryDmx
     local sidecarPath = folder + baseName + "_vertexcolor.fbx"
@@ -174,10 +162,6 @@ fn deadlimitVertexColorExportAndApply =
         local exported = exportFile temporaryPath #noPrompt selectedOnly:true using:FBXEXP
         if exported != true or not (doesFileExist temporaryPath) then
             throw "3ds Max FBX exporter did not create the sidecar."
-
-        local fbxText = fileClass.ReadAllText temporaryPath
-        if (findString fbxText "LayerElementColor") == undefined then
-            throw "FBX contains no Vertex Color layer."
 
         fileClass.Copy temporaryPath sidecarPath true
         deleteFile temporaryPath
