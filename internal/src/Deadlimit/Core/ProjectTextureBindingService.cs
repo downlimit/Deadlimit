@@ -17,11 +17,11 @@ internal static class ProjectTextureBindingService
     private const string VertexColorGeneratedPrefix = "// DEADLIMIT_VERTEXCOLOR_VMAT_V";
     private const string ManagedComment = "// Deadlimit inherited this material once. Later PREPARE runs only synchronize matching project-root textures; manual material parameters remain authoritative.";
 
-    private const string DefaultColor = "materials/default/default_color.tga";
-    private const string DefaultNormal = "materials/default/default_normal.tga";
-    private const string DefaultRoughness = "materials/default/default_rough.tga";
-    private const string DefaultAo = "materials/default/default_ao.tga";
-    private const string DefaultBlackMask = "materials/default/default_black_mask.tga";
+    private const string NeutralColor = "[0.500000 0.500000 0.500000 0.000000]";
+    private const string NeutralWhite = "[1.000000 1.000000 1.000000 0.000000]";
+    private const string NeutralNormal = "[0.501961 0.501961 1.000000 0.000000]";
+    private const string NeutralRoughness = "[0.800000 0.800000 0.800000 0.000000]";
+    private const string NeutralBlack = "[0.000000 0.000000 0.000000 0.000000]";
 
     private static readonly HashSet<string> TextureSourceExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -47,8 +47,12 @@ internal static class ProjectTextureBindingService
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
 
     private static readonly Regex StringParameterRegex = new(
-        "^(?<prefix>[ \\t]*(?:\\\"(?<quotedKey>[A-Za-z0-9_]+)\\\"|(?<bareKey>[A-Za-z0-9_]+))[ \\t]*(?:=[ \\t]*)?\\\")(?<value>[^\\\"\\r\\n]*)(?<suffix>\\\"[^\\r\\n]*)$",
+        "^(?<prefix>[ \\t]*(?<key>\\\"?[A-Za-z0-9_]+\\\"?)(?:(?:[ \\t]*=[ \\t]*)|[ \\t]+))(?<valueToken>\\\"[^\\\"\\r\\n]*\\\"|[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))(?<suffix>[^\\r\\n]*)(?<carriageReturn>\\r?)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
+
+    private static readonly Regex CompiledTexturesBlockRegex = new(
+        "(?ms)^[ \\t]*\\\"Compiled Textures\\\"[ \\t]*\\r?\\n[ \\t]*\\{.*?^[ \\t]*\\}[ \\t]*\\r?\\n?",
+        RegexOptions.Compiled);
 
     public static int MarkLegacyManagedMaterialsForMigration(
         string addonContentRoot,
@@ -167,7 +171,7 @@ internal static class ProjectTextureBindingService
 
             managedMaterials++;
             var firstManagedPass = isLegacyGenerated || isPendingMigration;
-            var text = RewriteManagedHeader(original, ManagedMarker);
+            var text = RemoveCompiledTexturesBlock(RewriteManagedHeader(original, ManagedMarker));
 
             var bindings = ResolveMaterialBindings(
                 remap.From,
@@ -202,6 +206,13 @@ internal static class ProjectTextureBindingService
 
             text = ReplaceAssignments(text, replacements);
 
+            text = ReconcileUnboundStandardTextureValues(
+                text,
+                boundSemantics,
+                log,
+                out var neutralizedStandardSlots);
+            sanitizedTextures += neutralizedStandardSlots;
+
             text = SanitizeUnmatchedManagedTextureSources(
                 text,
                 materialResourceFolder,
@@ -213,6 +224,10 @@ internal static class ProjectTextureBindingService
             if (boundSemantics.Contains("metalness"))
             {
                 text = EnableMetalnessTexture(text);
+            }
+            else
+            {
+                text = UpsertStringParameter(text, "F_METALNESS_TEXTURE", "0");
             }
 
             text = SanitizeMissingTextureSources(
@@ -304,6 +319,70 @@ internal static class ProjectTextureBindingService
         });
     }
 
+    private static string ReconcileUnboundStandardTextureValues(
+        string text,
+        IReadOnlySet<string> boundSemantics,
+        StringBuilder log,
+        out int neutralizedCount)
+    {
+        var localNeutralizedCount = 0;
+        var result = TextureAssignmentRegex.Replace(text, match =>
+        {
+            var key = GetTextureKey(match);
+            if (!TryGetStandardSemantic(key, out var semantic)
+                || boundSemantics.Contains(semantic))
+            {
+                return match.Value;
+            }
+
+            var fallback = GetTextureFallback(key);
+            if (string.Equals(match.Groups["value"].Value, fallback, StringComparison.Ordinal))
+            {
+                return match.Value;
+            }
+
+            localNeutralizedCount++;
+            log.AppendLine($"Custom VMAT untextured standard slot neutralized {key}: {match.Groups["value"].Value} -> {fallback}");
+            return match.Groups["prefix"].Value + fallback + match.Groups["suffix"].Value;
+        });
+
+        neutralizedCount = localNeutralizedCount;
+        return result;
+    }
+
+    private static bool TryGetStandardSemantic(string key, out string semantic)
+    {
+        var canonicalKey = TrimTrailingDigits(key);
+        if (string.Equals(canonicalKey, "TextureColor", StringComparison.OrdinalIgnoreCase))
+        {
+            semantic = "color";
+            return true;
+        }
+        if (string.Equals(canonicalKey, "TextureNormal", StringComparison.OrdinalIgnoreCase))
+        {
+            semantic = "normal";
+            return true;
+        }
+        if (string.Equals(canonicalKey, "TextureRoughness", StringComparison.OrdinalIgnoreCase))
+        {
+            semantic = "roughness";
+            return true;
+        }
+        if (string.Equals(canonicalKey, "TextureAmbientOcclusion", StringComparison.OrdinalIgnoreCase))
+        {
+            semantic = "ao";
+            return true;
+        }
+        if (string.Equals(canonicalKey, "TextureMetalness", StringComparison.OrdinalIgnoreCase))
+        {
+            semantic = "metalness";
+            return true;
+        }
+
+        semantic = string.Empty;
+        return false;
+    }
+
     private static string SanitizeUnmatchedManagedTextureSources(
         string text,
         string materialResourceFolder,
@@ -360,7 +439,6 @@ internal static class ProjectTextureBindingService
         {
             var value = match.Groups["value"].Value;
             if (!LooksLikeLocalTextureSource(value)
-                || IsKnownSafeDefault(value)
                 || TextureSourceExists(addonContentRoot, value))
             {
                 return match.Value;
@@ -371,7 +449,10 @@ internal static class ProjectTextureBindingService
                 NormalizeResourcePath(materialResourceFolder + "/textures/"),
                 StringComparison.OrdinalIgnoreCase);
 
-            if (!sanitizeInheritedMissingSources && !(sanitizeDeadlimitDerivedPaths && isDeadlimitDerived))
+            var isKnownSafeDefault = IsKnownSafeDefault(value);
+            if (!sanitizeInheritedMissingSources
+                && !(sanitizeDeadlimitDerivedPaths && isDeadlimitDerived)
+                && !isKnownSafeDefault)
             {
                 return match.Value;
             }
@@ -604,32 +685,43 @@ internal static class ProjectTextureBindingService
 
     private static string UpsertStringParameter(string text, string key, string value)
     {
-        var match = StringParameterRegex.Matches(text)
-            .Cast<Match>()
-            .FirstOrDefault(candidate => string.Equals(GetStringParameterKey(candidate), key, StringComparison.OrdinalIgnoreCase));
-
-        if (match is not null)
+        var found = false;
+        var patched = StringParameterRegex.Replace(text, match =>
         {
-            return text[..match.Index] +
-                   match.Groups["prefix"].Value + value + match.Groups["suffix"].Value +
-                   text[(match.Index + match.Length)..];
+            if (!string.Equals(GetStringParameterKey(match), key, StringComparison.OrdinalIgnoreCase))
+            {
+                return match.Value;
+            }
+
+            if (found)
+            {
+                return string.Empty;
+            }
+
+            found = true;
+            var existingToken = match.Groups["valueToken"].Value;
+            var replacement = existingToken.StartsWith('"') ? $"\"{value}\"" : value;
+            return match.Groups["prefix"].Value + replacement + match.Groups["suffix"].Value +
+                   match.Groups["carriageReturn"].Value;
+        });
+
+        if (found)
+        {
+            return patched;
         }
 
-        var closingBrace = text.LastIndexOf('}');
+        var closingBrace = patched.LastIndexOf('}');
         if (closingBrace < 0)
         {
-            return text;
+            return patched;
         }
 
-        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        return text.Insert(closingBrace, $"    {key} \"{value}\"{newline}");
+        var newline = patched.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        return patched.Insert(closingBrace, $"    \"{key}\"\t\"{value}\"{newline}");
     }
 
     private static string GetStringParameterKey(Match match)
-    {
-        var quoted = match.Groups["quotedKey"];
-        return quoted.Success ? quoted.Value : match.Groups["bareKey"].Value;
-    }
+        => match.Groups["key"].Value.Trim('"');
 
     private static string GetTextureKey(Match match)
     {
@@ -659,6 +751,9 @@ internal static class ProjectTextureBindingService
         return marker + newline + ManagedComment + newline + body;
     }
 
+    private static string RemoveCompiledTexturesBlock(string text) =>
+        CompiledTexturesBlockRegex.Replace(text, string.Empty, 1);
+
     private static string RemoveFirstLine(string text)
     {
         var index = text.IndexOf('\n');
@@ -687,12 +782,12 @@ internal static class ProjectTextureBindingService
     {
         return GetSemanticFromTextureKey(key) switch
         {
-            "color" => DefaultColor,
-            "normal" => DefaultNormal,
-            "roughness" => DefaultRoughness,
-            "ao" => DefaultAo,
-            "metalness" => DefaultBlackMask,
-            _ => DefaultBlackMask,
+            "color" => NeutralColor,
+            "normal" => NeutralNormal,
+            "roughness" => NeutralRoughness,
+            "ao" => NeutralWhite,
+            "metalness" => NeutralBlack,
+            _ => NeutralBlack,
         };
     }
 

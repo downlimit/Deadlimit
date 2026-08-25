@@ -5,11 +5,11 @@ namespace Deadlimit.Core;
 
 internal static class ManagedVmatTextureSafetyNet
 {
-    private const string DefaultColor = "materials/default/default_color.tga";
-    private const string DefaultNormal = "materials/default/default_normal.tga";
-    private const string DefaultRoughness = "materials/default/default_rough.tga";
-    private const string DefaultAo = "materials/default/default_ao.tga";
-    private const string DefaultBlackMask = "materials/default/default_black_mask.tga";
+    private const string NeutralColor = "[0.500000 0.500000 0.500000 0.000000]";
+    private const string NeutralWhite = "[1.000000 1.000000 1.000000 0.000000]";
+    private const string NeutralNormal = "[0.501961 0.501961 1.000000 0.000000]";
+    private const string NeutralRoughness = "[0.800000 0.800000 0.800000 0.000000]";
+    private const string NeutralBlack = "[0.000000 0.000000 0.000000 0.000000]";
 
     private static readonly Regex TextureSourceReferenceRegex = new(
         "^(?<prefix>[ \\t]*(?:\\\"(?<quotedKey>Texture[A-Za-z0-9_]+)\\\"|(?<bareKey>Texture[A-Za-z0-9_]+))[ \\t]*(?:=[ \\t]*)?(?:resource[ \\t]*:[ \\t]*)?\\\")(?<value>[^\\\"\\r\\n]+)(?<suffix>\\\"[^\\r\\n]*)$",
@@ -26,7 +26,6 @@ internal static class ManagedVmatTextureSafetyNet
         {
             var value = match.Groups["value"].Value;
             if (!LooksLikeTextureSourcePath(value)
-                || IsKnownSafeDefault(value)
                 || TextureSourceExists(addonContentRoot, value))
             {
                 return match.Value;
@@ -49,7 +48,6 @@ internal static class ManagedVmatTextureSafetyNet
             .Cast<Match>()
             .Select(match => match.Groups["value"].Value)
             .Where(LooksLikeTextureSourcePath)
-            .Where(value => !IsKnownSafeDefault(value))
             .Where(value => !TextureSourceExists(addonContentRoot, value))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -75,12 +73,6 @@ internal static class ManagedVmatTextureSafetyNet
         return File.Exists(Path.Combine(addonContentRoot, relative));
     }
 
-    private static bool IsKnownSafeDefault(string value)
-    {
-        var normalized = NormalizeResourcePath(value);
-        return normalized.StartsWith("materials/default/", StringComparison.OrdinalIgnoreCase);
-    }
-
     private static bool LooksLikeTextureSourcePath(string value)
     {
         var extension = Path.GetExtension(value.Replace('\\', '/'));
@@ -100,27 +92,27 @@ internal static class ManagedVmatTextureSafetyNet
 
         if (semantic.Contains("normal", StringComparison.Ordinal))
         {
-            return DefaultNormal;
+            return NeutralNormal;
         }
         if (semantic.Contains("rough", StringComparison.Ordinal))
         {
-            return DefaultRoughness;
+            return NeutralRoughness;
         }
         if (semantic.Contains("ambientocclusion", StringComparison.Ordinal)
             || semantic.Contains("occlusion", StringComparison.Ordinal)
             || string.Equals(semantic, "ao", StringComparison.Ordinal)
             || semantic.StartsWith("ao", StringComparison.Ordinal))
         {
-            return DefaultAo;
+            return NeutralWhite;
         }
         if (semantic.Contains("color", StringComparison.Ordinal)
             || semantic.Contains("albedo", StringComparison.Ordinal)
             || semantic.Contains("diffuse", StringComparison.Ordinal))
         {
-            return DefaultColor;
+            return NeutralColor;
         }
 
-        return DefaultBlackMask;
+        return NeutralBlack;
     }
 
     private static string NormalizeMatchToken(string value) =>

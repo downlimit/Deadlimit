@@ -22,23 +22,19 @@ public sealed class CustomMaterialAuthoringService
     private const string VertexColorGeneratedMarker = "// DEADLIMIT_VERTEXCOLOR_VMAT_V1";
     private const string VertexColorManagedComment = "// Deadlimit vertex-color material: mesh vertex color drives base color; project color textures are intentionally ignored.";
     private const string VertexColorTemplateMaterial = "materials/dev/vertcolor_pbr_basic.vmat";
-    private const string DefaultColor = "materials/default/default_color.tga";
-    private const string DefaultNormal = "materials/default/default_normal.tga";
-    private const string DefaultRoughness = "materials/default/default_rough.tga";
-    private const string DefaultAo = "materials/default/default_ao.tga";
-    private const string DefaultBlackMask = "materials/default/default_black_mask.tga";
+    private const string NeutralColor = "[0.500000 0.500000 0.500000 0.000000]";
     private const string NeutralWhite = "[1.000000 1.000000 1.000000 0.000000]";
     private const string NeutralNormal = "[0.501961 0.501961 1.000000 0.000000]";
-    private const string NeutralRoughness = "[0.964706 0.964706 0.964706 0.000000]";
+    private const string NeutralRoughness = "[0.800000 0.800000 0.800000 0.000000]";
     private const string NeutralBlack = "[0.000000 0.000000 0.000000 0.000000]";
 
     private static readonly TextureSlotDefinition[] TextureSlots =
     [
-        new("TextureColor", DefaultColor, ["basecolor", "base_color", "diffuse", "albedo", "color"]),
-        new("TextureNormal", DefaultNormal, ["normal", "norm"]),
-        new("TextureRoughness", DefaultRoughness, ["roughness", "rough"]),
-        new("TextureAmbientOcclusion", DefaultAo, ["ambientocclusion", "ambient_occlusion", "occlusion", "ao"]),
-        new("TextureMetalness", DefaultBlackMask, ["metalness", "metallic", "metal"]),
+        new("TextureColor", NeutralColor, ["basecolor", "base_color", "diffuse", "albedo", "color"]),
+        new("TextureNormal", NeutralNormal, ["normal", "norm"]),
+        new("TextureRoughness", NeutralRoughness, ["roughness", "rough"]),
+        new("TextureAmbientOcclusion", NeutralWhite, ["ambientocclusion", "ambient_occlusion", "occlusion", "ao"]),
+        new("TextureMetalness", NeutralBlack, ["metalness", "metallic", "metal"]),
     ];
 
     private static readonly Regex TextureAssignmentRegex = new(
@@ -58,7 +54,7 @@ public sealed class CustomMaterialAuthoringService
         RegexOptions.Compiled | RegexOptions.Multiline);
 
     private static readonly Regex StringParameterRegex = new(
-        "^(?<prefix>[ \\t]*(?:\\\"(?<quotedKey>[A-Za-z0-9_]+)\\\"|(?<bareKey>[A-Za-z0-9_]+))[ \\t]*(?:=[ \\t]*)?\\\")(?<value>[^\\\"\\r\\n]*)(?<suffix>\\\"[^\\r\\n]*)$",
+        "^(?<prefix>[ \\t]*(?<key>\\\"?[A-Za-z0-9_]+\\\"?)(?:(?:[ \\t]*=[ \\t]*)|[ \\t]+))(?<valueToken>\\\"[^\\\"\\r\\n]*\\\"|[+-]?(?:\\d+(?:\\.\\d*)?|\\.\\d+))(?<suffix>[^\\r\\n]*)(?<carriageReturn>\\r?)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
 
     private static readonly Regex CompiledTexturesBlockRegex = new(
@@ -445,8 +441,9 @@ public sealed class CustomMaterialAuthoringService
         out int boundCount,
         out int sanitizedCount)
     {
-        var body = ReconcileTextureInputs(
-            retailTemplateText,
+        var body = RemoveCompiledTexturesBlock(retailTemplateText);
+        body = ReconcileTextureInputs(
+            body,
             customReference,
             customMaterialCount,
             rootPngFiles,
@@ -515,6 +512,7 @@ public sealed class CustomMaterialAuthoringService
         body = body.Replace(ManagedComment + "\r\n", string.Empty, StringComparison.Ordinal)
             .Replace(ManagedComment + "\n", string.Empty, StringComparison.Ordinal);
 
+        body = RemoveCompiledTexturesBlock(body);
         body = ReconcileTextureInputs(
             body,
             customReference,
@@ -641,7 +639,7 @@ public sealed class CustomMaterialAuthoringService
 
             var value = standardBindings.TryGetValue(slot.Key, out var bound) && !string.IsNullOrWhiteSpace(bound)
                 ? bound
-                : slot.DefaultResource;
+                : slot.DefaultValue;
             missing.Add($"    {slot.Key} \"{value}\"");
         }
 
@@ -757,7 +755,10 @@ public sealed class CustomMaterialAuthoringService
             }
 
             found = true;
-            return match.Groups["prefix"].Value + value + match.Groups["suffix"].Value;
+            var existingToken = match.Groups["valueToken"].Value;
+            var replacement = existingToken.StartsWith('"') ? $"\"{value}\"" : value;
+            return match.Groups["prefix"].Value + replacement + match.Groups["suffix"].Value +
+                   match.Groups["carriageReturn"].Value;
         });
 
         if (found)
@@ -807,12 +808,16 @@ public sealed class CustomMaterialAuthoringService
             return new TextureReplacement(standardBinding, AutoBound: true, Sanitized: false);
         }
 
-        var knownSlot = TextureSlots.FirstOrDefault(slot => string.Equals(slot.Key, key, StringComparison.OrdinalIgnoreCase));
+        var canonicalKey = TrimTrailingDigits(key);
+        var knownSlot = TextureSlots.FirstOrDefault(slot => string.Equals(
+            slot.Key,
+            canonicalKey,
+            StringComparison.OrdinalIgnoreCase));
         if (knownSlot is not null)
         {
             var slotFallback = useVertexColorFallbacks
                 ? GetVertexColorFallback(key)
-                : knownSlot.DefaultResource;
+                : knownSlot.DefaultValue;
             return new TextureReplacement(slotFallback, AutoBound: false, Sanitized: true);
         }
 
@@ -914,38 +919,18 @@ public sealed class CustomMaterialAuthoringService
         var known = TextureSlots.FirstOrDefault(slot => string.Equals(slot.Key, key, StringComparison.OrdinalIgnoreCase));
         if (known is not null)
         {
-            return known.DefaultResource;
+            return known.DefaultValue;
         }
 
-        var semantic = GetTextureSemantic(key);
-
-        if (semantic.Contains("normal", StringComparison.Ordinal))
+        return GetTextureSemantic(key) switch
         {
-            return DefaultNormal;
-        }
-        if (semantic.Contains("rough", StringComparison.Ordinal))
-        {
-            return DefaultRoughness;
-        }
-        if (semantic.Contains("ambientocclusion", StringComparison.Ordinal)
-            || semantic.Contains("occlusion", StringComparison.Ordinal)
-            || string.Equals(semantic, "ao", StringComparison.Ordinal)
-            || semantic.StartsWith("ao", StringComparison.Ordinal))
-        {
-            return DefaultAo;
-        }
-        if (semantic.Contains("color", StringComparison.Ordinal)
-            || semantic.Contains("albedo", StringComparison.Ordinal)
-            || semantic.Contains("diffuse", StringComparison.Ordinal))
-        {
-            return DefaultColor;
-        }
-        if (semantic.Contains("metal", StringComparison.Ordinal))
-        {
-            return DefaultBlackMask;
-        }
-
-        return DefaultBlackMask;
+            "color" => NeutralColor,
+            "normal" => NeutralNormal,
+            "roughness" => NeutralRoughness,
+            "ao" => NeutralWhite,
+            "metalness" => NeutralBlack,
+            _ => NeutralBlack,
+        };
     }
 
     private static string GetVertexColorFallback(string key)
@@ -1036,10 +1021,7 @@ public sealed class CustomMaterialAuthoringService
     }
 
     private static string GetStringParameterKey(Match match)
-    {
-        var quoted = match.Groups["quotedKey"];
-        return quoted.Success ? quoted.Value : match.Groups["bareKey"].Value;
-    }
+        => match.Groups["key"].Value.Trim('"');
 
     private static IReadOnlyDictionary<string, string?> ResolveTextureBindings(
         string customReference,
@@ -1225,7 +1207,7 @@ public sealed class CustomMaterialAuthoringService
 
     private sealed record TextureSlotDefinition(
         string Key,
-        string DefaultResource,
+        string DefaultValue,
         IReadOnlyList<string> Suffixes);
 
     private sealed record TextureCandidate(

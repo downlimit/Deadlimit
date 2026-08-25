@@ -13,7 +13,7 @@ The important distinction is therefore:
 
 ### Fresh external state
 
-Current CSDK12 still uses `.vmat` sources in `content/citadel_addons/<addon>` and Material Editor for authoring/compilation. Current Source 2 materials still expose conventional inputs such as `TextureColor`, `TextureNormal`, `TextureRoughness`, `TextureAmbientOcclusion`, and `TextureMetalness`, with default resources under `materials/default/`.
+Current CSDK12 still uses `.vmat` sources in `content/citadel_addons/<addon>` and Material Editor for authoring/compilation. Current Source 2 materials expose conventional inputs such as `TextureColor`, `TextureNormal`, `TextureRoughness`, `TextureAmbientOcclusion`, and `TextureMetalness`; each input accepts an inline numeric value when no texture is assigned.
 
 Current Source 2 import settings also associate `TextureMetalness` with `F_METALNESS_TEXTURE` (and, for the complex shader, specular support), so Deadlimit-managed materials reconcile the metalness texture-enable combo when the project-root metal map appears or disappears.
 
@@ -73,15 +73,15 @@ Retail texture-source paths are never left pointing at unavailable hero PNG/TGA 
 When no project texture matches:
 
 ```text
-TextureColor            -> materials/default/default_color.tga
-TextureNormal           -> materials/default/default_normal.tga
-TextureRoughness        -> materials/default/default_rough.tga
-TextureAmbientOcclusion -> materials/default/default_ao.tga
-TextureMetalness        -> materials/default/default_black_mask.tga
-other Texture* masks/effect inputs -> materials/default/default_black_mask.tga
+TextureColor            -> [0.500000 0.500000 0.500000 0.000000]
+TextureNormal           -> [0.501961 0.501961 1.000000 0.000000]
+TextureRoughness        -> [0.800000 0.800000 0.800000 0.000000]
+TextureAmbientOcclusion -> [1.000000 1.000000 1.000000 0.000000]
+TextureMetalness        -> [0.000000 0.000000 0.000000 0.000000]
+other Texture* masks/effect inputs -> [0.000000 0.000000 0.000000 0.000000]
 ```
 
-Using a black fallback for specialty effect/mask textures is deliberate: it preserves the inherited numeric/color tuning but prevents missing rim/self-illum/highlight/etc. masks from enabling the whole custom surface and producing the "red/glowing Warframe" failure class.
+Using numeric black for specialty effect/mask inputs prevents missing rim/self-illum/highlight/etc. masks from enabling the whole custom surface. Generated materials carry no dependency on shared `materials/default/*` placeholder textures.
 
 ### Vertex-color materials
 
@@ -92,7 +92,7 @@ Without matching maps, PREPARE writes inline values accepted by the PBR Material
 ```text
 TextureColor1            -> [1.000000 1.000000 1.000000 0.000000]
 TextureNormal1           -> [0.501961 0.501961 1.000000 0.000000]
-TextureRoughness1        -> [0.964706 0.964706 0.964706 0.000000]
+TextureRoughness1        -> [0.800000 0.800000 0.800000 0.000000]
 TextureAmbientOcclusion1 -> [1.000000 1.000000 1.000000 0.000000]
 TextureMetalness1        -> [0.000000 0.000000 0.000000 0.000000]
 ```
@@ -114,14 +114,14 @@ For those managed files, the project-root PNG set is authoritative for texture s
 ```text
 first PREPARE: builder_color.png only
 → TextureColor = builder_color.png
-→ TextureMetalness = default black mask
+→ TextureMetalness = numeric 0
 
 later add builder_metal.png
 → next PREPARE binds builder_metal.png to TextureMetalness
 → F_METALNESS_TEXTURE is enabled
 
 later remove builder_metal.png from the project root
-→ next PREPARE returns TextureMetalness to the default black mask
+→ next PREPARE returns TextureMetalness to numeric 0
 → F_METALNESS_TEXTURE is disabled
 → the stale derived builder_metal.png copy is removed from addon content
 ```
