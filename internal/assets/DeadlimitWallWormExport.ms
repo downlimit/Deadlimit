@@ -51,20 +51,10 @@ fn deadlimitValidateColorStream outputPath =
 
 fn deadlimitExportNode sourceNode =
 (
-    if ::WallWormS2DMXExport == undefined then
-        throw "Deadlimit export requires Wall Worm 7.x with WallWormS2DMXExport."
-
-    if ChannelMod == undefined then
-        throw "Deadlimit export requires the Wall Worm ChannelMod modifier."
-
-    if sourceNode == undefined or not (isValidNode sourceNode) then
-        throw "Deadlimit export received an invalid scene node."
-
-    if (superClassOf sourceNode) != GeometryClass then
-        throw ("Deadlimit export supports geometry nodes only: " + sourceNode.name)
-
     local outputName = (deadlimitSanitizeFileName sourceNode.name) + ".dmx"
     local outputPath = pathConfig.appendPath deadlimitProjectRoot outputName
+    local tempSuffix = (dotNetClass "System.Guid").NewGuid().ToString "N"
+    local tempPath = pathConfig.appendPath deadlimitProjectRoot ("." + outputName + ".deadlimit-" + tempSuffix + ".dmx")
     local exportNode = undefined
     local sourceHasColor = deadlimitMapChannelSupported sourceNode 0
 
@@ -72,7 +62,6 @@ fn deadlimitExportNode sourceNode =
     (
         exportNode = copy sourceNode
         exportNode.name = uniqueName (sourceNode.name + "__deadlimit_export")
-        hide exportNode
 
         local colorChannel = 0
         if sourceHasColor then
@@ -90,18 +79,22 @@ fn deadlimitExportNode sourceNode =
         )
 
         WallWormS2DMXExport \
-            filename:outputPath \
+            filename:tempPath \
             meshlist:#(exportNode) \
             dmxVersion:22 \
             binary:false \
             encodingVersion:4 \
             color:colorChannel
 
-        if not (doesFileExist outputPath) then
-            throw ("Deadlimit export: Wall Worm did not create " + outputPath)
+        if not (doesFileExist tempPath) then
+            throw ("Deadlimit export: Wall Worm did not create " + tempPath)
 
         if sourceHasColor then
-            deadlimitValidateColorStream outputPath
+            deadlimitValidateColorStream tempPath
+
+        local fileClass = dotNetClass "System.IO.File"
+        fileClass.Copy tempPath outputPath true
+        deleteFile tempPath
 
         if exportNode != undefined and isValidNode exportNode do delete exportNode
         exportNode = undefined
@@ -112,20 +105,40 @@ fn deadlimitExportNode sourceNode =
         local errorText = getCurrentException()
         if exportNode != undefined and isValidNode exportNode do delete exportNode
         exportNode = undefined
-
-        if doesFileExist outputPath do deleteFile outputPath
+        if doesFileExist tempPath do deleteFile tempPath
         throw errorText
     )
 )
 
 fn deadlimitExportSelected =
 (
+    if ::WallWormS2DMXExport == undefined then
+        throw "Deadlimit export requires Wall Worm 7.x with WallWormS2DMXExport."
+
+    if ChannelMod == undefined then
+        throw "Deadlimit export requires the Wall Worm ChannelMod modifier."
+
     if not (doesDirectoryExist deadlimitProjectRoot) then
         throw ("Deadlimit project folder does not exist: " + deadlimitProjectRoot)
 
     local selectedNodes = for node in selection collect node
     if selectedNodes.count == 0 then
         throw "Deadlimit export: select at least one geometry node."
+
+    local plannedNames = #()
+    for node in selectedNodes do
+    (
+        if node == undefined or not (isValidNode node) then
+            throw "Deadlimit export received an invalid scene node."
+
+        if (superClassOf node) != GeometryClass then
+            throw ("Deadlimit export supports geometry nodes only: " + node.name)
+
+        local outputName = toLower ((deadlimitSanitizeFileName node.name) + ".dmx")
+        if (findItem plannedNames outputName) != 0 then
+            throw ("Deadlimit export: selected nodes resolve to the same DMX filename: " + outputName)
+        append plannedNames outputName
+    )
 
     local outputs = #()
     for node in selectedNodes do
