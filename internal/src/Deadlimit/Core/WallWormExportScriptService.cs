@@ -7,33 +7,45 @@ public static class WallWormExportScriptService
 {
     private const string ResourceName = "Deadlimit.WallWormExport.ms";
     private const string ProjectRootToken = "__DEADLIMIT_PROJECT_ROOT__";
+    private const string OutputMapToken = "__DEADLIMIT_OUTPUT_MAP__";
     private const string ScriptFolderName = "wallworm";
     private const string ScriptFileName = "DeadlimitWallWormExport.ms";
 
-    public static string WriteProjectScript(string projectFolder)
+    public static string WriteProjectScript(ProjectManifest manifest)
     {
-        if (string.IsNullOrWhiteSpace(projectFolder))
+        ArgumentNullException.ThrowIfNull(manifest);
+
+        if (string.IsNullOrWhiteSpace(manifest.ProjectFolder))
         {
-            throw new ArgumentException("Project folder is required.", nameof(projectFolder));
+            throw new ArgumentException("Project folder is required.", nameof(manifest));
         }
 
-        var fullProjectFolder = Path.GetFullPath(projectFolder.Trim());
+        var fullProjectFolder = Path.GetFullPath(manifest.ProjectFolder.Trim());
         if (!Directory.Exists(fullProjectFolder))
         {
             throw new DirectoryNotFoundException(fullProjectFolder);
         }
 
         var template = ReadTemplate();
-        if (!template.Contains(ProjectRootToken, StringComparison.Ordinal))
+        foreach (var token in new[] { ProjectRootToken, OutputMapToken })
         {
-            throw new InvalidDataException(
-                $"Embedded Wall Worm export template is missing token '{ProjectRootToken}'.");
+            if (!template.Contains(token, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException(
+                    $"Embedded Wall Worm export template is missing token '{token}'.");
+            }
         }
 
-        var script = template.Replace(
-            ProjectRootToken,
-            EscapeMaxScriptVerbatimString(fullProjectFolder),
-            StringComparison.Ordinal);
+        var outputMap = BuildOutputMap(manifest, fullProjectFolder);
+        var script = template
+            .Replace(
+                ProjectRootToken,
+                EscapeMaxScriptVerbatimString(fullProjectFolder),
+                StringComparison.Ordinal)
+            .Replace(
+                OutputMapToken,
+                FormatMaxScriptOutputMap(outputMap),
+                StringComparison.Ordinal);
 
         var scriptFolder = Path.Combine(ProjectStore.GetMetadataFolder(fullProjectFolder), ScriptFolderName);
         Directory.CreateDirectory(scriptFolder);
@@ -52,6 +64,72 @@ public static class WallWormExportScriptService
 
         var fullPath = Path.GetFullPath(scriptPath.Trim());
         return $"fileIn @\"{EscapeMaxScriptVerbatimString(fullPath)}\"";
+    }
+
+    private static IReadOnlyList<(string NodeName, string FileName)> BuildOutputMap(
+        ProjectManifest manifest,
+        string projectFolder)
+    {
+        var mappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var ambiguous = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void Add(string nodeName, string fileName)
+        {
+            nodeName = nodeName.Trim();
+            fileName = Path.GetFileName(fileName.Trim());
+            if (nodeName.Length == 0 || fileName.Length == 0 || ambiguous.Contains(nodeName))
+            {
+                return;
+            }
+
+            if (mappings.TryGetValue(nodeName, out var existing)
+                && !string.Equals(existing, fileName, StringComparison.OrdinalIgnoreCase))
+            {
+                mappings.Remove(nodeName);
+                ambiguous.Add(nodeName);
+                return;
+            }
+
+            mappings[nodeName] = fileName;
+        }
+
+        foreach (var dmxPath in Directory.EnumerateFiles(projectFolder, "*.dmx", SearchOption.TopDirectoryOnly))
+        {
+            var fileName = Path.GetFileName(dmxPath);
+            Add(Path.GetFileNameWithoutExtension(fileName), fileName);
+        }
+
+        var vmdlPath = !string.IsNullOrWhiteSpace(manifest.SourceVmdl) && File.Exists(manifest.SourceVmdl)
+            ? manifest.SourceVmdl
+            : RetailVmdlInheritance.FindRetailVmdl(manifest);
+
+        if (!string.IsNullOrWhiteSpace(vmdlPath) && File.Exists(vmdlPath))
+        {
+            foreach (var entry in RetailVmdlInheritance.ReadRenderMeshes(vmdlPath))
+            {
+                var fileName = Path.GetFileName(entry.Filename.Replace('/', Path.DirectorySeparatorChar));
+                Add(entry.Name, fileName);
+                Add(Path.GetFileNameWithoutExtension(fileName), fileName);
+            }
+        }
+
+        return mappings
+            .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(pair => (pair.Key, pair.Value))
+            .ToArray();
+    }
+
+    private static string FormatMaxScriptOutputMap(
+        IReadOnlyList<(string NodeName, string FileName)> outputMap)
+    {
+        if (outputMap.Count == 0)
+        {
+            return "#()";
+        }
+
+        var entries = outputMap.Select(entry =>
+            $"#(@\"{EscapeMaxScriptVerbatimString(entry.NodeName)}\", @\"{EscapeMaxScriptVerbatimString(entry.FileName)}\")");
+        return $"#({string.Join(", ", entries)})";
     }
 
     private static string ReadTemplate()
