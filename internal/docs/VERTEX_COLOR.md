@@ -18,7 +18,7 @@ The artist DMX starts as a normal Wall Worm export with all settings controlled 
 
 The helper reads Wall Worm's last export folder from `3dsMax.ini` and finds the newest primary DMX there. It does not read a Deadlimit project, launch Deadlimit, or contain a path to `Deadlimit.exe`.
 
-The FBX export is ASCII, selection-only, animation/cameras/lights disabled and triangulation enabled. The helper restores the previous FBX settings and Max selection after success or failure. During PREPARE, Deadlimit patches the CSDK-bound DMX copy, reloads and validates its color streams, then deletes `_vertexcolor.fbx` only after that operation succeeds. On rejection PREPARE continues with the normal DMX and leaves the FBX available for diagnosis.
+The FBX export is ASCII, selection-only, animation/cameras/lights disabled and triangulation enabled. The helper restores the previous FBX settings and Max selection after success or failure. During PREPARE, Deadlimit patches the CSDK-bound DMX copy and reloads and validates its color streams. An applied `_vertexcolor.fbx` remains beside the artist DMX until the complete PREPARE transaction has saved the VMDL, materials, project metadata and final log. Only then is the temporary FBX removed. Rejection, cancellation, or any later PREPARE failure leaves the FBX available for retry and diagnosis.
 
 The versioned helper and a short README live in `.deadlimit/maxscript-vertcolor-trans/` in the Deadlimit repository. Settings exposes `📂 MaxScript VertColor Trans` to open that folder.
 
@@ -39,7 +39,7 @@ If no material name contains `vertexcolor`, the operation fails without changing
 
 ## Validation and PREPARE
 
-PREPARE applies the sidecar to its copied DMX target. The artist's primary DMX remains a normal Wall Worm export. Rejected sidecars are recorded in the PREPARE log and left beside the artist DMX.
+PREPARE applies the sidecar to its copied DMX target. The artist's primary DMX remains a normal Wall Worm export. Rejected sidecars are recorded in the PREPARE log and left beside the artist DMX. Successfully applied sidecars are queued for best-effort deletion after the complete PREPARE succeeds; a cleanup failure is logged and does not invalidate the prepared content.
 
 Validation requires:
 

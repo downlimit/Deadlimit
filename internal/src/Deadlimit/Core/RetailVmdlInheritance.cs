@@ -193,7 +193,7 @@ public static class RetailVmdlInheritance
                 target.Filename.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
             File.Copy(artistDmx, targetPath, overwrite: true);
-            var vertexColor = VertexColorSidecarService.TryApplyForPrepare(artistDmx, targetPath);
+            var vertexColor = VertexColorSidecarService.TryApply(artistDmx, targetPath);
             replaced.Add(new ArtistDmxOverlayResult(
                 artistDmx,
                 target.Filename,

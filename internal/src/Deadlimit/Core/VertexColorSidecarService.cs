@@ -35,37 +35,6 @@ public static class VertexColorSidecarService
             Path.GetFileNameWithoutExtension(artistDmxPath) + FileSuffix);
     }
 
-    public static VertexColorSidecarResult TryApplyForPrepare(
-        string artistDmxPath,
-        string preparedDmxPath)
-    {
-        var result = TryApply(artistDmxPath, preparedDmxPath);
-        if (result.Status != VertexColorSidecarStatus.Applied)
-        {
-            return result;
-        }
-
-        try
-        {
-            if (File.Exists(result.SidecarPath))
-            {
-                File.Delete(result.SidecarPath);
-            }
-
-            return result with
-            {
-                Message = $"{result.Message} Removed the temporary FBX after PREPARE.",
-            };
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return result with
-            {
-                Message = $"{result.Message} Vertex Color was applied, but the temporary FBX could not be removed: {ex.Message}",
-            };
-        }
-    }
-
     public static VertexColorSidecarResult TryApply(string artistDmxPath, string preparedDmxPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(artistDmxPath);

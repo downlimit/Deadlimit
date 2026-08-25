@@ -295,6 +295,19 @@ public sealed class PrepareAuthoringService
             log.AppendLine("RESULT: AUTHORING CONTENT PREPARED; ADDON GAME OUTPUT CLEAN");
             File.WriteAllText(logPath, log.ToString());
 
+            DeleteAppliedVertexColorSidecarsAfterSuccessfulPrepare(
+                replacedRenderMeshes,
+                log);
+            try
+            {
+                File.WriteAllText(logPath, log.ToString());
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The preparation transaction is already complete and its first final log was
+                // persisted. A best-effort cleanup-log refresh must not turn success into failure.
+            }
+
             progress?.Report(new PrepareAuthoringProgress("Authoring content prepared. Launch CSDK to rebuild clean game output."));
 
             return new PrepareAuthoringResult(
@@ -323,6 +336,38 @@ public sealed class PrepareAuthoringService
             log.AppendLine($"RESULT: FAILED — {ex}");
             File.WriteAllText(logPath, log.ToString());
             throw;
+        }
+    }
+
+    private static void DeleteAppliedVertexColorSidecarsAfterSuccessfulPrepare(
+        IEnumerable<ArtistDmxOverlayResult> overlays,
+        StringBuilder log)
+    {
+        var appliedSidecars = overlays
+            .Select(overlay => overlay.VertexColor)
+            .Where(result => result.Status == VertexColorSidecarStatus.Applied)
+            .Select(result => result.SidecarPath)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        foreach (var sidecarPath in appliedSidecars)
+        {
+            try
+            {
+                if (!File.Exists(sidecarPath))
+                {
+                    log.AppendLine($"Successful PREPARE FBX cleanup skipped missing sidecar: {sidecarPath}");
+                    continue;
+                }
+
+                File.Delete(sidecarPath);
+                log.AppendLine($"Successful PREPARE removed applied Vertex Color FBX: {sidecarPath}");
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                log.AppendLine($"Successful PREPARE could not remove applied Vertex Color FBX '{sidecarPath}': {ex.Message}");
+            }
         }
     }
 
