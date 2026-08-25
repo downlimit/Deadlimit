@@ -60,7 +60,8 @@ internal static class BuildFeature
         var buildProgressBar = AddBuildProgressBar(form);
         var actionButtons = new[] { prepareButton, buildAndTestButton, launchCsdkButton };
 
-        prepareButton.Click += async (_, _) => await RunPrepareAsync(form, actionButtons);
+        prepareButton.Click += async (_, _) =>
+            await RunPrepareAsync(form, actionButtons, buildProgressBar);
         buildAndTestButton.Click += async (_, _) =>
             await RunBuildAndTestAsync(form, actionButtons, buildProgressBar);
         launchCsdkButton.Click += async (_, _) =>
@@ -82,7 +83,10 @@ internal static class BuildFeature
         topBar.Controls.Add(launchCsdkButton);
     }
 
-    private static async Task RunPrepareAsync(MainForm form, IReadOnlyList<Button> actionButtons)
+    private static async Task RunPrepareAsync(
+        MainForm form,
+        IReadOnlyList<Button> actionButtons,
+        ToolStripProgressBar? progressBar)
     {
         var regenerateCustomMaterials = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
         var manifest = ProjectStore.TryLoadLastProject();
@@ -117,19 +121,28 @@ internal static class BuildFeature
 
         SetButtonsEnabled(actionButtons, false);
         var originalTitle = form.Text;
+        using var animator = new BuildProgressAnimator(
+            form,
+            progressBar,
+            originalTitle,
+            UiText.T("Starting preparation for CSDK...", "Запуск подготовки для CSDK..."));
 
         try
         {
+            animator.Start();
             var progress = new Progress<PrepareAuthoringProgress>(update =>
-            {
-                form.Text = $"Deadlimit — {update.Message}";
-            });
+                animator.Update(new BuildAndTestProgress(
+                    update.Message,
+                    MapStandalonePrepareProgress(update.Message))));
 
             var service = new PrepareAuthoringService(new DeadlimitPaths());
             var result = await service.PrepareAsync(
                 manifest,
                 progress,
                 regenerateCustomMaterials: regenerateCustomMaterials);
+            animator.Update(new BuildAndTestProgress(
+                UiText.T("Preparation for CSDK complete.", "Подготовка для CSDK готова."),
+                100));
 
             var gameState = result.GameOutputCleaned
                 ? UiText.T("Existing compiled output for this addon was removed.", "Старый compiled output этого аддона удалён.")
@@ -402,6 +415,36 @@ internal static class BuildFeature
         File.Move(backupPath, statePath);
     }
 
+    private static int MapStandalonePrepareProgress(string message)
+    {
+        if (message.StartsWith("Cleaning stale", StringComparison.OrdinalIgnoreCase))
+        {
+            return 10;
+        }
+        if (message.StartsWith("Refreshing retail", StringComparison.OrdinalIgnoreCase))
+        {
+            return 25;
+        }
+        if (message.StartsWith("Overlaying artist", StringComparison.OrdinalIgnoreCase))
+        {
+            return 45;
+        }
+        if (message.StartsWith("Preparing addon-owned", StringComparison.OrdinalIgnoreCase))
+        {
+            return 65;
+        }
+        if (message.StartsWith("Applying narrow", StringComparison.OrdinalIgnoreCase))
+        {
+            return 85;
+        }
+        if (message.StartsWith("Authoring content prepared", StringComparison.OrdinalIgnoreCase))
+        {
+            return 100;
+        }
+
+        return 5;
+    }
+
     private static ToolStripProgressBar? AddBuildProgressBar(MainForm form)
     {
         var statusStrip = FindDescendants<StatusStrip>(form).FirstOrDefault();
@@ -502,17 +545,20 @@ internal static class BuildFeature
 
         private int _percent;
         private int _frameIndex;
-        private string _message = UiText.T("Starting build for test...", "Запуск сборки для теста...");
+        private string _message;
         private bool _disposed;
 
         public BuildProgressAnimator(
             Form form,
             ToolStripProgressBar? progressBar,
-            string baseTitle)
+            string baseTitle,
+            string? initialMessage = null)
         {
             _form = form;
             _progressBar = progressBar;
             _baseTitle = baseTitle;
+            _message = initialMessage
+                ?? UiText.T("Starting build for test...", "Запуск сборки для теста...");
             _timer = new System.Windows.Forms.Timer
             {
                 Interval = 120,
