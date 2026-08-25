@@ -11,12 +11,16 @@ Deadlimit is a Windows desktop tool for building and testing Deadlock character 
 The user-facing normal iteration loop is:
 
 ```text
-Export DMX / save textures
+select edited geometry in 3ds Max
+→ MAX EXPORT (Deadlimit Wall Worm helper)
+→ save textures if changed
 → BUILD & TEST
 → if Deadlock was running: allow Deadlimit to close it
 → compile/deploy
 → launch/test in Deadlock
 ```
+
+The Max helper exports text DMX22 to the project root. When Max vertex color channel 0 is present, it preserves that data through a temporary Wall Worm `ChannelMod` bridge and writes `color$0/color$0Indices` without modifying the artist node.
 
 ## Documentation map
 
@@ -24,6 +28,7 @@ Export DMX / save textures
 - `DECISIONS.md` — durable product/technical decisions and rules for when a workaround is allowed to become generic behavior.
 - `PROJECT.md` — product definition and intended user workflow.
 - `WORKSPACE.md` — artist project-folder contract: root DMX/PNG inputs, hidden `.deadlimit` metadata, and `0source` extraction behavior.
+- `WALLWORM_EXPORT.md` — project-specific Max/Wall Worm DMX22 exporter and the confirmed channel-0 vertex-color bridge.
 - `EXTRACTION.md` — current retail hero discovery/decompilation implementation, Source 2 Viewer integration, safety rules, evidence, and dependency-closure hypothesis.
 - `MATERIALS.md` — REUSE/CUSTOM material routing, confirmed VMDL remap evidence, and automatic compatibility-repair rules such as the generic eye fallback detector.
 - `TEXTURES.md` — inherited CUSTOM VMAT scaffolding, project-root PNG naming conventions, automatic texture rebinding, managed add/remove behavior, and safe fallbacks.
