@@ -6,9 +6,8 @@ namespace Deadlimit.Core;
 public static class VertexColorMaxScriptService
 {
     private const string ResourceName = "Deadlimit.VertexColorSidecar.ms";
-    private const string ProjectRootToken = "__DEADLIMIT_PROJECT_ROOT__";
     private const string ScriptFolderName = "wallworm";
-    private const string ScriptFileName = "DeadlimitVertexColorSidecar.ms";
+    private const string ScriptFileName = "DeadlimitVertexColorFBX.ms";
 
     public static string WriteProjectScript(ProjectManifest manifest)
     {
@@ -21,22 +20,10 @@ public static class VertexColorMaxScriptService
             throw new DirectoryNotFoundException(projectFolder);
         }
 
-        var template = ReadTemplate();
-        if (!template.Contains(ProjectRootToken, StringComparison.Ordinal))
-        {
-            throw new InvalidDataException(
-                $"Embedded Vertex Color template is missing token '{ProjectRootToken}'.");
-        }
-
-        var script = template.Replace(
-            ProjectRootToken,
-            EscapeMaxScriptVerbatimString(projectFolder),
-            StringComparison.Ordinal);
-
         var scriptFolder = Path.Combine(ProjectStore.GetMetadataFolder(projectFolder), ScriptFolderName);
         Directory.CreateDirectory(scriptFolder);
         var scriptPath = Path.Combine(scriptFolder, ScriptFileName);
-        File.WriteAllText(scriptPath, script, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        File.WriteAllText(scriptPath, ReadTemplate(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         return scriptPath;
     }
 

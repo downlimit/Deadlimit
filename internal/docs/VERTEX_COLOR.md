@@ -1,60 +1,53 @@
-# Vertex Color sidecars
+# Vertex Color FBX sidecars
 
 ## Purpose
 
-Wall Worm 7.35.1 treats `color:0` as a disabled color stream even though 3ds Max stores painted vertex color in map channel `0`. Deadlimit keeps the normal Wall Worm exporter UI as the owner of the artist DMX and uses a companion file only as a validated color donor.
+The artist DMX remains a normal Wall Worm export with all settings controlled by the Wall Worm window. A small universal MAXScript exports the currently selected geometry through the Autodesk FBX exporter so Deadlimit can recover map channel `0` colors during PREPARE.
 
 ```text
 <name>.dmx
-<name>_vertexcolor.dmx
+<name>_vertexcolor.fbx
 ```
-
-The sidecar is also DMX22. Using the same exporter for both files avoids FBX vertex splitting, reindexing and a second geometry parser.
 
 ## Artist workflow
 
-1. Save the Deadlimit project.
-2. Press **MAX VERTEX COLOR / VERTEX COLOR ИЗ MAX** in Deadlimit.
-3. Paste the copied `fileIn @"..."` command into MAXScript Listener once.
-4. Export the normal DMX with the Wall Worm window and all desired Wall Worm settings.
-5. Keep the same geometry objects selected.
-6. Press **EXPORT SELECTED VERTEX COLOR** in the small Max window.
-7. Run PREPARE or BUILD & TEST normally.
+1. Export the normal DMX with Wall Worm.
+2. Keep the same geometry selected in 3ds Max.
+3. Run `DeadlimitVertexColorFBX.ms` and press **EXPORT SELECTED VERTEX COLOR**.
+4. Run PREPARE or BUILD & TEST normally.
 
-The Max helper finds the most recently modified primary DMX in the current project root and writes the sidecar beside it. Files already ending in `_vertexcolor.dmx` are excluded from primary-file discovery.
+The helper reads Wall Worm's last export folder from `3dsMax.ini`, finds the newest primary DMX there and writes the FBX beside it. It does not read a Deadlimit project, hard-code an asset path or change the normal Wall Worm DMX.
 
-## Max-side safety
+The FBX export is ASCII, selection-only, animation/cameras/lights disabled and triangulation disabled. The helper restores the previous FBX settings and Max selection after success or failure.
 
-The helper:
+## Material priority
 
-- accepts selected geometry objects only;
-- requires at least one selected object with map channel `0`;
-- finds a map channel unused by every selected mesh in `2..99`;
-- temporarily adds Wall Worm `ChannelMod` from `0` to the shared temporary channel on each color-bearing selected mesh;
-- calls `WallWormS2DMXExport` with `color:<temporary channel>`;
-- validates `color$0` and `color$0Indices` before replacing the previous sidecar;
-- removes every temporary modifier and restores the original selection on success or failure;
-- removes a uniquely named stale Deadlimit bridge from selected meshes before a later retry, covering an interrupted previous export.
+A DMX mesh is priority when any assigned material identity contains the exact substring `vertexcolor`, case-insensitively. Deadlimit checks the serialized material element name and its `mtlName` path.
 
-Channel `0`, the final modifier stacks and the artist DMX are preserved. During the sidecar export the selected stack contains the temporary bridge because this is required for Wall Worm to retain the original skinned-mesh topology.
+When at least one priority mesh exists:
+
+- every priority mesh must have one exact-name FBX mesh;
+- every priority mesh must pass geometry validation and contain a Vertex Color layer;
+- a failure on any priority mesh rejects the whole sidecar;
+- non-priority meshes are transferred only when their own name, geometry and color layer validate; their absence or mismatch does not reject valid priority meshes.
+
+When no priority material exists, Deadlimit uses strict fallback mode: the entire unique mesh-name set and all mesh geometry must match, and at least one usable color layer must exist.
 
 ## PREPARE validation and fallback
 
-`*_vertexcolor.dmx` files are excluded from normal artist-DMX overlays and material scanning. For each primary DMX, Deadlimit looks for the matching sidecar and applies it only to the copied CSDK DMX.
+For each primary DMX, Deadlimit looks for the sibling FBX and applies colors only to the copied CSDK DMX. The artist DMX remains unchanged.
 
-Transfer requires:
+Validation requires:
 
-- matching DMX format and format version;
-- equal uniquely named `DmeMesh` sets;
-- equal face-set count, material order and polygon sequence for every mesh;
-- matching indexed surface attributes (`position`, normals, UVs and any additional indexed streams) for every polygon vertex;
-- unambiguous direct attributes such as skin joint indices and weights when surface-identical vertices exist;
-- color-index count equal to the corner-index count;
-- every color index inside the color array;
+- a valid Autodesk ASCII FBX mesh graph;
+- unique matching mesh node names after the DMX `_mesh` suffix is removed;
+- equal control-point and polygon counts for each transferred mesh;
+- equal polygon corner counts and stable polygon order;
+- at least 90 percent direct control-point topology anchors, allowing the limited index normalization observed in the Autodesk exporter;
+- a supported FBX color mapping (`ByPolygonVertex` or `ByControlPoint`) and reference mode (`Direct` or `IndexToDirect`);
+- valid color indices and RGBA values;
 - sidecar modification time at least as new as the primary DMX.
 
-Vertex Color seams can split the sidecar's logical vertices. After topology validation, Deadlimit expands the prepared DMX's original position/normal/UV/skin streams onto that split vertex domain, preserves their original values, copies the sidecar color stream and updates face indices. This allows skinned meshes to keep their original joint data while receiving per-corner color.
+FBX per-corner colors can split the DMX logical vertex domain. After validation, Deadlimit expands the prepared DMX position, normal, UV and skin streams onto that domain, preserving their values while adding `color$0` and `color$0Indices`.
 
-All checks complete before the prepared DMX is saved. A missing, stale, malformed or mismatched sidecar leaves the copied artist DMX unchanged. PREPARE continues and records the skip reason in its log and completion summary.
-
-Both keyvalues2 and binary DMX inputs are loaded and written through Datamodel.NET. The artist project-root DMX is always preserved byte-for-byte.
+All checks complete before the prepared DMX is replaced. A missing, stale, malformed or rejected sidecar leaves the copied artist DMX unchanged, PREPARE continues, and the reason is written to its log and completion summary.

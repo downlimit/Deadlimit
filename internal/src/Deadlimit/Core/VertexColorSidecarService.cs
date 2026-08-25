@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Numerics;
 using Datamodel;
 using Datamodel.Codecs;
 using DmxColor = Datamodel.Color;
@@ -20,7 +21,7 @@ public sealed record VertexColorSidecarResult(
 
 public static class VertexColorSidecarService
 {
-    public const string FileSuffix = "_vertexcolor.dmx";
+    public const string FileSuffix = "_vertexcolor.fbx";
 
     public static bool IsSidecarPath(string path) =>
         Path.GetFileName(path).EndsWith(FileSuffix, StringComparison.OrdinalIgnoreCase);
@@ -62,48 +63,99 @@ public static class VertexColorSidecarService
             }
 
             using var prepared = Datamodel.Datamodel.Load(preparedDmxPath, DeferredMode.Disabled);
-            using var sidecar = Datamodel.Datamodel.Load(sidecarPath, DeferredMode.Disabled);
-
-            if (!string.Equals(prepared.Format, sidecar.Format, StringComparison.Ordinal)
-                || prepared.FormatVersion != sidecar.FormatVersion)
-            {
-                return Skipped(sidecarPath, "DMX format or format version differs between the artist file and sidecar.");
-            }
+            var sidecarMeshes = AsciiFbxVertexColorReader.Read(sidecarPath);
 
             var preparedMeshes = FindMeshBindings(prepared);
-            var sidecarMeshes = FindMeshBindings(sidecar);
             if (preparedMeshes.Count == 0 || sidecarMeshes.Count == 0)
             {
-                return Skipped(sidecarPath, "One of the DMX files contains no DmeMesh bindings.");
-            }
-
-            if (preparedMeshes.Count != sidecarMeshes.Count)
-            {
-                return Skipped(
-                    sidecarPath,
-                    $"Mesh count differs: artist {preparedMeshes.Count}, sidecar {sidecarMeshes.Count}.");
-            }
-
-            var matches = MatchMeshes(preparedMeshes, sidecarMeshes, out var mismatchReason);
-            if (matches is null)
-            {
-                return Skipped(sidecarPath, mismatchReason);
+                return Skipped(sidecarPath, "The DMX or FBX contains no mesh bindings.");
             }
 
             var transferCount = 0;
-            foreach (var (target, source) in matches)
+            var priorityTargets = preparedMeshes.Where(mesh => mesh.UsesVertexColorMaterial).ToArray();
+            if (priorityTargets.Length > 0)
             {
-                if (!TryTransferMesh(target, source, out var transferred, out mismatchReason))
+                var sidecarByName = sidecarMeshes
+                    .GroupBy(mesh => mesh.Name, StringComparer.Ordinal)
+                    .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+                if (sidecarByName.Values.Any(group => group.Length != 1))
+                {
+                    return Skipped(sidecarPath, "The FBX contains duplicate mesh node names.");
+                }
+
+                foreach (var target in priorityTargets)
+                {
+                    var fbxName = GetFbxMeshName(target.Name);
+                    if (!sidecarByName.TryGetValue(fbxName, out var candidates))
+                    {
+                        return Skipped(
+                            sidecarPath,
+                            $"Priority Vertex Color mesh '{fbxName}' is missing from the FBX.");
+                    }
+
+                    if (!TryTransferMeshFromFbx(
+                            target,
+                            candidates[0],
+                            out var transferred,
+                            out var mismatchReason))
+                    {
+                        return Skipped(sidecarPath, $"Priority mesh '{fbxName}' failed validation: {mismatchReason}");
+                    }
+
+                    if (transferred == 0)
+                    {
+                        return Skipped(
+                            sidecarPath,
+                            $"Priority mesh '{fbxName}' has no Vertex Color layer in the FBX.");
+                    }
+
+                    transferCount += transferred;
+                    sidecarByName.Remove(fbxName);
+                }
+
+                foreach (var target in preparedMeshes.Where(mesh => !mesh.UsesVertexColorMaterial))
+                {
+                    var fbxName = GetFbxMeshName(target.Name);
+                    if (sidecarByName.TryGetValue(fbxName, out var candidates)
+                        && TryTransferMeshFromFbx(
+                            target,
+                            candidates[0],
+                            out var transferred,
+                            out _))
+                    {
+                        transferCount += transferred;
+                    }
+                }
+            }
+            else
+            {
+                if (preparedMeshes.Count != sidecarMeshes.Count)
+                {
+                    return Skipped(
+                        sidecarPath,
+                        $"Mesh count differs: DMX {preparedMeshes.Count}, FBX {sidecarMeshes.Count}.");
+                }
+
+                var matches = MatchMeshes(preparedMeshes, sidecarMeshes, out var mismatchReason);
+                if (matches is null)
                 {
                     return Skipped(sidecarPath, mismatchReason);
                 }
 
-                transferCount += transferred;
+                foreach (var (target, source) in matches)
+                {
+                    if (!TryTransferMeshFromFbx(target, source, out var transferred, out mismatchReason))
+                    {
+                        return Skipped(sidecarPath, mismatchReason);
+                    }
+
+                    transferCount += transferred;
+                }
             }
 
             if (transferCount == 0)
             {
-                return Skipped(sidecarPath, "The sidecar contains no usable color$0 streams.");
+                return Skipped(sidecarPath, "The FBX contains no usable Vertex Color layers.");
             }
 
             prepared.Save(temporaryPath, prepared.Encoding, prepared.EncodingVersion);
@@ -150,10 +202,399 @@ public static class VertexColorSidecarService
             }
 
             var faceSets = GetRequiredArray<Element>(mesh, "faceSets").ToArray();
-            result.Add(new MeshBinding(mesh.Name, bindState, faceSets));
+            result.Add(new MeshBinding(
+                mesh.Name,
+                bindState,
+                faceSets,
+                faceSets.Any(UsesVertexColorMaterial)));
         }
 
         return result;
+    }
+
+    private static bool UsesVertexColorMaterial(Element faceSet)
+    {
+        if (!faceSet.ContainsKey("material"))
+        {
+            return false;
+        }
+
+        var material = faceSet.Get<Element>("material");
+        if (material is null)
+        {
+            return false;
+        }
+
+        if (ContainsVertexColorToken(material.Name))
+        {
+            return true;
+        }
+
+        return material.ContainsKey("mtlName")
+            && ContainsVertexColorToken(material.Get<string>("mtlName"));
+    }
+
+    private static bool ContainsVertexColorToken(string? value) =>
+        value?.Contains("vertexcolor", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static IReadOnlyList<(MeshBinding Target, FbxVertexColorMesh Source)>? MatchMeshes(
+        IReadOnlyList<MeshBinding> targets,
+        IReadOnlyList<FbxVertexColorMesh> sources,
+        out string mismatchReason)
+    {
+        var targetGroups = targets
+            .GroupBy(binding => GetFbxMeshName(binding.Name), StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+        if (targetGroups.Values.Any(group => group.Length != 1))
+        {
+            mismatchReason = "The DMX contains duplicate mesh names after removing the _mesh suffix.";
+            return null;
+        }
+
+        var sourceGroups = sources
+            .GroupBy(binding => binding.Name, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+        if (sourceGroups.Values.Any(group => group.Length != 1))
+        {
+            mismatchReason = "The FBX contains duplicate mesh node names.";
+            return null;
+        }
+
+        var matches = new List<(MeshBinding Target, FbxVertexColorMesh Source)>();
+        foreach (var source in sources)
+        {
+            if (!targetGroups.TryGetValue(source.Name, out var candidates))
+            {
+                mismatchReason = $"FBX mesh '{source.Name}' has no exact DMX mesh-name match.";
+                return null;
+            }
+
+            matches.Add((candidates[0], source));
+            targetGroups.Remove(source.Name);
+        }
+
+        if (targetGroups.Count != 0)
+        {
+            mismatchReason = "Not every DMX mesh has a same-named FBX mesh.";
+            return null;
+        }
+
+        mismatchReason = string.Empty;
+        return matches;
+    }
+
+    private static string GetFbxMeshName(string dmxMeshName) =>
+        dmxMeshName.EndsWith("_mesh", StringComparison.Ordinal)
+            ? dmxMeshName[..^"_mesh".Length]
+            : dmxMeshName;
+
+    private static bool TryTransferMeshFromFbx(
+        MeshBinding target,
+        FbxVertexColorMesh source,
+        out int transferred,
+        out string mismatchReason)
+    {
+        transferred = 0;
+        var targetFormat = GetRequiredArray<string>(target.VertexData, "vertexFormat");
+        var streamNames = targetFormat
+            .Where(name => !string.Equals(name, "color$0", StringComparison.Ordinal))
+            .ToArray();
+        if (streamNames.Length == 0 || !streamNames.Contains("position$0", StringComparer.Ordinal))
+        {
+            mismatchReason = $"DMX mesh '{target.Name}' has no position$0 stream.";
+            return false;
+        }
+
+        var columns = streamNames.Select(name => ReadStreamColumn(target.VertexData, name)).ToArray();
+        var logicalVertexCount = GetLogicalVertexCount(target.VertexData);
+        if (!ValidateColumns(columns, logicalVertexCount))
+        {
+            mismatchReason = $"DMX stream lengths are inconsistent for mesh '{target.Name}'.";
+            return false;
+        }
+
+        var positionColumn = columns[Array.IndexOf(streamNames, "position$0")];
+        if (!positionColumn.IsIndexed
+            || positionColumn.Values.Length != source.ControlPoints.Count
+            || positionColumn.Values.Any(value => value is not Vector3))
+        {
+            mismatchReason =
+                $"Control-point count or position representation differs for mesh '{target.Name}': DMX {positionColumn.Values.Length}, FBX {source.ControlPoints.Count}.";
+            return false;
+        }
+
+        if (!TryReadTargetPolygons(
+                target,
+                positionColumn.Indices,
+                logicalVertexCount,
+                out var targetPolygons,
+                out mismatchReason))
+        {
+            return false;
+        }
+
+        if (targetPolygons.Count != source.Polygons.Count)
+        {
+            mismatchReason =
+                $"Polygon count differs for mesh '{target.Name}': DMX {targetPolygons.Count}, FBX {source.Polygons.Count}.";
+            return false;
+        }
+
+        if (!TryMatchPolygonColors(target.Name, targetPolygons, source.Polygons, out var colors, out mismatchReason))
+        {
+            return false;
+        }
+
+        if (!source.HasColors)
+        {
+            mismatchReason = string.Empty;
+            return true;
+        }
+
+        var logicalVerticesByCorner = targetPolygons
+            .SelectMany(polygon => polygon.LogicalVertices)
+            .ToArray();
+        if (colors.Count != logicalVerticesByCorner.Length)
+        {
+            mismatchReason = $"Color corner count differs for mesh '{target.Name}'.";
+            return false;
+        }
+
+        for (var streamIndex = 0; streamIndex < streamNames.Length; streamIndex++)
+        {
+            var streamName = streamNames[streamIndex];
+            var column = columns[streamIndex];
+            if (column.IsIndexed)
+            {
+                target.VertexData[streamName] = CreateDmxArray(
+                    column.ArrayType,
+                    logicalVerticesByCorner.Select(vertex => column.Values[column.Indices[vertex]]));
+                target.VertexData[streamName + "Indices"] = new IntArray(
+                    Enumerable.Range(0, logicalVerticesByCorner.Length));
+            }
+            else
+            {
+                target.VertexData[streamName] = ExpandDirectArray(
+                    column.Values,
+                    column.ArrayType,
+                    logicalVerticesByCorner,
+                    column.Stride);
+            }
+        }
+
+        target.VertexData["color$0"] = new ColorArray(colors);
+        target.VertexData["color$0Indices"] = new IntArray(Enumerable.Range(0, colors.Count));
+        EnsureVertexFormatEntry(target.VertexData, "color$0");
+
+        var nextCorner = 0;
+        foreach (var faceSet in target.FaceSets)
+        {
+            var rewritten = GetRequiredArray<int>(faceSet, "faces")
+                .Select(value => value < 0 ? value : nextCorner++)
+                .ToArray();
+            faceSet["faces"] = new IntArray(rewritten);
+        }
+
+        if (nextCorner != colors.Count)
+        {
+            mismatchReason = $"Rewritten topology has an unexpected corner count for mesh '{target.Name}'.";
+            return false;
+        }
+
+        transferred = 1;
+        mismatchReason = string.Empty;
+        return true;
+    }
+
+    private static bool TryReadTargetPolygons(
+        MeshBinding target,
+        IList<int> positionIndices,
+        int logicalVertexCount,
+        out IReadOnlyList<TargetPolygon> polygons,
+        out string mismatchReason)
+    {
+        var result = new List<TargetPolygon>();
+        foreach (var faceSet in target.FaceSets)
+        {
+            var currentLogical = new List<int>();
+            var currentControlPoints = new List<int>();
+            foreach (var value in GetRequiredArray<int>(faceSet, "faces"))
+            {
+                if (value >= 0)
+                {
+                    if (value >= logicalVertexCount)
+                    {
+                        polygons = Array.Empty<TargetPolygon>();
+                        mismatchReason = $"DMX mesh '{target.Name}' has a face index outside its vertex streams.";
+                        return false;
+                    }
+
+                    currentLogical.Add(value);
+                    currentControlPoints.Add(positionIndices[value]);
+                    continue;
+                }
+
+                if (value != -1 || currentLogical.Count < 3)
+                {
+                    polygons = Array.Empty<TargetPolygon>();
+                    mismatchReason = $"DMX mesh '{target.Name}' contains invalid polygon termination.";
+                    return false;
+                }
+
+                result.Add(new TargetPolygon(currentLogical.ToArray(), currentControlPoints.ToArray()));
+                currentLogical.Clear();
+                currentControlPoints.Clear();
+            }
+
+            if (currentLogical.Count != 0)
+            {
+                polygons = Array.Empty<TargetPolygon>();
+                mismatchReason = $"DMX mesh '{target.Name}' contains an unterminated polygon.";
+                return false;
+            }
+        }
+
+        polygons = result;
+        mismatchReason = string.Empty;
+        return true;
+    }
+
+    private static bool TryMatchPolygonColors(
+        string meshName,
+        IReadOnlyList<TargetPolygon> targets,
+        IReadOnlyList<FbxVertexColorPolygon> sources,
+        out IReadOnlyList<DmxColor> colors,
+        out string mismatchReason)
+    {
+        if (targets.Count != sources.Count)
+        {
+            colors = Array.Empty<DmxColor>();
+            mismatchReason = $"Polygon count differs for mesh '{meshName}'.";
+            return false;
+        }
+
+        var exactMappings = new int[]?[targets.Count];
+        var exactMatchCount = 0;
+        for (var index = 0; index < targets.Count; index++)
+        {
+            if (targets[index].ControlPoints.Count != sources[index].ControlPoints.Count)
+            {
+                colors = Array.Empty<DmxColor>();
+                mismatchReason = $"Polygon corner count or order differs for mesh '{meshName}'.";
+                return false;
+            }
+
+            if (TryMapPolygonCorners(
+                    targets[index].ControlPoints,
+                    sources[index].ControlPoints,
+                    out var cornerMap))
+            {
+                exactMappings[index] = cornerMap;
+                exactMatchCount++;
+            }
+        }
+
+        var requiredAnchors = Math.Max(1, (int)Math.Ceiling(targets.Count * 0.9));
+        if (exactMatchCount < requiredAnchors)
+        {
+            colors = Array.Empty<DmxColor>();
+            mismatchReason =
+                $"Polygon topology/order differs for mesh '{meshName}': {exactMatchCount} of {targets.Count} polygons retained their control-point topology.";
+            return false;
+        }
+
+        var result = new List<DmxColor>();
+        for (var index = 0; index < targets.Count; index++)
+        {
+            var sourceColors = sources[index].Colors;
+            if (sourceColors is null)
+            {
+                continue;
+            }
+
+            var cornerMap = exactMappings[index]
+                ?? Enumerable.Range(0, sources[index].ControlPoints.Count).ToArray();
+            result.AddRange(cornerMap.Select(sourceCorner => sourceColors[sourceCorner]));
+        }
+
+        colors = result;
+        mismatchReason = string.Empty;
+        return true;
+    }
+
+    private static string MakePolygonKey(IReadOnlyList<int> controlPoints)
+    {
+        string? best = null;
+        for (var start = 0; start < controlPoints.Count; start++)
+        {
+            for (var direction = -1; direction <= 1; direction += 2)
+            {
+                var sequence = new int[controlPoints.Count];
+                for (var offset = 0; offset < sequence.Length; offset++)
+                {
+                    var index = (start + (direction * offset)) % controlPoints.Count;
+                    if (index < 0)
+                    {
+                        index += controlPoints.Count;
+                    }
+
+                    sequence[offset] = controlPoints[index];
+                }
+
+                var candidate = string.Join(',', sequence);
+                if (best is null || string.CompareOrdinal(candidate, best) < 0)
+                {
+                    best = candidate;
+                }
+            }
+        }
+
+        return best ?? string.Empty;
+    }
+
+    private static bool TryMapPolygonCorners(
+        IReadOnlyList<int> target,
+        IReadOnlyList<int> source,
+        out int[] cornerMap)
+    {
+        if (target.Count != source.Count)
+        {
+            cornerMap = Array.Empty<int>();
+            return false;
+        }
+
+        for (var start = 0; start < source.Count; start++)
+        {
+            for (var direction = -1; direction <= 1; direction += 2)
+            {
+                var candidate = new int[target.Count];
+                var matches = true;
+                for (var targetCorner = 0; targetCorner < target.Count; targetCorner++)
+                {
+                    var sourceCorner = (start + (direction * targetCorner)) % source.Count;
+                    if (sourceCorner < 0)
+                    {
+                        sourceCorner += source.Count;
+                    }
+
+                    candidate[targetCorner] = sourceCorner;
+                    if (target[targetCorner] != source[sourceCorner])
+                    {
+                        matches = false;
+                        break;
+                    }
+                }
+
+                if (matches)
+                {
+                    cornerMap = candidate;
+                    return true;
+                }
+            }
+        }
+
+        cornerMap = Array.Empty<int>();
+        return false;
     }
 
     private static IReadOnlyList<(MeshBinding Target, MeshBinding Source)>? MatchMeshes(
@@ -615,7 +1056,12 @@ public static class VertexColorSidecarService
     private sealed record MeshBinding(
         string Name,
         Element VertexData,
-        IReadOnlyList<Element> FaceSets);
+        IReadOnlyList<Element> FaceSets,
+        bool UsesVertexColorMaterial);
+
+    private sealed record TargetPolygon(
+        IReadOnlyList<int> LogicalVertices,
+        IReadOnlyList<int> ControlPoints);
 
     private sealed class StreamColumn
     {

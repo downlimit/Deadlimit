@@ -38,8 +38,8 @@ internal static class VertexColorExportFeature
         toolTip.SetToolTip(
             button,
             UiText.T(
-                "Creates the one-button Max helper for the current project and copies its fileIn command. The helper exports selected geometry to a validated _vertexcolor.dmx sidecar.",
-                "Создаёт однокнопочный Max-скрипт для текущего проекта и копирует команду fileIn. Скрипт экспортирует выделенную геометрию в проверяемый sidecar _vertexcolor.dmx."));
+                "Copies the universal one-button Max helper and its fileIn command. The helper exports selected geometry beside the latest Wall Worm DMX as _vertexcolor.fbx.",
+                "Копирует универсальный однокнопочный Max-скрипт и команду fileIn. Скрипт экспортирует выделенную геометрию рядом с последним DMX Wall Worm в _vertexcolor.fbx."));
 
         void RefreshEnabledState()
         {
@@ -64,8 +64,8 @@ internal static class VertexColorExportFeature
                 System.Windows.Forms.MessageBox.Show(
                     form,
                     UiText.T(
-                        "The MAXScript fileIn command is in the clipboard.\n\nPaste it into MAXScript Listener once. A small Deadlimit Vertex Color window will open.\n\nFor each update: export the normal DMX with Wall Worm, keep the same geometry selected, then press EXPORT SELECTED VERTEX COLOR.",
-                        "Команда fileIn для MAXScript скопирована в буфер обмена.\n\nОдин раз вставьте её в MAXScript Listener. Откроется маленькое окно Deadlimit Vertex Color.\n\nПри каждом обновлении: экспортируйте обычный DMX через Wall Worm, оставьте ту же геометрию выделенной и нажмите EXPORT SELECTED VERTEX COLOR."),
+                        "The MAXScript fileIn command is in the clipboard.\n\nPaste it into MAXScript Listener once. A small Vertex Color FBX window will open.\n\nFor each update: export the normal DMX with Wall Worm, keep the same geometry selected, then press EXPORT SELECTED VERTEX COLOR. The helper uses Wall Worm's latest export folder; it reads no Deadlimit project settings.",
+                        "Команда fileIn для MAXScript скопирована в буфер обмена.\n\nОдин раз вставьте её в MAXScript Listener. Откроется маленькое окно Vertex Color FBX.\n\nПри каждом обновлении: экспортируйте обычный DMX через Wall Worm, оставьте ту же геометрию выделенной и нажмите EXPORT SELECTED VERTEX COLOR. Скрипт использует папку последнего экспорта Wall Worm и ничего не читает из настроек проекта Deadlimit."),
                     UiText.T("Deadlimit Vertex Color", "Deadlimit Vertex Color"),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
