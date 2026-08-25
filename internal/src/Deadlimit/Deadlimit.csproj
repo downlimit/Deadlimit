@@ -16,7 +16,6 @@
 
   <ItemGroup>
     <EmbeddedResource Include="..\..\assets\Deadlimit_128_v4.ico" LogicalName="Deadlimit.AppIcon.ico" />
-    <EmbeddedResource Include="..\..\assets\DeadlimitWallWormExport.ms" LogicalName="Deadlimit.WallWormExport.ms" />
   </ItemGroup>
 
 </Project>
