@@ -8,15 +8,8 @@ internal static class VertexColorExportFeature
     {
         var topBar = FindDescendants<FlowLayoutPanel>(form)
             .FirstOrDefault(panel => FindDescendants<Button>(panel).Any(IsSettingsButton));
-        var projectGroup = FindDescendants<GroupBox>(form)
-            .FirstOrDefault(group =>
-                string.Equals(group.Text, "Project", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Проект", StringComparison.Ordinal));
-        var folderText = projectGroup is null
-            ? null
-            : FindDescendants<TextBox>(projectGroup).FirstOrDefault(textBox => textBox.ReadOnly);
 
-        if (topBar is null || folderText is null)
+        if (topBar is null)
         {
             return;
         }
@@ -38,42 +31,40 @@ internal static class VertexColorExportFeature
         toolTip.SetToolTip(
             button,
             UiText.T(
-                "Copies the universal one-button Max helper and its fileIn command. The helper writes selected Vertex Color into the latest Wall Worm DMX and removes its temporary FBX after verification.",
-                "Копирует универсальный однокнопочный Max-скрипт и команду fileIn. Скрипт записывает Vertex Color выделенных мешей в последний DMX Wall Worm и после проверки удаляет временный FBX."));
+                "Copies the repository MaxScript fileIn command. The helper exports selected Vertex Color to an FBX beside the latest Wall Worm DMX. PREPARE transfers it and removes the FBX after verification.",
+                "Копирует команду fileIn для MaxScript из репозитория. Скрипт экспортирует Vertex Color выделенных мешей в FBX рядом с последним DMX Wall Worm. PREPARE переносит цвет и удаляет FBX после проверки."));
 
         void RefreshEnabledState()
         {
-            var folder = folderText.Text.Trim();
-            button.Enabled = Directory.Exists(folder) && ProjectStore.TryLoad(folder) is not null;
+            try
+            {
+                button.Enabled = File.Exists(VertexColorMaxScriptService.GetBundledScriptPath());
+            }
+            catch (DirectoryNotFoundException)
+            {
+                button.Enabled = false;
+            }
         }
 
         button.Click += (_, _) =>
         {
             try
             {
-                var projectFolder = folderText.Text.Trim();
-                var manifest = ProjectStore.TryLoad(projectFolder)
-                    ?? throw new InvalidOperationException(
-                        UiText.T(
-                            "Save the project before preparing the Max helper.",
-                            "Сохраните проект перед подготовкой Max-скрипта."));
-
-                var scriptPath = VertexColorMaxScriptService.WriteProjectScript(manifest);
+                var scriptPath = VertexColorMaxScriptService.GetBundledScriptPath();
                 Clipboard.SetText(VertexColorMaxScriptService.CreateFileInCommand(scriptPath));
 
                 System.Windows.Forms.MessageBox.Show(
                     form,
                     UiText.T(
-                        "The MAXScript fileIn command is in the clipboard.\n\nPaste it into MAXScript Listener once. A small Vertex Color to DMX window will open.\n\nFor each update: export the normal DMX with Wall Worm, keep the same geometry selected, then press WRITE SELECTED VERTEX COLOR TO DMX. The helper uses Wall Worm's latest export folder; it reads no Deadlimit project settings.",
-                        "Команда fileIn для MAXScript скопирована в буфер обмена.\n\nОдин раз вставьте её в MAXScript Listener. Откроется маленькое окно Vertex Color to DMX.\n\nПри каждом обновлении: экспортируйте обычный DMX через Wall Worm, оставьте ту же геометрию выделенной и нажмите WRITE SELECTED VERTEX COLOR TO DMX. Скрипт использует папку последнего экспорта Wall Worm и ничего не читает из настроек проекта Deadlimit."),
+                        "The MAXScript fileIn command is in the clipboard.\n\nPaste it into MAXScript Listener once. For each update: export the normal DMX with Wall Worm, keep the same geometry selected, then export the Vertex Color FBX. Run PREPARE in Deadlimit to transfer it and remove the FBX. The script reads no Deadlimit project settings and contains no path to Deadlimit.exe.",
+                        "Команда fileIn для MAXScript скопирована в буфер обмена.\n\nОдин раз вставьте её в MAXScript Listener. При каждом обновлении: экспортируйте обычный DMX через Wall Worm, оставьте ту же геометрию выделенной и экспортируйте Vertex Color FBX. Затем запустите PREPARE в Deadlimit — он перенесёт цвет и удалит FBX. Скрипт ничего не читает из настроек проекта Deadlimit и не содержит пути к Deadlimit.exe."),
                     UiText.T("Deadlimit Vertex Color", "Deadlimit Vertex Color"),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
             }
             catch (Exception ex) when (ex is IOException
                 or UnauthorizedAccessException
-                or ArgumentException
-                or InvalidOperationException)
+                or ArgumentException)
             {
                 System.Windows.Forms.MessageBox.Show(
                     form,
@@ -84,7 +75,6 @@ internal static class VertexColorExportFeature
             }
         };
 
-        folderText.TextChanged += (_, _) => RefreshEnabledState();
         form.Activated += (_, _) => RefreshEnabledState();
 
         var settingsButton = topBar.Controls.Cast<Control>().OfType<Button>().FirstOrDefault(IsSettingsButton);

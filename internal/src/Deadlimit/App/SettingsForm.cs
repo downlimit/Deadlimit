@@ -34,8 +34,8 @@ internal sealed class SettingsForm : Form
         Text = UiText.T("Deadlimit Settings", "Настройки Deadlimit");
         StartPosition = FormStartPosition.CenterParent;
         Width = 840;
-        Height = 440;
-        MinimumSize = new Size(720, 420);
+        Height = 480;
+        MinimumSize = new Size(720, 460);
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
@@ -97,7 +97,7 @@ internal sealed class SettingsForm : Form
         {
             Dock = DockStyle.Top,
             ColumnCount = 4,
-            RowCount = 6,
+            RowCount = 7,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Margin = Padding.Empty,
@@ -113,6 +113,7 @@ internal sealed class SettingsForm : Form
         AddPathRow(grid, 3, UiText.T("Retail Deadlock", "Retail Deadlock"), _retailDeadlockRootText, UiText.T("Select Steam Project8Staging root", "Выберите корень Steam Project8Staging"));
         AddLanguageRow(grid, 4);
         AddThemeRow(grid, 5);
+        AddMaxScriptFolderRow(grid, 6);
         root.Controls.Add(grid, 0, 1);
 
         var buttons = new FlowLayoutPanel
@@ -260,6 +261,57 @@ internal sealed class SettingsForm : Form
         grid.Controls.Add(caption, 0, row);
         grid.Controls.Add(_themeCombo, 1, row);
         grid.SetColumnSpan(_themeCombo, 3);
+    }
+
+    private void AddMaxScriptFolderRow(TableLayoutPanel grid, int row)
+    {
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var caption = new Label
+        {
+            Text = "3ds Max",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 9, 12, 9),
+        };
+
+        var openButton = new Button
+        {
+            Text = "📂 MaxScript VertColor Trans",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 5, 0, 5),
+            Font = new Font("Segoe UI Emoji", 9F, FontStyle.Regular, GraphicsUnit.Point),
+        };
+        openButton.Click += (_, _) => OpenMaxScriptFolder();
+
+        var toolTip = CreateToolTip();
+        toolTip.SetToolTip(
+            openButton,
+            UiText.T(
+                "Open the repository folder containing DeadlimitVertexColorFBX.ms and its README.",
+                "Открыть папку репозитория с DeadlimitVertexColorFBX.ms и кратким README."));
+
+        grid.Controls.Add(caption, 0, row);
+        grid.Controls.Add(openButton, 1, row);
+        grid.SetColumnSpan(openButton, 3);
+    }
+
+    private void OpenMaxScriptFolder()
+    {
+        try
+        {
+            OpenConfiguredFolder(VertexColorMaxScriptService.GetBundledScriptFolder());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(
+                this,
+                ex.Message,
+                UiText.T("MaxScript folder unavailable", "Папка MaxScript недоступна"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
     }
 
     private void OpenConfiguredFolder(string path)

@@ -13,6 +13,8 @@ Retail Deadlock root (Steam Project8Staging)
 Interface language: English / Русский
 ```
 
+Settings also exposes `📂 MaxScript VertColor Trans`. It opens the bundled repository folder `.deadlimit/maxscript-vertcolor-trans/`, which contains the path-free `DeadlimitVertexColorFBX.ms` and its README.
+
 The current known local path defaults remain fallbacks only:
 
 ```text

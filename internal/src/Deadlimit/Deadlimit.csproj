@@ -20,4 +20,11 @@
     <EmbeddedResource Include="..\..\assets\DeadlimitVertexColorSidecar.ms" LogicalName="Deadlimit.VertexColorSidecar.ms" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="..\..\..\.deadlimit\maxscript-vertcolor-trans\**\*">
+      <Link>.deadlimit\maxscript-vertcolor-trans\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

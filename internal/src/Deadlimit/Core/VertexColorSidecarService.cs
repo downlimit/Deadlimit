@@ -23,63 +23,6 @@ public static class VertexColorSidecarService
 {
     public const string FileSuffix = "_vertexcolor.fbx";
 
-    public static VertexColorSidecarResult TryApplyInPlace(string artistDmxPath)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(artistDmxPath);
-
-        var fullArtistPath = Path.GetFullPath(artistDmxPath);
-        var directory = Path.GetDirectoryName(fullArtistPath)
-            ?? throw new ArgumentException("Artist DMX path has no parent folder.", nameof(artistDmxPath));
-        var stagedPath = Path.Combine(
-            directory,
-            $".{Path.GetFileName(fullArtistPath)}.deadlimit-vertexcolor-{Guid.NewGuid():N}.tmp");
-        var sidecarPath = GetSidecarPath(fullArtistPath);
-
-        try
-        {
-            if (!File.Exists(fullArtistPath))
-            {
-                return Skipped(sidecarPath, "The artist DMX does not exist.");
-            }
-
-            File.Copy(fullArtistPath, stagedPath, overwrite: false);
-            var result = TryApply(fullArtistPath, stagedPath);
-            if (result.Status != VertexColorSidecarStatus.Applied)
-            {
-                return result;
-            }
-
-            if (!ValidateWrittenColorStreams(stagedPath, result.StreamCount, out var validationReason))
-            {
-                return Skipped(sidecarPath, $"Written DMX verification failed: {validationReason}");
-            }
-
-            File.Move(stagedPath, fullArtistPath, overwrite: true);
-            return result with
-            {
-                Message = $"{result.Message} Verified and wrote the artist DMX atomically.",
-            };
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            return Skipped(sidecarPath, $"Could not update the artist DMX: {ex.Message}");
-        }
-        finally
-        {
-            try
-            {
-                if (File.Exists(stagedPath))
-                {
-                    File.Delete(stagedPath);
-                }
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // The artist DMX has already remained untouched or been atomically replaced.
-            }
-        }
-    }
-
     public static bool IsSidecarPath(string path) =>
         Path.GetFileName(path).EndsWith(FileSuffix, StringComparison.OrdinalIgnoreCase);
 
@@ -90,6 +33,37 @@ public static class VertexColorSidecarService
         return Path.Combine(
             directory,
             Path.GetFileNameWithoutExtension(artistDmxPath) + FileSuffix);
+    }
+
+    public static VertexColorSidecarResult TryApplyForPrepare(
+        string artistDmxPath,
+        string preparedDmxPath)
+    {
+        var result = TryApply(artistDmxPath, preparedDmxPath);
+        if (result.Status != VertexColorSidecarStatus.Applied)
+        {
+            return result;
+        }
+
+        try
+        {
+            if (File.Exists(result.SidecarPath))
+            {
+                File.Delete(result.SidecarPath);
+            }
+
+            return result with
+            {
+                Message = $"{result.Message} Removed the temporary FBX after PREPARE.",
+            };
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return result with
+            {
+                Message = $"{result.Message} Vertex Color was applied, but the temporary FBX could not be removed: {ex.Message}",
+            };
+        }
     }
 
     public static VertexColorSidecarResult TryApply(string artistDmxPath, string preparedDmxPath)
@@ -189,6 +163,11 @@ public static class VertexColorSidecarService
             }
 
             prepared.Save(temporaryPath, prepared.Encoding, prepared.EncodingVersion);
+            if (!ValidateWrittenColorStreams(temporaryPath, transferCount, out var validationReason))
+            {
+                return Skipped(sidecarPath, $"Written DMX verification failed: {validationReason}");
+            }
+
             File.Move(temporaryPath, preparedDmxPath, overwrite: true);
 
             return new VertexColorSidecarResult(

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The artist DMX starts as a normal Wall Worm export with all settings controlled by the Wall Worm window. A small universal MAXScript exports the currently selected geometry through the Autodesk FBX exporter and immediately asks Deadlimit to write map channel `0` colors into that DMX.
+The artist DMX starts as a normal Wall Worm export with all settings controlled by the Wall Worm window. A small universal MAXScript exports the currently selected geometry through the Autodesk FBX exporter. Deadlimit consumes that sidecar during PREPARE.
 
 ```text
 <name>.dmx
@@ -13,12 +13,14 @@ The artist DMX starts as a normal Wall Worm export with all settings controlled 
 
 1. Export the normal DMX with Wall Worm.
 2. Keep the same geometry selected in 3ds Max.
-3. Run `DeadlimitVertexColorFBX.ms` and press **WRITE SELECTED VERTEX COLOR TO DMX**.
-4. Run PREPARE or BUILD & TEST normally.
+3. Run `DeadlimitVertexColorFBX.ms` and press **EXPORT SELECTED VERTEX COLOR FBX**.
+4. Run PREPARE normally.
 
-The helper reads Wall Worm's last export folder from `3dsMax.ini` and finds the newest primary DMX there. It does not read a Deadlimit project or hard-code an asset path.
+The helper reads Wall Worm's last export folder from `3dsMax.ini` and finds the newest primary DMX there. It does not read a Deadlimit project, launch Deadlimit, or contain a path to `Deadlimit.exe`.
 
-The FBX export is ASCII, selection-only, animation/cameras/lights disabled and triangulation enabled. Deadlimit patches a temporary DMX copy, reloads and validates its color streams, then atomically replaces the primary DMX. The helper deletes `_vertexcolor.fbx` only after that operation succeeds. On failure the primary DMX remains unchanged and the FBX remains available for diagnosis. The helper restores the previous FBX settings and Max selection after success or failure.
+The FBX export is ASCII, selection-only, animation/cameras/lights disabled and triangulation enabled. The helper restores the previous FBX settings and Max selection after success or failure. During PREPARE, Deadlimit patches the CSDK-bound DMX copy, reloads and validates its color streams, then deletes `_vertexcolor.fbx` only after that operation succeeds. On rejection PREPARE continues with the normal DMX and leaves the FBX available for diagnosis.
+
+The versioned helper and a short README live in `.deadlimit/maxscript-vertcolor-trans/` in the Deadlimit repository. Settings exposes `📂 MaxScript VertColor Trans` to open that folder.
 
 ## Material priority
 
@@ -37,7 +39,7 @@ If no material name contains `vertexcolor`, the operation fails without changing
 
 ## Validation and PREPARE
 
-The one-button Max operation uses the same validation service as PREPARE. After success, `color$0` and `color$0Indices` already exist in the primary DMX, so PREPARE copies them normally. If an FBX remains after a failed or interrupted Max operation, PREPARE can still inspect it and records the reason when it rejects it.
+PREPARE applies the sidecar to its copied DMX target. The artist's primary DMX remains a normal Wall Worm export. Rejected sidecars are recorded in the PREPARE log and left beside the artist DMX.
 
 Validation requires:
 
@@ -53,4 +55,4 @@ Validation requires:
 
 FBX per-corner colors can split the DMX logical vertex domain. After validation, Deadlimit expands the prepared DMX position, normal, UV and skin streams onto that domain, preserving their values while adding `color$0` and `color$0Indices`.
 
-All checks and a full DMX reload complete before the primary DMX is replaced. A missing, stale, malformed or rejected sidecar leaves it unchanged.
+All checks and a full DMX reload complete before the prepared DMX target is replaced. A missing, stale, malformed or rejected sidecar leaves the normal prepared copy unchanged.

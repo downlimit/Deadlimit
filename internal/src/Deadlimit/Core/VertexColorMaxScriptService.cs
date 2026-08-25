@@ -6,48 +6,51 @@ namespace Deadlimit.Core;
 public static class VertexColorMaxScriptService
 {
     private const string ResourceName = "Deadlimit.VertexColorSidecar.ms";
-    private const string ProcessorPathToken = "__DEADLIMIT_PROCESSOR_PATH__";
-    private const string ScriptFolderName = "wallworm";
+    private const string RepositoryFolderName = "maxscript-vertcolor-trans";
     private const string ScriptFileName = "DeadlimitVertexColorFBX.ms";
+    private const string ReadmeFileName = "README.md";
 
-    public static string WriteProjectScript(ProjectManifest manifest)
+    public static string GetBundledScriptFolder()
     {
-        ArgumentNullException.ThrowIfNull(manifest);
-        ArgumentException.ThrowIfNullOrWhiteSpace(manifest.ProjectFolder);
-
-        var projectFolder = Path.GetFullPath(manifest.ProjectFolder.Trim());
-        if (!Directory.Exists(projectFolder))
+        string? repositoryCandidate = null;
+        for (var current = new DirectoryInfo(AppContext.BaseDirectory);
+             current is not null;
+             current = current.Parent)
         {
-            throw new DirectoryNotFoundException(projectFolder);
+            var candidate = Path.Combine(
+                current.FullName,
+                ".deadlimit",
+                RepositoryFolderName);
+            if (File.Exists(Path.Combine(candidate, ScriptFileName))
+                && File.Exists(Path.Combine(candidate, ReadmeFileName)))
+            {
+                // Keep walking: a build-output copy can be closer than the repository copy.
+                repositoryCandidate = candidate;
+            }
         }
 
-        var scriptFolder = Path.Combine(ProjectStore.GetMetadataFolder(projectFolder), ScriptFolderName);
-        var processorPath = Environment.ProcessPath
-            ?? throw new InvalidOperationException("Deadlimit executable path is unavailable.");
-        return WriteScript(scriptFolder, processorPath);
+        if (repositoryCandidate is not null)
+        {
+            HideMetadataFolder(Path.GetDirectoryName(repositoryCandidate)!);
+            return repositoryCandidate;
+        }
+
+        throw new DirectoryNotFoundException(
+            $"Bundled MaxScript folder '.deadlimit\\{RepositoryFolderName}' was not found beside Deadlimit.");
     }
 
-    public static string WriteScript(string scriptFolder, string processorPath)
+    public static string GetBundledScriptPath() =>
+        Path.Combine(GetBundledScriptFolder(), ScriptFileName);
+
+    public static string WriteScript(string scriptFolder)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(scriptFolder);
-        ArgumentException.ThrowIfNullOrWhiteSpace(processorPath);
 
         var template = ReadTemplate();
-        if (!template.Contains(ProcessorPathToken, StringComparison.Ordinal))
-        {
-            throw new InvalidDataException(
-                $"Embedded Vertex Color helper is missing token '{ProcessorPathToken}'.");
-        }
-
-        var script = template.Replace(
-            ProcessorPathToken,
-            EscapeMaxScriptVerbatimString(Path.GetFullPath(processorPath)),
-            StringComparison.Ordinal);
-
         scriptFolder = Path.GetFullPath(scriptFolder.Trim());
         Directory.CreateDirectory(scriptFolder);
         var scriptPath = Path.Combine(scriptFolder, ScriptFileName);
-        File.WriteAllText(scriptPath, script, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        File.WriteAllText(scriptPath, template, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         return scriptPath;
     }
 
@@ -70,4 +73,15 @@ public static class VertexColorMaxScriptService
 
     private static string EscapeMaxScriptVerbatimString(string value) =>
         value.Replace("\"", "\"\"", StringComparison.Ordinal);
+
+    private static void HideMetadataFolder(string metadataFolder)
+    {
+        if (!OperatingSystem.IsWindows() || !Directory.Exists(metadataFolder))
+        {
+            return;
+        }
+
+        var attributes = File.GetAttributes(metadataFolder);
+        File.SetAttributes(metadataFolder, attributes | FileAttributes.Hidden);
+    }
 }
