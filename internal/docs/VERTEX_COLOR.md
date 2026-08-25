@@ -31,7 +31,7 @@ When at least one priority mesh exists:
 - a failure on any priority mesh rejects the whole sidecar;
 - non-priority meshes are transferred only when their own name, geometry and color layer validate; their absence or mismatch does not reject valid priority meshes.
 
-When no priority material exists, Deadlimit uses strict fallback mode: the entire unique mesh-name set and all mesh geometry must match, and at least one usable color layer must exist.
+All non-priority meshes are opportunistic. Deadlimit transfers each one whose name, geometry and color layer validate, and ignores that mesh when they do not. This applies even when the DMX contains no priority material. At least one usable color layer must still be transferred for the operation to succeed.
 
 ## Validation and PREPARE
 

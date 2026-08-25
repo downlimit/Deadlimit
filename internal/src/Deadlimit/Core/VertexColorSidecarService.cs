@@ -130,82 +130,54 @@ public static class VertexColorSidecarService
 
             var transferCount = 0;
             var priorityTargets = preparedMeshes.Where(mesh => mesh.UsesVertexColorMaterial).ToArray();
-            if (priorityTargets.Length > 0)
+            var sidecarByName = sidecarMeshes
+                .GroupBy(mesh => mesh.Name, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
+            if (sidecarByName.Values.Any(group => group.Length != 1))
             {
-                var sidecarByName = sidecarMeshes
-                    .GroupBy(mesh => mesh.Name, StringComparer.Ordinal)
-                    .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
-                if (sidecarByName.Values.Any(group => group.Length != 1))
-                {
-                    return Skipped(sidecarPath, "The FBX contains duplicate mesh node names.");
-                }
-
-                foreach (var target in priorityTargets)
-                {
-                    var fbxName = GetFbxMeshName(target.Name);
-                    if (!sidecarByName.TryGetValue(fbxName, out var candidates))
-                    {
-                        return Skipped(
-                            sidecarPath,
-                            $"Priority Vertex Color mesh '{fbxName}' is missing from the FBX.");
-                    }
-
-                    if (!TryTransferMeshFromFbx(
-                            target,
-                            candidates[0],
-                            out var transferred,
-                            out var mismatchReason))
-                    {
-                        return Skipped(sidecarPath, $"Priority mesh '{fbxName}' failed validation: {mismatchReason}");
-                    }
-
-                    if (transferred == 0)
-                    {
-                        return Skipped(
-                            sidecarPath,
-                            $"Priority mesh '{fbxName}' has no Vertex Color layer in the FBX.");
-                    }
-
-                    transferCount += transferred;
-                    sidecarByName.Remove(fbxName);
-                }
-
-                foreach (var target in preparedMeshes.Where(mesh => !mesh.UsesVertexColorMaterial))
-                {
-                    var fbxName = GetFbxMeshName(target.Name);
-                    if (sidecarByName.TryGetValue(fbxName, out var candidates)
-                        && TryTransferMeshFromFbx(
-                            target,
-                            candidates[0],
-                            out var transferred,
-                            out _))
-                    {
-                        transferCount += transferred;
-                    }
-                }
+                return Skipped(sidecarPath, "The FBX contains duplicate mesh node names.");
             }
-            else
+
+            foreach (var target in priorityTargets)
             {
-                if (preparedMeshes.Count != sidecarMeshes.Count)
+                var fbxName = GetFbxMeshName(target.Name);
+                if (!sidecarByName.TryGetValue(fbxName, out var candidates))
                 {
                     return Skipped(
                         sidecarPath,
-                        $"Mesh count differs: DMX {preparedMeshes.Count}, FBX {sidecarMeshes.Count}.");
+                        $"Priority Vertex Color mesh '{fbxName}' is missing from the FBX.");
                 }
 
-                var matches = MatchMeshes(preparedMeshes, sidecarMeshes, out var mismatchReason);
-                if (matches is null)
+                if (!TryTransferMeshFromFbx(
+                        target,
+                        candidates[0],
+                        out var transferred,
+                        out var mismatchReason))
                 {
-                    return Skipped(sidecarPath, mismatchReason);
+                    return Skipped(sidecarPath, $"Priority mesh '{fbxName}' failed validation: {mismatchReason}");
                 }
 
-                foreach (var (target, source) in matches)
+                if (transferred == 0)
                 {
-                    if (!TryTransferMeshFromFbx(target, source, out var transferred, out mismatchReason))
-                    {
-                        return Skipped(sidecarPath, mismatchReason);
-                    }
+                    return Skipped(
+                        sidecarPath,
+                        $"Priority mesh '{fbxName}' has no Vertex Color layer in the FBX.");
+                }
 
+                transferCount += transferred;
+                sidecarByName.Remove(fbxName);
+            }
+
+            foreach (var target in preparedMeshes.Where(mesh => !mesh.UsesVertexColorMaterial))
+            {
+                var fbxName = GetFbxMeshName(target.Name);
+                if (sidecarByName.TryGetValue(fbxName, out var candidates)
+                    && TryTransferMeshFromFbx(
+                        target,
+                        candidates[0],
+                        out var transferred,
+                        out _))
+                {
                     transferCount += transferred;
                 }
             }
