@@ -1,0 +1,11 @@
+# Local launch helpers and shortcuts generated for this workstation.
+/DEADLIMIT_LocalUpdater.bat
+/Deadlimit.lnk
+/Updater.lnk
+
+# Superseded local icon draft.
+/internal/assets/Deadlimit_v2.ico
+
+# .NET build output.
+**/bin/
+**/obj/

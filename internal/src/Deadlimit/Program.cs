@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using Deadlimit.App;
 using Deadlimit.Core;
 
@@ -8,6 +10,8 @@ internal static class Program
 {
     private const string StartupSmokeArgument = "--startup-smoke";
     private const string WriteVertexColorScriptArgument = "--write-vertex-color-script";
+    private const string SingleInstanceMutexName = @"Local\Deadlimit.Gui.SingleInstance.v1";
+    private const int SwRestore = 9;
 
     private static readonly Icon AppIcon = LoadAppIcon();
     private static readonly Size MainWindowSize = new(972, 672);
@@ -24,6 +28,34 @@ internal static class Program
         var startupSmoke = args.Any(argument =>
             string.Equals(argument, StartupSmokeArgument, StringComparison.OrdinalIgnoreCase));
 
+        Mutex? singleInstanceMutex = null;
+        if (!startupSmoke)
+        {
+            singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var createdNew);
+            if (!createdNew)
+            {
+                singleInstanceMutex.Dispose();
+                TryActivateExistingWindow();
+                return 0;
+            }
+        }
+
+        try
+        {
+            return RunApplication(startupSmoke);
+        }
+        finally
+        {
+            if (singleInstanceMutex is not null)
+            {
+                singleInstanceMutex.ReleaseMutex();
+                singleInstanceMutex.Dispose();
+            }
+        }
+    }
+
+    private static int RunApplication(bool startupSmoke)
+    {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
@@ -74,6 +106,33 @@ internal static class Program
         Application.Run(form);
         return 0;
     }
+
+    private static void TryActivateExistingWindow()
+    {
+        using var currentProcess = Process.GetCurrentProcess();
+        foreach (var process in Process.GetProcessesByName(currentProcess.ProcessName))
+        {
+            using (process)
+            {
+                if (process.Id == currentProcess.Id || process.MainWindowHandle == IntPtr.Zero)
+                {
+                    continue;
+                }
+
+                ShowWindow(process.MainWindowHandle, SwRestore);
+                SetForegroundWindow(process.MainWindowHandle);
+                return;
+            }
+        }
+    }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ShowWindow(IntPtr windowHandle, int command);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr windowHandle);
 
     private static int WriteVertexColorScript(string[] args)
     {
