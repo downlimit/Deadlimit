@@ -129,7 +129,15 @@ public static class VertexColorSidecarService
             }
 
             var transferCount = 0;
+            var defaultGrayCount = 0;
             var priorityTargets = preparedMeshes.Where(mesh => mesh.UsesVertexColorMaterial).ToArray();
+            if (priorityTargets.Length == 0)
+            {
+                return Skipped(
+                    sidecarPath,
+                    "No DMX mesh uses a material whose name contains 'vertexcolor'.");
+            }
+
             var sidecarByName = sidecarMeshes
                 .GroupBy(mesh => mesh.Name, StringComparer.Ordinal)
                 .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.Ordinal);
@@ -138,14 +146,14 @@ public static class VertexColorSidecarService
                 return Skipped(sidecarPath, "The FBX contains duplicate mesh node names.");
             }
 
+            var priorityFailures = new List<string>();
             foreach (var target in priorityTargets)
             {
                 var fbxName = GetFbxMeshName(target.Name);
                 if (!sidecarByName.TryGetValue(fbxName, out var candidates))
                 {
-                    return Skipped(
-                        sidecarPath,
-                        $"Priority Vertex Color mesh '{fbxName}' is missing from the FBX.");
+                    priorityFailures.Add($"{fbxName}: mesh is missing from the FBX");
+                    continue;
                 }
 
                 if (!TryTransferMeshFromFbx(
@@ -154,37 +162,30 @@ public static class VertexColorSidecarService
                         out var transferred,
                         out var mismatchReason))
                 {
-                    return Skipped(sidecarPath, $"Priority mesh '{fbxName}' failed validation: {mismatchReason}");
+                    priorityFailures.Add($"{fbxName}: {mismatchReason}");
+                    continue;
                 }
 
                 if (transferred == 0)
                 {
-                    return Skipped(
-                        sidecarPath,
-                        $"Priority mesh '{fbxName}' has no Vertex Color layer in the FBX.");
+                    priorityFailures.Add($"{fbxName}: FBX has no Vertex Color channel 0");
+                    continue;
                 }
 
                 transferCount += transferred;
+                if (!candidates[0].HasColors)
+                {
+                    defaultGrayCount++;
+                }
                 sidecarByName.Remove(fbxName);
             }
 
-            foreach (var target in preparedMeshes.Where(mesh => !mesh.UsesVertexColorMaterial))
+            if (priorityFailures.Count != 0)
             {
-                var fbxName = GetFbxMeshName(target.Name);
-                if (sidecarByName.TryGetValue(fbxName, out var candidates)
-                    && TryTransferMeshFromFbx(
-                        target,
-                        candidates[0],
-                        out var transferred,
-                        out _))
-                {
-                    transferCount += transferred;
-                }
-            }
-
-            if (transferCount == 0)
-            {
-                return Skipped(sidecarPath, "The FBX contains no usable Vertex Color layers.");
+                return Skipped(
+                    sidecarPath,
+                    "Vertex Color was not written because required mesh(es) failed:\n- "
+                    + string.Join("\n- ", priorityFailures));
             }
 
             prepared.Save(temporaryPath, prepared.Encoding, prepared.EncodingVersion);
@@ -194,7 +195,10 @@ public static class VertexColorSidecarService
                 VertexColorSidecarStatus.Applied,
                 sidecarPath,
                 transferCount,
-                $"Transferred {transferCount} validated color stream(s).");
+                $"Transferred {transferCount} validated color stream(s)"
+                + (defaultGrayCount == 0
+                    ? "."
+                    : $"; wrote neutral gray for {defaultGrayCount} mesh(es) without channel 0."));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -392,11 +396,10 @@ public static class VertexColorSidecarService
 
         var positionColumn = columns[Array.IndexOf(streamNames, "position$0")];
         if (!positionColumn.IsIndexed
-            || positionColumn.Values.Length != source.ControlPoints.Count
             || positionColumn.Values.Any(value => value is not Vector3))
         {
             mismatchReason =
-                $"Control-point count or position representation differs for mesh '{target.Name}': DMX {positionColumn.Values.Length}, FBX {source.ControlPoints.Count}.";
+                $"Position representation is unsupported for mesh '{target.Name}'.";
             return false;
         }
 
@@ -417,15 +420,39 @@ public static class VertexColorSidecarService
             return false;
         }
 
-        if (!TryMatchPolygonColors(target.Name, targetPolygons, source.Polygons, out var colors, out mismatchReason))
-        {
-            return false;
-        }
-
         if (!source.HasColors)
         {
+            if (targetPolygons.Zip(source.Polygons).Any(pair =>
+                    pair.First.ControlPoints.Count != pair.Second.ControlPoints.Count))
+            {
+                mismatchReason = $"Polygon corner counts differ for mesh '{target.Name}'.";
+                return false;
+            }
+
+            target.VertexData["color$0"] = new ColorArray([
+                new DmxColor(128, 128, 128, 255),
+            ]);
+            target.VertexData["color$0Indices"] = new IntArray(
+                Enumerable.Repeat(0, logicalVertexCount));
+            EnsureVertexFormatEntry(target.VertexData, "color$0");
+            transferred = 1;
             mismatchReason = string.Empty;
             return true;
+        }
+
+        var texcoordColumnIndex = Array.IndexOf(streamNames, "texcoord$0");
+        var texcoordColumn = texcoordColumnIndex >= 0 ? columns[texcoordColumnIndex] : null;
+        if (!TryMatchPolygonColors(
+                target.Name,
+                targetPolygons,
+                source.Polygons,
+                texcoordColumn,
+                positionColumn.Values.Cast<Vector3>().ToArray(),
+                source.ControlPoints,
+                out var colors,
+                out mismatchReason))
+        {
+            return false;
         }
 
         var logicalVerticesByCorner = targetPolygons
@@ -540,6 +567,9 @@ public static class VertexColorSidecarService
         string meshName,
         IReadOnlyList<TargetPolygon> targets,
         IReadOnlyList<FbxVertexColorPolygon> sources,
+        StreamColumn? targetTexcoords,
+        IReadOnlyList<Vector3> targetControlPoints,
+        IReadOnlyList<Vector3> sourceControlPoints,
         out IReadOnlyList<DmxColor> colors,
         out string mismatchReason)
     {
@@ -550,7 +580,8 @@ public static class VertexColorSidecarService
             return false;
         }
 
-        var exactMappings = new int[]?[targets.Count];
+        var sourcePolygonIndexes = Enumerable.Range(0, sources.Count).ToArray();
+        var cornerMappings = new int[]?[targets.Count];
         var exactMatchCount = 0;
         for (var index = 0; index < targets.Count; index++)
         {
@@ -566,7 +597,7 @@ public static class VertexColorSidecarService
                     sources[index].ControlPoints,
                     out var cornerMap))
             {
-                exactMappings[index] = cornerMap;
+                cornerMappings[index] = cornerMap;
                 exactMatchCount++;
             }
         }
@@ -574,23 +605,61 @@ public static class VertexColorSidecarService
         var requiredAnchors = Math.Max(1, (int)Math.Ceiling(targets.Count * 0.9));
         if (exactMatchCount < requiredAnchors)
         {
-            colors = Array.Empty<DmxColor>();
-            mismatchReason =
-                $"Polygon topology/order differs for mesh '{meshName}': {exactMatchCount} of {targets.Count} polygons retained their control-point topology.";
-            return false;
+            if (!TryMatchPolygonsByTexcoords(
+                    meshName,
+                    targets,
+                    sources,
+                    targetTexcoords,
+                    targetControlPoints,
+                    out sourcePolygonIndexes,
+                    out cornerMappings,
+                    out mismatchReason)
+                && !TryMatchSplitControlPointPolygons(
+                    meshName,
+                    targets,
+                    sources,
+                    targetControlPoints,
+                    sourceControlPoints,
+                    out sourcePolygonIndexes,
+                    out cornerMappings,
+                    out mismatchReason))
+            {
+                if (TryMatchColorsByTexcoords(
+                        meshName,
+                        targets,
+                        sources,
+                        targetTexcoords,
+                        out colors,
+                        out mismatchReason)
+                    || TryMatchColorsByControlPoints(
+                        meshName,
+                        targets,
+                        sources,
+                        targetControlPoints,
+                        sourceControlPoints,
+                        out colors,
+                        out mismatchReason))
+                {
+                    return true;
+                }
+
+                colors = Array.Empty<DmxColor>();
+                return false;
+            }
         }
 
         var result = new List<DmxColor>();
         for (var index = 0; index < targets.Count; index++)
         {
-            var sourceColors = sources[index].Colors;
+            var sourcePolygon = sources[sourcePolygonIndexes[index]];
+            var sourceColors = sourcePolygon.Colors;
             if (sourceColors is null)
             {
                 continue;
             }
 
-            var cornerMap = exactMappings[index]
-                ?? Enumerable.Range(0, sources[index].ControlPoints.Count).ToArray();
+            var cornerMap = cornerMappings[index]
+                ?? Enumerable.Range(0, sourcePolygon.ControlPoints.Count).ToArray();
             result.AddRange(cornerMap.Select(sourceCorner => sourceColors[sourceCorner]));
         }
 
@@ -598,6 +667,638 @@ public static class VertexColorSidecarService
         mismatchReason = string.Empty;
         return true;
     }
+
+    private static bool TryMatchColorsByTexcoords(
+        string meshName,
+        IReadOnlyList<TargetPolygon> targets,
+        IReadOnlyList<FbxVertexColorPolygon> sources,
+        StreamColumn? targetTexcoords,
+        out IReadOnlyList<DmxColor> colors,
+        out string mismatchReason)
+    {
+        colors = Array.Empty<DmxColor>();
+        if (targetTexcoords is null
+            || !targetTexcoords.IsIndexed
+            || targetTexcoords.Values.Any(value => value is not Vector2)
+            || sources.Any(polygon => polygon.Texcoords is null || polygon.Colors is null))
+        {
+            mismatchReason = $"Mesh '{meshName}' has no complete UV/color correspondence.";
+            return false;
+        }
+
+        var targetValues = targets
+            .SelectMany(polygon => polygon.LogicalVertices)
+            .Select(vertex => (Vector2)targetTexcoords.Values[targetTexcoords.Indices[vertex]])
+            .ToArray();
+        var targetKeys = targetValues
+            .Select(texcoord => MakeTexcoordKey(texcoord))
+            .ToHashSet();
+
+        foreach (var uvTransform in new[] { 0, 1, 2 })
+        {
+            var sourceByUv = new Dictionary<(long X, long Y), DmxColor>();
+            var conflicted = false;
+            foreach (var polygon in sources)
+            {
+                for (var corner = 0; corner < polygon.ControlPoints.Count; corner++)
+                {
+                    var key = MakeTexcoordKey(TransformTexcoord(polygon.Texcoords![corner], uvTransform));
+                    var color = polygon.Colors![corner];
+                    if (sourceByUv.TryGetValue(key, out var existing)
+                        && !EqualityComparer<DmxColor>.Default.Equals(existing, color))
+                    {
+                        conflicted = true;
+                        break;
+                    }
+
+                    sourceByUv[key] = color;
+                }
+
+                if (conflicted)
+                {
+                    break;
+                }
+            }
+
+            if (conflicted
+                || sourceByUv.Keys.Any(key => !targetKeys.Contains(key))
+                || targetValues.Any(texcoord => !sourceByUv.ContainsKey(MakeTexcoordKey(texcoord))))
+            {
+                continue;
+            }
+
+            colors = targetValues
+                .Select(texcoord => sourceByUv[MakeTexcoordKey(texcoord)])
+                .ToArray();
+            mismatchReason = string.Empty;
+            return true;
+        }
+
+        mismatchReason = $"UV/color values differ for mesh '{meshName}'.";
+        return false;
+    }
+
+    private static bool TryMatchColorsByControlPoints(
+        string meshName,
+        IReadOnlyList<TargetPolygon> targets,
+        IReadOnlyList<FbxVertexColorPolygon> sources,
+        IReadOnlyList<Vector3> targetControlPoints,
+        IReadOnlyList<Vector3> sourceControlPoints,
+        out IReadOnlyList<DmxColor> colors,
+        out string mismatchReason)
+    {
+        colors = Array.Empty<DmxColor>();
+        if (!TryMapSplitControlPoints(
+                targetControlPoints,
+                sourceControlPoints,
+                out var targetToSource,
+                out mismatchReason))
+        {
+            mismatchReason = $"Control-point validation failed for mesh '{meshName}': {mismatchReason}";
+            return false;
+        }
+
+        var sourceColors = new DmxColor?[sourceControlPoints.Count];
+        foreach (var polygon in sources)
+        {
+            if (polygon.Colors is null)
+            {
+                mismatchReason = $"FBX mesh '{meshName}' has an incomplete Vertex Color layer.";
+                return false;
+            }
+
+            for (var corner = 0; corner < polygon.ControlPoints.Count; corner++)
+            {
+                var controlPoint = polygon.ControlPoints[corner];
+                var color = polygon.Colors[corner];
+                if (sourceColors[controlPoint] is DmxColor existing
+                    && !EqualityComparer<DmxColor>.Default.Equals(existing, color))
+                {
+                    mismatchReason =
+                        $"FBX mesh '{meshName}' stores different colors on one geometric point; polygon topology must match exactly.";
+                    return false;
+                }
+
+                sourceColors[controlPoint] = color;
+            }
+        }
+
+        if (sourceColors.Any(color => color is null))
+        {
+            mismatchReason = $"FBX mesh '{meshName}' has uncolored control points.";
+            return false;
+        }
+
+        var sourceMin = GetBoundsMin(sourceControlPoints);
+        var sourceMax = GetBoundsMax(sourceControlPoints);
+        var positionTolerance = Math.Max(
+            0.0002f,
+            Vector3.Distance(sourceMin, sourceMax) * 0.00002f);
+        var coincidentGroups = new List<List<int>>();
+        for (var index = 0; index < sourceControlPoints.Count; index++)
+        {
+            var group = coincidentGroups.FirstOrDefault(candidate =>
+                Vector3.Distance(
+                    sourceControlPoints[candidate[0]],
+                    sourceControlPoints[index]) <= positionTolerance);
+            if (group is null)
+            {
+                group = new List<int>();
+                coincidentGroups.Add(group);
+            }
+
+            group.Add(index);
+        }
+
+        foreach (var group in coincidentGroups)
+        {
+            var groupColors = group
+                .Select(index => sourceColors[index]!.Value)
+                .Distinct()
+                .ToArray();
+            if (groupColors.Length > 1)
+            {
+                mismatchReason =
+                    $"FBX mesh '{meshName}' stores different colors on coincident geometric points; polygon topology must match exactly.";
+                return false;
+            }
+
+            foreach (var index in group)
+            {
+                sourceColors[index] = groupColors[0];
+            }
+        }
+
+        colors = targets
+            .SelectMany(polygon => polygon.ControlPoints)
+            .Select(controlPoint => sourceColors[targetToSource[controlPoint]]!.Value)
+            .ToArray();
+        mismatchReason = string.Empty;
+        return true;
+    }
+
+    private static bool TryMatchPolygonsByTexcoords(
+        string meshName,
+        IReadOnlyList<TargetPolygon> targets,
+        IReadOnlyList<FbxVertexColorPolygon> sources,
+        StreamColumn? targetTexcoords,
+        IReadOnlyList<Vector3> targetControlPoints,
+        out int[] sourcePolygonIndexes,
+        out int[]?[] cornerMappings,
+        out string mismatchReason)
+    {
+        sourcePolygonIndexes = Array.Empty<int>();
+        cornerMappings = Array.Empty<int[]?>();
+        if (targetTexcoords is null
+            || !targetTexcoords.IsIndexed
+            || targetTexcoords.Values.Any(value => value is not Vector2)
+            || sources.Any(polygon => polygon.Texcoords is null))
+        {
+            mismatchReason = $"Mesh '{meshName}' has no comparable UV layer.";
+            return false;
+        }
+
+        var targetPolygonUvs = targets
+            .Select(polygon => polygon.LogicalVertices
+                .Select(vertex => (Vector2)targetTexcoords.Values[targetTexcoords.Indices[vertex]])
+                .ToArray())
+            .ToArray();
+        var sourcePolygonUvs = sources
+            .Select(polygon => polygon.Texcoords!.ToArray())
+            .ToArray();
+
+        foreach (var uvTransform in new[] { 0, 1, 2 })
+        {
+            var targetByUv = targetPolygonUvs
+                .Select((texcoords, index) =>
+                    (Key: MakeTexcoordPolygonKey(texcoords, uvTransform: 0), Index: index))
+                .GroupBy(item => item.Key, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(item => item.Index).ToArray(),
+                    StringComparer.Ordinal);
+            var sourceByUv = sourcePolygonUvs
+                .Select((texcoords, index) =>
+                    (Key: MakeTexcoordPolygonKey(texcoords, uvTransform), Index: index))
+                .GroupBy(item => item.Key, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Select(item => item.Index).ToArray(),
+                    StringComparer.Ordinal);
+
+            var targetToSource = Enumerable.Repeat(-1, targetControlPoints.Count).ToArray();
+            var hasUvAnchors = false;
+            var conflicted = false;
+            foreach (var (key, targetIndexes) in targetByUv)
+            {
+                if (targetIndexes.Length != 1
+                    || !sourceByUv.TryGetValue(key, out var sourceIndexes)
+                    || sourceIndexes.Length != 1
+                    || !TryMapPolygonCornersByTexcoords(
+                        targetPolygonUvs[targetIndexes[0]],
+                        sourcePolygonUvs[sourceIndexes[0]],
+                        uvTransform,
+                        out var cornerMap))
+                {
+                    continue;
+                }
+
+                hasUvAnchors = true;
+                var targetPolygon = targets[targetIndexes[0]];
+                var sourcePolygon = sources[sourceIndexes[0]];
+                for (var targetCorner = 0; targetCorner < targetPolygon.ControlPoints.Count; targetCorner++)
+                {
+                    var targetControlPoint = targetPolygon.ControlPoints[targetCorner];
+                    var sourceControlPoint = sourcePolygon.ControlPoints[cornerMap[targetCorner]];
+                    if (targetToSource[targetControlPoint] >= 0
+                        && targetToSource[targetControlPoint] != sourceControlPoint)
+                    {
+                        conflicted = true;
+                        break;
+                    }
+
+                    targetToSource[targetControlPoint] = sourceControlPoint;
+                }
+
+                if (conflicted)
+                {
+                    break;
+                }
+            }
+
+            if (!hasUvAnchors || conflicted
+                || !TryPropagateSplitPositionMappings(targetControlPoints, targetToSource))
+            {
+                continue;
+            }
+
+            if (TryMatchPolygonsFromControlPointMap(
+                    meshName,
+                    targets,
+                    sources,
+                    targetToSource,
+                    out sourcePolygonIndexes,
+                    out cornerMappings,
+                    out mismatchReason))
+            {
+                return true;
+            }
+        }
+
+        mismatchReason = $"UV polygon surface differs for mesh '{meshName}'.";
+        return false;
+    }
+
+    private static string MakeTexcoordPolygonKey(IReadOnlyList<Vector2> texcoords, int uvTransform)
+    {
+        string? best = null;
+        for (var start = 0; start < texcoords.Count; start++)
+        {
+            for (var direction = -1; direction <= 1; direction += 2)
+            {
+                var parts = new string[texcoords.Count];
+                for (var offset = 0; offset < parts.Length; offset++)
+                {
+                    var index = (start + (direction * offset)) % texcoords.Count;
+                    if (index < 0)
+                    {
+                        index += texcoords.Count;
+                    }
+
+                    var texcoord = texcoords[index];
+                    var transformed = TransformTexcoord(texcoord, uvTransform);
+                    parts[offset] = $"{QuantizeTexcoord(transformed.X)}:{QuantizeTexcoord(transformed.Y)}";
+                }
+
+                var candidate = string.Join(',', parts);
+                if (best is null || string.CompareOrdinal(candidate, best) < 0)
+                {
+                    best = candidate;
+                }
+            }
+        }
+
+        return best ?? string.Empty;
+    }
+
+    private static bool TryMapPolygonCornersByTexcoords(
+        IReadOnlyList<Vector2> target,
+        IReadOnlyList<Vector2> source,
+        int uvTransform,
+        out int[] cornerMap)
+    {
+        if (target.Count != source.Count)
+        {
+            cornerMap = Array.Empty<int>();
+            return false;
+        }
+
+        for (var start = 0; start < source.Count; start++)
+        {
+            for (var direction = -1; direction <= 1; direction += 2)
+            {
+                var candidate = new int[target.Count];
+                var matches = true;
+                for (var targetCorner = 0; targetCorner < target.Count; targetCorner++)
+                {
+                    var sourceCorner = (start + (direction * targetCorner)) % source.Count;
+                    if (sourceCorner < 0)
+                    {
+                        sourceCorner += source.Count;
+                    }
+
+                    candidate[targetCorner] = sourceCorner;
+                    var sourceTexcoord = TransformTexcoord(source[sourceCorner], uvTransform);
+                    if (QuantizeTexcoord(target[targetCorner].X) != QuantizeTexcoord(sourceTexcoord.X)
+                        || QuantizeTexcoord(target[targetCorner].Y) != QuantizeTexcoord(sourceTexcoord.Y))
+                    {
+                        matches = false;
+                        break;
+                    }
+                }
+
+                if (matches)
+                {
+                    cornerMap = candidate;
+                    return true;
+                }
+            }
+        }
+
+        cornerMap = Array.Empty<int>();
+        return false;
+    }
+
+    private static long QuantizeTexcoord(float value) =>
+        checked((long)Math.Round(value * 10000));
+
+    private static (long X, long Y) MakeTexcoordKey(Vector2 texcoord) =>
+        (QuantizeTexcoord(texcoord.X), QuantizeTexcoord(texcoord.Y));
+
+    private static Vector2 TransformTexcoord(Vector2 texcoord, int transform) =>
+        transform switch
+        {
+            1 => new Vector2(texcoord.X, -texcoord.Y),
+            2 => new Vector2(texcoord.X, 1 - texcoord.Y),
+            _ => texcoord,
+        };
+
+    private static bool TryPropagateSplitPositionMappings(
+        IReadOnlyList<Vector3> targetControlPoints,
+        int[] targetToSource)
+    {
+        var targetMin = GetBoundsMin(targetControlPoints);
+        var targetMax = GetBoundsMax(targetControlPoints);
+        var tolerance = Math.Max(0.00001f, Vector3.Distance(targetMin, targetMax) * 0.000001f);
+        foreach (var group in targetControlPoints
+                     .Select((position, index) => (Key: QuantizePosition(position, tolerance), Index: index))
+                     .GroupBy(item => item.Key))
+        {
+            var mappedSources = group
+                .Select(item => targetToSource[item.Index])
+                .Where(source => source >= 0)
+                .Distinct()
+                .ToArray();
+            if (mappedSources.Length > 1)
+            {
+                return false;
+            }
+
+            if (mappedSources.Length == 1)
+            {
+                foreach (var item in group)
+                {
+                    targetToSource[item.Index] = mappedSources[0];
+                }
+            }
+        }
+
+        return targetToSource.All(source => source >= 0);
+    }
+
+    private static bool TryMatchSplitControlPointPolygons(
+        string meshName,
+        IReadOnlyList<TargetPolygon> targets,
+        IReadOnlyList<FbxVertexColorPolygon> sources,
+        IReadOnlyList<Vector3> targetControlPoints,
+        IReadOnlyList<Vector3> sourceControlPoints,
+        out int[] sourcePolygonIndexes,
+        out int[]?[] cornerMappings,
+        out string mismatchReason)
+    {
+        sourcePolygonIndexes = Array.Empty<int>();
+        cornerMappings = Array.Empty<int[]?>();
+
+        if (!TryMapSplitControlPoints(
+                targetControlPoints,
+                sourceControlPoints,
+                out var targetToSource,
+                out mismatchReason))
+        {
+            mismatchReason = $"Split control-point validation failed for mesh '{meshName}': {mismatchReason}";
+            return false;
+        }
+
+        return TryMatchPolygonsFromControlPointMap(
+            meshName,
+            targets,
+            sources,
+            targetToSource,
+            out sourcePolygonIndexes,
+            out cornerMappings,
+            out mismatchReason);
+    }
+
+    private static bool TryMatchPolygonsFromControlPointMap(
+        string meshName,
+        IReadOnlyList<TargetPolygon> targets,
+        IReadOnlyList<FbxVertexColorPolygon> sources,
+        IReadOnlyList<int> targetToSource,
+        out int[] sourcePolygonIndexes,
+        out int[]?[] cornerMappings,
+        out string mismatchReason)
+    {
+        sourcePolygonIndexes = Array.Empty<int>();
+        cornerMappings = Array.Empty<int[]?>();
+        var sourceByPolygon = sources
+            .Select((polygon, index) => (Key: MakePolygonKey(polygon.ControlPoints), Index: index))
+            .GroupBy(item => item.Key, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.Index).ToArray(), StringComparer.Ordinal);
+        if (sourceByPolygon.Values.Any(matches => matches.Length != 1))
+        {
+            mismatchReason = $"FBX mesh '{meshName}' contains duplicate geometric polygons.";
+            return false;
+        }
+
+        var matchedSourceIndexes = new int[targets.Count];
+        var matchedCornerMappings = new int[]?[targets.Count];
+        var consumed = new HashSet<int>();
+        for (var targetIndex = 0; targetIndex < targets.Count; targetIndex++)
+        {
+            var mappedControlPoints = targets[targetIndex].ControlPoints
+                .Select(controlPoint => targetToSource[controlPoint])
+                .ToArray();
+            var key = MakePolygonKey(mappedControlPoints);
+            if (!sourceByPolygon.TryGetValue(key, out var candidates)
+                || !consumed.Add(candidates[0])
+                || !TryMapPolygonCorners(
+                    mappedControlPoints,
+                    sources[candidates[0]].ControlPoints,
+                    out var cornerMap))
+            {
+                mismatchReason = $"Polygon surface differs for mesh '{meshName}'.";
+                return false;
+            }
+
+            matchedSourceIndexes[targetIndex] = candidates[0];
+            matchedCornerMappings[targetIndex] = cornerMap;
+        }
+
+        if (consumed.Count != sources.Count)
+        {
+            mismatchReason = $"Not every FBX polygon matched mesh '{meshName}'.";
+            return false;
+        }
+
+        sourcePolygonIndexes = matchedSourceIndexes;
+        cornerMappings = matchedCornerMappings;
+        mismatchReason = string.Empty;
+        return true;
+    }
+
+    private static bool TryMapSplitControlPoints(
+        IReadOnlyList<Vector3> targets,
+        IReadOnlyList<Vector3> sources,
+        out int[] targetToSource,
+        out string mismatchReason)
+    {
+        targetToSource = Array.Empty<int>();
+        if (targets.Count == 0 || sources.Count == 0)
+        {
+            mismatchReason = "One position set is empty.";
+            return false;
+        }
+
+        var targetMin = GetBoundsMin(targets);
+        var targetMax = GetBoundsMax(targets);
+        var sourceMin = GetBoundsMin(sources);
+        var sourceMax = GetBoundsMax(sources);
+        var targetExtent = targetMax - targetMin;
+        var sourceExtent = sourceMax - sourceMin;
+        var scales = new List<float>();
+        foreach (var (targetAxis, sourceAxis) in new[]
+                 {
+                     (targetExtent.X, sourceExtent.X),
+                     (targetExtent.Y, sourceExtent.Y),
+                     (targetExtent.Z, sourceExtent.Z),
+                 })
+        {
+            if (Math.Abs(targetAxis) <= 0.000001f && Math.Abs(sourceAxis) <= 0.000001f)
+            {
+                continue;
+            }
+
+            if (Math.Abs(targetAxis) <= 0.000001f || Math.Abs(sourceAxis) <= 0.000001f)
+            {
+                mismatchReason = "Position bounds differ by axis.";
+                return false;
+            }
+
+            scales.Add(sourceAxis / targetAxis);
+        }
+
+        if (scales.Count == 0 || scales.Any(scale => !float.IsFinite(scale) || scale <= 0))
+        {
+            mismatchReason = "A valid uniform position scale could not be determined.";
+            return false;
+        }
+
+        var scale = scales.Average();
+        if (scales.Any(axisScale => Math.Abs(axisScale - scale) > Math.Max(0.00001f, scale * 0.0001f)))
+        {
+            mismatchReason = "Position bounds do not share one uniform scale.";
+            return false;
+        }
+
+        var translation = sourceMin - (targetMin * scale);
+        var sourceDiagonal = Vector3.Distance(sourceMin, sourceMax);
+        var tolerance = Math.Max(0.0002f, sourceDiagonal * 0.00002f);
+        var buckets = sources
+            .Select((position, index) => (Key: QuantizePosition(position, tolerance), Index: index))
+            .GroupBy(item => item.Key)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.Index).ToArray());
+        var mapping = new int[targets.Count];
+        var usedSources = new HashSet<int>();
+        for (var targetIndex = 0; targetIndex < targets.Count; targetIndex++)
+        {
+            var transformed = (targets[targetIndex] * scale) + translation;
+            var key = QuantizePosition(transformed, tolerance);
+            var bestSource = -1;
+            var bestDistance = float.PositiveInfinity;
+            for (var x = -1; x <= 1; x++)
+            for (var y = -1; y <= 1; y++)
+            for (var z = -1; z <= 1; z++)
+            {
+                if (!buckets.TryGetValue((key.X + x, key.Y + y, key.Z + z), out var candidates))
+                {
+                    continue;
+                }
+
+                foreach (var candidate in candidates)
+                {
+                    var distance = Vector3.Distance(transformed, sources[candidate]);
+                    if (distance < bestDistance)
+                    {
+                        bestDistance = distance;
+                        bestSource = candidate;
+                    }
+                }
+            }
+
+            if (bestSource < 0 || bestDistance > tolerance)
+            {
+                mismatchReason = "A transformed DMX position has no exact FBX position match.";
+                return false;
+            }
+
+            mapping[targetIndex] = bestSource;
+            usedSources.Add(bestSource);
+        }
+
+        var transformedTargets = targets
+            .Select(position => (position * scale) + translation)
+            .ToArray();
+        var unmatchedSourceCount = sources.Count(source =>
+            !transformedTargets.Any(target => Vector3.Distance(target, source) <= tolerance));
+        if (unmatchedSourceCount != 0)
+        {
+            mismatchReason =
+                $"FBX has {unmatchedSourceCount} position(s) with no exact DMX match.";
+            return false;
+        }
+
+        targetToSource = mapping;
+        mismatchReason = string.Empty;
+        return true;
+    }
+
+    private static Vector3 GetBoundsMin(IReadOnlyList<Vector3> positions) =>
+        new(
+            positions.Min(position => position.X),
+            positions.Min(position => position.Y),
+            positions.Min(position => position.Z));
+
+    private static Vector3 GetBoundsMax(IReadOnlyList<Vector3> positions) =>
+        new(
+            positions.Max(position => position.X),
+            positions.Max(position => position.Y),
+            positions.Max(position => position.Z));
+
+    private static (long X, long Y, long Z) QuantizePosition(Vector3 position, float tolerance) =>
+        (
+            checked((long)Math.Round(position.X / tolerance)),
+            checked((long)Math.Round(position.Y / tolerance)),
+            checked((long)Math.Round(position.Z / tolerance)));
 
     private static string MakePolygonKey(IReadOnlyList<int> controlPoints)
     {

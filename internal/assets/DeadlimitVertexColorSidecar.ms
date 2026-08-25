@@ -167,7 +167,7 @@ fn deadlimitVertexColorExportAndApply =
         deadlimitVertexColorSetFbxParam "Animation" false
         deadlimitVertexColorSetFbxParam "Cameras" false
         deadlimitVertexColorSetFbxParam "Lights" false
-        deadlimitVertexColorSetFbxParam "Triangulate" false
+        deadlimitVertexColorSetFbxParam "Triangulate" true
 
         if doesFileExist temporaryPath do deleteFile temporaryPath
         select selectedGeometry
@@ -207,6 +207,15 @@ rollout deadlimitVertexColorFbxRollout "Vertex Color to DMX" width:430
     button exportButton "WRITE SELECTED VERTEX COLOR TO DMX" width:400 height:36
     label statusLabel "Export the regular DMX with Wall Worm first." width:400 height:34 align:#left
 
+    fn showResultMessage text title isError =
+    (
+        local messageBoxClass = dotNetClass "System.Windows.Forms.MessageBox"
+        local messageBoxButtons = dotNetClass "System.Windows.Forms.MessageBoxButtons"
+        local messageBoxIcon = dotNetClass "System.Windows.Forms.MessageBoxIcon"
+        local icon = if isError then messageBoxIcon.Error else messageBoxIcon.Information
+        messageBoxClass.Show text title messageBoxButtons.OK icon
+    )
+
     fn refreshTarget =
     (
         try
@@ -227,15 +236,18 @@ rollout deadlimitVertexColorFbxRollout "Vertex Color to DMX" width:430
         try
         (
             local result = deadlimitVertexColorExportAndApply()
-            statusLabel.text = "Updated: " + filenameFromPath result[1]
+            statusLabel.text = "SUCCESS: " + filenameFromPath result[1] + " updated"
             refreshTarget()
             format "Vertex Color DMX: %\n%\n" result[1] result[2]
+            local successMessage = "SUCCESS\n\nVertex Color was written to:\n" + result[1] + "\n\nTemporary FBX deleted."
+            showResultMessage successMessage "VERTEX COLOR WRITTEN" false
         )
         catch
         (
             local errorText = getCurrentException()
-            statusLabel.text = errorText
-            messageBox errorText title:"Vertex Color to DMX"
+            local cleanError = substituteString errorText "-- Runtime error: " ""
+            statusLabel.text = "FAILED: Vertex Color was not written"
+            showResultMessage ("FAILED\n\n" + cleanError) "VERTEX COLOR FAILED" true
         )
     )
 )

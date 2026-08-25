@@ -18,20 +18,22 @@ The artist DMX starts as a normal Wall Worm export with all settings controlled 
 
 The helper reads Wall Worm's last export folder from `3dsMax.ini` and finds the newest primary DMX there. It does not read a Deadlimit project or hard-code an asset path.
 
-The FBX export is ASCII, selection-only, animation/cameras/lights disabled and triangulation disabled. Deadlimit patches a temporary DMX copy, reloads and validates its color streams, then atomically replaces the primary DMX. The helper deletes `_vertexcolor.fbx` only after that operation succeeds. On failure the primary DMX remains unchanged and the FBX remains available for diagnosis. The helper restores the previous FBX settings and Max selection after success or failure.
+The FBX export is ASCII, selection-only, animation/cameras/lights disabled and triangulation enabled. Deadlimit patches a temporary DMX copy, reloads and validates its color streams, then atomically replaces the primary DMX. The helper deletes `_vertexcolor.fbx` only after that operation succeeds. On failure the primary DMX remains unchanged and the FBX remains available for diagnosis. The helper restores the previous FBX settings and Max selection after success or failure.
 
 ## Material priority
 
-A DMX mesh is priority when any assigned material identity contains the exact substring `vertexcolor`, case-insensitively. Deadlimit checks the serialized material element name and its `mtlName` path.
+A DMX mesh is selected for transfer when any assigned material identity contains the exact substring `vertexcolor`, case-insensitively. Deadlimit checks the serialized material element name and its `mtlName` path.
 
-When at least one priority mesh exists:
+The transfer contract is all-or-nothing:
 
-- every priority mesh must have one exact-name FBX mesh;
-- every priority mesh must pass geometry validation and contain a Vertex Color layer;
-- a failure on any priority mesh rejects the whole sidecar;
-- non-priority meshes are transferred only when their own name, geometry and color layer validate; their absence or mismatch does not reject valid priority meshes.
+- every selected mesh must have one exact-name FBX mesh;
+- every selected mesh must pass geometry validation;
+- a selected mesh with map channel `0` receives its exported colors;
+- a selected mesh without map channel `0` receives neutral gray RGBA `(128, 128, 128, 255)`;
+- a failure on any selected mesh rejects the whole sidecar and reports all failed mesh names together;
+- meshes whose assigned material names do not contain `vertexcolor` are ignored completely.
 
-All non-priority meshes are opportunistic. Deadlimit transfers each one whose name, geometry and color layer validate, and ignores that mesh when they do not. This applies even when the DMX contains no priority material. At least one usable color layer must still be transferred for the operation to succeed.
+If no material name contains `vertexcolor`, the operation fails without changing the DMX.
 
 ## Validation and PREPARE
 
@@ -41,9 +43,10 @@ Validation requires:
 
 - a valid Autodesk ASCII FBX mesh graph;
 - unique matching mesh node names after the DMX `_mesh` suffix is removed;
-- equal control-point and polygon counts for each transferred mesh;
-- equal polygon corner counts and stable polygon order;
-- at least 90 percent direct control-point topology anchors, allowing the limited index normalization observed in the Autodesk exporter;
+- equal polygon counts and corner counts for each transferred mesh;
+- direct topology, UV/color correspondence, or transformed geometric control-point correspondence;
+- tolerance for FBX/DMX vertex splitting and different internal triangulation when color remains unambiguous;
+- FBX model transforms and coordinate-system conversion before geometric matching;
 - a supported FBX color mapping (`ByPolygonVertex` or `ByControlPoint`) and reference mode (`Direct` or `IndexToDirect`);
 - valid color indices and RGBA values;
 - sidecar modification time at least as new as the primary DMX.
