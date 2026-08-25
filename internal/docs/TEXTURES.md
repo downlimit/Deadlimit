@@ -99,7 +99,7 @@ TextureMetalness1        -> [0.000000 0.000000 0.000000 0.000000]
 
 PREPARE also removes the decompiled retail `Compiled Textures` cache and stale retail PNG/TGA/VTEX source references. A final managed-VMAT safety pass rejects any missing texture source that survives reconciliation.
 
-### V4 source-of-truth and repeat-PREPARE contract
+### Repeat-PREPARE ownership contract
 
 Generated V4 scaffolds contain:
 
@@ -107,7 +107,13 @@ Generated V4 scaffolds contain:
 // DEADLIMIT_GENERATED_CUSTOM_VMAT_V4
 ```
 
-A VMAT carrying a Deadlimit generated marker remains **texture-managed** by Deadlimit across later `PREPARE FOR CSDK` runs.
+Deadlimit records current generated custom-material ownership in:
+
+```text
+<project>/.deadlimit/managed-custom-materials.json
+```
+
+The registry survives Material Editor replacing the generated first-line comment. A registered VMAT remains **texture-managed** across later `PREPARE FOR CSDK` runs while its non-texture values stay artist-controlled.
 
 For those managed files, the project-root PNG set is authoritative for texture slots:
 
@@ -130,20 +136,17 @@ The same add/remove reconciliation applies to standard color/normal/roughness/AO
 
 Crucially, reconciliation rewrites **only managed texture source assignments plus required texture-enable combo state**. Material Editor edits to non-texture values — outline colors, strengths, widths, rim/highlight tuning, scalar/vector values, shader configuration, etc. — remain untouched.
 
-An existing addon-owned VMAT **without** a Deadlimit generated marker is artist-owned/unmanaged and remains byte-for-byte protected from PREPARE.
+Current custom-material remaps are registered during PREPARE, which migrates existing generated materials whose marker was already replaced by Material Editor. Files outside the registered custom-material targets remain untouched.
 
-This replaces the older blanket rule that every existing VMAT is immutable. The new distinction is:
+Preparation gestures:
 
-- generated-marker VMAT: texture slots remain synchronized with project-root source textures;
-- unmarked VMAT: fully artist-owned and never rewritten.
-
-Older unmarked VMATs created before this managed contract are not silently adopted because Deadlimit cannot prove they are safe to rewrite. A one-time intentional delete/recreate is required to opt such a material into V4 management.
+- `PREPARE FOR CSDK`: preserve manual VMAT tuning, synchronize matching project textures, remove derived texture files whose project source disappeared, and restore the affected slots to numeric neutral values;
+- `SHIFT + PREPARE FOR CSDK`: back up existing addon custom VMAT files under `<project>/.deadlimit/backups/materials/<timestamp>/`, then regenerate the currently referenced custom materials from the latest templates and project textures;
+- `SHIFT + LAUNCH CSDK`: run the normal preserving PREPARE, start ONLINE PREPARATION, and launch CSDK. Repeating the gesture stops online synchronization without launching another CSDK instance.
 
 ### Validation status
 
-Implementation: complete.
-
-Live V4 validation on the current Ivy project is pending. Required proof sequence:
+Implementation: complete. Required live proof sequence:
 
 ```text
 create with color only

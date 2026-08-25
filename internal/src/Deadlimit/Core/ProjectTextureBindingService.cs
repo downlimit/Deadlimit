@@ -94,6 +94,7 @@ internal static class ProjectTextureBindingService
         string addonName,
         string addonContentRoot,
         CustomMaterialAuthoringResult customMaterials,
+        IReadOnlyList<ManagedCustomMaterialOwnership> knownOwnership,
         StringBuilder log,
         CancellationToken cancellationToken)
     {
@@ -113,6 +114,7 @@ internal static class ProjectTextureBindingService
         var removedStaleMaterials = RemoveStaleManagedMaterials(
             materialFolder,
             desiredMaterialPaths,
+            knownOwnership,
             log,
             cancellationToken);
 
@@ -120,6 +122,27 @@ internal static class ProjectTextureBindingService
             .Where(path => TextureSourceExtensions.Contains(Path.GetExtension(path)))
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+        var projectTextureNames = projectTextures
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var removedDerivedTextures = 0;
+        foreach (var derivedTexture in Directory.EnumerateFiles(textureFolder, "*", SearchOption.TopDirectoryOnly)
+                     .Where(path => TextureSourceExtensions.Contains(Path.GetExtension(path))))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (projectTextureNames.Contains(Path.GetFileName(derivedTexture)))
+            {
+                continue;
+            }
+
+            File.Delete(derivedTexture);
+            removedDerivedTextures++;
+            log.AppendLine($"Removed derived project texture because its source disappeared: {Path.GetFileName(derivedTexture)}");
+        }
 
         foreach (var source in projectTextures)
         {
@@ -153,17 +176,19 @@ internal static class ProjectTextureBindingService
             }
 
             var original = File.ReadAllText(targetPath);
-            if (original.StartsWith(VertexColorGeneratedPrefix, StringComparison.Ordinal))
-            {
-                log.AppendLine($"Project texture sync skipped vertex-color VMAT: {targetResource}");
-                continue;
-            }
+            var ownership = knownOwnership.FirstOrDefault(item =>
+                string.Equals(
+                    NormalizeResourcePath(item.TargetResource),
+                    targetResource,
+                    StringComparison.OrdinalIgnoreCase));
+            var vertexColorMode = ownership?.VertexColor == true
+                                  || original.StartsWith(VertexColorGeneratedPrefix, StringComparison.Ordinal);
 
             var isLegacyGenerated = original.StartsWith(LegacyGeneratedPrefix, StringComparison.Ordinal);
             var isPendingMigration = original.StartsWith(PendingManagedMarker, StringComparison.Ordinal);
             var isManaged = original.StartsWith(ManagedMarker, StringComparison.Ordinal);
 
-            if (!isLegacyGenerated && !isPendingMigration && !isManaged)
+            if (!isLegacyGenerated && !isPendingMigration && !isManaged && ownership is null)
             {
                 log.AppendLine($"Project texture sync skipped artist-owned custom VMAT: {targetResource}");
                 continue;
@@ -171,12 +196,18 @@ internal static class ProjectTextureBindingService
 
             managedMaterials++;
             var firstManagedPass = isLegacyGenerated || isPendingMigration;
-            var text = RemoveCompiledTexturesBlock(RewriteManagedHeader(original, ManagedMarker));
+            var text = isLegacyGenerated || isPendingMigration || isManaged
+                ? RemoveCompiledTexturesBlock(RewriteManagedHeader(original, ManagedMarker))
+                : RemoveCompiledTexturesBlock(original);
 
-            var bindings = ResolveMaterialBindings(
+            var bindings = new Dictionary<string, string>(ResolveMaterialBindings(
                 remap.From,
                 candidates,
-                log);
+                log), StringComparer.OrdinalIgnoreCase);
+            if (vertexColorMode)
+            {
+                bindings.Remove("color");
+            }
 
             var assignments = ReadAssignments(text);
             var replacements = new Dictionary<int, string>();
@@ -209,6 +240,7 @@ internal static class ProjectTextureBindingService
             text = ReconcileUnboundStandardTextureValues(
                 text,
                 boundSemantics,
+                vertexColorMode,
                 log,
                 out var neutralizedStandardSlots);
             sanitizedTextures += neutralizedStandardSlots;
@@ -217,6 +249,7 @@ internal static class ProjectTextureBindingService
                 text,
                 materialResourceFolder,
                 bindings,
+                vertexColorMode,
                 log,
                 out var unmatchedSanitized);
             sanitizedTextures += unmatchedSanitized;
@@ -236,9 +269,15 @@ internal static class ProjectTextureBindingService
                 materialResourceFolder,
                 firstManagedPass,
                 sanitizeDeadlimitDerivedPaths: true,
+                vertexColorMode,
                 log,
                 out var currentSanitized);
             sanitizedTextures += currentSanitized;
+
+            if (vertexColorMode)
+            {
+                text = UpsertStringParameter(text, "F_VERTEX_COLOR", "1");
+            }
 
             if (!string.Equals(original, text, StringComparison.Ordinal))
             {
@@ -247,6 +286,7 @@ internal static class ProjectTextureBindingService
         }
 
         log.AppendLine($"Stale Deadlimit-managed custom VMAT files removed: {removedStaleMaterials}");
+        log.AppendLine($"Derived project texture files removed after source deletion: {removedDerivedTextures}");
         log.AppendLine($"Managed custom VMAT project-texture sync: {managedMaterials} material(s), {boundTextures} texture binding(s), {sanitizedTextures} stale/mismatched inherited or derived source repair(s), {unresolvedTextures} unmatched project texture(s).");
         log.AppendLine("Custom texture naming policy: project textures bind only when the filename material prefix exactly matches the custom material name; Deadlimit does not guess based on there being only one material or one texture.");
         log.AppendLine("Custom VMAT lifecycle policy: Deadlimit-owned generated VMAT files are removed when their material is no longer referenced by the current artist DMX. Artist-owned/unmanaged VMAT files are preserved.");
@@ -262,6 +302,7 @@ internal static class ProjectTextureBindingService
     private static int RemoveStaleManagedMaterials(
         string materialFolder,
         IReadOnlySet<string> desiredMaterialPaths,
+        IReadOnlyList<ManagedCustomMaterialOwnership> knownOwnership,
         StringBuilder log,
         CancellationToken cancellationToken)
     {
@@ -282,7 +323,14 @@ internal static class ProjectTextureBindingService
             }
 
             var text = File.ReadAllText(path);
-            if (!IsDeadlimitOwnedMaterial(text))
+            var relativeResource = NormalizeResourcePath(Path.GetRelativePath(
+                Directory.GetParent(Directory.GetParent(materialFolder)!.FullName)!.FullName,
+                fullPath));
+            var registryOwned = knownOwnership.Any(item => string.Equals(
+                NormalizeResourcePath(item.TargetResource),
+                relativeResource,
+                StringComparison.OrdinalIgnoreCase));
+            if (!IsDeadlimitOwnedMaterial(text) && !registryOwned)
             {
                 continue;
             }
@@ -322,6 +370,7 @@ internal static class ProjectTextureBindingService
     private static string ReconcileUnboundStandardTextureValues(
         string text,
         IReadOnlySet<string> boundSemantics,
+        bool vertexColorMode,
         StringBuilder log,
         out int neutralizedCount)
     {
@@ -335,7 +384,7 @@ internal static class ProjectTextureBindingService
                 return match.Value;
             }
 
-            var fallback = GetTextureFallback(key);
+            var fallback = GetTextureFallback(key, vertexColorMode);
             if (string.Equals(match.Groups["value"].Value, fallback, StringComparison.Ordinal))
             {
                 return match.Value;
@@ -387,6 +436,7 @@ internal static class ProjectTextureBindingService
         string text,
         string materialResourceFolder,
         IReadOnlyDictionary<string, string> bindings,
+        bool vertexColorMode,
         StringBuilder log,
         out int sanitizedCount)
     {
@@ -415,7 +465,7 @@ internal static class ProjectTextureBindingService
                 return match.Value;
             }
 
-            var fallback = GetTextureFallback(key);
+            var fallback = GetTextureFallback(key, vertexColorMode);
             localSanitized++;
             log.AppendLine($"Custom VMAT mismatched project texture removed {key}: {match.Groups["value"].Value} -> {fallback}");
             return match.Groups["prefix"].Value + fallback + match.Groups["suffix"].Value;
@@ -431,6 +481,7 @@ internal static class ProjectTextureBindingService
         string materialResourceFolder,
         bool sanitizeInheritedMissingSources,
         bool sanitizeDeadlimitDerivedPaths,
+        bool vertexColorMode,
         StringBuilder log,
         out int sanitizedCount)
     {
@@ -458,7 +509,7 @@ internal static class ProjectTextureBindingService
             }
 
             var key = GetTextureKey(match);
-            var fallback = GetTextureFallback(key);
+            var fallback = GetTextureFallback(key, vertexColorMode);
             localSanitized++;
             log.AppendLine($"Custom VMAT missing source repaired {key}: {value} -> {fallback}");
             return match.Groups["prefix"].Value + fallback + match.Groups["suffix"].Value;
@@ -778,10 +829,11 @@ internal static class ProjectTextureBindingService
     private static bool IsKnownSafeDefault(string value) =>
         NormalizeResourcePath(value).StartsWith("materials/default/", StringComparison.OrdinalIgnoreCase);
 
-    private static string GetTextureFallback(string key)
+    private static string GetTextureFallback(string key, bool vertexColorMode = false)
     {
         return GetSemanticFromTextureKey(key) switch
         {
+            "color" when vertexColorMode => NeutralWhite,
             "color" => NeutralColor,
             "normal" => NeutralNormal,
             "roughness" => NeutralRoughness,

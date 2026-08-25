@@ -4,13 +4,13 @@ namespace Deadlimit.App;
 
 internal static class OnlinePreparationFeature
 {
-    private const string OnlineButtonText = "ONLINE PREARAION";
+    private static string OnlineButtonText => UiText.T("▶  ONLINE CSDK", "▶  CSDK ONLINE");
 
     private static OnlinePreparationSession? _session;
     private static ToolTip? _toolTip;
     private static Button? _prepareButton;
+    private static Button? _launchButton;
     private static MainForm? _form;
-    private static string? _normalButtonText;
     private static bool _toggleBusy;
 
     public static void Attach(MainForm form)
@@ -19,14 +19,18 @@ internal static class OnlinePreparationFeature
             .FirstOrDefault(button =>
                 string.Equals(button.Text, "PREPARE FOR CSDK", StringComparison.Ordinal)
                 || string.Equals(button.Text, "ПОДГОТОВИТЬ ДЛЯ CSDK", StringComparison.Ordinal));
-        if (prepareButton is null)
+        var launchButton = FindDescendants<Button>(form)
+            .FirstOrDefault(button =>
+                string.Equals(button.Text, "LAUNCH CSDK", StringComparison.Ordinal)
+                || string.Equals(button.Text, "ЗАПУСТИТЬ CSDK", StringComparison.Ordinal));
+        if (prepareButton is null || launchButton is null)
         {
             return;
         }
 
         _form = form;
         _prepareButton = prepareButton;
-        _normalButtonText = prepareButton.Text;
+        _launchButton = launchButton;
         _toolTip = new ToolTip
         {
             AutoPopDelay = 16000,
@@ -46,32 +50,37 @@ internal static class OnlinePreparationFeature
         form.FormClosed += (_, _) => Detach();
     }
 
-    /// <summary>
-    /// Called by the visible project-header PREPARE overlay when SHIFT+click is detected.
-    /// The overlay consumes that gesture, so the hidden native PREPARE button does not run
-    /// the regular full PREPARE action as well.
-    /// </summary>
-    internal static void ToggleFromVisiblePrepareButton()
+    internal static async Task<bool> ToggleFromLaunchButtonAsync()
     {
-        if (_toggleBusy || _form is null || _prepareButton is null || _prepareButton.IsDisposed)
+        if (_toggleBusy
+            || _form is null
+            || _prepareButton is null
+            || _prepareButton.IsDisposed
+            || _launchButton is null
+            || _launchButton.IsDisposed)
         {
-            return;
+            return false;
         }
 
-        _ = ToggleOnlinePreparationAsync();
+        return await ToggleOnlinePreparationAsync();
     }
 
-    private static async Task ToggleOnlinePreparationAsync()
+    private static async Task<bool> ToggleOnlinePreparationAsync()
     {
-        if (_toggleBusy || _form is null || _prepareButton is null || _prepareButton.IsDisposed)
+        if (_toggleBusy
+            || _form is null
+            || _prepareButton is null
+            || _prepareButton.IsDisposed
+            || _launchButton is null
+            || _launchButton.IsDisposed)
         {
-            return;
+            return false;
         }
 
         if (_session is not null)
         {
             StopSession();
-            return;
+            return false;
         }
 
         var manifest = ProjectStore.TryLoadLastProject();
@@ -85,13 +94,14 @@ internal static class OnlinePreparationFeature
                 "Deadlimit",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
-            return;
+            return false;
         }
 
         _toggleBusy = true;
         var originalTitle = _form.Text;
-        var buttons = FindActionButtons(_prepareButton).ToArray();
+        var buttons = FindActionButtons().ToArray();
         var enabledStates = buttons.ToDictionary(button => button, button => button.Enabled);
+        var started = false;
 
         try
         {
@@ -117,9 +127,10 @@ internal static class OnlinePreparationFeature
                     "ONLINE PREPARATION could not reload the project after PREPARE FOR CSDK.");
 
             StartOrReplaceSession(refreshedManifest, paths);
-            _prepareButton.Text = OnlineButtonText;
+            _launchButton.Text = OnlineButtonText;
             UpdateToolTip(
-                "ONLINE PREPARATION is active. Existing root DMX and texture files are hash-checked after a short debounce; only files whose bytes actually changed are copied into CSDK content. Shift-click this button again to stop. A normal click still runs full PREPARE FOR CSDK and refreshes the live-sync baseline.");
+                "ONLINE PREPARATION is active. Existing root DMX and texture files are hash-checked after a short debounce; only files whose bytes actually changed are copied into CSDK content. Shift-click LAUNCH CSDK again to stop. A normal PREPARE still runs full preparation and refreshes the live-sync baseline.");
+            started = true;
         }
         catch (Exception ex) when (ex is IOException
             or UnauthorizedAccessException
@@ -149,6 +160,8 @@ internal static class OnlinePreparationFeature
 
             _toggleBusy = false;
         }
+
+        return started;
     }
 
     private static async Task RefreshBaselineAfterManualPrepareAsync()
@@ -187,9 +200,12 @@ internal static class OnlinePreparationFeature
             }
 
             StartOrReplaceSession(manifest, new DeadlimitPaths());
-            _prepareButton.Text = OnlineButtonText;
+            if (_launchButton is not null && !_launchButton.IsDisposed)
+            {
+                _launchButton.Text = OnlineButtonText;
+            }
             UpdateToolTip(
-                "ONLINE PREPARATION baseline refreshed after PREPARE FOR CSDK. Existing root DMX and texture files are hash-checked and only byte-level changes are copied into CSDK content. Shift-click to stop.");
+                "ONLINE PREPARATION baseline refreshed after PREPARE FOR CSDK. Existing root DMX and texture files are hash-checked and only byte-level changes are copied into CSDK content. Shift-click LAUNCH CSDK to stop.");
         }
         catch (Exception ex) when (ex is IOException
             or UnauthorizedAccessException
@@ -225,12 +241,12 @@ internal static class OnlinePreparationFeature
 
         form.BeginInvoke((Action)(() =>
         {
-            if (_prepareButton is null || _prepareButton.IsDisposed || _session is null)
+            if (_launchButton is null || _launchButton.IsDisposed || _session is null)
             {
                 return;
             }
 
-            _prepareButton.Text = OnlineButtonText;
+            _launchButton.Text = OnlineButtonText;
             var suffix = update.PrepareRequired
                 ? "\n\nA structural change was detected. Normal-click this button once to run full PREPARE FOR CSDK and establish a new live-sync baseline."
                 : string.Empty;
@@ -247,13 +263,13 @@ internal static class OnlinePreparationFeature
             _session = null;
         }
 
-        if (_prepareButton is not null && !_prepareButton.IsDisposed && _normalButtonText is not null)
+        if (_launchButton is not null && !_launchButton.IsDisposed)
         {
-            _prepareButton.Text = _normalButtonText;
+            _launchButton.Text = UiText.T("▶  LAUNCH CSDK", "▶  ЗАПУСК CSDK");
         }
 
         UpdateToolTip(
-            "ONLINE PREPARATION is off. Shift-click PREPARE FOR CSDK to prepare once and start live hash-based DMX/texture synchronization.");
+            "ONLINE PREPARATION is off. Shift-click LAUNCH CSDK to prepare once, start live hash-based DMX/texture synchronization and launch CSDK.");
     }
 
     private static void Detach()
@@ -263,26 +279,31 @@ internal static class OnlinePreparationFeature
         _toolTip?.Dispose();
         _toolTip = null;
         _prepareButton = null;
+        _launchButton = null;
         _form = null;
-        _normalButtonText = null;
     }
 
     private static void UpdateToolTip(string text)
     {
-        if (_toolTip is not null && _prepareButton is not null && !_prepareButton.IsDisposed)
+        if (_toolTip is not null && _launchButton is not null && !_launchButton.IsDisposed)
         {
-            _toolTip.SetToolTip(_prepareButton, text);
+            _toolTip.SetToolTip(_launchButton, text);
         }
     }
 
-    private static IEnumerable<Button> FindActionButtons(Button prepareButton)
+    private static IEnumerable<Button> FindActionButtons()
     {
-        if (prepareButton.Parent is not FlowLayoutPanel topBar)
+        if (_form is null)
         {
-            return [prepareButton];
+            return [];
         }
 
-        return topBar.Controls.OfType<Button>();
+        return FindDescendants<Button>(_form)
+            .Where(button => button.Text.Contains("PREPARE", StringComparison.OrdinalIgnoreCase)
+                             || button.Text.Contains("ПОДГОТОВ", StringComparison.OrdinalIgnoreCase)
+                             || button.Text.Contains("BUILD", StringComparison.OrdinalIgnoreCase)
+                             || button.Text.Contains("СОБРАТЬ", StringComparison.OrdinalIgnoreCase)
+                             || button.Text.Contains("CSDK", StringComparison.OrdinalIgnoreCase));
     }
 
     private static IEnumerable<T> FindDescendants<T>(Control root)

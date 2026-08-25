@@ -61,13 +61,17 @@ public sealed class PrepareAuthoringService
     public Task<PrepareAuthoringResult> PrepareAsync(
         ProjectManifest manifest,
         IProgress<PrepareAuthoringProgress>? progress = null,
-        CancellationToken cancellationToken = default) =>
-        Task.Run(() => Prepare(manifest, progress, cancellationToken), cancellationToken);
+        CancellationToken cancellationToken = default,
+        bool regenerateCustomMaterials = false) =>
+        Task.Run(
+            () => Prepare(manifest, progress, cancellationToken, regenerateCustomMaterials),
+            cancellationToken);
 
     private PrepareAuthoringResult Prepare(
         ProjectManifest manifest,
         IProgress<PrepareAuthoringProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool regenerateCustomMaterials)
     {
         ValidateEnvironment(manifest);
         cancellationToken.ThrowIfCancellationRequested();
@@ -105,6 +109,7 @@ public sealed class PrepareAuthoringService
         log.AppendLine($"Retail model: {manifest.RetailMainModel}");
         log.AppendLine($"CSDK content root: {addonContentRoot}");
         log.AppendLine($"CSDK game output root: {addonGameRoot}");
+        log.AppendLine($"Custom material mode: {(regenerateCustomMaterials ? "clean regeneration" : "preserve artist edits and synchronize project textures")}");
         log.AppendLine();
 
         try
@@ -188,6 +193,16 @@ public sealed class PrepareAuthoringService
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new PrepareAuthoringProgress("Preparing addon-owned custom materials..."));
 
+            if (regenerateCustomMaterials)
+            {
+                BackupCustomMaterialsForCleanPrepare(
+                    manifest,
+                    addonContentRoot,
+                    addonName,
+                    log,
+                    cancellationToken);
+            }
+
             ProjectTextureBindingService.MarkLegacyManagedMaterialsForMigration(
                 addonContentRoot,
                 addonName,
@@ -202,13 +217,21 @@ public sealed class PrepareAuthoringService
                 resolvedMaterialSources,
                 customTemplateMaterial,
                 log,
-                cancellationToken);
+                cancellationToken,
+                regenerateCustomMaterials);
+
+            var previousOwnership = ManagedCustomMaterialRegistryStore.Load(manifest);
+            var currentOwnership = ManagedCustomMaterialRegistryStore.BuildCurrent(customMaterials.Remaps);
+            var knownOwnership = ManagedCustomMaterialRegistryStore.MergeKnownWithCurrent(
+                previousOwnership,
+                currentOwnership);
 
             ProjectTextureBindingService.Synchronize(
                 manifest,
                 addonName,
                 addonContentRoot,
                 customMaterials,
+                knownOwnership,
                 log,
                 cancellationToken);
 
@@ -266,6 +289,7 @@ public sealed class PrepareAuthoringService
             manifest.SourceVmdl = sourceCopy.DestinationVmdlPath;
             manifest.CompiledVmdl = null;
             ProjectStore.Save(manifest);
+            ManagedCustomMaterialRegistryStore.SaveCurrent(manifest, currentOwnership);
 
             log.AppendLine();
             log.AppendLine("RESULT: AUTHORING CONTENT PREPARED; ADDON GAME OUTPUT CLEAN");
@@ -300,6 +324,48 @@ public sealed class PrepareAuthoringService
             File.WriteAllText(logPath, log.ToString());
             throw;
         }
+    }
+
+    private static void BackupCustomMaterialsForCleanPrepare(
+        ProjectManifest manifest,
+        string addonContentRoot,
+        string addonName,
+        StringBuilder log,
+        CancellationToken cancellationToken)
+    {
+        var materialFolder = Path.Combine(addonContentRoot, "materials", addonName);
+        if (!Directory.Exists(materialFolder))
+        {
+            log.AppendLine("Clean material prepare: no existing custom VMAT files required backup.");
+            return;
+        }
+
+        var sourceFiles = Directory.EnumerateFiles(materialFolder, "*.vmat", SearchOption.TopDirectoryOnly)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (sourceFiles.Length == 0)
+        {
+            log.AppendLine("Clean material prepare: no existing custom VMAT files required backup.");
+            return;
+        }
+
+        var backupFolder = Path.Combine(
+            ProjectStore.GetMetadataFolder(manifest.ProjectFolder),
+            "backups",
+            "materials",
+            DateTime.Now.ToString("yyyyMMdd-HHmmssfff"));
+        Directory.CreateDirectory(backupFolder);
+
+        foreach (var sourcePath in sourceFiles)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            File.Copy(
+                sourcePath,
+                Path.Combine(backupFolder, Path.GetFileName(sourcePath)),
+                overwrite: false);
+        }
+
+        log.AppendLine($"Clean material prepare backup: {sourceFiles.Length} VMAT file(s) -> {backupFolder}");
     }
 
     private static int FinalizeManagedCustomMaterials(

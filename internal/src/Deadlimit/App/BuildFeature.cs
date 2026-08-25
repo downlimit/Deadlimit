@@ -44,8 +44,8 @@ internal static class BuildFeature
         toolTip.SetToolTip(
             prepareButton,
             UiText.T(
-                "Prepare the selected project's authoring content for Reduced CSDK12 / ModelDoc / Material Editor.\n\nDeadlimit refreshes the CSDK content and clears compiled output for this addon so CSDK can rebuild it cleanly. This action does not launch CSDK.",
-                "Подготовить authoring-контент выбранного проекта для Reduced CSDK12 / ModelDoc / Material Editor.\n\nDeadlimit обновляет CSDK content и очищает compiled output этого аддона, чтобы CSDK пересобрал его чисто. Эта кнопка не запускает CSDK."));
+                "Prepare the selected project's authoring content for Reduced CSDK12 / ModelDoc / Material Editor.\n\nA normal click preserves manual VMAT tuning while synchronizing project textures. Hold SHIFT to back up and regenerate Deadlimit custom materials from their templates.",
+                "Подготовить authoring-контент выбранного проекта для Reduced CSDK12 / ModelDoc / Material Editor.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует текстуры проекта. Удерживайте SHIFT, чтобы создать резервную копию и пересоздать custom-материалы Deadlimit из шаблонов."));
         toolTip.SetToolTip(
             buildAndTestButton,
             UiText.T(
@@ -54,8 +54,8 @@ internal static class BuildFeature
         toolTip.SetToolTip(
             launchCsdkButton,
             UiText.T(
-                "Launch the configured Reduced CSDK12 environment.\n\nUse it for ModelDoc, Material Editor and other Source 2 authoring tools. It does not build or deploy the retail VPK.",
-                "Запустить настроенное окружение Reduced CSDK12.\n\nИспользуйте его для ModelDoc, Material Editor и других Source 2 authoring-инструментов. Эта кнопка не собирает и не устанавливает retail VPK."));
+                "Launch the configured Reduced CSDK12 environment.\n\nHold SHIFT while clicking to prepare once, enable ONLINE PREPARATION and launch CSDK. Repeat SHIFT+click to stop online synchronization without launching another CSDK instance.",
+                "Запустить настроенное окружение Reduced CSDK12.\n\nУдерживайте SHIFT при клике, чтобы выполнить подготовку, включить ONLINE PREPARATION и запустить CSDK. Повторный SHIFT+клик остановит онлайн-синхронизацию без запуска ещё одного CSDK."));
 
         var buildProgressBar = AddBuildProgressBar(form);
         var actionButtons = new[] { prepareButton, buildAndTestButton, launchCsdkButton };
@@ -63,7 +63,19 @@ internal static class BuildFeature
         prepareButton.Click += async (_, _) => await RunPrepareAsync(form, actionButtons);
         buildAndTestButton.Click += async (_, _) =>
             await RunBuildAndTestAsync(form, actionButtons, buildProgressBar);
-        launchCsdkButton.Click += (_, _) => LaunchCsdk(form);
+        launchCsdkButton.Click += async (_, _) =>
+        {
+            if ((Control.ModifierKeys & Keys.Shift) != Keys.Shift)
+            {
+                LaunchCsdk(form);
+                return;
+            }
+
+            if (await OnlinePreparationFeature.ToggleFromLaunchButtonAsync())
+            {
+                LaunchCsdk(form);
+            }
+        };
 
         topBar.Controls.Add(prepareButton);
         topBar.Controls.Add(buildAndTestButton);
@@ -72,6 +84,7 @@ internal static class BuildFeature
 
     private static async Task RunPrepareAsync(MainForm form, IReadOnlyList<Button> actionButtons)
     {
+        var regenerateCustomMaterials = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
         var manifest = ProjectStore.TryLoadLastProject();
         if (manifest is null || !Directory.Exists(manifest.ProjectFolder))
         {
@@ -86,6 +99,22 @@ internal static class BuildFeature
             return;
         }
 
+        if (regenerateCustomMaterials)
+        {
+            var answer = MessageBox.Show(
+                form,
+                UiText.T(
+                    "SHIFT+PREPARE will back up and regenerate every custom VMAT currently referenced by this project. Manual Material Editor tuning in those VMAT files will be replaced by the current Deadlimit templates and project textures.\n\nContinue?",
+                    "SHIFT+ПОДГОТОВИТЬ создаст резервную копию и пересоздаст все custom-VMAT, на которые сейчас ссылается проект. Ручные настройки этих VMAT из Material Editor будут заменены текущими шаблонами Deadlimit и текстурами проекта.\n\nПродолжить?"),
+                UiText.T("Clean material preparation", "Чистая подготовка материалов"),
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (answer != DialogResult.Yes)
+            {
+                return;
+            }
+        }
+
         SetButtonsEnabled(actionButtons, false);
         var originalTitle = form.Text;
 
@@ -97,7 +126,10 @@ internal static class BuildFeature
             });
 
             var service = new PrepareAuthoringService(new DeadlimitPaths());
-            var result = await service.PrepareAsync(manifest, progress);
+            var result = await service.PrepareAsync(
+                manifest,
+                progress,
+                regenerateCustomMaterials: regenerateCustomMaterials);
 
             var gameState = result.GameOutputCleaned
                 ? UiText.T("Existing compiled output for this addon was removed.", "Старый compiled output этого аддона удалён.")

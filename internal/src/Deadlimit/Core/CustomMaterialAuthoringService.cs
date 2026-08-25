@@ -76,7 +76,8 @@ public sealed class CustomMaterialAuthoringService
         IReadOnlyCollection<string> resolvedMaterialSources,
         string? templateMaterialResource,
         StringBuilder log,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool regenerateExistingMaterials = false)
     {
         var resolved = resolvedMaterialSources
             .Select(NormalizeResourcePath)
@@ -174,6 +175,12 @@ public sealed class CustomMaterialAuthoringService
                 standardBindings["TextureColor"] = null;
             }
 
+            if (regenerateExistingMaterials && File.Exists(targetPath))
+            {
+                File.Delete(targetPath);
+                log.AppendLine($"Clean material prepare removed existing VMAT before template regeneration: {targetResource}");
+            }
+
             if (File.Exists(targetPath))
             {
                 var existing = File.ReadAllText(targetPath);
@@ -228,7 +235,7 @@ public sealed class CustomMaterialAuthoringService
                 else
                 {
                     preserved++;
-                    log.AppendLine($"Custom VMAT preserved as artist-owned/unmanaged: {customReference} -> {targetResource}");
+                    log.AppendLine($"Existing custom VMAT preserved for registry-backed texture synchronization: {customReference} -> {targetResource}");
                 }
             }
             else if (vertexColorMode)
@@ -304,7 +311,7 @@ public sealed class CustomMaterialAuthoringService
         log.AppendLine($"Existing Deadlimit-managed VMAT files updated in current PREPARE: {managedUpdates}");
         log.AppendLine("Custom VMAT ownership policy: files carrying a DEADLIMIT_GENERATED_CUSTOM_VMAT marker remain texture-managed by Deadlimit; PREPARE may update only their Texture* source assignments and required texture-enable combo state. Non-texture Material Editor edits are preserved.");
         log.AppendLine("Custom VMAT ownership policy: files carrying a DEADLIMIT_VERTEXCOLOR_VMAT marker are managed only for vertex-color behavior; project texture auto-binding intentionally skips them.");
-        log.AppendLine("Custom VMAT ownership policy: an existing addon-owned VMAT without a Deadlimit generated marker is artist-owned/unmanaged and is never rewritten by PREPARE.");
+        log.AppendLine("Custom VMAT ownership policy: generated markers and the project .deadlimit ownership registry identify texture-managed VMAT files even after Material Editor replaces the first-line marker.");
         log.AppendLine("Custom VMAT scaffold policy: inherit the current hero character material so shader, outline/NPR colors, strengths, thicknesses and other non-texture tuning survive, but never inherit unresolved hero texture-source paths.");
         log.AppendLine("Custom texture policy: the project-root PNG set is authoritative for Deadlimit-managed texture slots on every PREPARE. Adding a matching PNG binds it; removing that PNG reverts the managed slot to its safe default/fallback. Derived PNG copies absent from the project root are removed from the addon texture-source folder.");
 

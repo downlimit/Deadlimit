@@ -134,17 +134,7 @@ internal static class ProjectHeaderFeature
         var prepareOverlay = new HeaderOverlayButton(
             prepareButton,
             prepareButton.Text,
-            prepareButton.Font,
-            clickInterceptor: () =>
-            {
-                if ((Control.ModifierKeys & Keys.Shift) != Keys.Shift)
-                {
-                    return false;
-                }
-
-                OnlinePreparationFeature.ToggleFromVisiblePrepareButton();
-                return true;
-            })
+            prepareButton.Font)
         {
             Size = prepareButton.Size,
         };
@@ -181,8 +171,8 @@ internal static class ProjectHeaderFeature
         toolTip.SetToolTip(
             prepareOverlay,
             UiText.T(
-                "Prepare the selected project's authoring content for Reduced CSDK12.\n\nNormal click runs full PREPARE FOR CSDK. Hold SHIFT while clicking to enable or disable ONLINE PREPARATION, which live-syncs changed existing DMX and texture files into CSDK content.",
-                "Подготовить authoring-контент выбранного проекта для Reduced CSDK12.\n\nОбычный клик запускает полный PREPARE FOR CSDK. Удерживайте SHIFT при клике, чтобы включить или выключить ONLINE PREPARATION: изменённые существующие DMX и текстуры будут синхронизироваться в CSDK content автоматически."));
+                "Prepare the selected project's authoring content for Reduced CSDK12.\n\nA normal click preserves manual VMAT tuning and synchronizes project textures. Hold SHIFT to back up and regenerate the project's Deadlimit custom materials from current templates.",
+                "Подготовить authoring-контент выбранного проекта для Reduced CSDK12.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует текстуры проекта. Удерживайте SHIFT, чтобы создать резервную копию и пересоздать custom-материалы Deadlimit из текущих шаблонов."));
         toolTip.SetToolTip(
             buildOverlay,
             UiText.T(
