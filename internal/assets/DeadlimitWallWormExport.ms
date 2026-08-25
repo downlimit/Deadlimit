@@ -1,13 +1,14 @@
 /*
     Deadlimit Wall Worm DMX22 export helper.
 
-    Project root is injected by Deadlimit at runtime. The helper never mutates the
-    artist node: it exports from a temporary copy, bridges Max map channel 0 to a
-    free positive channel with ChannelMod, and passes that channel to
-    WallWormS2DMXExport color:<channel>.
+    Project root and safe node-to-DMX mappings are injected by Deadlimit at runtime.
+    The helper never mutates the artist node: it exports from a temporary copy,
+    bridges Max map channel 0 to a free positive channel with ChannelMod, and passes
+    that channel to WallWormS2DMXExport color:<channel>.
 */
 
 local deadlimitProjectRoot = @"__DEADLIMIT_PROJECT_ROOT__"
+local deadlimitOutputMap = __DEADLIMIT_OUTPUT_MAP__
 
 global deadlimitExportSelected
 
@@ -19,6 +20,20 @@ fn deadlimitSanitizeFileName value =
         result = substituteString result token "_"
     )
     result
+)
+
+fn deadlimitResolveOutputName sourceNode =
+(
+    local nodeKey = toLower (sourceNode.name as string)
+    for entry in deadlimitOutputMap do
+    (
+        if (toLower (entry[1] as string)) == nodeKey do return (entry[2] as string)
+    )
+
+    if deadlimitOutputMap.count == 0 then
+        return ((deadlimitSanitizeFileName sourceNode.name) + ".dmx")
+
+    throw ("Deadlimit export: cannot safely map Max node '" + sourceNode.name + "' to a project DMX filename. Rename the node to the retail RenderMeshFile name or DMX basename, then retry.")
 )
 
 fn deadlimitMapChannelSupported node channel =
@@ -51,7 +66,7 @@ fn deadlimitValidateColorStream outputPath =
 
 fn deadlimitExportNode sourceNode =
 (
-    local outputName = (deadlimitSanitizeFileName sourceNode.name) + ".dmx"
+    local outputName = deadlimitResolveOutputName sourceNode
     local outputPath = pathConfig.appendPath deadlimitProjectRoot outputName
     local tempSuffix = (dotNetClass "System.Guid").NewGuid().ToString "N"
     local tempPath = pathConfig.appendPath deadlimitProjectRoot ("." + outputName + ".deadlimit-" + tempSuffix + ".dmx")
@@ -134,7 +149,7 @@ fn deadlimitExportSelected =
         if (superClassOf node) != GeometryClass then
             throw ("Deadlimit export supports geometry nodes only: " + node.name)
 
-        local outputName = toLower ((deadlimitSanitizeFileName node.name) + ".dmx")
+        local outputName = toLower (deadlimitResolveOutputName node)
         if (findItem plannedNames outputName) != 0 then
             throw ("Deadlimit export: selected nodes resolve to the same DMX filename: " + outputName)
         append plannedNames outputName
