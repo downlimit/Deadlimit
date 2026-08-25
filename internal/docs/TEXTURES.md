@@ -83,6 +83,22 @@ other Texture* masks/effect inputs -> materials/default/default_black_mask.tga
 
 Using a black fallback for specialty effect/mask textures is deliberate: it preserves the inherited numeric/color tuning but prevents missing rim/self-illum/highlight/etc. masks from enabling the whole custom surface and producing the "red/glowing Warframe" failure class.
 
+### Vertex-color materials
+
+A custom material whose name contains `vertexcolor` keeps `TextureColor1` neutral white so mesh Vertex Color remains the base-color source. Matching project-root normal, roughness, AO and metalness textures are still bound by the same filename rules.
+
+Without matching maps, PREPARE writes inline values accepted by the PBR Material Editor:
+
+```text
+TextureColor1            -> [1.000000 1.000000 1.000000 0.000000]
+TextureNormal1           -> [0.501961 0.501961 1.000000 0.000000]
+TextureRoughness1        -> [0.964706 0.964706 0.964706 0.000000]
+TextureAmbientOcclusion1 -> [1.000000 1.000000 1.000000 0.000000]
+TextureMetalness1        -> [0.000000 0.000000 0.000000 0.000000]
+```
+
+PREPARE also removes the decompiled retail `Compiled Textures` cache and stale retail PNG/TGA/VTEX source references. A final managed-VMAT safety pass rejects any missing texture source that survives reconciliation.
+
 ### V4 source-of-truth and repeat-PREPARE contract
 
 Generated V4 scaffolds contain:

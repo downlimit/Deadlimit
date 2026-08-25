@@ -27,6 +27,10 @@ public sealed class CustomMaterialAuthoringService
     private const string DefaultRoughness = "materials/default/default_rough.tga";
     private const string DefaultAo = "materials/default/default_ao.tga";
     private const string DefaultBlackMask = "materials/default/default_black_mask.tga";
+    private const string NeutralWhite = "[1.000000 1.000000 1.000000 0.000000]";
+    private const string NeutralNormal = "[0.501961 0.501961 1.000000 0.000000]";
+    private const string NeutralRoughness = "[0.964706 0.964706 0.964706 0.000000]";
+    private const string NeutralBlack = "[0.000000 0.000000 0.000000 0.000000]";
 
     private static readonly TextureSlotDefinition[] TextureSlots =
     [
@@ -38,7 +42,7 @@ public sealed class CustomMaterialAuthoringService
     ];
 
     private static readonly Regex TextureAssignmentRegex = new(
-        "^(?<indent>[ \\t]*)(?<key>Texture[A-Za-z0-9_]+)(?<separator>[ \\t]*(?:=[ \\t]*)?(?:resource[ \\t]*:[ \\t]*)?)\\\"(?<value>[^\\\"]+)\\\"(?<tail>[^\\r\\n]*)$",
+        "^(?<prefix>[ \\t]*(?:\\\"(?<quotedKey>Texture[A-Za-z0-9_]+)\\\"|(?<bareKey>Texture[A-Za-z0-9_]+))[ \\t]*(?:=[ \\t]*)?(?:resource[ \\t]*:[ \\t]*)?\\\")(?<value>[^\\\"\\r\\n]+)(?<suffix>\\\"[^\\r\\n]*)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
 
     private static readonly Regex GeneratedMarkerRegex = new(
@@ -54,8 +58,12 @@ public sealed class CustomMaterialAuthoringService
         RegexOptions.Compiled | RegexOptions.Multiline);
 
     private static readonly Regex StringParameterRegex = new(
-        "^(?<indent>\\s*)(?<key>[A-Za-z0-9_]+)\\s+\\\"(?<value>[^\\\"]*)\\\"(?<tail>\\s*)$",
+        "^(?<prefix>[ \\t]*(?:\\\"(?<quotedKey>[A-Za-z0-9_]+)\\\"|(?<bareKey>[A-Za-z0-9_]+))[ \\t]*(?:=[ \\t]*)?\\\")(?<value>[^\\\"\\r\\n]*)(?<suffix>\\\"[^\\r\\n]*)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
+
+    private static readonly Regex CompiledTexturesBlockRegex = new(
+        "(?ms)^[ \\t]*\\\"Compiled Textures\\\"[ \\t]*\\r?\\n[ \\t]*\\{.*?^[ \\t]*\\}[ \\t]*\\r?\\n?",
+        RegexOptions.Compiled);
 
     private readonly DeadlimitPaths _paths;
 
@@ -159,13 +167,16 @@ public sealed class CustomMaterialAuthoringService
             Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
 
             var vertexColorMode = IsVertexColorMaterialReference(customReference);
-            IReadOnlyDictionary<string, string?> standardBindings = vertexColorMode
-                ? new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
-                : ResolveTextureBindings(
-                    customReference,
-                    customReferences.Length,
-                    textureCandidates,
-                    log);
+            var standardBindings = new Dictionary<string, string?>(ResolveTextureBindings(
+                customReference,
+                customReferences.Length,
+                textureCandidates,
+                log), StringComparer.OrdinalIgnoreCase);
+            if (vertexColorMode)
+            {
+                // Base color remains vertex-driven. Other matching project textures stay usable.
+                standardBindings["TextureColor"] = null;
+            }
 
             if (File.Exists(targetPath))
             {
@@ -176,7 +187,9 @@ public sealed class CustomMaterialAuthoringService
                         existing,
                         customReference,
                         customReferences.Length,
+                        rootPngFiles,
                         materialResourceFolder,
+                        standardBindings,
                         log,
                         out var boundCount,
                         out var sanitizedCount);
@@ -236,7 +249,9 @@ public sealed class CustomMaterialAuthoringService
                     vertexColorTemplateText,
                     customReference,
                     customReferences.Length,
+                    rootPngFiles,
                     materialResourceFolder,
+                    standardBindings,
                     log,
                     out var boundCount,
                     out var sanitizedCount);
@@ -437,6 +452,7 @@ public sealed class CustomMaterialAuthoringService
             rootPngFiles,
             materialResourceFolder,
             standardBindings,
+            useVertexColorFallbacks: false,
             log,
             out boundCount,
             out sanitizedCount);
@@ -453,25 +469,29 @@ public sealed class CustomMaterialAuthoringService
         string retailTemplateText,
         string customReference,
         int customMaterialCount,
+        IReadOnlyList<string> rootPngFiles,
         string materialResourceFolder,
+        IReadOnlyDictionary<string, string?> standardBindings,
         StringBuilder log,
         out int boundCount,
         out int sanitizedCount)
     {
-        var noBindings = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-        var body = ReconcileTextureInputs(
-            retailTemplateText,
+        var body = RemoveCompiledTexturesBlock(retailTemplateText);
+        body = RemoveLegacyUnnumberedVertexColorAssignments(body);
+        body = ReconcileTextureInputs(
+            body,
             customReference,
             customMaterialCount,
-            Array.Empty<string>(),
+            rootPngFiles,
             materialResourceFolder,
-            noBindings,
+            standardBindings,
+            useVertexColorFallbacks: true,
             log,
             out boundCount,
             out sanitizedCount);
 
-        body = EnsureStandardTextureAssignments(body, noBindings);
-        body = ReconcileMetalnessTextureCombo(body, hasMetalnessTexture: false);
+        body = EnsureVertexColorTextureAssignments(body, standardBindings);
+        body = ReconcileMetalnessTextureCombo(body, HasBinding(standardBindings, "TextureMetalness"));
         body = UpsertStringParameter(body, "F_VERTEX_COLOR", "1");
 
         return VertexColorGeneratedMarker + Environment.NewLine +
@@ -502,6 +522,7 @@ public sealed class CustomMaterialAuthoringService
             rootPngFiles,
             materialResourceFolder,
             standardBindings,
+            useVertexColorFallbacks: false,
             log,
             out boundCount,
             out sanitizedCount);
@@ -518,7 +539,9 @@ public sealed class CustomMaterialAuthoringService
         string existingText,
         string customReference,
         int customMaterialCount,
+        IReadOnlyList<string> rootPngFiles,
         string materialResourceFolder,
+        IReadOnlyDictionary<string, string?> standardBindings,
         StringBuilder log,
         out int boundCount,
         out int sanitizedCount)
@@ -531,20 +554,22 @@ public sealed class CustomMaterialAuthoringService
             .Replace(ManagedComment + "\r\n", string.Empty, StringComparison.Ordinal)
             .Replace(ManagedComment + "\n", string.Empty, StringComparison.Ordinal);
 
-        var noBindings = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        body = RemoveCompiledTexturesBlock(body);
+        body = RemoveLegacyUnnumberedVertexColorAssignments(body);
         body = ReconcileTextureInputs(
             body,
             customReference,
             customMaterialCount,
-            Array.Empty<string>(),
+            rootPngFiles,
             materialResourceFolder,
-            noBindings,
+            standardBindings,
+            useVertexColorFallbacks: true,
             log,
             out boundCount,
             out sanitizedCount);
 
-        body = EnsureStandardTextureAssignments(body, noBindings);
-        body = ReconcileMetalnessTextureCombo(body, hasMetalnessTexture: false);
+        body = EnsureVertexColorTextureAssignments(body, standardBindings);
+        body = ReconcileMetalnessTextureCombo(body, HasBinding(standardBindings, "TextureMetalness"));
         body = UpsertStringParameter(body, "F_VERTEX_COLOR", "1");
 
         return VertexColorGeneratedMarker + Environment.NewLine +
@@ -559,6 +584,7 @@ public sealed class CustomMaterialAuthoringService
         IReadOnlyList<string> rootPngFiles,
         string materialResourceFolder,
         IReadOnlyDictionary<string, string?> standardBindings,
+        bool useVertexColorFallbacks,
         StringBuilder log,
         out int boundCount,
         out int sanitizedCount)
@@ -569,7 +595,7 @@ public sealed class CustomMaterialAuthoringService
 
         var patched = TextureAssignmentRegex.Replace(sourceText, match =>
         {
-            var key = match.Groups["key"].Value;
+            var key = GetTextureKey(match);
             var originalValue = match.Groups["value"].Value;
             var replacement = ResolveTextureReplacement(
                 key,
@@ -579,6 +605,7 @@ public sealed class CustomMaterialAuthoringService
                 rootPngFiles,
                 materialResourceFolder,
                 standardBindings,
+                useVertexColorFallbacks,
                 log);
 
             if (replacement.AutoBound)
@@ -590,7 +617,7 @@ public sealed class CustomMaterialAuthoringService
                 localSanitizedCount++;
             }
 
-            return $"{match.Groups["indent"].Value}{key}{match.Groups["separator"].Value}\"{replacement.Value}\"{match.Groups["tail"].Value}";
+            return match.Groups["prefix"].Value + replacement.Value + match.Groups["suffix"].Value;
         });
 
         boundCount = localBoundCount;
@@ -606,7 +633,7 @@ public sealed class CustomMaterialAuthoringService
         foreach (var slot in TextureSlots)
         {
             var exists = TextureAssignmentRegex.Matches(text)
-                .Any(match => string.Equals(match.Groups["key"].Value, slot.Key, StringComparison.OrdinalIgnoreCase));
+                .Any(match => string.Equals(GetTextureKey(match), slot.Key, StringComparison.OrdinalIgnoreCase));
             if (exists)
             {
                 continue;
@@ -634,6 +661,69 @@ public sealed class CustomMaterialAuthoringService
         return text.Insert(closingBrace, insertion);
     }
 
+    private static string RemoveCompiledTexturesBlock(string text) =>
+        CompiledTexturesBlockRegex.Replace(text, string.Empty, 1);
+
+    private static string RemoveLegacyUnnumberedVertexColorAssignments(string text)
+    {
+        return TextureAssignmentRegex.Replace(text, match =>
+            TextureSlots.Any(slot => string.Equals(
+                slot.Key,
+                GetTextureKey(match),
+                StringComparison.OrdinalIgnoreCase))
+                ? string.Empty
+                : match.Value);
+    }
+
+    private static string EnsureVertexColorTextureAssignments(
+        string text,
+        IReadOnlyDictionary<string, string?> standardBindings)
+    {
+        var required = new[]
+        {
+            (Key: "TextureColor1", BindingKey: "TextureColor"),
+            (Key: "TextureNormal1", BindingKey: "TextureNormal"),
+            (Key: "TextureRoughness1", BindingKey: "TextureRoughness"),
+            (Key: "TextureAmbientOcclusion1", BindingKey: "TextureAmbientOcclusion"),
+            (Key: "TextureMetalness1", BindingKey: "TextureMetalness"),
+        };
+
+        var missing = new List<string>();
+        foreach (var slot in required)
+        {
+            var exists = TextureAssignmentRegex.Matches(text)
+                .Any(match => string.Equals(
+                    GetTextureKey(match),
+                    slot.Key,
+                    StringComparison.OrdinalIgnoreCase));
+            if (exists)
+            {
+                continue;
+            }
+
+            var value = !string.Equals(slot.BindingKey, "TextureColor", StringComparison.OrdinalIgnoreCase)
+                        && standardBindings.TryGetValue(slot.BindingKey, out var bound)
+                        && !string.IsNullOrWhiteSpace(bound)
+                ? bound
+                : GetVertexColorFallback(slot.Key);
+            missing.Add($"    \"{slot.Key}\"\t\"{value}\"");
+        }
+
+        if (missing.Count == 0)
+        {
+            return text;
+        }
+
+        var closingBrace = text.LastIndexOf('}');
+        if (closingBrace < 0)
+        {
+            throw new InvalidDataException("Vertex-color VMAT did not contain a closing Layer0 brace.");
+        }
+
+        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        return text.Insert(closingBrace, string.Join(newline, missing) + newline);
+    }
+
     private static string ReconcileMetalnessTextureCombo(string text, bool hasMetalnessTexture)
     {
         var desired = hasMetalnessTexture ? "1" : "0";
@@ -649,31 +739,40 @@ public sealed class CustomMaterialAuthoringService
 
     private static bool HasStringParameter(string text, string key) =>
         StringParameterRegex.Matches(text)
-            .Any(match => string.Equals(match.Groups["key"].Value, key, StringComparison.OrdinalIgnoreCase));
+            .Any(match => string.Equals(GetStringParameterKey(match), key, StringComparison.OrdinalIgnoreCase));
 
     private static string UpsertStringParameter(string text, string key, string value)
     {
-        var matches = StringParameterRegex.Matches(text)
-            .Cast<Match>()
-            .Where(match => string.Equals(match.Groups["key"].Value, key, StringComparison.OrdinalIgnoreCase))
-            .ToArray();
-
-        if (matches.Length > 0)
+        var found = false;
+        var patched = StringParameterRegex.Replace(text, match =>
         {
-            var first = matches[0];
-            return text[..first.Index] +
-                   $"{first.Groups["indent"].Value}{key} \"{value}\"{first.Groups["tail"].Value}" +
-                   text[(first.Index + first.Length)..];
+            if (!string.Equals(GetStringParameterKey(match), key, StringComparison.OrdinalIgnoreCase))
+            {
+                return match.Value;
+            }
+
+            if (found)
+            {
+                return string.Empty;
+            }
+
+            found = true;
+            return match.Groups["prefix"].Value + value + match.Groups["suffix"].Value;
+        });
+
+        if (found)
+        {
+            return patched;
         }
 
-        var closingBrace = text.LastIndexOf('}');
+        var closingBrace = patched.LastIndexOf('}');
         if (closingBrace < 0)
         {
             throw new InvalidDataException("Generated/inherited VMAT did not contain a closing Layer0 brace.");
         }
 
-        var newline = text.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
-        return text.Insert(closingBrace, $"    {key} \"{value}\"{newline}");
+        var newline = patched.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        return patched.Insert(closingBrace, $"    \"{key}\"\t\"{value}\"{newline}");
     }
 
     private static bool HasBinding(IReadOnlyDictionary<string, string?> bindings, string key) =>
@@ -697,25 +796,34 @@ public sealed class CustomMaterialAuthoringService
         IReadOnlyList<string> rootPngFiles,
         string materialResourceFolder,
         IReadOnlyDictionary<string, string?> standardBindings,
+        bool useVertexColorFallbacks,
         StringBuilder log)
     {
+        var semantic = GetTextureSemantic(key);
+        var standardBinding = FindStandardBinding(standardBindings, key);
+        if (!(useVertexColorFallbacks && string.Equals(semantic, "color", StringComparison.Ordinal))
+            && !string.IsNullOrWhiteSpace(standardBinding))
+        {
+            return new TextureReplacement(standardBinding, AutoBound: true, Sanitized: false);
+        }
+
         var knownSlot = TextureSlots.FirstOrDefault(slot => string.Equals(slot.Key, key, StringComparison.OrdinalIgnoreCase));
         if (knownSlot is not null)
         {
-            if (standardBindings.TryGetValue(key, out var standard) && !string.IsNullOrWhiteSpace(standard))
-            {
-                return new TextureReplacement(standard, AutoBound: true, Sanitized: false);
-            }
-
-            return new TextureReplacement(knownSlot.DefaultResource, AutoBound: false, Sanitized: true);
+            var slotFallback = useVertexColorFallbacks
+                ? GetVertexColorFallback(key)
+                : knownSlot.DefaultResource;
+            return new TextureReplacement(slotFallback, AutoBound: false, Sanitized: true);
         }
 
-        var specialty = ResolveSpecialtyTextureBinding(
-            key,
-            materialToken,
-            customMaterialCount,
-            rootPngFiles,
-            materialResourceFolder);
+        var specialty = useVertexColorFallbacks && string.Equals(semantic, "color", StringComparison.Ordinal)
+            ? null
+            : ResolveSpecialtyTextureBinding(
+                key,
+                materialToken,
+                customMaterialCount,
+                rootPngFiles,
+                materialResourceFolder);
 
         if (specialty is not null)
         {
@@ -728,7 +836,9 @@ public sealed class CustomMaterialAuthoringService
             return new TextureReplacement(originalValue, AutoBound: false, Sanitized: false);
         }
 
-        var fallback = GetTextureFallback(key);
+        var fallback = useVertexColorFallbacks
+            ? GetVertexColorFallback(key)
+            : GetTextureFallback(key);
         log.AppendLine($"Custom inherited texture source neutralized {key}: {originalValue} -> {fallback}");
         return new TextureReplacement(fallback, AutoBound: false, Sanitized: true);
     }
@@ -752,9 +862,7 @@ public sealed class CustomMaterialAuthoringService
         IReadOnlyList<string> rootPngFiles,
         string materialResourceFolder)
     {
-        var semantic = NormalizeMatchToken(key.StartsWith("Texture", StringComparison.OrdinalIgnoreCase)
-            ? key["Texture".Length..]
-            : key);
+        var semantic = GetTextureSlotToken(key);
 
         if (semantic.Length == 0)
         {
@@ -809,9 +917,7 @@ public sealed class CustomMaterialAuthoringService
             return known.DefaultResource;
         }
 
-        var semantic = NormalizeMatchToken(key.StartsWith("Texture", StringComparison.OrdinalIgnoreCase)
-            ? key["Texture".Length..]
-            : key);
+        var semantic = GetTextureSemantic(key);
 
         if (semantic.Contains("normal", StringComparison.Ordinal))
         {
@@ -840,6 +946,99 @@ public sealed class CustomMaterialAuthoringService
         }
 
         return DefaultBlackMask;
+    }
+
+    private static string GetVertexColorFallback(string key)
+    {
+        return GetTextureSemantic(key) switch
+        {
+            "color" => NeutralWhite,
+            "normal" => NeutralNormal,
+            "roughness" => NeutralRoughness,
+            "ao" => NeutralWhite,
+            "metalness" => NeutralBlack,
+            _ => NeutralBlack,
+        };
+    }
+
+    private static string? FindStandardBinding(
+        IReadOnlyDictionary<string, string?> standardBindings,
+        string textureKey)
+    {
+        var canonicalKey = TrimTrailingDigits(textureKey);
+        foreach (var binding in standardBindings)
+        {
+            if (string.Equals(binding.Key, canonicalKey, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(binding.Value))
+            {
+                return binding.Value;
+            }
+        }
+
+        return null;
+    }
+
+    private static string GetTextureSemantic(string key)
+    {
+        var semantic = GetTextureSlotToken(key);
+
+        if (semantic.Contains("normal", StringComparison.Ordinal))
+        {
+            return "normal";
+        }
+        if (semantic.Contains("rough", StringComparison.Ordinal))
+        {
+            return "roughness";
+        }
+        if (semantic.Contains("ambientocclusion", StringComparison.Ordinal)
+            || semantic.Contains("occlusion", StringComparison.Ordinal)
+            || string.Equals(semantic, "ao", StringComparison.Ordinal)
+            || semantic.StartsWith("ao", StringComparison.Ordinal))
+        {
+            return "ao";
+        }
+        if (semantic.Contains("color", StringComparison.Ordinal)
+            || semantic.Contains("albedo", StringComparison.Ordinal)
+            || semantic.Contains("diffuse", StringComparison.Ordinal))
+        {
+            return "color";
+        }
+        if (semantic.Contains("metal", StringComparison.Ordinal))
+        {
+            return "metalness";
+        }
+
+        return semantic;
+    }
+
+    private static string GetTextureSlotToken(string key)
+    {
+        var raw = key.StartsWith("Texture", StringComparison.OrdinalIgnoreCase)
+            ? key["Texture".Length..]
+            : key;
+        return NormalizeMatchToken(TrimTrailingDigits(raw));
+    }
+
+    private static string TrimTrailingDigits(string value)
+    {
+        var end = value.Length;
+        while (end > 0 && char.IsDigit(value[end - 1]))
+        {
+            end--;
+        }
+        return value[..end];
+    }
+
+    private static string GetTextureKey(Match match)
+    {
+        var quoted = match.Groups["quotedKey"];
+        return quoted.Success ? quoted.Value : match.Groups["bareKey"].Value;
+    }
+
+    private static string GetStringParameterKey(Match match)
+    {
+        var quoted = match.Groups["quotedKey"];
+        return quoted.Success ? quoted.Value : match.Groups["bareKey"].Value;
     }
 
     private static IReadOnlyDictionary<string, string?> ResolveTextureBindings(

@@ -28,7 +28,12 @@ public sealed record PrepareAuthoringResult(
 public sealed class PrepareAuthoringService
 {
     private const string GenericEyeFallbackMaterial = "materials/dev/vertcolor_pbr_basic.vmat";
-    private const string ManagedVmatMarkerPrefix = "// DEADLIMIT_GENERATED_CUSTOM_VMAT_V";
+    private static readonly string[] ManagedVmatMarkerPrefixes =
+    [
+        "// DEADLIMIT_GENERATED_CUSTOM_VMAT_V",
+        "// DEADLIMIT_MANAGED_CUSTOM_VMAT_V",
+        "// DEADLIMIT_VERTEXCOLOR_VMAT_V",
+    ];
 
     private static readonly Regex InvalidMaterialRegex = new(
         @"materials/models/[A-Za-z0-9_./\\-]+\.vmat",
@@ -207,6 +212,13 @@ public sealed class PrepareAuthoringService
                 log,
                 cancellationToken);
 
+            var finalTextureRepairs = FinalizeManagedCustomMaterials(
+                customMaterials,
+                addonContentRoot,
+                log,
+                cancellationToken);
+            log.AppendLine($"Managed custom VMAT final missing-source repairs: {finalTextureRepairs}");
+
             var exactCustomMaterialRemaps = ResolveExactCustomMaterialRemaps(
                 dmxMaterialReferences,
                 customMaterials.Remaps,
@@ -314,7 +326,8 @@ public sealed class PrepareAuthoringService
             }
 
             var text = File.ReadAllText(vmatPath);
-            if (!text.StartsWith(ManagedVmatMarkerPrefix, StringComparison.Ordinal))
+            if (!ManagedVmatMarkerPrefixes.Any(prefix =>
+                    text.StartsWith(prefix, StringComparison.Ordinal)))
             {
                 continue;
             }
