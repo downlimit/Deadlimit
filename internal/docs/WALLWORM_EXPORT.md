@@ -22,8 +22,9 @@ The desktop UI exposes **MAX EXPORT / ЭКСПОРТ ИЗ MAX** for a saved proj
 The button:
 
 1. writes a project-specific helper to `.deadlimit/wallworm/DeadlimitWallWormExport.ms`;
-2. copies a `fileIn @"..."` command to the clipboard;
-3. leaves the project source and current Max scene untouched.
+2. injects the current project's safe Max-node → DMX-filename mapping;
+3. copies a `fileIn @"..."` command to the clipboard;
+4. leaves the project source and current Max scene untouched.
 
 In 3ds Max:
 
@@ -31,7 +32,7 @@ In 3ds Max:
 2. open MAXScript Listener;
 3. paste the copied command and press Enter.
 
-The helper exports one `<node name>.dmx` file per selected geometry node directly to the project root.
+The helper writes the resolved DMX22 files directly to the project root.
 
 ## Safety contract
 
@@ -52,19 +53,30 @@ clearSource = false
 ```
 
 - exports text DMX22 through `WallWormS2DMXExport` with `color:N`;
+- writes first to a temporary DMX;
 - verifies that a color-bearing export contains both `color$0` and `color$0Indices`;
-- deletes the temporary copy on success or failure;
-- deletes a partial output file when export validation fails.
+- replaces the previous project-root DMX only after validation succeeds;
+- deletes the temporary scene copy and temporary DMX on success or failure.
 
-The artist node and its modifier stack are never modified.
+The artist node and its modifier stack are never modified. A failed export also preserves the previous good project-root DMX.
 
 If channel 0 is absent, the helper exports with `color:0`, preserving the existing no-vertex-color behavior.
 
 ## Naming contract
 
-The output filename is derived from the selected Max node name.
+Deadlimit does not assume that a Max node name is identical to the retail DMX filename. Current retail ModelDoc data can legitimately contain entries such as a render-mesh `name` and a different `filename`.
 
-For projects containing more than one artist DMX, existing Deadlimit rules still apply: node/file names must correspond to the retail render-mesh source filenames so the prepared VMDL can map them unambiguously.
+When preparing the project-specific helper, Deadlimit builds aliases from:
+
+- the current prepared `SourceVmdl`, when available;
+- otherwise the extracted retail VMDL in `0source`;
+- existing project-root DMX basenames.
+
+For every `RenderMeshFile`, both its ModelDoc `name` and DMX basename map to the actual DMX filename. Conflicting aliases are removed rather than guessed.
+
+If mapping evidence exists and a selected Max node cannot be resolved uniquely, the export fails before any final DMX is written. The artist can then rename the node to the retail `RenderMeshFile` name or DMX basename and retry.
+
+Only when the project has no VMDL/root-DMX mapping evidence yet does the helper fall back to `<node name>.dmx`.
 
 ## Downstream proof
 
