@@ -3,13 +3,16 @@
 
     Run this script after exporting the regular DMX with Wall Worm. It reads the
     last Wall Worm export folder from 3dsMax.ini, finds the newest DMX there, and
-    exports selected geometry beside that DMX as <name>_vertexcolor.fbx.
+    exports selected geometry beside that DMX as <name>_vertexcolor.fbx,
+    asks Deadlimit to validate/write color$0 into the DMX, then deletes the FBX.
 */
 
 global deadlimitVertexColorFbxRollout
 global deadlimitVertexColorLastDmx
+global deadlimitVertexColorProcessorPath = @"__DEADLIMIT_PROCESSOR_PATH__"
 global deadlimitVertexColorFindLatestDmx
-global deadlimitVertexColorExportFbx
+global deadlimitVertexColorRunProcessor
+global deadlimitVertexColorExportAndApply
 
 fn deadlimitVertexColorIsPrimaryDmx path =
 (
@@ -67,7 +70,68 @@ fn deadlimitVertexColorRestoreFbxParams params =
     )
 )
 
-fn deadlimitVertexColorExportFbx =
+fn deadlimitVertexColorResolveProcessor =
+(
+    local fileClass = dotNetClass "System.IO.File"
+    if deadlimitVertexColorProcessorPath != undefined and
+       deadlimitVertexColorProcessorPath.count > 0 and
+       (findString deadlimitVertexColorProcessorPath "__DEADLIMIT_") == undefined and
+       fileClass.Exists deadlimitVertexColorProcessorPath then
+        return deadlimitVertexColorProcessorPath
+
+    local processClass = dotNetClass "System.Diagnostics.Process"
+    for process in (processClass.GetProcessesByName "Deadlimit") do
+    (
+        try
+        (
+            local candidate = process.MainModule.FileName
+            if fileClass.Exists candidate then
+            (
+                deadlimitVertexColorProcessorPath = candidate
+                return candidate
+            )
+        )
+        catch()
+    )
+
+    throw "Deadlimit processor was not found. Start Deadlimit once, then retry."
+)
+
+fn deadlimitVertexColorRunProcessor primaryDmx =
+(
+    local processorPath = deadlimitVertexColorResolveProcessor()
+    local startInfo = dotNetObject "System.Diagnostics.ProcessStartInfo"
+    startInfo.FileName = processorPath
+    startInfo.UseShellExecute = false
+    startInfo.CreateNoWindow = true
+    startInfo.RedirectStandardOutput = true
+    startInfo.RedirectStandardError = true
+    startInfo.Arguments = "--apply-vertex-color \"" + primaryDmx + "\""
+
+    local processClass = dotNetClass "System.Diagnostics.Process"
+    local process = processClass.Start startInfo
+    if process == undefined then throw "Deadlimit processor could not be started."
+
+    local standardOutput = process.StandardOutput.ReadToEnd()
+    local standardError = process.StandardError.ReadToEnd()
+    process.WaitForExit()
+    local exitCode = process.ExitCode
+    process.Dispose()
+
+    if exitCode != 0 then
+    (
+        local errorText = standardError
+        if errorText.count == 0 then errorText = standardOutput
+        if errorText.count == 0 then errorText = "Deadlimit rejected the Vertex Color transfer."
+        throw errorText
+    )
+
+    local resultText = standardOutput
+    if resultText.count == 0 then resultText = "Vertex Color written and verified."
+    resultText
+)
+
+fn deadlimitVertexColorExportAndApply =
 (
     local primaryDmx = deadlimitVertexColorFindLatestDmx()
 
@@ -119,7 +183,10 @@ fn deadlimitVertexColorExportFbx =
         deleteFile temporaryPath
         deadlimitVertexColorRestoreFbxParams savedParams
         select originalSelection
-        sidecarPath
+
+        local processorResult = deadlimitVertexColorRunProcessor primaryDmx
+        if doesFileExist sidecarPath then fileClass.Delete sidecarPath
+        #(primaryDmx, processorResult)
     )
     catch
     (
@@ -134,10 +201,10 @@ fn deadlimitVertexColorExportFbx =
 
 try (destroyDialog deadlimitVertexColorFbxRollout) catch()
 
-rollout deadlimitVertexColorFbxRollout "Vertex Color FBX" width:430
+rollout deadlimitVertexColorFbxRollout "Vertex Color to DMX" width:430
 (
     label targetLabel "" width:400 height:34 align:#left
-    button exportButton "EXPORT SELECTED VERTEX COLOR" width:400 height:36
+    button exportButton "WRITE SELECTED VERTEX COLOR TO DMX" width:400 height:36
     label statusLabel "Export the regular DMX with Wall Worm first." width:400 height:34 align:#left
 
     fn refreshTarget =
@@ -159,16 +226,16 @@ rollout deadlimitVertexColorFbxRollout "Vertex Color FBX" width:430
     (
         try
         (
-            local output = deadlimitVertexColorExportFbx()
-            statusLabel.text = "Created: " + filenameFromPath output
+            local result = deadlimitVertexColorExportAndApply()
+            statusLabel.text = "Updated: " + filenameFromPath result[1]
             refreshTarget()
-            format "Vertex Color FBX sidecar: %\n" output
+            format "Vertex Color DMX: %\n%\n" result[1] result[2]
         )
         catch
         (
             local errorText = getCurrentException()
             statusLabel.text = errorText
-            messageBox errorText title:"Vertex Color FBX"
+            messageBox errorText title:"Vertex Color to DMX"
         )
     )
 )

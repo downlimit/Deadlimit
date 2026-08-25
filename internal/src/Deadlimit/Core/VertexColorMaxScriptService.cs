@@ -6,6 +6,7 @@ namespace Deadlimit.Core;
 public static class VertexColorMaxScriptService
 {
     private const string ResourceName = "Deadlimit.VertexColorSidecar.ms";
+    private const string ProcessorPathToken = "__DEADLIMIT_PROCESSOR_PATH__";
     private const string ScriptFolderName = "wallworm";
     private const string ScriptFileName = "DeadlimitVertexColorFBX.ms";
 
@@ -21,9 +22,32 @@ public static class VertexColorMaxScriptService
         }
 
         var scriptFolder = Path.Combine(ProjectStore.GetMetadataFolder(projectFolder), ScriptFolderName);
+        var processorPath = Environment.ProcessPath
+            ?? throw new InvalidOperationException("Deadlimit executable path is unavailable.");
+        return WriteScript(scriptFolder, processorPath);
+    }
+
+    public static string WriteScript(string scriptFolder, string processorPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(scriptFolder);
+        ArgumentException.ThrowIfNullOrWhiteSpace(processorPath);
+
+        var template = ReadTemplate();
+        if (!template.Contains(ProcessorPathToken, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"Embedded Vertex Color helper is missing token '{ProcessorPathToken}'.");
+        }
+
+        var script = template.Replace(
+            ProcessorPathToken,
+            EscapeMaxScriptVerbatimString(Path.GetFullPath(processorPath)),
+            StringComparison.Ordinal);
+
+        scriptFolder = Path.GetFullPath(scriptFolder.Trim());
         Directory.CreateDirectory(scriptFolder);
         var scriptPath = Path.Combine(scriptFolder, ScriptFileName);
-        File.WriteAllText(scriptPath, ReadTemplate(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        File.WriteAllText(scriptPath, script, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         return scriptPath;
     }
 

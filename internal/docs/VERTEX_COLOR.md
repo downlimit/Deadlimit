@@ -2,23 +2,23 @@
 
 ## Purpose
 
-The artist DMX remains a normal Wall Worm export with all settings controlled by the Wall Worm window. A small universal MAXScript exports the currently selected geometry through the Autodesk FBX exporter so Deadlimit can recover map channel `0` colors during PREPARE.
+The artist DMX starts as a normal Wall Worm export with all settings controlled by the Wall Worm window. A small universal MAXScript exports the currently selected geometry through the Autodesk FBX exporter and immediately asks Deadlimit to write map channel `0` colors into that DMX.
 
 ```text
 <name>.dmx
-<name>_vertexcolor.fbx
+<name>_vertexcolor.fbx  (temporary)
 ```
 
 ## Artist workflow
 
 1. Export the normal DMX with Wall Worm.
 2. Keep the same geometry selected in 3ds Max.
-3. Run `DeadlimitVertexColorFBX.ms` and press **EXPORT SELECTED VERTEX COLOR**.
+3. Run `DeadlimitVertexColorFBX.ms` and press **WRITE SELECTED VERTEX COLOR TO DMX**.
 4. Run PREPARE or BUILD & TEST normally.
 
-The helper reads Wall Worm's last export folder from `3dsMax.ini`, finds the newest primary DMX there and writes the FBX beside it. It does not read a Deadlimit project, hard-code an asset path or change the normal Wall Worm DMX.
+The helper reads Wall Worm's last export folder from `3dsMax.ini` and finds the newest primary DMX there. It does not read a Deadlimit project or hard-code an asset path.
 
-The FBX export is ASCII, selection-only, animation/cameras/lights disabled and triangulation disabled. The helper restores the previous FBX settings and Max selection after success or failure.
+The FBX export is ASCII, selection-only, animation/cameras/lights disabled and triangulation disabled. Deadlimit patches a temporary DMX copy, reloads and validates its color streams, then atomically replaces the primary DMX. The helper deletes `_vertexcolor.fbx` only after that operation succeeds. On failure the primary DMX remains unchanged and the FBX remains available for diagnosis. The helper restores the previous FBX settings and Max selection after success or failure.
 
 ## Material priority
 
@@ -33,9 +33,9 @@ When at least one priority mesh exists:
 
 When no priority material exists, Deadlimit uses strict fallback mode: the entire unique mesh-name set and all mesh geometry must match, and at least one usable color layer must exist.
 
-## PREPARE validation and fallback
+## Validation and PREPARE
 
-For each primary DMX, Deadlimit looks for the sibling FBX and applies colors only to the copied CSDK DMX. The artist DMX remains unchanged.
+The one-button Max operation uses the same validation service as PREPARE. After success, `color$0` and `color$0Indices` already exist in the primary DMX, so PREPARE copies them normally. If an FBX remains after a failed or interrupted Max operation, PREPARE can still inspect it and records the reason when it rejects it.
 
 Validation requires:
 
@@ -50,4 +50,4 @@ Validation requires:
 
 FBX per-corner colors can split the DMX logical vertex domain. After validation, Deadlimit expands the prepared DMX position, normal, UV and skin streams onto that domain, preserving their values while adding `color$0` and `color$0Indices`.
 
-All checks complete before the prepared DMX is replaced. A missing, stale, malformed or rejected sidecar leaves the copied artist DMX unchanged, PREPARE continues, and the reason is written to its log and completion summary.
+All checks and a full DMX reload complete before the primary DMX is replaced. A missing, stale, malformed or rejected sidecar leaves it unchanged.

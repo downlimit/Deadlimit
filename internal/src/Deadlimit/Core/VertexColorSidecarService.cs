@@ -23,6 +23,63 @@ public static class VertexColorSidecarService
 {
     public const string FileSuffix = "_vertexcolor.fbx";
 
+    public static VertexColorSidecarResult TryApplyInPlace(string artistDmxPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(artistDmxPath);
+
+        var fullArtistPath = Path.GetFullPath(artistDmxPath);
+        var directory = Path.GetDirectoryName(fullArtistPath)
+            ?? throw new ArgumentException("Artist DMX path has no parent folder.", nameof(artistDmxPath));
+        var stagedPath = Path.Combine(
+            directory,
+            $".{Path.GetFileName(fullArtistPath)}.deadlimit-vertexcolor-{Guid.NewGuid():N}.tmp");
+        var sidecarPath = GetSidecarPath(fullArtistPath);
+
+        try
+        {
+            if (!File.Exists(fullArtistPath))
+            {
+                return Skipped(sidecarPath, "The artist DMX does not exist.");
+            }
+
+            File.Copy(fullArtistPath, stagedPath, overwrite: false);
+            var result = TryApply(fullArtistPath, stagedPath);
+            if (result.Status != VertexColorSidecarStatus.Applied)
+            {
+                return result;
+            }
+
+            if (!ValidateWrittenColorStreams(stagedPath, result.StreamCount, out var validationReason))
+            {
+                return Skipped(sidecarPath, $"Written DMX verification failed: {validationReason}");
+            }
+
+            File.Move(stagedPath, fullArtistPath, overwrite: true);
+            return result with
+            {
+                Message = $"{result.Message} Verified and wrote the artist DMX atomically.",
+            };
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return Skipped(sidecarPath, $"Could not update the artist DMX: {ex.Message}");
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(stagedPath))
+                {
+                    File.Delete(stagedPath);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The artist DMX has already remained untouched or been atomically replaced.
+            }
+        }
+    }
+
     public static bool IsSidecarPath(string path) =>
         Path.GetFileName(path).EndsWith(FileSuffix, StringComparison.OrdinalIgnoreCase);
 
@@ -185,6 +242,54 @@ public static class VertexColorSidecarService
                 // A failed cleanup must not turn a rejected sidecar into a failed PREPARE transaction.
             }
         }
+    }
+
+    private static bool ValidateWrittenColorStreams(
+        string dmxPath,
+        int expectedStreamCount,
+        out string validationReason)
+    {
+        using var document = Datamodel.Datamodel.Load(dmxPath, DeferredMode.Disabled);
+        var validStreamCount = 0;
+        foreach (var binding in FindMeshBindings(document))
+        {
+            var vertexData = binding.VertexData;
+            if (!vertexData.ContainsKey("color$0") && !vertexData.ContainsKey("color$0Indices"))
+            {
+                continue;
+            }
+
+            if (!vertexData.ContainsKey("color$0") || !vertexData.ContainsKey("color$0Indices"))
+            {
+                validationReason = $"Mesh '{binding.Name}' has an incomplete color$0 stream.";
+                return false;
+            }
+
+            var colors = GetRequiredArray<DmxColor>(vertexData, "color$0");
+            var colorIndices = GetRequiredArray<int>(vertexData, "color$0Indices");
+            var logicalVertexCount = GetLogicalVertexCount(vertexData);
+            var vertexFormat = GetRequiredArray<string>(vertexData, "vertexFormat");
+            if (colors.Count == 0
+                || colorIndices.Count != logicalVertexCount
+                || colorIndices.Any(index => index < 0 || index >= colors.Count)
+                || !vertexFormat.Contains("color$0", StringComparer.Ordinal))
+            {
+                validationReason = $"Mesh '{binding.Name}' has an invalid color$0 stream after reload.";
+                return false;
+            }
+
+            validStreamCount++;
+        }
+
+        if (validStreamCount < expectedStreamCount)
+        {
+            validationReason =
+                $"Expected at least {expectedStreamCount} color stream(s), reloaded {validStreamCount}.";
+            return false;
+        }
+
+        validationReason = string.Empty;
+        return true;
     }
 
     private static IReadOnlyList<MeshBinding> FindMeshBindings(Datamodel.Datamodel document)

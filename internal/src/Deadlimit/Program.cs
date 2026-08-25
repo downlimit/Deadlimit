@@ -7,13 +7,27 @@ namespace Deadlimit;
 internal static class Program
 {
     private const string StartupSmokeArgument = "--startup-smoke";
+    private const string ApplyVertexColorArgument = "--apply-vertex-color";
+    private const string WriteVertexColorScriptArgument = "--write-vertex-color-script";
 
     private static readonly Icon AppIcon = LoadAppIcon();
     private static readonly Size MainWindowSize = new(972, 672);
 
     [STAThread]
-    private static void Main(string[] args)
+    private static int Main(string[] args)
     {
+        if (args.Length > 0
+            && string.Equals(args[0], ApplyVertexColorArgument, StringComparison.OrdinalIgnoreCase))
+        {
+            return ApplyVertexColor(args);
+        }
+
+        if (args.Length > 0
+            && string.Equals(args[0], WriteVertexColorScriptArgument, StringComparison.OrdinalIgnoreCase))
+        {
+            return WriteVertexColorScript(args);
+        }
+
         var startupSmoke = args.Any(argument =>
             string.Equals(argument, StartupSmokeArgument, StringComparison.OrdinalIgnoreCase));
 
@@ -51,7 +65,7 @@ internal static class Program
         if (!startupSmoke)
         {
             Application.Run(form);
-            return;
+            return 0;
         }
 
         using var smokeTimer = new System.Windows.Forms.Timer
@@ -65,6 +79,57 @@ internal static class Program
         };
         form.Shown += (_, _) => smokeTimer.Start();
         Application.Run(form);
+        return 0;
+    }
+
+    private static int ApplyVertexColor(string[] args)
+    {
+        if (args.Length != 2 || string.IsNullOrWhiteSpace(args[1]))
+        {
+            Console.Error.WriteLine("Usage: Deadlimit.exe --apply-vertex-color <artist.dmx>");
+            return 64;
+        }
+
+        try
+        {
+            var result = VertexColorSidecarService.TryApplyInPlace(args[1]);
+            var output = $"{result.Status}: {result.Message}";
+            if (result.Status == VertexColorSidecarStatus.Applied)
+            {
+                Console.Out.WriteLine(output);
+                return 0;
+            }
+
+            Console.Error.WriteLine(output);
+            return result.Status == VertexColorSidecarStatus.Missing ? 2 : 3;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Console.Error.WriteLine($"Failed: {ex.Message}");
+            return 70;
+        }
+    }
+
+    private static int WriteVertexColorScript(string[] args)
+    {
+        if (args.Length != 2 || string.IsNullOrWhiteSpace(args[1]))
+        {
+            Console.Error.WriteLine("Usage: Deadlimit.exe --write-vertex-color-script <folder>");
+            return 64;
+        }
+
+        try
+        {
+            var processorPath = Environment.ProcessPath
+                ?? throw new InvalidOperationException("Deadlimit executable path is unavailable.");
+            Console.Out.WriteLine(VertexColorMaxScriptService.WriteScript(args[1], processorPath));
+            return 0;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Console.Error.WriteLine($"Failed: {ex.Message}");
+            return 70;
+        }
     }
 
     private static Icon LoadAppIcon()
