@@ -27,6 +27,8 @@ game    = disposable compiled output
 
 `game/citadel_addons/<addon>` must never be treated as an independent source of truth.
 
+The addon name comes from the manifest's permanent `AddonId`. Before either transaction touches CSDK output, Deadlimit verifies `.deadlimit-addon-owner.json` in the addon content root against the project's permanent `ProjectId`. An unreadable record, a foreign owner, or a pre-existing unclaimed folder stops the operation before recursive cleanup. Legacy projects may adopt their existing addon only when their stored source/compiled VMDL path proves the relationship.
+
 ## Two output policies
 
 Deadlimit now has two deliberately different transactions.

@@ -93,9 +93,10 @@ public sealed class PrepareAuthoringService
                 "Retail main model is unknown. Run EXTRACT HERO SOURCE once before PREPARE FOR CSDK.");
         }
 
-        var addonName = MakeAddonName(manifest.ProjectName);
-        var addonContentRoot = Path.Combine(_paths.CsdkContentRoot, "citadel_addons", addonName);
-        var addonGameRoot = Path.Combine(_paths.CsdkGameRoot, "citadel_addons", addonName);
+        var addonIdentity = new AddonIdentityService(_paths).ResolveAndClaim(manifest);
+        var addonName = addonIdentity.AddonId;
+        var addonContentRoot = addonIdentity.ContentRoot;
+        var addonGameRoot = addonIdentity.GameRoot;
 
         var metadataFolder = ProjectStore.GetMetadataFolder(manifest.ProjectFolder);
         var logFolder = Path.Combine(metadataFolder, "logs");
@@ -209,6 +210,9 @@ public sealed class PrepareAuthoringService
                 log,
                 cancellationToken);
 
+            var previousOwnership = ManagedCustomMaterialRegistryStore.Load(manifest);
+            var knownMaterialTargets = ManagedCustomMaterialRegistryStore.BuildTargetMap(previousOwnership);
+
             var customMaterials = new CustomMaterialAuthoringService(_paths).Prepare(
                 manifest,
                 addonName,
@@ -216,11 +220,11 @@ public sealed class PrepareAuthoringService
                 authoringMaterialReferences,
                 resolvedMaterialSources,
                 customTemplateMaterial,
+                knownMaterialTargets,
                 log,
                 cancellationToken,
                 regenerateCustomMaterials);
 
-            var previousOwnership = ManagedCustomMaterialRegistryStore.Load(manifest);
             var currentOwnership = ManagedCustomMaterialRegistryStore.BuildCurrent(customMaterials.Remaps);
             var knownOwnership = ManagedCustomMaterialRegistryStore.MergeKnownWithCurrent(
                 previousOwnership,
@@ -289,7 +293,7 @@ public sealed class PrepareAuthoringService
             manifest.SourceVmdl = sourceCopy.DestinationVmdlPath;
             manifest.CompiledVmdl = null;
             ProjectStore.Save(manifest);
-            ManagedCustomMaterialRegistryStore.SaveCurrent(manifest, currentOwnership);
+            ManagedCustomMaterialRegistryStore.Save(manifest, knownOwnership);
 
             log.AppendLine();
             log.AppendLine("RESULT: AUTHORING CONTENT PREPARED; ADDON GAME OUTPUT CLEAN");
@@ -773,34 +777,4 @@ public sealed class PrepareAuthoringService
             .Where(char.IsLetterOrDigit)
             .ToArray());
 
-    private static string MakeAddonName(string projectName)
-    {
-        var sb = new StringBuilder();
-        var previousUnderscore = false;
-
-        foreach (var ch in projectName.Trim().ToLowerInvariant())
-        {
-            if (char.IsLetterOrDigit(ch))
-            {
-                sb.Append(ch);
-                previousUnderscore = false;
-            }
-            else if (!previousUnderscore && sb.Length > 0)
-            {
-                sb.Append('_');
-                previousUnderscore = true;
-            }
-        }
-
-        var value = sb.ToString().Trim('_');
-        if (value.Length == 0)
-        {
-            value = "deadlimit_project";
-        }
-        if (char.IsDigit(value[0]))
-        {
-            value = $"deadlimit_{value}";
-        }
-        return value;
-    }
 }

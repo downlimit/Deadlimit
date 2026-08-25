@@ -23,6 +23,8 @@ The current project-root convention is intentionally simple:
 
 The project folder name is the canonical project name. Deadlimit does not maintain a second user-editable display name for the same project.
 
+Each project manifest also carries a permanent `ProjectId` and `AddonId`. New projects receive a readable addon prefix plus a short unique suffix. Existing prepared projects retain their legacy addon folder when the recorded `SourceVmdl` or `CompiledVmdl` proves that folder already belongs to them. Deadlimit writes `.deadlimit-addon-owner.json` inside the addon content root and verifies it before deleting or overwriting either CSDK addon tree.
+
 At minimum the user provides:
 
 - the existing project folder containing the current DMX model files and PNG textures in its root;

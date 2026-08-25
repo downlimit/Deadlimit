@@ -7,7 +7,7 @@ internal sealed record ManagedCustomMaterialOwnership(
 
 internal sealed class ManagedCustomMaterialRegistry
 {
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
     public List<ManagedCustomMaterialOwnership> Materials { get; set; } = [];
 }
 
@@ -50,11 +50,24 @@ internal static class ManagedCustomMaterialRegistryStore
                 NormalizeResourcePath(remap.From),
                 NormalizeResourcePath(remap.To),
                 IsVertexColorReference(remap.From)))
-            .GroupBy(item => item.TargetResource, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .OrderBy(item => item.TargetResource, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(item => item.SourceReference, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.Last())
+            .OrderBy(item => item.SourceReference, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
+
+    public static IReadOnlyDictionary<string, string> BuildTargetMap(
+        ManagedCustomMaterialRegistry registry) =>
+        registry.Materials
+            .Where(item => !string.IsNullOrWhiteSpace(item.SourceReference)
+                           && !string.IsNullOrWhiteSpace(item.TargetResource))
+            .GroupBy(
+                item => NormalizeResourcePath(item.SourceReference),
+                StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => NormalizeResourcePath(group.Last().TargetResource),
+                StringComparer.OrdinalIgnoreCase);
 
     public static IReadOnlyList<ManagedCustomMaterialOwnership> MergeKnownWithCurrent(
         ManagedCustomMaterialRegistry registry,
@@ -62,21 +75,28 @@ internal static class ManagedCustomMaterialRegistryStore
     {
         return registry.Materials
             .Concat(current)
-            .GroupBy(item => NormalizeResourcePath(item.TargetResource), StringComparer.OrdinalIgnoreCase)
+            .Where(item => !string.IsNullOrWhiteSpace(item.SourceReference)
+                           && !string.IsNullOrWhiteSpace(item.TargetResource))
+            .Select(item => new ManagedCustomMaterialOwnership(
+                NormalizeResourcePath(item.SourceReference),
+                NormalizeResourcePath(item.TargetResource),
+                item.VertexColor))
+            .GroupBy(item => item.SourceReference, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.Last())
+            .OrderBy(item => item.SourceReference, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
-    public static void SaveCurrent(
+    public static void Save(
         ProjectManifest manifest,
-        IReadOnlyList<ManagedCustomMaterialOwnership> current)
+        IReadOnlyList<ManagedCustomMaterialOwnership> materials)
     {
         var metadataFolder = ProjectStore.GetMetadataFolder(manifest.ProjectFolder);
         Directory.CreateDirectory(metadataFolder);
 
         var registry = new ManagedCustomMaterialRegistry
         {
-            Materials = current.ToList(),
+            Materials = materials.ToList(),
         };
 
         var path = GetPath(manifest);

@@ -64,8 +64,9 @@ public sealed class BuildAndTestService
         ValidateEnvironment(manifest);
 
         var releaseSlot = ParseReleaseSlot(manifest.ReleaseTarget);
-        var addonName = MakeAddonName(manifest.ProjectName);
-        var addonGameRoot = Path.Combine(_paths.CsdkGameRoot, "citadel_addons", addonName);
+        var addonIdentity = new AddonIdentityService(_paths).ResolveAndClaim(manifest);
+        var addonName = addonIdentity.AddonId;
+        var addonGameRoot = addonIdentity.GameRoot;
         var metadataFolder = ProjectStore.GetMetadataFolder(manifest.ProjectFolder);
         var statePath = Path.Combine(metadataFolder, "build-test-state.json");
         var previousState = TryLoadState(statePath);
@@ -1052,37 +1053,6 @@ public sealed class BuildAndTestService
         int percent,
         string message) =>
         progress?.Report(new BuildAndTestProgress(message, Math.Clamp(percent, 0, 100)));
-
-    private static string MakeAddonName(string projectName)
-    {
-        var sb = new StringBuilder();
-        var previousUnderscore = false;
-
-        foreach (var ch in projectName.Trim().ToLowerInvariant())
-        {
-            if (char.IsLetterOrDigit(ch))
-            {
-                sb.Append(ch);
-                previousUnderscore = false;
-            }
-            else if (!previousUnderscore && sb.Length > 0)
-            {
-                sb.Append('_');
-                previousUnderscore = true;
-            }
-        }
-
-        var value = sb.ToString().Trim('_');
-        if (value.Length == 0)
-        {
-            value = "deadlimit_project";
-        }
-        if (char.IsDigit(value[0]))
-        {
-            value = $"deadlimit_{value}";
-        }
-        return value;
-    }
 
     private static string NormalizeResourcePath(string value) =>
         value.Replace('\\', '/').TrimStart('/');

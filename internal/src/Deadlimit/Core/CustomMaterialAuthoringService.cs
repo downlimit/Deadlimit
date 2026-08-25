@@ -75,6 +75,7 @@ public sealed class CustomMaterialAuthoringService
         IReadOnlyList<string> dmxMaterialReferences,
         IReadOnlyCollection<string> resolvedMaterialSources,
         string? templateMaterialResource,
+        IReadOnlyDictionary<string, string> knownTargetResources,
         StringBuilder log,
         CancellationToken cancellationToken,
         bool regenerateExistingMaterials = false)
@@ -133,7 +134,11 @@ public sealed class CustomMaterialAuthoringService
         log.AppendLine("Custom texture naming: <material>_color|diffuse|basecolor|albedo, _normal, _rough|roughness, _ao|occlusion, _metal|metalness|metallic; specialty Texture* fields may also bind by matching the material prefix plus the Texture parameter semantic name.");
         log.AppendLine("Vertex-color naming: any custom material whose name contains 'vertexcolor' (prefix, suffix, or middle; case-insensitive) is prepared from the retail vertcolor_pbr_basic material and does not consume project color textures.");
 
-        var usedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var targetResources = AllocateStableTargetResources(
+            customReferences,
+            materialResourceFolder,
+            knownTargetResources,
+            log);
         var remaps = new List<VmdlMaterialRemap>();
         var vmatResources = new List<string>();
         var created = 0;
@@ -150,13 +155,7 @@ public sealed class CustomMaterialAuthoringService
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var materialName = MakeResourceToken(GetResourceLeaf(customReference));
-            if (materialName.Length == 0)
-            {
-                materialName = "custom_material";
-            }
-
-            var targetResource = AllocateTargetResource(materialResourceFolder, materialName, usedTargets);
+            var targetResource = targetResources[customReference];
             var targetPath = Path.Combine(
                 addonContentRoot,
                 targetResource.Replace('/', Path.DirectorySeparatorChar));
@@ -1145,6 +1144,87 @@ public sealed class CustomMaterialAuthoringService
                 return candidate;
             }
         }
+    }
+
+    private static IReadOnlyDictionary<string, string> AllocateStableTargetResources(
+        IReadOnlyList<string> customReferences,
+        string materialResourceFolder,
+        IReadOnlyDictionary<string, string> knownTargetResources,
+        StringBuilder log)
+    {
+        var usedTargets = knownTargetResources.Values
+            .Select(target => TryNormalizeOwnedTarget(target, materialResourceFolder, out var normalized)
+                ? normalized
+                : null)
+            .Where(target => target is not null)
+            .Select(target => target!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var assignments = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var claimedKnownTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var customReference in customReferences)
+        {
+            if (!knownTargetResources.TryGetValue(customReference, out var knownTarget))
+            {
+                continue;
+            }
+
+            if (!TryNormalizeOwnedTarget(knownTarget, materialResourceFolder, out var normalizedTarget))
+            {
+                log.AppendLine(
+                    $"Stored custom material target ignored because it is outside the current addon material folder: {customReference} -> {knownTarget}");
+                continue;
+            }
+
+            if (!claimedKnownTargets.Add(normalizedTarget))
+            {
+                log.AppendLine(
+                    $"Stored custom material target ignored because another DMX material already claims it: {customReference} -> {normalizedTarget}");
+                continue;
+            }
+
+            assignments.Add(customReference, normalizedTarget);
+            log.AppendLine($"Stable custom material target reused: {customReference} -> {normalizedTarget}");
+        }
+
+        foreach (var customReference in customReferences)
+        {
+            if (assignments.ContainsKey(customReference))
+            {
+                continue;
+            }
+
+            var materialName = MakeResourceToken(GetResourceLeaf(customReference));
+            if (materialName.Length == 0)
+            {
+                materialName = "custom_material";
+            }
+
+            var targetResource = AllocateTargetResource(materialResourceFolder, materialName, usedTargets);
+            assignments.Add(customReference, targetResource);
+            log.AppendLine($"Permanent custom material target allocated: {customReference} -> {targetResource}");
+        }
+
+        return assignments;
+    }
+
+    private static bool TryNormalizeOwnedTarget(
+        string targetResource,
+        string materialResourceFolder,
+        out string normalizedTarget)
+    {
+        normalizedTarget = NormalizeResourcePath(targetResource);
+        var prefix = NormalizeResourcePath(materialResourceFolder).TrimEnd('/') + "/";
+        if (!normalizedTarget.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var leaf = normalizedTarget[prefix.Length..];
+        return leaf.Length > ".vmat".Length
+               && !leaf.Contains('/')
+               && leaf.EndsWith(".vmat", StringComparison.OrdinalIgnoreCase)
+               && leaf.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
     }
 
     private static IReadOnlyList<string> ToCompiledMaterialResourcePaths(string vmatResourcePath)

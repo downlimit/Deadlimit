@@ -519,14 +519,30 @@ public sealed class MainForm : Form
 
         try
         {
-            var scan = ProjectScanner.Scan(folder);
-            var existing = ProjectStore.TryLoad(folder) ?? _loadedManifest;
+            var fullFolder = Path.GetFullPath(folder);
+            var scan = ProjectScanner.Scan(fullFolder);
+            var existing = ProjectStore.TryLoad(fullFolder);
+            if (existing is null
+                && _loadedManifest is not null
+                && string.Equals(
+                    Path.GetFullPath(_loadedManifest.ProjectFolder),
+                    fullFolder,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                existing = _loadedManifest;
+            }
+
+            var canonicalProjectName = Path.GetFileName(fullFolder);
 
             var manifest = new ProjectManifest
             {
-                SchemaVersion = Math.Max(existing?.SchemaVersion ?? 1, 2),
+                SchemaVersion = Math.Max(existing?.SchemaVersion ?? 1, 3),
+                ProjectId = string.IsNullOrWhiteSpace(existing?.ProjectId)
+                    ? AddonIdentityService.CreateProjectId()
+                    : existing.ProjectId,
+                AddonId = AddonIdentityService.ResolveInitialAddonId(existing, canonicalProjectName),
                 ProjectName = projectName,
-                ProjectFolder = Path.GetFullPath(folder),
+                ProjectFolder = fullFolder,
                 Hero = hero,
                 ReleaseTarget = releaseTarget,
                 SourceDumpFolderName = existing?.SourceDumpFolderName ?? "0source",

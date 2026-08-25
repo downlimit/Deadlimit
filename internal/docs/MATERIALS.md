@@ -126,11 +126,13 @@ The generic detection mechanism is implemented without an Ivy-specific hardcoded
 
 For each such reference it:
 
-1. allocates `materials/<addon>/<custom_name>.vmat`;
+1. allocates `materials/<addon>/<custom_name>.vmat` once and records the exact `DMX material reference → addon VMAT` assignment in the project registry;
 2. adds a VMDL remap from the DMX custom reference to that addon-owned VMAT;
 3. when the VMAT is missing, decompiles the uniquely inferred current retail body/skin/head/face material as the compatibility template;
 4. preserves an existing addon-owned VMAT byte-for-byte on later PREPARE runs;
 5. refreshes project-root PNG files into `content/citadel_addons/<addon>/materials/<addon>/textures/`.
+
+The registry retains historical assignments after a material temporarily disappears. Existing VMAT names therefore stay attached to the same DMX material when new references with colliding sanitized names are added, removed, or reordered. New collisions receive the next unused suffix without taking a target reserved by an earlier material.
 
 The retail-template strategy is deliberate: the custom material should inherit the hero/build-compatible shader and useful non-texture tuning instead of starting from an unrelated generic shader.
 

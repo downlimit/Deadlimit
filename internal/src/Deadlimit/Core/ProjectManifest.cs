@@ -2,7 +2,9 @@ namespace Deadlimit.Core;
 
 public sealed class ProjectManifest
 {
-    public int SchemaVersion { get; set; } = 2;
+    public int SchemaVersion { get; set; } = 3;
+    public string ProjectId { get; set; } = string.Empty;
+    public string AddonId { get; set; } = string.Empty;
     public string ProjectName { get; set; } = string.Empty;
     public string ProjectFolder { get; set; } = string.Empty;
     public string Hero { get; set; } = string.Empty;
