@@ -18,6 +18,7 @@ public static class ProjectScanner
 
         var dmx = files
             .Where(path => string.Equals(Path.GetExtension(path), ".dmx", StringComparison.OrdinalIgnoreCase))
+            .Where(path => !VertexColorSidecarService.IsSidecarPath(path))
             .Select(Path.GetFileName)
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Select(name => name!)

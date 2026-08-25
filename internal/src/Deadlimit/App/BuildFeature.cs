@@ -121,6 +121,8 @@ internal static class BuildFeature
                 $"Authoring content prepared.\n\n" +
                 $"Addon: {result.AddonName}\n" +
                 $"DMX overlays: {result.DmxCount}\n" +
+                $"Vertex Color sidecars applied: {result.VertexColorAppliedDmxCount}\n" +
+                $"Vertex Color sidecars skipped: {result.VertexColorSkippedDmxCount}\n" +
                 $"DMX material references detected: {result.DmxMaterialReferenceCount}\n" +
                 $"VMDL remaps preserved: {result.ExistingMaterialRemapCount}\n" +
                 $"Compatibility remaps generated: {result.CompatibilityRemapCount}\n" +
@@ -136,6 +138,8 @@ internal static class BuildFeature
                 $"Authoring-контент подготовлен.\n\n" +
                 $"Аддон: {result.AddonName}\n" +
                 $"DMX overlays: {result.DmxCount}\n" +
+                $"Vertex Color sidecars применено: {result.VertexColorAppliedDmxCount}\n" +
+                $"Vertex Color sidecars пропущено: {result.VertexColorSkippedDmxCount}\n" +
                 $"Материалов в DMX найдено: {result.DmxMaterialReferenceCount}\n" +
                 $"VMDL remaps сохранено: {result.ExistingMaterialRemapCount}\n" +
                 $"Compatibility remaps создано: {result.CompatibilityRemapCount}\n" +

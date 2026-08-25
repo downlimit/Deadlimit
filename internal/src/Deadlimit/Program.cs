@@ -41,6 +41,7 @@ internal static class Program
         ProjectSaveStateFeature.Attach(form);
         ProjectHeaderFeature.Attach(form);
         ProjectFilesFeature.Attach(form);
+        VertexColorExportFeature.Attach(form);
         UiTheme.ApplyCustomPalette(form, settings.UiTheme);
         WindowProgressFeature.Attach(form);
         SteamStatusFeature.Attach(form, settings.UiTheme);

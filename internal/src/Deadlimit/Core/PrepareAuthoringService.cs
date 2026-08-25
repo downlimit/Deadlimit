@@ -10,6 +10,8 @@ public sealed record PrepareAuthoringResult(
     string AddonContentRoot,
     string SourceVmdlPath,
     int DmxCount,
+    int VertexColorAppliedDmxCount,
+    int VertexColorSkippedDmxCount,
     int DmxMaterialReferenceCount,
     int ExistingMaterialRemapCount,
     int AddedMaterialRemapCount,
@@ -66,6 +68,7 @@ public sealed class PrepareAuthoringService
         cancellationToken.ThrowIfCancellationRequested();
 
         var rootDmxFiles = Directory.EnumerateFiles(manifest.ProjectFolder, "*.dmx", SearchOption.TopDirectoryOnly)
+            .Where(path => !VertexColorSidecarService.IsSidecarPath(path))
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -134,10 +137,20 @@ public sealed class PrepareAuthoringService
                 rootDmxFiles);
 
             log.AppendLine($"Artist DMX overlays: {replacedRenderMeshes.Count}");
-            foreach (var resourcePath in replacedRenderMeshes)
+            foreach (var overlay in replacedRenderMeshes)
             {
-                log.AppendLine($"  replace {resourcePath}");
+                log.AppendLine($"  replace {overlay.ResourcePath}");
+                log.AppendLine(
+                    $"    vertex color [{overlay.VertexColor.Status}]: {overlay.VertexColor.Message} | " +
+                    $"sidecar {overlay.VertexColor.SidecarPath}");
             }
+
+            var vertexColorAppliedCount = replacedRenderMeshes.Count(overlay =>
+                overlay.VertexColor.Status == VertexColorSidecarStatus.Applied);
+            var vertexColorSkippedCount = replacedRenderMeshes.Count(overlay =>
+                overlay.VertexColor.Status == VertexColorSidecarStatus.Skipped);
+            log.AppendLine($"Vertex Color sidecars applied: {vertexColorAppliedCount}");
+            log.AppendLine($"Vertex Color sidecars skipped: {vertexColorSkippedCount}");
 
             var dmxMaterialReferences = DiscoverDmxMaterialReferences(rootDmxFiles);
             log.AppendLine($"DMX material references detected: {dmxMaterialReferences.Count}");
@@ -253,6 +266,8 @@ public sealed class PrepareAuthoringService
                 addonContentRoot,
                 sourceCopy.DestinationVmdlPath,
                 replacedRenderMeshes.Count,
+                vertexColorAppliedCount,
+                vertexColorSkippedCount,
                 dmxMaterialReferences.Count,
                 patchResult.ExistingMaterialRemapCount,
                 patchResult.AddedMaterialRemapCount,

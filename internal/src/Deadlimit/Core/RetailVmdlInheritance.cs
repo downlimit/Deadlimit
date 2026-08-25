@@ -13,6 +13,12 @@ public sealed record RetailModelSourceCopyResult(
 
 public sealed record RetailRenderMeshEntry(string Name, string Filename);
 
+public sealed record ArtistDmxOverlayResult(
+    string ArtistDmxPath,
+    string ResourcePath,
+    string PreparedDmxPath,
+    VertexColorSidecarResult VertexColor);
+
 public sealed record RetailVmdlPatchResult(
     IReadOnlyList<string> RemovedClasses,
     int ExistingMaterialRemapCount,
@@ -131,7 +137,7 @@ public static class RetailVmdlInheritance
             .ToArray();
     }
 
-    public static IReadOnlyList<string> OverlayArtistDmx(
+    public static IReadOnlyList<ArtistDmxOverlayResult> OverlayArtistDmx(
         RetailModelSourceCopyResult sourceCopy,
         string addonContentRoot,
         string hero,
@@ -145,7 +151,7 @@ public static class RetailVmdlInheritance
         }
 
         var usedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var replaced = new List<string>();
+        var replaced = new List<ArtistDmxOverlayResult>();
 
         foreach (var artistDmx in artistDmxFiles)
         {
@@ -187,7 +193,12 @@ public static class RetailVmdlInheritance
                 target.Filename.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
             File.Copy(artistDmx, targetPath, overwrite: true);
-            replaced.Add(target.Filename);
+            var vertexColor = VertexColorSidecarService.TryApply(artistDmx, targetPath);
+            replaced.Add(new ArtistDmxOverlayResult(
+                artistDmx,
+                target.Filename,
+                targetPath,
+                vertexColor));
         }
 
         return replaced;

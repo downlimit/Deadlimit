@@ -11,11 +11,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="KeyValues2" Version="0.8.0" />
     <PackageReference Include="ValveResourceFormat" Version="20.0.6980" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="..\..\assets\Deadlimit_128_v4.ico" LogicalName="Deadlimit.AppIcon.ico" />
+    <EmbeddedResource Include="..\..\assets\DeadlimitVertexColorSidecar.ms" LogicalName="Deadlimit.VertexColorSidecar.ms" />
   </ItemGroup>
 
 </Project>

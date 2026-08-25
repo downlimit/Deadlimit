@@ -125,6 +125,7 @@ internal sealed class OnlinePreparationSession : IDisposable
         var textureTargetFolder = Path.Combine(addonContentRoot, "materials", addonName, "textures");
 
         var rootDmxFiles = Directory.EnumerateFiles(manifest.ProjectFolder, "*.dmx", SearchOption.TopDirectoryOnly)
+            .Where(path => !VertexColorSidecarService.IsSidecarPath(path))
             .Select(Path.GetFullPath)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -308,6 +309,14 @@ internal sealed class OnlinePreparationSession : IDisposable
             var extension = Path.GetExtension(sourcePath);
             if (extension.Equals(".dmx", StringComparison.OrdinalIgnoreCase))
             {
+                if (VertexColorSidecarService.IsSidecarPath(sourcePath))
+                {
+                    MarkPrepareRequired(
+                        $"ONLINE PREPARATION detected an updated Vertex Color sidecar {Path.GetFileName(sourcePath)}. Run a normal PREPARE FOR CSDK to validate and apply it.",
+                        sourcePath);
+                    continue;
+                }
+
                 var currentMaterialReferences = ReadDmxMaterialReferences(sourcePath);
                 if (!_dmxMaterialReferences.TryGetValue(sourcePath, out var previousMaterialReferences)
                     || !previousMaterialReferences.SequenceEqual(
@@ -331,9 +340,11 @@ internal sealed class OnlinePreparationSession : IDisposable
                 }
 
                 CopyStable(sourcePath, dmxTarget);
+                var vertexColor = VertexColorSidecarService.TryApply(sourcePath, dmxTarget);
                 _sourceHashes[sourcePath] = hash;
                 RaiseUpdated(
-                    $"ONLINE PREPARATION synchronized DMX: {Path.GetFileName(sourcePath)}",
+                    $"ONLINE PREPARATION synchronized DMX: {Path.GetFileName(sourcePath)}. " +
+                    $"Vertex Color [{vertexColor.Status}]: {vertexColor.Message}",
                     sourcePath,
                     PrepareRequired);
                 continue;

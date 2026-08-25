@@ -27,6 +27,7 @@ Export DMX / save textures
 - `EXTRACTION.md` — current retail hero discovery/decompilation implementation, Source 2 Viewer integration, safety rules, evidence, and dependency-closure hypothesis.
 - `MATERIALS.md` — REUSE/CUSTOM material routing, confirmed VMDL remap evidence, and automatic compatibility-repair rules such as the generic eye fallback detector.
 - `TEXTURES.md` — inherited CUSTOM VMAT scaffolding, project-root PNG naming conventions, automatic texture rebinding, managed add/remove behavior, and safe fallbacks.
+- `VERTEX_COLOR.md` — one-button Max sidecar export, strict DMX topology validation, color-stream transfer, and fail-safe fallback behavior.
 - `OUTPUT_LIFECYCLE.md` — authoritative `content` vs disposable compiled `game` contract, clean authoring PREPARE behavior, and incremental BUILD & TEST stale-output handling.
 - `BUILD_TEST.md` — accepted one-click daily iteration transaction: incremental prepare/compile, AG2 restoration, VPK packaging and direct retail addons deployment.
 - `RUNNING_GAME.md` — live-confirmed retail VPK file-lock behavior when Deadlock is running and the resulting close-before-deploy contract.
