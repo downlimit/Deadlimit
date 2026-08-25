@@ -14,6 +14,7 @@ public sealed record BuildAndTestResult(
     int RemovedCompiledOutputCount,
     bool FullRebuild,
     bool Ag2Applied,
+    IReadOnlyList<string> Warnings,
     string VpkPath,
     string LogPath);
 
@@ -247,6 +248,7 @@ public sealed class BuildAndTestService
                 removedCompiledOutputs,
                 fullRebuild,
                 ag2Applied,
+                prepare.VertexColorWarnings,
                 vpkPath,
                 logPath);
         }
@@ -335,7 +337,10 @@ public sealed class BuildAndTestService
 
         foreach (var relative in changed)
         {
-            var absolute = Path.Combine(contentRoot, ToWindowsPath(relative));
+            var absolute = SafePath.ResolveUnderRoot(
+                contentRoot,
+                ToWindowsPath(relative),
+                "Incremental source path from build state");
             if (File.Exists(absolute) && IsDirectCompileSource(absolute))
             {
                 targets.Add(absolute);
@@ -373,7 +378,10 @@ public sealed class BuildAndTestService
                 continue;
             }
 
-            var expectedOutput = Path.Combine(gameRoot, ToWindowsPath(compiledRelative));
+            var expectedOutput = SafePath.ResolveUnderRoot(
+                gameRoot,
+                ToWindowsPath(compiledRelative),
+                "Expected compiled output");
             if (!File.Exists(expectedOutput))
             {
                 targets.Add(source);
@@ -397,7 +405,10 @@ public sealed class BuildAndTestService
                 continue;
             }
 
-            var output = Path.Combine(gameRoot, ToWindowsPath(compiledRelative));
+            var output = SafePath.ResolveUnderRoot(
+                gameRoot,
+                ToWindowsPath(compiledRelative),
+                "Stale compiled output from build state");
             if (!File.Exists(output))
             {
                 continue;
@@ -470,7 +481,10 @@ public sealed class BuildAndTestService
                 continue;
             }
 
-            var output = Path.Combine(gameRoot, ToWindowsPath(compiledRelative));
+            var output = SafePath.ResolveUnderRoot(
+                gameRoot,
+                ToWindowsPath(compiledRelative),
+                "Verified compiled output");
             if (!File.Exists(output))
             {
                 throw new InvalidOperationException(
@@ -825,12 +839,18 @@ public sealed class BuildAndTestService
         {
             throw new InvalidOperationException("Retail main model is unknown.");
         }
-        return Path.Combine(addonGameRoot, ToWindowsPath(NormalizeResourcePath(manifest.RetailMainModel)));
+        return SafePath.ResolveUnderRoot(
+            addonGameRoot,
+            ToWindowsPath(NormalizeResourcePath(manifest.RetailMainModel)),
+            "Compiled retail main model");
     }
 
     private static string? FindNmSkeletonReference(ProjectManifest manifest)
     {
-        var sourceRoot = Path.Combine(manifest.ProjectFolder, manifest.SourceDumpFolderName);
+        var sourceRoot = SafePath.ResolveUnderRoot(
+            manifest.ProjectFolder,
+            manifest.SourceDumpFolderName,
+            "Project source-dump folder");
         if (!Directory.Exists(sourceRoot))
         {
             return null;
@@ -946,7 +966,10 @@ public sealed class BuildAndTestService
             }
 
             state.ContentHashes = state.ContentHashes
-                .ToDictionary(pair => NormalizeRelativePath(pair.Key), pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+                .ToDictionary(
+                    pair => SafePath.NormalizeRelative(pair.Key, "Build-state content path"),
+                    pair => pair.Value,
+                    StringComparer.OrdinalIgnoreCase);
             return state;
         }
         catch (JsonException)
@@ -957,14 +980,23 @@ public sealed class BuildAndTestService
         {
             return null;
         }
+        catch (InvalidDataException)
+        {
+            return null;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
     }
 
     private static void SaveState(string path, BuildTestState state)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(
+        AtomicFile.WriteJson(
             path,
-            JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true }));
+            state,
+            new JsonSerializerOptions { WriteIndented = true });
     }
 
     private static async Task<ProcessResult> RunProcessAsync(
@@ -1055,10 +1087,10 @@ public sealed class BuildAndTestService
         progress?.Report(new BuildAndTestProgress(message, Math.Clamp(percent, 0, 100)));
 
     private static string NormalizeResourcePath(string value) =>
-        value.Replace('\\', '/').TrimStart('/');
+        SafePath.NormalizeRelative(value, "Source 2 resource path");
 
     private static string NormalizeRelativePath(string value) =>
-        value.Replace('\\', '/').TrimStart('/');
+        SafePath.NormalizeRelative(value, "Build relative path");
 
     private static string ToWindowsPath(string value) =>
         value.Replace('/', Path.DirectorySeparatorChar);

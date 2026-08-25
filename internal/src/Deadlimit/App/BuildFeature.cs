@@ -154,6 +154,7 @@ internal static class BuildFeature
                 $"Addon: {result.AddonName}\n" +
                 $"DMX overlays: {result.DmxCount}\n" +
                 $"Vertex Color sidecars applied: {result.VertexColorAppliedDmxCount}\n" +
+                $"Vertex Color sidecars missing: {result.VertexColorMissingDmxCount}\n" +
                 $"Vertex Color sidecars skipped: {result.VertexColorSkippedDmxCount}\n" +
                 $"DMX material references detected: {result.DmxMaterialReferenceCount}\n" +
                 $"VMDL remaps preserved: {result.ExistingMaterialRemapCount}\n" +
@@ -171,6 +172,7 @@ internal static class BuildFeature
                 $"Аддон: {result.AddonName}\n" +
                 $"DMX overlays: {result.DmxCount}\n" +
                 $"Vertex Color sidecars применено: {result.VertexColorAppliedDmxCount}\n" +
+                $"Vertex Color sidecars отсутствует: {result.VertexColorMissingDmxCount}\n" +
                 $"Vertex Color sidecars пропущено: {result.VertexColorSkippedDmxCount}\n" +
                 $"Материалов в DMX найдено: {result.DmxMaterialReferenceCount}\n" +
                 $"VMDL remaps сохранено: {result.ExistingMaterialRemapCount}\n" +
@@ -341,6 +343,11 @@ internal static class BuildFeature
             var closedGameSummary = deadlockWasRunning
                 ? UiText.T("\nDeadlock was closed automatically to unlock the VPK.", "\nDeadlock был автоматически закрыт для разблокировки VPK.")
                 : string.Empty;
+            var warningSummary = result.Warnings.Count == 0
+                ? string.Empty
+                : UiText.T(
+                    "\n\n⚠ Vertex Color warning:\n" + string.Join("\n", result.Warnings.Select(warning => $"• {warning}")),
+                    "\n\n⚠ Предупреждение Vertex Color:\n" + string.Join("\n", result.Warnings.Select(warning => $"• {warning}")));
 
             var summary = UiText.T(
                 $"Addon: {result.AddonName}\n" +
@@ -356,7 +363,8 @@ internal static class BuildFeature
                 + forceSummary
                 + modLoadingSummary
                 + legacySlotSummary
-                + closedGameSummary;
+                + closedGameSummary
+                + warningSummary;
 
             using var dialog = new BuildTestSuccessDialog(result.VpkPath, summary);
             dialog.ShowDialog(form);

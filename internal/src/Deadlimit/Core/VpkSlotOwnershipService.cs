@@ -106,10 +106,29 @@ public sealed class VpkSlotOwnershipService
             && !string.IsNullOrWhiteSpace(previous.VpkPath)
             && File.Exists(previous.VpkPath))
         {
-            var previousHash = ComputeSha256(previous.VpkPath);
+            var retailAddonsRoot = Path.Combine(
+                _paths.RetailDeadlockRoot,
+                "game",
+                "citadel",
+                "addons");
+            var expectedPreviousName = $"pak{previous.ReleaseSlot:D2}_dir.vpk";
+            var safePreviousPath = SafePath.EnsureUnderRoot(
+                retailAddonsRoot,
+                previous.VpkPath,
+                "Previous VPK deployment path");
+            if (!string.Equals(
+                    Path.GetFileName(safePreviousPath),
+                    expectedPreviousName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException(
+                    $"Previous VPK ownership path has an unexpected filename: {safePreviousPath}");
+            }
+
+            var previousHash = ComputeSha256(safePreviousPath);
             if (string.Equals(previousHash, previous.Sha256, StringComparison.OrdinalIgnoreCase))
             {
-                File.Delete(previous.VpkPath);
+                File.Delete(safePreviousPath);
             }
         }
 
@@ -123,9 +142,10 @@ public sealed class VpkSlotOwnershipService
         };
 
         Directory.CreateDirectory(Path.GetDirectoryName(ownershipPath)!);
-        File.WriteAllText(
+        AtomicFile.WriteJson(
             ownershipPath,
-            JsonSerializer.Serialize(record, new JsonSerializerOptions { WriteIndented = true }));
+            record,
+            new JsonSerializerOptions { WriteIndented = true });
     }
 
     private string GetVpkPath(int slot) =>

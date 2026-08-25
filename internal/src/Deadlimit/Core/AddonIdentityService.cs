@@ -304,9 +304,7 @@ public sealed class AddonIdentityService
             UpdatedUtc = DateTimeOffset.UtcNow,
         };
 
-        var temporaryPath = path + $".tmp-{Guid.NewGuid():N}";
-        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(ownership, JsonOptions));
-        File.Move(temporaryPath, path, overwrite: true);
+        AtomicFile.WriteJson(path, ownership, JsonOptions);
     }
 
     private static string NormalizePath(string path) =>

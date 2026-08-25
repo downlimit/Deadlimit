@@ -59,6 +59,13 @@ public static class ProjectStore
         {
             return null;
         }
+        catch (Exception exception) when (exception is InvalidDataException
+            or ArgumentException
+            or NotSupportedException
+            or PathTooLongException)
+        {
+            return null;
+        }
     }
 
     public static void Save(ProjectManifest manifest)
@@ -76,7 +83,7 @@ public static class ProjectStore
 
         manifest.UpdatedUtc = DateTimeOffset.UtcNow;
         var json = JsonSerializer.Serialize(manifest, JsonOptions);
-        File.WriteAllText(Path.Combine(metadataFolder, ManifestFileName), json);
+        AtomicFile.WriteAllText(Path.Combine(metadataFolder, ManifestFileName), json);
         RememberLastProject(manifest.ProjectFolder);
     }
 
@@ -138,6 +145,9 @@ public static class ProjectStore
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         manifest.ProjectFolder = fullFolder;
         manifest.ProjectName = Path.GetFileName(fullFolder);
+        manifest.SourceDumpFolderName = SafePath.NormalizeRelative(
+            string.IsNullOrWhiteSpace(manifest.SourceDumpFolderName) ? "0source" : manifest.SourceDumpFolderName,
+            "Project source-dump folder");
     }
 
     private static LocalSettings LoadSettings()
@@ -172,7 +182,7 @@ public static class ProjectStore
         var settingsPath = GetSettingsPath();
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
         var json = JsonSerializer.Serialize(settings, JsonOptions);
-        File.WriteAllText(settingsPath, json);
+        AtomicFile.WriteAllText(settingsPath, json);
     }
 
     private static string NormalizeOptionalPath(string value)

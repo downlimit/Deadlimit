@@ -99,10 +99,7 @@ internal static class ManagedCustomMaterialRegistryStore
             Materials = materials.ToList(),
         };
 
-        var path = GetPath(manifest);
-        var temporaryPath = path + $".tmp-{Guid.NewGuid():N}";
-        File.WriteAllText(temporaryPath, JsonSerializer.Serialize(registry, JsonOptions));
-        File.Move(temporaryPath, path, overwrite: true);
+        AtomicFile.WriteJson(GetPath(manifest), registry, JsonOptions);
     }
 
     private static string GetPath(ProjectManifest manifest) =>

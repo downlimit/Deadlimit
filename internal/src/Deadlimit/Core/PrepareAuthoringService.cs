@@ -11,7 +11,9 @@ public sealed record PrepareAuthoringResult(
     string SourceVmdlPath,
     int DmxCount,
     int VertexColorAppliedDmxCount,
+    int VertexColorMissingDmxCount,
     int VertexColorSkippedDmxCount,
+    IReadOnlyList<string> VertexColorWarnings,
     int DmxMaterialReferenceCount,
     int ExistingMaterialRemapCount,
     int AddedMaterialRemapCount,
@@ -158,9 +160,12 @@ public sealed class PrepareAuthoringService
 
             var vertexColorAppliedCount = replacedRenderMeshes.Count(overlay =>
                 overlay.VertexColor.Status == VertexColorSidecarStatus.Applied);
+            var vertexColorMissingCount = replacedRenderMeshes.Count(overlay =>
+                overlay.VertexColor.Status == VertexColorSidecarStatus.Missing);
             var vertexColorSkippedCount = replacedRenderMeshes.Count(overlay =>
                 overlay.VertexColor.Status == VertexColorSidecarStatus.Skipped);
             log.AppendLine($"Vertex Color sidecars applied: {vertexColorAppliedCount}");
+            log.AppendLine($"Vertex Color sidecars missing: {vertexColorMissingCount}");
             log.AppendLine($"Vertex Color sidecars skipped: {vertexColorSkippedCount}");
 
             var dmxMaterialReferences = DiscoverDmxMaterialReferences(rootDmxFiles);
@@ -168,6 +173,19 @@ public sealed class PrepareAuthoringService
             foreach (var materialReference in dmxMaterialReferences)
             {
                 log.AppendLine($"  material {materialReference}");
+            }
+
+            var vertexColorWarnings = replacedRenderMeshes
+                .Where(overlay => overlay.VertexColor.Status != VertexColorSidecarStatus.Applied)
+                .Where(overlay => DiscoverDmxMaterialReferences([overlay.ArtistDmxPath])
+                    .Any(ContainsVertexColorToken))
+                .Select(overlay =>
+                    $"{Path.GetFileName(overlay.ArtistDmxPath)}: " +
+                    $"Vertex Color [{overlay.VertexColor.Status}] — {overlay.VertexColor.Message}")
+                .ToArray();
+            foreach (var warning in vertexColorWarnings)
+            {
+                log.AppendLine($"WARNING: {warning}");
             }
 
             var authoringMaterialReferences = ExpandWallWormMaterialAliases(dmxMaterialReferences);
@@ -320,7 +338,9 @@ public sealed class PrepareAuthoringService
                 sourceCopy.DestinationVmdlPath,
                 replacedRenderMeshes.Count,
                 vertexColorAppliedCount,
+                vertexColorMissingCount,
                 vertexColorSkippedCount,
+                vertexColorWarnings,
                 dmxMaterialReferences.Count,
                 patchResult.ExistingMaterialRemapCount,
                 patchResult.AddedMaterialRemapCount,
@@ -429,9 +449,10 @@ public sealed class PrepareAuthoringService
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var vmatPath = Path.Combine(
+            var vmatPath = SafePath.ResolveUnderRoot(
                 addonContentRoot,
-                vmatResourcePath.Replace('/', Path.DirectorySeparatorChar));
+                vmatResourcePath.Replace('/', Path.DirectorySeparatorChar),
+                "Final managed VMAT validation target");
 
             if (!File.Exists(vmatPath))
             {
@@ -520,6 +541,13 @@ public sealed class PrepareAuthoringService
         return references
             .OrderBy(reference => reference, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private static bool ContainsVertexColorToken(string materialReference)
+    {
+        var leaf = Path.GetFileNameWithoutExtension(materialReference.Replace('\\', '/'));
+        var token = new string(leaf.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+        return token.Contains("vertexcolor", StringComparison.Ordinal);
     }
 
     private static IReadOnlyList<string> ExpandWallWormMaterialAliases(

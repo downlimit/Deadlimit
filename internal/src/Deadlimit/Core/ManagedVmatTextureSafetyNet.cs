@@ -70,7 +70,17 @@ internal static class ManagedVmatTextureSafetyNet
             .Replace('/', Path.DirectorySeparatorChar)
             .Replace('\\', Path.DirectorySeparatorChar)
             .TrimStart(Path.DirectorySeparatorChar);
-        return File.Exists(Path.Combine(addonContentRoot, relative));
+        try
+        {
+            return File.Exists(SafePath.ResolveUnderRoot(
+                addonContentRoot,
+                relative,
+                "VMAT texture source"));
+        }
+        catch (InvalidDataException)
+        {
+            return false;
+        }
     }
 
     private static bool LooksLikeTextureSourcePath(string value)

@@ -204,6 +204,16 @@ Later runs:
 
 This is deliberately fail-safe: incremental speed is used only where Deadlimit can prove what should be retained or invalidated.
 
+Build-state relative paths are treated as untrusted input. Entries that are rooted or contain an escaping `..` invalidate the snapshot and force a clean build; they are never joined into a deletion target. Source 2 resource paths read from the manifest or VMDL are likewise containment-checked before any addon write.
+
+### Vertex Color warning
+
+BUILD & TEST carries the PREPARE Vertex Color result into its completion dialog. If a DMX references a material whose normalized name contains `vertexcolor` and its sidecar was missing or rejected, the VPK may still be deployed, but the success summary shows a prominent non-blocking warning with the DMX filename and reason. This keeps iteration moving while making loss of expected vertex color visible.
+
+### Atomic state writes
+
+Project/settings JSON, build state, ownership registries, catalog cache and `gameinfo.gi` are written to a temporary file in the same folder, flushed, then atomically replace the previous file. A process crash or full disk before the final replacement leaves the previous committed file intact. `gameinfo.gi` still receives the separate project backup used for manual recovery.
+
 ### Forced clean rebuild escape hatch
 
 Normal `BUILD & TEST` remains incremental.

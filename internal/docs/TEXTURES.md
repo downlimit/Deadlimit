@@ -144,6 +144,10 @@ Preparation gestures:
 - `SHIFT + PREPARE FOR CSDK`: back up existing addon custom VMAT files under `<project>/.deadlimit/backups/materials/<timestamp>/`, then regenerate the currently referenced custom materials from the latest templates and project textures;
 - `SHIFT + LAUNCH CSDK`: run the normal preserving PREPARE, start ONLINE PREPARATION, and launch CSDK. Repeating the gesture stops online synchronization without launching another CSDK instance.
 
+ONLINE PREPARATION watches supported root textures, artist DMX files, and matching `*_vertexcolor.fbx` sidecars. A sidecar created after the DMX debounce is read as its own event: the prepared DMX target is refreshed from the artist DMX and Vertex Color is validated/applied immediately. A rejected sidecar marks the session as requiring normal PREPARE and reports the reason.
+
+The authoritative project-root texture set includes `.png`, `.tga`, `.jpg`, `.jpeg`, `.tif`, and `.tiff`. Every supported derived copy absent from that set is removed. Cleanup still runs when the current DMX contains zero custom materials, so sources and VMATs belonging to the last removed managed material cannot survive into a later VPK.
+
 ### Validation status
 
 Implementation: complete. Required live proof sequence:

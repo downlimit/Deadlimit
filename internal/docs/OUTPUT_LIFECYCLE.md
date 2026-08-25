@@ -29,6 +29,8 @@ game    = disposable compiled output
 
 The addon name comes from the manifest's permanent `AddonId`. Before either transaction touches CSDK output, Deadlimit verifies `.deadlimit-addon-owner.json` in the addon content root against the project's permanent `ProjectId`. An unreadable record, a foreign owner, or a pre-existing unclaimed folder stops the operation before recursive cleanup. Legacy projects may adopt their existing addon only when their stored source/compiled VMDL path proves the relationship.
 
+All manifest resource paths, VMDL `RenderMeshFile` destinations and build-state output mappings are resolved beneath their declared project/addon root before filesystem access. Rooted paths and lexical traversal outside that root fail validation. The same containment rule guards the previous VPK path loaded from deployment ownership before old-slot cleanup.
+
 ## Two output policies
 
 Deadlimit now has two deliberately different transactions.

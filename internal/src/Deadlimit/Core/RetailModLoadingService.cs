@@ -87,7 +87,10 @@ public sealed class RetailModLoadingService
             $"gameinfo-{DateTime.Now:yyyyMMdd-HHmmss}.gi.bak");
 
         File.Copy(gameInfoPath, backupPath, overwrite: false);
-        File.WriteAllText(gameInfoPath, patchedText, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        AtomicFile.WriteAllText(
+            gameInfoPath,
+            patchedText,
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
         return new RetailModLoadingResult(gameInfoPath, AlreadyEnabled: false, Patched: true, BackupPath: backupPath);
     }

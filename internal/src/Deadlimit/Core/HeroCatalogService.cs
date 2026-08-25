@@ -410,7 +410,7 @@ public sealed class HeroCatalogService
     {
         var cachePath = GetCachePath();
         Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
-        File.WriteAllText(cachePath, JsonSerializer.Serialize(snapshot, JsonOptions));
+        AtomicFile.WriteJson(cachePath, snapshot, JsonOptions);
     }
 
     private static string GetCachePath() =>

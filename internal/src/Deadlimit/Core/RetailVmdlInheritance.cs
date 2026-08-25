@@ -49,16 +49,20 @@ public static class RetailVmdlInheritance
 
     public static string? FindRetailVmdl(ProjectManifest manifest)
     {
-        var sourceRoot = Path.Combine(manifest.ProjectFolder, manifest.SourceDumpFolderName);
+        var sourceRoot = SafePath.ResolveUnderRoot(
+            manifest.ProjectFolder,
+            manifest.SourceDumpFolderName,
+            "Project source-dump folder");
         if (!Directory.Exists(sourceRoot) || string.IsNullOrWhiteSpace(manifest.RetailMainModel))
         {
             return null;
         }
 
         var retailSourceResource = ToSourceVmdlResourcePath(manifest.RetailMainModel);
-        var exactPath = Path.Combine(
+        var exactPath = SafePath.ResolveUnderRoot(
             sourceRoot,
-            retailSourceResource.Replace('/', Path.DirectorySeparatorChar));
+            retailSourceResource.Replace('/', Path.DirectorySeparatorChar),
+            "Retail main model resource");
 
         if (File.Exists(exactPath))
         {
@@ -90,7 +94,10 @@ public static class RetailVmdlInheritance
                 ToSourceVmdlResourcePath(manifest.RetailMainModel)
                     .Replace('/', Path.DirectorySeparatorChar))
             ?? string.Empty;
-        var destinationFolder = Path.Combine(addonContentRoot, resourceFolder);
+        var destinationFolder = SafePath.ResolveUnderRoot(
+            addonContentRoot,
+            resourceFolder,
+            "Retail VMDL destination folder");
 
         Directory.CreateDirectory(destinationFolder);
 
@@ -98,7 +105,10 @@ public static class RetailVmdlInheritance
         foreach (var sourceFile in Directory.EnumerateFiles(sourceFolder, "*", SearchOption.AllDirectories))
         {
             var relative = Path.GetRelativePath(sourceFolder, sourceFile);
-            var destination = Path.Combine(destinationFolder, relative);
+            var destination = SafePath.ResolveUnderRoot(
+                destinationFolder,
+                relative,
+                "Retail source-tree destination");
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             File.Copy(sourceFile, destination, overwrite: true);
             copied++;
@@ -188,9 +198,10 @@ public static class RetailVmdlInheritance
                     $"More than one artist DMX resolved to the same retail render mesh: {target.Filename}");
             }
 
-            var targetPath = Path.Combine(
+            var targetPath = SafePath.ResolveUnderRoot(
                 addonContentRoot,
-                target.Filename.Replace('/', Path.DirectorySeparatorChar));
+                target.Filename.Replace('/', Path.DirectorySeparatorChar),
+                "VMDL RenderMeshFile target");
             Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
             File.Copy(artistDmx, targetPath, overwrite: true);
             var vertexColor = VertexColorSidecarService.TryApply(artistDmx, targetPath);

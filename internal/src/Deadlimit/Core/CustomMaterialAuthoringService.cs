@@ -18,7 +18,7 @@ public sealed record CustomMaterialAuthoringResult(
 public sealed class CustomMaterialAuthoringService
 {
     private const string GeneratedMarker = "// DEADLIMIT_GENERATED_CUSTOM_VMAT_V4";
-    private const string ManagedComment = "// Deadlimit manages Texture* source assignments in this generated VMAT from project-root PNGs on every PREPARE. Non-texture Material Editor edits remain authoritative.";
+    private const string ManagedComment = "// Deadlimit manages Texture* source assignments in this generated VMAT from project-root textures on every PREPARE. Non-texture Material Editor edits remain authoritative.";
     private const string VertexColorGeneratedMarker = "// DEADLIMIT_VERTEXCOLOR_VMAT_V1";
     private const string VertexColorManagedComment = "// Deadlimit vertex-color material: mesh vertex color drives base color; project color textures are intentionally ignored.";
     private const string VertexColorTemplateMaterial = "materials/dev/vertcolor_pbr_basic.vmat";
@@ -27,6 +27,16 @@ public sealed class CustomMaterialAuthoringService
     private const string NeutralNormal = "[0.501961 0.501961 1.000000 0.000000]";
     private const string NeutralRoughness = "[0.800000 0.800000 0.800000 0.000000]";
     private const string NeutralBlack = "[0.000000 0.000000 0.000000 0.000000]";
+
+    private static readonly HashSet<string> TextureSourceExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png",
+        ".tga",
+        ".jpg",
+        ".jpeg",
+        ".tif",
+        ".tiff",
+    };
 
     private static readonly TextureSlotDefinition[] TextureSlots =
     [
@@ -116,7 +126,8 @@ public sealed class CustomMaterialAuthoringService
         var textureFolder = Path.Combine(materialContentFolder, "textures");
         Directory.CreateDirectory(textureFolder);
 
-        var rootPngFiles = Directory.EnumerateFiles(manifest.ProjectFolder, "*.png", SearchOption.TopDirectoryOnly)
+        var rootPngFiles = Directory.EnumerateFiles(manifest.ProjectFolder, "*", SearchOption.TopDirectoryOnly)
+            .Where(path => TextureSourceExtensions.Contains(Path.GetExtension(path)))
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -312,7 +323,7 @@ public sealed class CustomMaterialAuthoringService
         log.AppendLine("Custom VMAT ownership policy: files carrying a DEADLIMIT_VERTEXCOLOR_VMAT marker are managed only for vertex-color behavior; project texture auto-binding intentionally skips them.");
         log.AppendLine("Custom VMAT ownership policy: generated markers and the project .deadlimit ownership registry identify texture-managed VMAT files even after Material Editor replaces the first-line marker.");
         log.AppendLine("Custom VMAT scaffold policy: inherit the current hero character material so shader, outline/NPR colors, strengths, thicknesses and other non-texture tuning survive, but never inherit unresolved hero texture-source paths.");
-        log.AppendLine("Custom texture policy: the project-root PNG set is authoritative for Deadlimit-managed texture slots on every PREPARE. Adding a matching PNG binds it; removing that PNG reverts the managed slot to its safe default/fallback. Derived PNG copies absent from the project root are removed from the addon texture-source folder.");
+        log.AppendLine("Custom texture policy: the project-root PNG/TGA/JPG/TIFF set is authoritative for Deadlimit-managed texture slots on every PREPARE. Adding a matching texture binds it; removing it reverts the managed slot to its safe default/fallback. Derived texture copies absent from the project root are removed from the addon texture-source folder.");
 
         return new CustomMaterialAuthoringResult(
             remaps,
@@ -337,7 +348,8 @@ public sealed class CustomMaterialAuthoringService
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var removed = 0;
-        foreach (var derivedPng in Directory.EnumerateFiles(textureFolder, "*.png", SearchOption.TopDirectoryOnly))
+        foreach (var derivedPng in Directory.EnumerateFiles(textureFolder, "*", SearchOption.TopDirectoryOnly)
+                     .Where(path => TextureSourceExtensions.Contains(Path.GetExtension(path))))
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (sourceNames.Contains(Path.GetFileName(derivedPng)))
@@ -355,7 +367,7 @@ public sealed class CustomMaterialAuthoringService
             File.Copy(sourcePng, Path.Combine(textureFolder, Path.GetFileName(sourcePng)), overwrite: true);
         }
 
-        log.AppendLine($"Derived custom PNG files removed because source PNG disappeared from project root: {removed}");
+        log.AppendLine($"Derived custom texture files removed because their project-root source disappeared: {removed}");
     }
 
     private (string Text, string VpkPath) DecompileRetailMaterialTemplate(

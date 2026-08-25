@@ -35,6 +35,19 @@ public static class VertexColorSidecarService
             Path.GetFileNameWithoutExtension(artistDmxPath) + FileSuffix);
     }
 
+    public static string GetArtistDmxPath(string sidecarPath)
+    {
+        if (!IsSidecarPath(sidecarPath))
+        {
+            throw new ArgumentException("Path is not a Deadlimit Vertex Color sidecar.", nameof(sidecarPath));
+        }
+
+        var directory = Path.GetDirectoryName(sidecarPath)
+            ?? throw new ArgumentException("Vertex Color sidecar has no parent folder.", nameof(sidecarPath));
+        var fileName = Path.GetFileName(sidecarPath);
+        return Path.Combine(directory, fileName[..^FileSuffix.Length] + ".dmx");
+    }
+
     public static VertexColorSidecarResult TryApply(string artistDmxPath, string preparedDmxPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(artistDmxPath);

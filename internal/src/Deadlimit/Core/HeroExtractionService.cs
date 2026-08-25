@@ -64,7 +64,10 @@ public sealed class HeroExtractionService
         var resourceFolder = GetResourceFolder(candidate.ResourcePath);
         var metadataFolder = ProjectStore.GetMetadataFolder(manifest.ProjectFolder);
         var stagingFolder = Path.Combine(metadataFolder, "source-extract-staging");
-        var outputFolder = Path.Combine(manifest.ProjectFolder, manifest.SourceDumpFolderName);
+        var outputFolder = SafePath.ResolveUnderRoot(
+            manifest.ProjectFolder,
+            manifest.SourceDumpFolderName,
+            "Project source-extraction folder");
         var previousFolder = Path.Combine(metadataFolder, "0source.previous");
 
         Directory.CreateDirectory(metadataFolder);
@@ -248,7 +251,9 @@ public sealed class HeroExtractionService
 
                 if (!entry.TypeName.EndsWith(GameFileLoader.CompiledFileSuffix, StringComparison.Ordinal))
                 {
-                    WriteFile(Path.Combine(outputRoot, ToWindowsPath(filePath)), rawData);
+                    WriteFile(
+                        SafePath.ResolveUnderRoot(outputRoot, ToWindowsPath(filePath), "Extracted VPK resource"),
+                        rawData);
                     continue;
                 }
 
@@ -258,7 +263,10 @@ public sealed class HeroExtractionService
 
                 var outputExtension = FileExtract.GetExtension(resource) ?? entry.TypeName[..^2];
                 var decompiledPath = Path.ChangeExtension(filePath, outputExtension);
-                var outputPath = Path.Combine(outputRoot, ToWindowsPath(decompiledPath));
+                var outputPath = SafePath.ResolveUnderRoot(
+                    outputRoot,
+                    ToWindowsPath(decompiledPath),
+                    "Decompiled VPK resource");
 
                 using var contentFile = resource.ResourceType == ResourceType.Texture
                     ? new TextureExtract(resource).ToContentFile()
@@ -285,7 +293,10 @@ public sealed class HeroExtractionService
         foreach (var additionalFile in contentFile.AdditionalFiles)
         {
             var additionalPath = additionalFile.KeepFullPath
-                ? Path.Combine(outputRoot, ToWindowsPath(additionalFile.FileName))
+                ? SafePath.ResolveUnderRoot(
+                    outputRoot,
+                    ToWindowsPath(additionalFile.FileName),
+                    "Additional extracted resource")
                 : Path.Combine(Path.GetDirectoryName(path)!, Path.GetFileName(additionalFile.FileName));
 
             DumpContentFile(outputRoot, additionalPath, additionalFile);
@@ -296,7 +307,10 @@ public sealed class HeroExtractionService
             var data = subFile.Extract?.Invoke();
             if (data is not null)
             {
-                WriteFile(Path.Combine(Path.GetDirectoryName(path)!, subFile.FileName), data);
+                var parent = SafePath.EnsureUnderRoot(outputRoot, Path.GetDirectoryName(path)!, "Extracted subfile parent");
+                WriteFile(
+                    SafePath.ResolveUnderRoot(parent, Path.GetFileName(subFile.FileName), "Extracted subfile"),
+                    data);
             }
         }
     }

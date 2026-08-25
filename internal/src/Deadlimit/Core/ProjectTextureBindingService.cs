@@ -106,9 +106,10 @@ internal static class ProjectTextureBindingService
 
         var desiredMaterialPaths = customMaterials.Remaps
             .Select(remap => NormalizeResourcePath(remap.To))
-            .Select(resource => Path.GetFullPath(Path.Combine(
+            .Select(resource => SafePath.ResolveUnderRoot(
                 addonContentRoot,
-                resource.Replace('/', Path.DirectorySeparatorChar))))
+                resource.Replace('/', Path.DirectorySeparatorChar),
+                "Managed custom VMAT target"))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var removedStaleMaterials = RemoveStaleManagedMaterials(
@@ -166,9 +167,10 @@ internal static class ProjectTextureBindingService
             cancellationToken.ThrowIfCancellationRequested();
 
             var targetResource = NormalizeResourcePath(remap.To);
-            var targetPath = Path.Combine(
+            var targetPath = SafePath.ResolveUnderRoot(
                 addonContentRoot,
-                targetResource.Replace('/', Path.DirectorySeparatorChar));
+                targetResource.Replace('/', Path.DirectorySeparatorChar),
+                "Managed custom VMAT target");
 
             if (!File.Exists(targetPath))
             {
@@ -820,7 +822,17 @@ internal static class ProjectTextureBindingService
 
         var relative = NormalizeResourcePath(resourcePath)
             .Replace('/', Path.DirectorySeparatorChar);
-        return File.Exists(Path.Combine(addonContentRoot, relative));
+        try
+        {
+            return File.Exists(SafePath.ResolveUnderRoot(
+                addonContentRoot,
+                relative,
+                "VMAT texture source"));
+        }
+        catch (InvalidDataException)
+        {
+            return false;
+        }
     }
 
     private static bool LooksLikeLocalTextureSource(string value) =>

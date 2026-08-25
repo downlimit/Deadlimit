@@ -108,7 +108,10 @@ internal sealed class OnlinePreparationSession : IDisposable
                 "ONLINE PREPARATION needs prepared CSDK content first. Run PREPARE FOR CSDK once and try again.");
         }
 
-        var sourceVmdlFullPath = Path.GetFullPath(manifest.SourceVmdl);
+        var sourceVmdlFullPath = SafePath.EnsureUnderRoot(
+            paths.CsdkContentRoot,
+            manifest.SourceVmdl,
+            "Prepared VMDL");
         var relativeVmdl = Path.GetRelativePath(paths.CsdkContentRoot, sourceVmdlFullPath);
         var parts = relativeVmdl
             .Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
@@ -121,7 +124,10 @@ internal sealed class OnlinePreparationSession : IDisposable
         }
 
         var addonName = parts[1];
-        var addonContentRoot = Path.Combine(paths.CsdkContentRoot, "citadel_addons", addonName);
+        var addonContentRoot = SafePath.ResolveUnderRoot(
+            paths.CsdkContentRoot,
+            Path.Combine("citadel_addons", addonName),
+            "Online addon content root");
         var textureTargetFolder = Path.Combine(addonContentRoot, "materials", addonName, "textures");
 
         var rootDmxFiles = Directory.EnumerateFiles(manifest.ProjectFolder, "*.dmx", SearchOption.TopDirectoryOnly)
@@ -143,9 +149,10 @@ internal sealed class OnlinePreparationSession : IDisposable
 
         var dmxTargets = dmxMappings.ToDictionary(
             mapping => Path.GetFullPath(mapping.ArtistDmxPath),
-            mapping => Path.Combine(
+            mapping => SafePath.ResolveUnderRoot(
                 addonContentRoot,
-                mapping.TargetResourcePath.Replace('/', Path.DirectorySeparatorChar)),
+                mapping.TargetResourcePath.Replace('/', Path.DirectorySeparatorChar),
+                "Online DMX target from VMDL"),
             StringComparer.OrdinalIgnoreCase);
 
         var knownRelevantFiles = EnumerateRelevantFiles(manifest.ProjectFolder)
@@ -285,12 +292,30 @@ internal sealed class OnlinePreparationSession : IDisposable
         var currentRelevantFiles = EnumerateRelevantFiles(_projectFolder)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        if (!_knownRelevantFiles.SetEquals(currentRelevantFiles))
+        var membershipChanges = _knownRelevantFiles
+            .Except(currentRelevantFiles, StringComparer.OrdinalIgnoreCase)
+            .Concat(currentRelevantFiles.Except(_knownRelevantFiles, StringComparer.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (membershipChanges.Any(path => !VertexColorSidecarService.IsSidecarPath(path)))
         {
             MarkPrepareRequired(
                 "ONLINE PREPARATION detected a new, deleted, or renamed root DMX/texture file. A normal PREPARE FOR CSDK is required to rebuild project structure and bindings.",
                 null);
             return;
+        }
+
+        foreach (var sidecarPath in membershipChanges)
+        {
+            if (File.Exists(sidecarPath))
+            {
+                _knownRelevantFiles.Add(sidecarPath);
+            }
+            else
+            {
+                _knownRelevantFiles.Remove(sidecarPath);
+                _sourceHashes.Remove(sidecarPath);
+            }
         }
 
         foreach (var sourcePath in pending
@@ -307,16 +332,40 @@ internal sealed class OnlinePreparationSession : IDisposable
             }
 
             var extension = Path.GetExtension(sourcePath);
-            if (extension.Equals(".dmx", StringComparison.OrdinalIgnoreCase))
+            if (extension.Equals(".fbx", StringComparison.OrdinalIgnoreCase)
+                && VertexColorSidecarService.IsSidecarPath(sourcePath))
             {
-                if (VertexColorSidecarService.IsSidecarPath(sourcePath))
+                var artistDmx = VertexColorSidecarService.GetArtistDmxPath(sourcePath);
+                if (!File.Exists(artistDmx) || !_dmxTargets.TryGetValue(artistDmx, out var preparedDmx))
                 {
                     MarkPrepareRequired(
-                        $"ONLINE PREPARATION detected an updated Vertex Color sidecar {Path.GetFileName(sourcePath)}. Run a normal PREPARE FOR CSDK to validate and apply it.",
+                        $"ONLINE PREPARATION cannot match {Path.GetFileName(sourcePath)} to a prepared artist DMX. Run a normal PREPARE FOR CSDK.",
                         sourcePath);
                     continue;
                 }
 
+                CopyStable(artistDmx, preparedDmx);
+                var vertexColor = VertexColorSidecarService.TryApply(artistDmx, preparedDmx);
+                _sourceHashes[sourcePath] = hash;
+                _sourceHashes[artistDmx] = ComputeStableHash(artistDmx);
+                if (vertexColor.Status != VertexColorSidecarStatus.Applied)
+                {
+                    MarkPrepareRequired(
+                        $"ONLINE PREPARATION could not apply {Path.GetFileName(sourcePath)}. " +
+                        $"Vertex Color [{vertexColor.Status}]: {vertexColor.Message}",
+                        sourcePath);
+                    continue;
+                }
+
+                RaiseUpdated(
+                    $"ONLINE PREPARATION applied Vertex Color: {Path.GetFileName(sourcePath)}. {vertexColor.Message}",
+                    sourcePath,
+                    PrepareRequired);
+                continue;
+            }
+
+            if (extension.Equals(".dmx", StringComparison.OrdinalIgnoreCase))
+            {
                 var currentMaterialReferences = ReadDmxMaterialReferences(sourcePath);
                 if (!_dmxMaterialReferences.TryGetValue(sourcePath, out var previousMaterialReferences)
                     || !previousMaterialReferences.SequenceEqual(
@@ -392,6 +441,8 @@ internal sealed class OnlinePreparationSession : IDisposable
     {
         var extension = Path.GetExtension(path);
         return extension.Equals(".dmx", StringComparison.OrdinalIgnoreCase)
+            || (extension.Equals(".fbx", StringComparison.OrdinalIgnoreCase)
+                && VertexColorSidecarService.IsSidecarPath(path))
             || TextureExtensions.Contains(extension);
     }
 
