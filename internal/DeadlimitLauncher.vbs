@@ -1,19 +1,20 @@
 Option Explicit
 
-Dim shell, fso, internalDir, rootDir
+Dim shell, fso, internalDir, rootDir, commandPath
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
 internalDir = fso.GetParentFolderName(WScript.ScriptFullName)
 rootDir = fso.GetParentFolderName(internalDir)
+commandPath = rootDir & "\Deadlimit.cmd"
 
 On Error Resume Next
 HideInfrastructurePath rootDir & "\.github"
-HideInfrastructurePath rootDir & "\Deadlimit.cmd"
+HideInfrastructurePath commandPath
 On Error GoTo 0
 
 shell.CurrentDirectory = rootDir
-shell.Run "dotnet run --project ""internal\src\Deadlimit""", 0, False
+shell.Run "cmd.exe /c " & Chr(34) & Chr(34) & commandPath & Chr(34) & Chr(34), 1, False
 
 Sub HideInfrastructurePath(path)
     Dim item

@@ -101,7 +101,7 @@ internal static class OnlinePreparationFeature
         var originalTitle = _form.Text;
         var buttons = FindActionButtons().ToArray();
         var enabledStates = buttons.ToDictionary(button => button, button => button.Enabled);
-        var started = false;
+        var shouldLaunchCsdk = false;
 
         try
         {
@@ -128,9 +128,13 @@ internal static class OnlinePreparationFeature
 
             StartOrReplaceSession(refreshedManifest, paths);
             _launchButton.Text = OnlineButtonText;
+
+            var csdkAlreadyRunning = CsdkProcessService.IsRunning(paths);
             UpdateToolTip(
-                "ONLINE PREPARATION is active.\n\nChanged DMX and texture files are synchronized automatically. Shift-click LAUNCH CSDK again to stop.\n\nA normal PREPARE runs full preparation and refreshes the live-sync baseline.");
-            started = true;
+                csdkAlreadyRunning
+                    ? "ONLINE PREPARATION is active.\n\nChanged DMX and texture files are synchronized automatically. The existing CSDK instance is kept; no second instance is launched.\n\nShift-click again to stop online synchronization."
+                    : "ONLINE PREPARATION is active.\n\nChanged DMX and texture files are synchronized automatically. CSDK will launch now.\n\nShift-click again to stop online synchronization.");
+            shouldLaunchCsdk = !csdkAlreadyRunning;
         }
         catch (Exception ex) when (ex is IOException
             or UnauthorizedAccessException
@@ -161,7 +165,7 @@ internal static class OnlinePreparationFeature
             _toggleBusy = false;
         }
 
-        return started;
+        return shouldLaunchCsdk;
     }
 
     private static async Task RefreshBaselineAfterManualPrepareAsync()
@@ -269,7 +273,7 @@ internal static class OnlinePreparationFeature
         }
 
         UpdateToolTip(
-            "ONLINE PREPARATION is off.\n\nShift-click LAUNCH CSDK to prepare once, enable live synchronization and launch CSDK.");
+            "ONLINE PREPARATION is off.\n\nShift-click LAUNCH CSDK to prepare once and enable live synchronization. CSDK launches only if no CSDK process is already running.");
     }
 
     private static void Detach()

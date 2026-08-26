@@ -1,1 +1,1 @@
-Shortcut bootstrap refreshes Deadlimit and Updater icons after updates.
+Shortcut bootstrap builds the Release Deadlimit executable once, refreshes Deadlimit and Updater icons, and points Deadlimit.lnk directly at the built executable.
