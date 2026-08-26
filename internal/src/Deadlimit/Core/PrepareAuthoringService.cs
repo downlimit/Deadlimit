@@ -118,6 +118,33 @@ public sealed class PrepareAuthoringService
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
+            progress?.Report(new PrepareAuthoringProgress("Validating Vertex Color source pairs before changing CSDK content..."));
+
+            var vertexColorSourceStates = VertexColorSourceGuard.ValidateForPrepare(
+                rootDmxFiles,
+                cancellationToken)
+                .ToDictionary(
+                    state => Path.GetFullPath(VertexColorSidecarService.GetArtistDmxPath(state.SidecarPath)),
+                    state => state,
+                    StringComparer.OrdinalIgnoreCase);
+
+            foreach (var dmxPath in rootDmxFiles)
+            {
+                var fullDmxPath = Path.GetFullPath(dmxPath);
+                if (!vertexColorSourceStates.TryGetValue(fullDmxPath, out var state))
+                {
+                    continue;
+                }
+
+                log.AppendLine(
+                    $"Vertex Color source preflight: {Path.GetFileName(dmxPath)} | " +
+                    $"material={state.UsesVertexColorMaterial} | embedded={state.HasEmbeddedVertexColor} | " +
+                    $"sidecarExists={state.SidecarExists} | sidecarCurrent={state.SidecarCurrent} | {state.Message}");
+            }
+            log.AppendLine("Vertex Color FBX policy: *_vertexcolor.fbx is a persistent project source file. PREPARE never deletes it.");
+            log.AppendLine();
+
+            cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new PrepareAuthoringProgress("Cleaning stale compiled output for this addon..."));
 
             var gameOutputCleaned = false;
@@ -177,8 +204,12 @@ public sealed class PrepareAuthoringService
 
             var vertexColorWarnings = replacedRenderMeshes
                 .Where(overlay => overlay.VertexColor.Status != VertexColorSidecarStatus.Applied)
-                .Where(overlay => DiscoverDmxMaterialReferences([overlay.ArtistDmxPath])
-                    .Any(ContainsVertexColorToken))
+                .Where(overlay =>
+                {
+                    var fullPath = Path.GetFullPath(overlay.ArtistDmxPath);
+                    return vertexColorSourceStates.TryGetValue(fullPath, out var state)
+                        && state.NeedsExternalSidecar;
+                })
                 .Select(overlay =>
                     $"{Path.GetFileName(overlay.ArtistDmxPath)}: " +
                     $"Vertex Color [{overlay.VertexColor.Status}] — {overlay.VertexColor.Message}")
@@ -186,6 +217,14 @@ public sealed class PrepareAuthoringService
             foreach (var warning in vertexColorWarnings)
             {
                 log.AppendLine($"WARNING: {warning}");
+            }
+
+            if (vertexColorWarnings.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    "Vertex Color source changed during PREPARE after the safety preflight. " +
+                    "No successful PREPARE state will be recorded. Export the DMX and Vertex Color FBX again as a matching pair, then rerun PREPARE.\n\n" +
+                    string.Join("\n", vertexColorWarnings));
             }
 
             var authoringMaterialReferences = ExpandWallWormMaterialAliases(dmxMaterialReferences);
@@ -307,6 +346,7 @@ public sealed class PrepareAuthoringService
             log.AppendLine("Material policy: direct materials/<name>.vmat references from Wall Worm are paired with an extensionless authoring alias, so spaces and the explicit .vmat suffix survive into the final VMDL remap.");
             log.AppendLine("Material policy: copy retail/template material parameters only when a custom VMAT is first created; later PREPARE runs preserve manual VMAT edits and synchronize only matching project-root texture sources.");
             log.AppendLine("Render-mesh policy: preserve retail RenderMeshList/bodygroups/LODs; overlay artist DMX at the original render-mesh resource path.");
+            log.AppendLine("Vertex Color policy: *_vertexcolor.fbx stays beside the artist DMX as persistent source data; repeated PREPARE, BUILD FOR TEST and ONLINE activation may reuse it safely.");
 
             manifest.SourceVmdl = sourceCopy.DestinationVmdlPath;
             manifest.CompiledVmdl = null;
@@ -316,19 +356,6 @@ public sealed class PrepareAuthoringService
             log.AppendLine();
             log.AppendLine("RESULT: AUTHORING CONTENT PREPARED; ADDON GAME OUTPUT CLEAN");
             File.WriteAllText(logPath, log.ToString());
-
-            DeleteAppliedVertexColorSidecarsAfterSuccessfulPrepare(
-                replacedRenderMeshes,
-                log);
-            try
-            {
-                File.WriteAllText(logPath, log.ToString());
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                // The preparation transaction is already complete and its first final log was
-                // persisted. A best-effort cleanup-log refresh must not turn success into failure.
-            }
 
             progress?.Report(new PrepareAuthoringProgress("Authoring content prepared. Launch CSDK to rebuild clean game output."));
 
@@ -360,38 +387,6 @@ public sealed class PrepareAuthoringService
             log.AppendLine($"RESULT: FAILED — {ex}");
             File.WriteAllText(logPath, log.ToString());
             throw;
-        }
-    }
-
-    private static void DeleteAppliedVertexColorSidecarsAfterSuccessfulPrepare(
-        IEnumerable<ArtistDmxOverlayResult> overlays,
-        StringBuilder log)
-    {
-        var appliedSidecars = overlays
-            .Select(overlay => overlay.VertexColor)
-            .Where(result => result.Status == VertexColorSidecarStatus.Applied)
-            .Select(result => result.SidecarPath)
-            .Where(path => !string.IsNullOrWhiteSpace(path))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        foreach (var sidecarPath in appliedSidecars)
-        {
-            try
-            {
-                if (!File.Exists(sidecarPath))
-                {
-                    log.AppendLine($"Successful PREPARE FBX cleanup skipped missing sidecar: {sidecarPath}");
-                    continue;
-                }
-
-                File.Delete(sidecarPath);
-                log.AppendLine($"Successful PREPARE removed applied Vertex Color FBX: {sidecarPath}");
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                log.AppendLine($"Successful PREPARE could not remove applied Vertex Color FBX '{sidecarPath}': {ex.Message}");
-            }
         }
     }
 
