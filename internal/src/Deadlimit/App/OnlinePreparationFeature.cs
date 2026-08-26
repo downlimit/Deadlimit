@@ -129,7 +129,7 @@ internal static class OnlinePreparationFeature
             StartOrReplaceSession(refreshedManifest, paths);
             _launchButton.Text = OnlineButtonText;
             UpdateToolTip(
-                "ONLINE PREPARATION is active. Existing root DMX and texture files are hash-checked after a short debounce; only files whose bytes actually changed are copied into CSDK content. Shift-click LAUNCH CSDK again to stop. A normal PREPARE still runs full preparation and refreshes the live-sync baseline.");
+                "ONLINE PREPARATION is active.\n\nChanged DMX and texture files are synchronized automatically. Shift-click LAUNCH CSDK again to stop.\n\nA normal PREPARE runs full preparation and refreshes the live-sync baseline.");
             started = true;
         }
         catch (Exception ex) when (ex is IOException
@@ -205,7 +205,7 @@ internal static class OnlinePreparationFeature
                 _launchButton.Text = OnlineButtonText;
             }
             UpdateToolTip(
-                "ONLINE PREPARATION baseline refreshed after PREPARE FOR CSDK. Existing root DMX and texture files are hash-checked and only byte-level changes are copied into CSDK content. Shift-click LAUNCH CSDK to stop.");
+                "ONLINE PREPARATION baseline refreshed.\n\nChanged DMX and texture files will continue to synchronize automatically. Shift-click LAUNCH CSDK to stop.");
         }
         catch (Exception ex) when (ex is IOException
             or UnauthorizedAccessException
@@ -269,7 +269,7 @@ internal static class OnlinePreparationFeature
         }
 
         UpdateToolTip(
-            "ONLINE PREPARATION is off. Shift-click LAUNCH CSDK to prepare once, start live hash-based DMX/texture synchronization and launch CSDK.");
+            "ONLINE PREPARATION is off.\n\nShift-click LAUNCH CSDK to prepare once, enable live synchronization and launch CSDK.");
     }
 
     private static void Detach()
