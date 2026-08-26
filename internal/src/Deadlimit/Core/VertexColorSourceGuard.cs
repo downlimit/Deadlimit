@@ -1,4 +1,8 @@
+using System.Collections;
 using System.Text;
+using Datamodel;
+using Datamodel.Codecs;
+using DmxColor = Datamodel.Color;
 
 namespace Deadlimit.Core;
 
@@ -26,10 +30,31 @@ public static class VertexColorSourceGuard
 
         var raw = File.ReadAllBytes(artistDmxPath);
         var text = Encoding.Latin1.GetString(raw);
-        var usesVertexColorMaterial = text.Contains("vertexcolor", StringComparison.OrdinalIgnoreCase);
-        var hasEmbeddedVertexColor = usesVertexColorMaterial
-            && text.Contains("color$0", StringComparison.Ordinal)
-            && text.Contains("color$0Indices", StringComparison.Ordinal);
+        var hasVertexColorToken = text.Contains("vertexcolor", StringComparison.OrdinalIgnoreCase);
+
+        var usesVertexColorMaterial = hasVertexColorToken;
+        var hasEmbeddedVertexColor = false;
+        var embeddedMessage = string.Empty;
+        if (hasVertexColorToken)
+        {
+            try
+            {
+                (usesVertexColorMaterial, hasEmbeddedVertexColor, embeddedMessage) =
+                    InspectEmbeddedVertexColor(artistDmxPath);
+            }
+            catch (Exception ex) when (ex is IOException
+                or UnauthorizedAccessException
+                or InvalidDataException
+                or ArgumentException
+                or NotSupportedException)
+            {
+                // Fail closed. If the DMX cannot be structurally inspected, an external
+                // sidecar must validate successfully before PREPARE can replace good content.
+                usesVertexColorMaterial = true;
+                hasEmbeddedVertexColor = false;
+                embeddedMessage = $"Embedded Vertex Color could not be validated: {ex.Message}";
+            }
+        }
 
         var sidecarPath = VertexColorSidecarService.GetSidecarPath(artistDmxPath);
         var sidecarExists = File.Exists(sidecarPath);
@@ -39,12 +64,14 @@ public static class VertexColorSourceGuard
         var message = !usesVertexColorMaterial
             ? "DMX does not use a Vertex Color material; no sidecar is required."
             : hasEmbeddedVertexColor
-                ? "DMX already contains color$0/color$0Indices; the FBX sidecar is not required for this revision."
+                ? embeddedMessage
                 : !sidecarExists
                     ? $"Vertex Color source is incomplete: {Path.GetFileName(sidecarPath)} is missing. Export the Vertex Color FBX after the latest DMX export."
                     : !sidecarCurrent
                         ? $"Vertex Color source is incomplete: {Path.GetFileName(sidecarPath)} is older than {Path.GetFileName(artistDmxPath)}. Export the Vertex Color FBX again after the latest DMX export."
-                        : "Vertex Color DMX/FBX source pair is current.";
+                        : string.IsNullOrWhiteSpace(embeddedMessage)
+                            ? "Vertex Color DMX/FBX source pair is current."
+                            : $"{embeddedMessage} Falling back to the current Vertex Color FBX sidecar.";
 
         return new VertexColorSourceState(
             usesVertexColorMaterial,
@@ -161,5 +188,140 @@ public static class VertexColorSourceGuard
                 // Validation already completed; temporary cleanup is best-effort only.
             }
         }
+    }
+
+    private static (bool UsesVertexColorMaterial, bool HasValidEmbeddedColor, string Message)
+        InspectEmbeddedVertexColor(string dmxPath)
+    {
+        using var document = Datamodel.Datamodel.Load(dmxPath, DeferredMode.Disabled);
+        var requiredMeshes = 0;
+
+        foreach (var mesh in document.AllElements.Where(element =>
+                     string.Equals(element.ClassName, "DmeMesh", StringComparison.Ordinal)))
+        {
+            var bindState = mesh.Get<Element>("bindState")
+                ?? throw new InvalidDataException($"DMX mesh '{mesh.Name}' has no bindState.");
+            var currentState = mesh.Get<Element>("currentState")
+                ?? throw new InvalidDataException($"DMX mesh '{mesh.Name}' has no currentState.");
+            if (bindState.ID != currentState.ID)
+            {
+                throw new InvalidDataException(
+                    $"DMX mesh '{mesh.Name}' uses different bind/current vertex states.");
+            }
+
+            var faceSets = mesh.GetArray<Element>("faceSets")
+                ?? throw new InvalidDataException($"DMX mesh '{mesh.Name}' has no faceSets array.");
+            if (!faceSets.Any(UsesVertexColorMaterial))
+            {
+                continue;
+            }
+
+            requiredMeshes++;
+            if (!HasValidColorStream(bindState, out var reason))
+            {
+                return (
+                    true,
+                    false,
+                    $"Embedded Vertex Color is incomplete on mesh '{mesh.Name}': {reason}");
+            }
+        }
+
+        if (requiredMeshes == 0)
+        {
+            return (false, false, "DMX contains no mesh using a Vertex Color material.");
+        }
+
+        return (
+            true,
+            true,
+            $"DMX contains validated embedded color$0/color$0Indices on {requiredMeshes} Vertex Color mesh(es); the FBX sidecar is not required for this revision.");
+    }
+
+    private static bool HasValidColorStream(Element vertexData, out string reason)
+    {
+        if (!vertexData.ContainsKey("color$0") || !vertexData.ContainsKey("color$0Indices"))
+        {
+            reason = "color$0/color$0Indices is missing.";
+            return false;
+        }
+
+        var colors = vertexData.GetArray<DmxColor>("color$0");
+        var colorIndices = vertexData.GetArray<int>("color$0Indices");
+        var vertexFormat = vertexData.GetArray<string>("vertexFormat");
+        if (colors is null || colorIndices is null || vertexFormat is null)
+        {
+            reason = "Vertex Color arrays have an invalid DMX type.";
+            return false;
+        }
+
+        var logicalVertexCount = GetLogicalVertexCount(vertexData);
+        if (colors.Count == 0)
+        {
+            reason = "color$0 is empty.";
+            return false;
+        }
+        if (colorIndices.Count != logicalVertexCount)
+        {
+            reason = $"color$0Indices has {colorIndices.Count} entries; expected {logicalVertexCount}.";
+            return false;
+        }
+        if (colorIndices.Any(index => index < 0 || index >= colors.Count))
+        {
+            reason = "color$0Indices references a color outside color$0.";
+            return false;
+        }
+        if (!vertexFormat.Contains("color$0", StringComparer.Ordinal))
+        {
+            reason = "vertexFormat does not contain color$0.";
+            return false;
+        }
+
+        reason = string.Empty;
+        return true;
+    }
+
+    private static int GetLogicalVertexCount(Element vertexData)
+    {
+        if (vertexData.ContainsKey("position$0Indices"))
+        {
+            var positionIndices = vertexData.GetArray<int>("position$0Indices");
+            if (positionIndices is null)
+            {
+                throw new InvalidDataException("position$0Indices has an invalid DMX type.");
+            }
+            return positionIndices.Count;
+        }
+
+        var rawPositions = vertexData["position$0"];
+        if (rawPositions is not IEnumerable enumerable || rawPositions is string)
+        {
+            throw new InvalidDataException("position$0 is missing or is not an array.");
+        }
+
+        return enumerable.Cast<object>().Count();
+    }
+
+    private static bool UsesVertexColorMaterial(Element faceSet)
+    {
+        if (!faceSet.ContainsKey("material"))
+        {
+            return false;
+        }
+
+        var material = faceSet.Get<Element>("material");
+        if (material is null)
+        {
+            return false;
+        }
+
+        if (material.Name?.Contains("vertexcolor", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return true;
+        }
+
+        return material.ContainsKey("mtlName")
+            && material.Get<string>("mtlName")?.Contains(
+                "vertexcolor",
+                StringComparison.OrdinalIgnoreCase) == true;
     }
 }
