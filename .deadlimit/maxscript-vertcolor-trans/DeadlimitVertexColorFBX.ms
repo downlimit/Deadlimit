@@ -360,23 +360,20 @@ fn deadlimitVertexColorResultText actionName result =
 
 try (destroyDialog deadlimitVertexColorFbxRollout) catch()
 
-rollout deadlimitVertexColorFbxRollout "Vertex Color FBX Export" width:430
+rollout deadlimitVertexColorFbxRollout "Vertex Color FBX Export" width:310
 (
-    label targetLabel "" width:400 height:34 align:#left
-    button exportButton "EXPORT SELECTED VERTEX COLOR FBX" width:400 height:36
-    label statusLabel "Export the regular DMX with Wall Worm first." width:400 height:34 align:#left
-
-    group "VERTEX COLOR TOOLS"
-    (
-        button toVertexButton "To Vertex" width:196 height:30 across:2 tooltip:"Fill channel 0 from each selected object's wire color. Bakes below Skin and enables shaded Vertex Color display."
-        button toPaletteButton "To Palette" width:196 height:30 tooltip:"Copy the first available channel 0 color to each selected object's wire color."
-        button copyVertexButton "Copy Vertex" width:196 height:30 across:2 tooltip:"Copy the first available channel 0 color from the first selected mesh to the shared color buffer."
-        button copyPaletteButton "Copy Palette" width:196 height:30 tooltip:"Copy the wire color from the first selected mesh to the shared color buffer."
-        button pasteVertexButton "Paste Vertex" width:196 height:30 across:2 tooltip:"Fill channel 0 on all selected meshes from the shared color buffer."
-        button pastePaletteButton "Paste Palette" width:196 height:30 tooltip:"Set the wire color on all selected meshes from the shared color buffer."
-        button enableVertexColorButton "Enable VertColor" width:196 height:30 across:2 tooltip:"Show selected objects with shaded Vertex Color channel 0."
-        button disableVertexColorButton "Disable VertColor" width:196 height:30 tooltip:"Return selected objects to normal viewport shading."
-    )
+    label targetLabel "" width:286 height:16 align:#left
+    button exportButton "EXPORT SELECTED VERTEX COLOR FBX" width:286 height:26
+    label statusLabel "Export the regular DMX with Wall Worm first." width:286 height:16 align:#left
+    label toolsLabel "VERTEX COLOR TOOLS" width:286 height:14 align:#left
+    button toVertexButton "To Vertex" width:139 height:24 across:2 tooltip:"Fill channel 0 from each selected object's wire color. Bakes below Skin and enables shaded Vertex Color display."
+    button toPaletteButton "To Palette" width:139 height:24 tooltip:"Copy the first available channel 0 color to each selected object's wire color."
+    button copyVertexButton "Copy Vertex" width:139 height:24 across:2 tooltip:"Copy the first available channel 0 color from the first selected mesh to the shared color buffer."
+    button copyPaletteButton "Copy Palette" width:139 height:24 tooltip:"Copy the wire color from the first selected mesh to the shared color buffer."
+    button pasteVertexButton "Paste Vertex" width:139 height:24 across:2 tooltip:"Fill channel 0 on all selected meshes from the shared color buffer."
+    button pastePaletteButton "Paste Palette" width:139 height:24 tooltip:"Set the wire color on all selected meshes from the shared color buffer."
+    button enableVertexColorButton "Enable VertColor" width:139 height:24 across:2 tooltip:"Show selected objects with shaded Vertex Color channel 0."
+    button disableVertexColorButton "Disable VertColor" width:139 height:24 tooltip:"Return selected objects to normal viewport shading."
 
     fn showResultMessage text title isError =
     (

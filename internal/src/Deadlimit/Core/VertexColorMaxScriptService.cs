@@ -50,7 +50,15 @@ public static class VertexColorMaxScriptService
         scriptFolder = Path.GetFullPath(scriptFolder.Trim());
         Directory.CreateDirectory(scriptFolder);
         var scriptPath = Path.Combine(scriptFolder, ScriptFileName);
-        File.WriteAllText(scriptPath, template, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        if (!File.Exists(scriptPath)
+            || !string.Equals(File.ReadAllText(scriptPath), template, StringComparison.Ordinal))
+        {
+            AtomicFile.WriteAllText(
+                scriptPath,
+                template,
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        }
+
         return scriptPath;
     }
 

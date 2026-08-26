@@ -17,7 +17,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="..\..\assets\Deadlimit_128_v4.ico" LogicalName="Deadlimit.AppIcon.ico" />
-    <EmbeddedResource Include="..\..\assets\DeadlimitVertexColorSidecar.ms" LogicalName="Deadlimit.VertexColorSidecar.ms" />
+    <EmbeddedResource Include="..\..\..\.deadlimit\maxscript-vertcolor-trans\DeadlimitVertexColorFBX.ms" LogicalName="Deadlimit.VertexColorSidecar.ms" />
   </ItemGroup>
 
   <ItemGroup>
