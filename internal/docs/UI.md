@@ -30,6 +30,8 @@ The workspace header follows a Steam-library-style hierarchy. A compact gear ope
 
 The large launch buttons retain their project colors. The smaller Settings/Prepare/Build controls use a dark 70%-opaque overlay so project artwork remains visible beneath them, with no backing surface outside their bounds. A 33%-opacity edge vignette is drawn over the cover artwork and below the controls.
 
+While ONLINE CSDK synchronization is active, the CSDK launch button replaces its play glyph with a red circular indicator of the same visual size. The indicator preserves the normal two-space gap before the label and continuously pulses its opacity on a sinusoidal cycle until online synchronization is stopped.
+
 A normal click on `LAUNCH GAME / ЗАПУСК ИГРЫ` launches Deadlock through the installed Steam client using app id `1422450`, with the Steam URI as a fallback. Holding SHIFT while clicking does not launch Deadlock; it only copies `cl_lock_camera true` to the Windows clipboard for visual testing.
 
 Each selected project owns a header image at `.deadlimit/project-header.png`. For a newly created project folder, Deadlimit creates the hidden `.deadlimit` directory and a plain dark-gray PNG sized to the live header area. Existing projects receive the same template the first time they are selected if the image is missing. Double-clicking the cover opens its hidden `.deadlimit` folder. Deadlimit reloads the artwork when the application regains focus and does not hold a persistent lock on the PNG.

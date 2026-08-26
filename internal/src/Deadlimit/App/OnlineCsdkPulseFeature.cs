@@ -7,7 +7,8 @@ internal static class OnlineCsdkPulseFeature
 {
     private const int PulseIntervalMilliseconds = 33;
     private const double PulsePeriodSeconds = 1.4;
-    private const string IndicatorReserve = "    ";
+    private const string IndicatorReserve = "     ";
+    private const string IndicatorGap = "  ";
 
     private static readonly Color IndicatorColor = Color.FromArgb(244, 67, 54);
 
@@ -135,6 +136,12 @@ internal static class OnlineCsdkPulseFeature
             button.Font,
             new Size(int.MaxValue, int.MaxValue),
             flags);
+        var gapSize = TextRenderer.MeasureText(
+            e.Graphics,
+            IndicatorGap,
+            button.Font,
+            new Size(int.MaxValue, int.MaxValue),
+            flags);
         var playSize = TextRenderer.MeasureText(
             e.Graphics,
             "▶",
@@ -144,7 +151,7 @@ internal static class OnlineCsdkPulseFeature
 
         var diameter = Math.Max(6F, Math.Min(playSize.Width, playSize.Height) - 1F);
         var contentLeft = (button.ClientSize.Width - textSize.Width) / 2F;
-        var x = contentLeft + Math.Max(0F, (reserveSize.Width - diameter) / 2F);
+        var x = contentLeft + Math.Max(0F, reserveSize.Width - gapSize.Width - diameter);
         var y = (button.ClientSize.Height - diameter) / 2F;
 
         var elapsedSeconds = Stopwatch.GetElapsedTime(_pulseStartedAt).TotalSeconds;
