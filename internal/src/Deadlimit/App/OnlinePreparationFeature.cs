@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Deadlimit.Core;
 
 namespace Deadlimit.App;
@@ -9,6 +10,7 @@ internal static class OnlinePreparationFeature
     private static OnlinePreparationSession? _session;
     private static ToolTip? _toolTip;
     private static Button? _prepareButton;
+    private static Button? _buildButton;
     private static Button? _launchButton;
     private static MainForm? _form;
     private static bool _toggleBusy;
@@ -19,6 +21,10 @@ internal static class OnlinePreparationFeature
             .FirstOrDefault(button =>
                 string.Equals(button.Text, "PREPARE FOR CSDK", StringComparison.Ordinal)
                 || string.Equals(button.Text, "ПОДГОТОВИТЬ ДЛЯ CSDK", StringComparison.Ordinal));
+        var buildButton = FindDescendants<Button>(form)
+            .FirstOrDefault(button =>
+                string.Equals(button.Text, "BUILD FOR TEST", StringComparison.Ordinal)
+                || string.Equals(button.Text, "СОБРАТЬ ДЛЯ ТЕСТА", StringComparison.Ordinal));
         var launchButton = FindDescendants<Button>(form)
             .FirstOrDefault(button =>
                 string.Equals(button.Text, "LAUNCH CSDK", StringComparison.Ordinal)
@@ -30,6 +36,7 @@ internal static class OnlinePreparationFeature
 
         _form = form;
         _prepareButton = prepareButton;
+        _buildButton = buildButton;
         _launchButton = launchButton;
         _toolTip = new ToolTip
         {
@@ -43,9 +50,24 @@ internal static class OnlinePreparationFeature
         {
             if (_session is not null)
             {
-                _ = RefreshBaselineAfterManualPrepareAsync();
+                _ = RefreshBaselineAfterSuccessfulPrepareActionAsync(
+                    prepareButton,
+                    UiText.T("PREPARE FOR CSDK", "ПОДГОТОВИТЬ ДЛЯ CSDK"));
             }
         };
+
+        if (buildButton is not null)
+        {
+            buildButton.Click += (_, _) =>
+            {
+                if (_session is not null)
+                {
+                    _ = RefreshBaselineAfterSuccessfulPrepareActionAsync(
+                        buildButton,
+                        UiText.T("BUILD FOR TEST", "СОБРАТЬ ДЛЯ ТЕСТА"));
+                }
+            };
+        }
 
         form.FormClosed += (_, _) => Detach();
     }
@@ -168,17 +190,27 @@ internal static class OnlinePreparationFeature
         return shouldLaunchCsdk;
     }
 
-    private static async Task RefreshBaselineAfterManualPrepareAsync()
+    private static async Task RefreshBaselineAfterSuccessfulPrepareActionAsync(
+        Button actionButton,
+        string actionName)
     {
-        if (_prepareButton is null)
+        var manifestBefore = ProjectStore.TryLoadLastProject();
+        if (manifestBefore is null || _session is null)
         {
             return;
         }
 
-        var sawBusyState = !_prepareButton.Enabled;
-        for (var attempt = 0; attempt < 120 && !_prepareButton.IsDisposed; attempt++)
+        var beforeLog = ReadLatestPrepareLogSnapshot(manifestBefore.ProjectFolder);
+        var sawBusyState = !actionButton.Enabled;
+
+        while (!actionButton.IsDisposed)
         {
-            if (!_prepareButton.Enabled)
+            if (_form is null || _form.IsDisposed || _session is null)
+            {
+                return;
+            }
+
+            if (!actionButton.Enabled)
             {
                 sawBusyState = true;
             }
@@ -190,33 +222,81 @@ internal static class OnlinePreparationFeature
             await Task.Delay(100);
         }
 
-        if (!sawBusyState || _session is null || _prepareButton.IsDisposed)
+        if (!sawBusyState || _session is null || actionButton.IsDisposed)
         {
+            return;
+        }
+
+        var manifest = ProjectStore.TryLoadLastProject();
+        if (manifest is null)
+        {
+            return;
+        }
+
+        var afterLog = ReadLatestPrepareLogSnapshot(manifest.ProjectFolder);
+        var producedNewPrepareResult = afterLog is not null
+            && !string.Equals(beforeLog?.Token, afterLog.Token, StringComparison.Ordinal);
+        if (!producedNewPrepareResult || !afterLog!.Succeeded)
+        {
+            UpdateToolTip(
+                $"ONLINE PREPARATION kept its previous live-sync baseline because {actionName} did not finish a successful PREPARE transaction.\n\nThe last good prepared DMX remains protected.");
             return;
         }
 
         try
         {
-            var manifest = ProjectStore.TryLoadLastProject();
-            if (manifest is null)
-            {
-                return;
-            }
-
             StartOrReplaceSession(manifest, new DeadlimitPaths());
             if (_launchButton is not null && !_launchButton.IsDisposed)
             {
                 _launchButton.Text = OnlineButtonText;
             }
             UpdateToolTip(
-                "ONLINE PREPARATION baseline refreshed.\n\nChanged DMX and texture files will continue to synchronize automatically. Shift-click LAUNCH CSDK to stop.");
+                $"ONLINE PREPARATION baseline refreshed after {actionName}.\n\nChanged DMX and texture files will continue to synchronize automatically. Shift-click LAUNCH CSDK to stop.");
         }
         catch (Exception ex) when (ex is IOException
             or UnauthorizedAccessException
             or InvalidOperationException)
         {
             UpdateToolTip(
-                $"ONLINE PREPARATION could not refresh its baseline after PREPARE FOR CSDK: {ex.Message}");
+                $"ONLINE PREPARATION could not refresh its baseline after {actionName}: {ex.Message}");
+        }
+    }
+
+    private static PrepareLogSnapshot? ReadLatestPrepareLogSnapshot(string projectFolder)
+    {
+        try
+        {
+            var logFolder = Path.Combine(ProjectStore.GetMetadataFolder(projectFolder), "logs");
+            if (!Directory.Exists(logFolder))
+            {
+                return null;
+            }
+
+            var latest = Directory.EnumerateFiles(logFolder, "prepare-*.log", SearchOption.TopDirectoryOnly)
+                .Select(path => new FileInfo(path))
+                .OrderByDescending(info => info.LastWriteTimeUtc)
+                .ThenByDescending(info => info.Name, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+            if (latest is null || !latest.Exists)
+            {
+                return null;
+            }
+
+            var bytes = File.ReadAllBytes(latest.FullName);
+            var text = System.Text.Encoding.UTF8.GetString(bytes);
+            var hash = Convert.ToHexString(SHA256.HashData(bytes));
+            var succeeded = text.Contains(
+                "RESULT: AUTHORING CONTENT PREPARED; ADDON GAME OUTPUT CLEAN",
+                StringComparison.Ordinal);
+            return new PrepareLogSnapshot(
+                latest.FullName + "|" + hash,
+                succeeded);
+        }
+        catch (Exception ex) when (ex is IOException
+            or UnauthorizedAccessException
+            or ArgumentException)
+        {
+            return null;
         }
     }
 
@@ -283,6 +363,7 @@ internal static class OnlinePreparationFeature
         _toolTip?.Dispose();
         _toolTip = null;
         _prepareButton = null;
+        _buildButton = null;
         _launchButton = null;
         _form = null;
     }
@@ -326,4 +407,6 @@ internal static class OnlinePreparationFeature
             }
         }
     }
+
+    private sealed record PrepareLogSnapshot(string Token, bool Succeeded);
 }
