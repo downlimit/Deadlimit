@@ -25,6 +25,10 @@
       <Link>.deadlimit\maxscript-vertcolor-trans\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="..\..\..\.deadlimit\csdk-fast-startup-cache\**\*">
+      <Link>.deadlimit\csdk-fast-startup-cache\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>

@@ -97,7 +97,7 @@ internal sealed class SettingsForm : Form
         {
             Dock = DockStyle.Top,
             ColumnCount = 4,
-            RowCount = 7,
+            RowCount = 8,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             Margin = Padding.Empty,
@@ -114,6 +114,7 @@ internal sealed class SettingsForm : Form
         AddLanguageRow(grid, 4);
         AddThemeRow(grid, 5);
         AddMaxScriptFolderRow(grid, 6);
+        AddCsdkCacheToolRow(grid, 7);
         root.Controls.Add(grid, 0, 1);
 
         var buttons = new FlowLayoutPanel
@@ -309,6 +310,66 @@ internal sealed class SettingsForm : Form
                 this,
                 ex.Message,
                 UiText.T("MaxScript folder unavailable", "Папка MaxScript недоступна"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+    }
+
+    private void AddCsdkCacheToolRow(TableLayoutPanel grid, int row)
+    {
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+
+        var caption = new Label
+        {
+            Text = "CSDK12",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 9, 12, 9),
+        };
+
+        var openButton = new Button
+        {
+            Text = "📂 CSDK Fast Startup Fix",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 5, 0, 5),
+            Font = new Font("Segoe UI Emoji", 9F, FontStyle.Regular, GraphicsUnit.Point),
+        };
+        openButton.Click += (_, _) => OpenCsdkCacheToolFolder();
+
+        var toolTip = CreateToolTip();
+        toolTip.SetToolTip(
+            openButton,
+            UiText.T(
+                "Open File Explorer and select the clickable CSDK cache repair CMD.\n\nRun it after a clean Reduced CSDK12 installation or update, or whenever CSDK startup becomes slow. It rebuilds the AssetSystem cache so later CSDK launches are much faster.",
+                "Открыть Проводник и выделить кликабельный CMD для восстановления кеша CSDK.\n\nЗапускайте его после чистой установки или обновления Reduced CSDK12, а также если CSDK снова долго открывается. Он пересоздаёт кеш AssetSystem, чтобы последующие запуски CSDK были значительно быстрее."));
+
+        grid.Controls.Add(caption, 0, row);
+        grid.Controls.Add(openButton, 1, row);
+        grid.SetColumnSpan(openButton, 3);
+    }
+
+    private void OpenCsdkCacheToolFolder()
+    {
+        try
+        {
+            var commandPath = CsdkAssetCacheToolService.GetBundledCommandPath();
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{commandPath}\"",
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex) when (ex is IOException
+                                   or UnauthorizedAccessException
+                                   or InvalidOperationException
+                                   or System.ComponentModel.Win32Exception)
+        {
+            MessageBox.Show(
+                this,
+                ex.Message,
+                UiText.T("CSDK cache tool unavailable", "Инструмент кеша CSDK недоступен"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
