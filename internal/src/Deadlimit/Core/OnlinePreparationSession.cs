@@ -333,8 +333,31 @@ internal sealed class OnlinePreparationSession : IDisposable
             }
 
             var extension = Path.GetExtension(sourcePath);
-            if (extension.Equals(".fbx", StringComparison.OrdinalIgnoreCase)
-                && VertexColorSidecarService.IsSidecarPath(sourcePath))
+            var isVertexColorSidecar = extension.Equals(".fbx", StringComparison.OrdinalIgnoreCase)
+                && VertexColorSidecarService.IsSidecarPath(sourcePath);
+            var isDmx = extension.Equals(".dmx", StringComparison.OrdinalIgnoreCase);
+
+            if ((isDmx || isVertexColorSidecar) && PrepareRequired)
+            {
+                if (isVertexColorSidecar)
+                {
+                    _sourceHashes[sourcePath] = hash;
+                }
+                else
+                {
+                    _sourceHashes[sourcePath] = hash;
+                    _dmxMaterialReferences[sourcePath] = ReadDmxMaterialReferences(sourcePath);
+                }
+
+                RaiseUpdated(
+                    $"ONLINE PREPARATION kept the existing prepared DMX unchanged because a full PREPARE is already required. " +
+                    $"{Path.GetFileName(sourcePath)} was not synchronized.",
+                    sourcePath,
+                    prepareRequired: true);
+                continue;
+            }
+
+            if (isVertexColorSidecar)
             {
                 var artistDmx = VertexColorSidecarService.GetArtistDmxPath(sourcePath);
                 if (!File.Exists(artistDmx) || !_dmxTargets.TryGetValue(artistDmx, out var preparedDmx))
@@ -365,7 +388,7 @@ internal sealed class OnlinePreparationSession : IDisposable
                 continue;
             }
 
-            if (extension.Equals(".dmx", StringComparison.OrdinalIgnoreCase))
+            if (isDmx)
             {
                 var currentMaterialReferences = ReadDmxMaterialReferences(sourcePath);
                 if (!_dmxMaterialReferences.TryGetValue(sourcePath, out var previousMaterialReferences)
