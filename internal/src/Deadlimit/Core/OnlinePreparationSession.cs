@@ -315,6 +315,7 @@ internal sealed class OnlinePreparationSession : IDisposable
             {
                 _knownRelevantFiles.Remove(sidecarPath);
                 _sourceHashes.Remove(sidecarPath);
+                ReportProtectedSidecarRemoval(sidecarPath);
             }
         }
 
@@ -344,21 +345,21 @@ internal sealed class OnlinePreparationSession : IDisposable
                     continue;
                 }
 
-                CopyStable(artistDmx, preparedDmx);
-                var vertexColor = VertexColorSidecarService.TryApply(artistDmx, preparedDmx);
+                var committed = TryStageAndCommitDmx(artistDmx, preparedDmx, out var staged);
                 _sourceHashes[sourcePath] = hash;
                 _sourceHashes[artistDmx] = ComputeStableHash(artistDmx);
-                if (vertexColor.Status != VertexColorSidecarStatus.Applied)
+                if (!committed)
                 {
-                    MarkPrepareRequired(
-                        $"ONLINE PREPARATION could not apply {Path.GetFileName(sourcePath)}. " +
-                        $"Vertex Color [{vertexColor.Status}]: {vertexColor.Message}",
-                        sourcePath);
+                    RaiseUpdated(
+                        $"ONLINE PREPARATION kept the previous prepared DMX. Waiting for a valid Vertex Color source pair for {Path.GetFileName(artistDmx)}. " +
+                        $"Vertex Color [{staged.VertexColor.Status}]: {staged.Message}",
+                        sourcePath,
+                        PrepareRequired);
                     continue;
                 }
 
                 RaiseUpdated(
-                    $"ONLINE PREPARATION applied Vertex Color: {Path.GetFileName(sourcePath)}. {vertexColor.Message}",
+                    $"ONLINE PREPARATION synchronized Vertex Color source: {Path.GetFileName(sourcePath)}. {staged.Message}",
                     sourcePath,
                     PrepareRequired);
                 continue;
@@ -388,12 +389,21 @@ internal sealed class OnlinePreparationSession : IDisposable
                     continue;
                 }
 
-                CopyStable(sourcePath, dmxTarget);
-                var vertexColor = VertexColorSidecarService.TryApply(sourcePath, dmxTarget);
+                var committed = TryStageAndCommitDmx(sourcePath, dmxTarget, out var staged);
                 _sourceHashes[sourcePath] = hash;
+                if (!committed)
+                {
+                    RaiseUpdated(
+                        $"ONLINE PREPARATION detected a new DMX but kept the previous prepared copy until its Vertex Color source is safe. " +
+                        $"{Path.GetFileName(sourcePath)} — Vertex Color [{staged.VertexColor.Status}]: {staged.Message}",
+                        sourcePath,
+                        PrepareRequired);
+                    continue;
+                }
+
                 RaiseUpdated(
                     $"ONLINE PREPARATION synchronized DMX: {Path.GetFileName(sourcePath)}. " +
-                    $"Vertex Color [{vertexColor.Status}]: {vertexColor.Message}",
+                    $"Vertex Color [{staged.VertexColor.Status}]: {staged.Message}",
                     sourcePath,
                     PrepareRequired);
                 continue;
@@ -405,6 +415,74 @@ internal sealed class OnlinePreparationSession : IDisposable
             RaiseUpdated(
                 $"ONLINE PREPARATION synchronized texture: {Path.GetFileName(sourcePath)}",
                 sourcePath,
+                PrepareRequired);
+        }
+    }
+
+    private bool TryStageAndCommitDmx(
+        string artistDmxPath,
+        string targetPath,
+        out VertexColorStagedResult stagedResult)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+        var stagingPath = Path.Combine(
+            Path.GetDirectoryName(targetPath)!,
+            $".{Path.GetFileNameWithoutExtension(targetPath)}.deadlimit-online-{Guid.NewGuid():N}.dmx");
+
+        try
+        {
+            CopyStable(artistDmxPath, stagingPath);
+            stagedResult = VertexColorSourceGuard.PrepareStagedDmx(artistDmxPath, stagingPath);
+            if (!stagedResult.Ready)
+            {
+                return false;
+            }
+
+            File.Move(stagingPath, targetPath, overwrite: true);
+            return true;
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(stagingPath))
+                {
+                    File.Delete(stagingPath);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // A failed staging cleanup must not replace or invalidate the last good prepared DMX.
+            }
+        }
+    }
+
+    private void ReportProtectedSidecarRemoval(string sidecarPath)
+    {
+        try
+        {
+            var artistDmx = VertexColorSidecarService.GetArtistDmxPath(sidecarPath);
+            if (!File.Exists(artistDmx))
+            {
+                return;
+            }
+
+            var state = VertexColorSourceGuard.Inspect(artistDmx);
+            if (!state.NeedsExternalSidecar)
+            {
+                return;
+            }
+
+            RaiseUpdated(
+                $"ONLINE PREPARATION detected removal of {Path.GetFileName(sidecarPath)}. The existing prepared DMX was kept unchanged; live sync will wait for a fresh Vertex Color FBX before replacing it.",
+                sidecarPath,
+                PrepareRequired);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            RaiseUpdated(
+                $"ONLINE PREPARATION detected a Vertex Color sidecar removal and kept the existing prepared DMX unchanged: {ex.Message}",
+                sidecarPath,
                 PrepareRequired);
         }
     }
