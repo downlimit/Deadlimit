@@ -31,8 +31,8 @@ internal static class VertexColorExportFeature
         toolTip.SetToolTip(
             button,
             UiText.T(
-                "Copies the repository MaxScript fileIn command. The helper exports selected Vertex Color to an FBX beside the latest Wall Worm DMX. PREPARE transfers it and removes the FBX after verification.",
-                "Копирует команду fileIn для MaxScript из репозитория. Скрипт экспортирует Vertex Color выделенных мешей в FBX рядом с последним DMX Wall Worm. PREPARE переносит цвет и удаляет FBX после проверки."));
+                "Copies the repository MaxScript fileIn command. The helper exports selected Vertex Color to a persistent FBX beside the latest Wall Worm DMX. PREPARE validates and reuses this FBX; it is kept as project source data.",
+                "Копирует команду fileIn для MaxScript из репозитория. Скрипт экспортирует Vertex Color выделенных мешей в постоянный FBX рядом с последним DMX Wall Worm. PREPARE проверяет и повторно использует этот FBX; он сохраняется как исходник проекта."));
 
         void RefreshEnabledState()
         {
@@ -56,8 +56,8 @@ internal static class VertexColorExportFeature
                 System.Windows.Forms.MessageBox.Show(
                     form,
                     UiText.T(
-                        "The MAXScript fileIn command is in the clipboard.\n\nPaste it into MAXScript Listener once. For each update: export the normal DMX with Wall Worm, keep the same geometry selected, then export the Vertex Color FBX. Run PREPARE in Deadlimit to transfer it and remove the FBX. The script reads no Deadlimit project settings and contains no path to Deadlimit.exe.",
-                        "Команда fileIn для MAXScript скопирована в буфер обмена.\n\nОдин раз вставьте её в MAXScript Listener. При каждом обновлении: экспортируйте обычный DMX через Wall Worm, оставьте ту же геометрию выделенной и экспортируйте Vertex Color FBX. Затем запустите PREPARE в Deadlimit — он перенесёт цвет и удалит FBX. Скрипт ничего не читает из настроек проекта Deadlimit и не содержит пути к Deadlimit.exe."),
+                        "The MAXScript fileIn command is in the clipboard.\n\nPaste it into MAXScript Listener once. For each update: export the normal DMX with Wall Worm, keep the same geometry selected, then export the Vertex Color FBX. Keep both files together in the project root. PREPARE validates the pair and preserves the FBX for repeated PREPARE, BUILD FOR TEST and ONLINE synchronization. The script reads no Deadlimit project settings and contains no path to Deadlimit.exe.",
+                        "Команда fileIn для MAXScript скопирована в буфер обмена.\n\nОдин раз вставьте её в MAXScript Listener. При каждом обновлении: экспортируйте обычный DMX через Wall Worm, оставьте ту же геометрию выделенной и экспортируйте Vertex Color FBX. Храните оба файла вместе в корне проекта. PREPARE проверяет пару и сохраняет FBX для повторных PREPARE, BUILD FOR TEST и ONLINE-синхронизации. Скрипт ничего не читает из настроек проекта Deadlimit и не содержит пути к Deadlimit.exe."),
                     UiText.T("Deadlimit Vertex Color", "Deadlimit Vertex Color"),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
