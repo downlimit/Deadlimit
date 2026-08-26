@@ -79,6 +79,7 @@ internal static class Program
         ProjectLogsFeature.Attach(form);
         ProjectSaveStateFeature.Attach(form);
         ProjectHeaderFeature.Attach(form);
+        OnlineCsdkPulseFeature.Attach(form);
         ProjectFilesFeature.Attach(form);
         VertexColorExportFeature.Attach(form);
         UiTheme.ApplyCustomPalette(form, settings.UiTheme);
