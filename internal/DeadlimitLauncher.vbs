@@ -1,12 +1,11 @@
 Option Explicit
 
-Dim shell, fso, internalDir, rootDir, appPath, commandPath
+Dim shell, fso, internalDir, rootDir, commandPath
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
 internalDir = fso.GetParentFolderName(WScript.ScriptFullName)
 rootDir = fso.GetParentFolderName(internalDir)
-appPath = rootDir & "\internal\src\Deadlimit\bin\Release\net10.0-windows\Deadlimit.exe"
 commandPath = rootDir & "\Deadlimit.cmd"
 
 On Error Resume Next
@@ -15,11 +14,7 @@ HideInfrastructurePath commandPath
 On Error GoTo 0
 
 shell.CurrentDirectory = rootDir
-If fso.FileExists(appPath) Then
-    shell.Run Chr(34) & appPath & Chr(34), 0, False
-Else
-    shell.Run "cmd.exe /c " & Chr(34) & Chr(34) & commandPath & Chr(34) & Chr(34), 0, False
-End If
+shell.Run "cmd.exe /c " & Chr(34) & Chr(34) & commandPath & Chr(34) & Chr(34), 1, False
 
 Sub HideInfrastructurePath(path)
     Dim item
