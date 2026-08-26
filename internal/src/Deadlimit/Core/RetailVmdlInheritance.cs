@@ -204,7 +204,8 @@ public static class RetailVmdlInheritance
                 "VMDL RenderMeshFile target");
             Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
             File.Copy(artistDmx, targetPath, overwrite: true);
-            var vertexColor = VertexColorSidecarService.TryApply(artistDmx, targetPath);
+            var stagedVertexColor = VertexColorSourceGuard.PrepareStagedDmx(artistDmx, targetPath);
+            var vertexColor = stagedVertexColor.VertexColor;
             replaced.Add(new ArtistDmxOverlayResult(
                 artistDmx,
                 target.Filename,
@@ -397,7 +398,7 @@ public static class RetailVmdlInheritance
             + insertion
             + materialGroupNode[arrayEnd..];
 
-        return new MaterialMergeResult(merged, existing.Length, additions.Length);
+        return new MaterialMergeResult(merged, existing.Length, 0 + additions.Length);
     }
 
     private static string CreateMaterialGroupList(IReadOnlyList<VmdlMaterialRemap> remaps)
