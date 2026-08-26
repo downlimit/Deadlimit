@@ -62,6 +62,16 @@ internal static class Program
         var settings = ProjectStore.GetToolPathSettings();
         UiTheme.ConfigureApplication(settings.UiTheme);
 
+        using var startup = startupSmoke
+            ? null
+            : new StartupProgressForm(AppIcon, settings.UiTheme);
+        if (startup is not null)
+        {
+            startup.Show();
+            UpdateStartup(startup, 12, UiText.T("Loading settings...", "Загрузка настроек..."));
+        }
+
+        UpdateStartup(startup, 28, UiText.T("Building interface...", "Создание интерфейса..."));
         using var form = new MainForm
         {
             Icon = AppIcon,
@@ -71,22 +81,38 @@ internal static class Program
             FormBorderStyle = FormBorderStyle.FixedSingle,
             MaximizeBox = false,
         };
+
+        UpdateStartup(startup, 46, UiText.T("Initializing CSDK actions...", "Инициализация действий CSDK..."));
         BuildFeature.Attach(form);
         OnlinePreparationFeature.Attach(form);
         ExtractionProgressFeature.Attach(form);
+
+        UpdateStartup(startup, 62, UiText.T("Loading project controls...", "Загрузка элементов проекта..."));
         ProjectLibraryFeature.Attach(form);
         HeroCatalogFeature.Attach(form);
         ProjectLogsFeature.Attach(form);
         ProjectSaveStateFeature.Attach(form);
+
+        UpdateStartup(startup, 78, UiText.T("Preparing project workspace...", "Подготовка рабочей области проекта..."));
         ProjectHeaderFeature.Attach(form);
         OnlineCsdkPulseFeature.Attach(form);
         ProjectFilesFeature.Attach(form);
         VertexColorExportFeature.Attach(form);
+
+        UpdateStartup(startup, 90, UiText.T("Applying interface settings...", "Применение настроек интерфейса..."));
         UiTheme.ApplyCustomPalette(form, settings.UiTheme);
         WindowProgressFeature.Attach(form);
         SteamStatusFeature.Attach(form, settings.UiTheme);
         SettingsVersionFeature.Attach();
-        form.Shown += (_, _) => form.BeginInvoke((Action)(() => form.ActiveControl = null));
+        form.Shown += (_, _) =>
+        {
+            form.BeginInvoke((Action)(() => form.ActiveControl = null));
+            if (startup is not null && !startup.IsDisposed)
+            {
+                startup.UpdateProgress(100, UiText.T("Ready", "Готово"));
+                startup.Close();
+            }
+        };
 
         if (!startupSmoke)
         {
@@ -106,6 +132,17 @@ internal static class Program
         form.Shown += (_, _) => smokeTimer.Start();
         Application.Run(form);
         return 0;
+    }
+
+    private static void UpdateStartup(StartupProgressForm? startup, int value, string message)
+    {
+        if (startup is null || startup.IsDisposed)
+        {
+            return;
+        }
+
+        startup.UpdateProgress(value, message);
+        Application.DoEvents();
     }
 
     private static void TryActivateExistingWindow()
