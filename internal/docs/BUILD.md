@@ -192,6 +192,27 @@ Deadlimit must never delete the global `game` tree or another addon's output. If
 
 A later explicit `RELEASE` / `RELEASE & TEST` transaction may own release-time runtime validation, post-compile AG2 restoration, VPK packaging, and deployment. That remains separate from authoring preparation.
 
+## 2026-08-26 — Vertex Color source safety invariant
+
+`*_vertexcolor.fbx` is persistent project source data, not a disposable intermediate. Successful PREPARE no longer deletes it.
+
+For DMX files that use the external Vertex Color path, PREPARE validates the DMX/FBX pair before deleting addon game output or refreshing CSDK authoring content. Missing, stale, unreadable, or topologically incompatible FBX therefore stops PREPARE before the previous prepared state is replaced. `BUILD FOR TEST` inherits the same guard because it runs the same PREPARE transaction.
+
+ONLINE synchronization is transactional for DMX updates. A changed DMX is copied to a staging file first; Vertex Color is validated/applied there; the live CSDK DMX is replaced only after the staged result is safe. This specifically protects the normal export order:
+
+```text
+Wall Worm DMX saved
+→ ONLINE notices DMX while the old FBX is now stale
+→ previous prepared DMX remains active
+→ new *_vertexcolor.fbx is exported
+→ ONLINE validates the new pair
+→ staged DMX atomically replaces the previous prepared DMX
+```
+
+Deleting or renaming the FBX while ONLINE is active does not erase Vertex Color from the current prepared DMX. Live synchronization waits for a fresh matching sidecar instead.
+
+A DMX that already contains its own `color$0` and `color$0Indices` streams is treated as self-contained and does not require the FBX sidecar for that revision. This keeps the safety rule compatible with direct DMX Vertex Color export paths.
+
 ## Still unvalidated
 
 - whether the corrected template-preserving prepare reproduces the supplied known-good Ivy behavior in the current CSDK12 build;
