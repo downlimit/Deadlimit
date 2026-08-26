@@ -104,6 +104,7 @@ internal static class Program
         WindowProgressFeature.Attach(form);
         SteamStatusFeature.Attach(form, settings.UiTheme);
         SettingsVersionFeature.Attach();
+        UpdateStartup(startup, 94, UiText.T("Loading projects and finalizing...", "Загрузка проектов и завершение запуска..."));
         form.Shown += (_, _) =>
         {
             form.BeginInvoke((Action)(() => form.ActiveControl = null));
