@@ -28,6 +28,7 @@ internal sealed class StartupProgressForm : Form
         MinimizeBox = false;
         ControlBox = false;
         ShowInTaskbar = false;
+        TopMost = true;
 
         var heading = new Label
         {
