@@ -33,100 +33,82 @@ public sealed class AddonIdentityService
         var projectId = projectIdWasMissing
             ? CreateProjectId()
             : manifest.ProjectId.Trim();
-        var addonIdWasMissing = string.IsNullOrWhiteSpace(manifest.AddonId);
-        var addonId = addonIdWasMissing
-            ? ResolveLegacyOrUniqueAddonId(manifest, projectFolder, ref projectId)
+        var addonId = string.IsNullOrWhiteSpace(manifest.AddonId)
+            ? ResolveDeterministicAddonId(manifest, projectFolder, ref projectId)
             : NormalizeAddonId(manifest.AddonId);
 
-        while (true)
+        var identity = CreateIdentity(addonId);
+        var ownershipPath = Path.Combine(identity.ContentRoot, OwnershipFileName);
+        var ownershipExists = File.Exists(ownershipPath);
+        var ownership = TryLoadOwnership(ownershipPath);
+
+        if (ownershipExists && ownership is null)
         {
-            var identity = CreateIdentity(addonId);
-            var ownershipPath = Path.Combine(identity.ContentRoot, OwnershipFileName);
-            var ownershipExists = File.Exists(ownershipPath);
-            var ownership = TryLoadOwnership(ownershipPath);
+            throw new InvalidOperationException(
+                $"CSDK addon '{addonId}' already exists, but its Deadlimit ownership file cannot be read.\n\n" +
+                $"Ownership file: {ownershipPath}\n\n" +
+                "Deadlimit will not create a suffixed addon name, adopt this folder, delete it, or overwrite it automatically. " +
+                "Repair or remove the conflicting addon intentionally, then run the action again.");
+        }
 
-            if (ownershipExists && ownership is null)
+        if (ownership is not null)
+        {
+            if (projectIdWasMissing
+                && string.Equals(ownership.AddonId, addonId, StringComparison.OrdinalIgnoreCase)
+                && PathsEqual(ownership.ProjectFolder, projectFolder))
             {
-                if (addonIdWasMissing)
-                {
-                    addonId = FindAvailableUniqueAddonId(manifest.ProjectName);
-                    continue;
-                }
-
-                throw new InvalidOperationException(
-                    $"Deadlimit found an unreadable addon ownership file:\n\n{ownershipPath}\n\n" +
-                    "The CSDK addon folder will not be modified until its ownership state is repaired intentionally.");
+                projectId = ownership.ProjectId;
+                projectIdWasMissing = false;
             }
 
-            if (ownership is not null)
+            var ownedByProject = string.Equals(ownership.ProjectId, projectId, StringComparison.OrdinalIgnoreCase)
+                                 && string.Equals(ownership.AddonId, addonId, StringComparison.OrdinalIgnoreCase);
+            if (!ownedByProject)
             {
-                if (projectIdWasMissing
-                    && string.Equals(ownership.AddonId, addonId, StringComparison.OrdinalIgnoreCase)
-                    && PathsEqual(ownership.ProjectFolder, projectFolder))
-                {
-                    projectId = ownership.ProjectId;
-                    projectIdWasMissing = false;
-                }
+                throw new InvalidOperationException(
+                    $"CSDK addon name conflict: '{addonId}' is already owned by another Deadlimit project.\n\n" +
+                    $"Owner project: {ownership.ProjectFolder}\n" +
+                    $"Current project: {projectFolder}\n\n" +
+                    "Deadlimit will not add a random suffix or overwrite the existing addon. " +
+                    "Rename one of the projects/addons intentionally or remove the conflicting addon, then try again.");
+            }
 
-                var ownedByProject = string.Equals(ownership.ProjectId, projectId, StringComparison.OrdinalIgnoreCase)
-                                     && string.Equals(ownership.AddonId, addonId, StringComparison.OrdinalIgnoreCase);
-                if (!ownedByProject)
+            if (!PathsEqual(ownership.ProjectFolder, projectFolder))
+            {
+                if (Directory.Exists(ownership.ProjectFolder))
                 {
-                    if (addonIdWasMissing)
-                    {
-                        addonId = FindAvailableUniqueAddonId(manifest.ProjectName);
-                        continue;
-                    }
-
                     throw new InvalidOperationException(
-                        $"CSDK addon '{addonId}' belongs to another Deadlimit project.\n\n" +
+                        $"CSDK addon '{addonId}' is linked to another existing project folder.\n\n" +
                         $"Owner project: {ownership.ProjectFolder}\n" +
                         $"Current project: {projectFolder}\n\n" +
-                        "Deadlimit will not delete or overwrite this addon folder.");
+                        "This project appears to be a copied manifest. Deadlimit will not create a suffixed addon or overwrite the existing owner.");
                 }
 
-                if (!PathsEqual(ownership.ProjectFolder, projectFolder))
-                {
-                    if (Directory.Exists(ownership.ProjectFolder))
-                    {
-                        throw new InvalidOperationException(
-                            $"CSDK addon '{addonId}' is linked to another existing project folder.\n\n" +
-                            $"Owner project: {ownership.ProjectFolder}\n" +
-                            $"Current project: {projectFolder}\n\n" +
-                            "This project appears to be a copied manifest. Assign it a new addon identity before preparing it.");
-                    }
-
-                    WriteOwnership(ownershipPath, addonId, projectId, projectFolder);
-                }
-            }
-            else
-            {
-                var rootsAlreadyExist = Directory.Exists(identity.ContentRoot) || Directory.Exists(identity.GameRoot);
-                if (rootsAlreadyExist && !CanAdoptExistingRoots(manifest, identity))
-                {
-                    if (addonIdWasMissing)
-                    {
-                        addonId = FindAvailableUniqueAddonId(manifest.ProjectName);
-                        continue;
-                    }
-
-                    throw new InvalidOperationException(
-                        $"CSDK addon '{addonId}' already exists without Deadlimit ownership proof.\n\n" +
-                        $"Content: {identity.ContentRoot}\n" +
-                        $"Game: {identity.GameRoot}\n\n" +
-                        "Deadlimit will not adopt, delete, or overwrite these folders automatically.");
-                }
-
-                Directory.CreateDirectory(identity.ContentRoot);
                 WriteOwnership(ownershipPath, addonId, projectId, projectFolder);
             }
-
-            manifest.SchemaVersion = Math.Max(manifest.SchemaVersion, 3);
-            manifest.ProjectId = projectId;
-            manifest.AddonId = addonId;
-            ProjectStore.Save(manifest);
-            return identity;
         }
+        else
+        {
+            var rootsAlreadyExist = Directory.Exists(identity.ContentRoot) || Directory.Exists(identity.GameRoot);
+            if (rootsAlreadyExist && !CanAdoptExistingRoots(manifest, identity))
+            {
+                throw new InvalidOperationException(
+                    $"CSDK addon name conflict: '{addonId}' already exists without Deadlimit ownership proof.\n\n" +
+                    $"Content: {identity.ContentRoot}\n" +
+                    $"Game: {identity.GameRoot}\n\n" +
+                    "Deadlimit will not add a random suffix, adopt these folders, delete them, or overwrite them automatically. " +
+                    "Remove or repair the conflicting addon intentionally, then try again.");
+            }
+
+            Directory.CreateDirectory(identity.ContentRoot);
+            WriteOwnership(ownershipPath, addonId, projectId, projectFolder);
+        }
+
+        manifest.SchemaVersion = Math.Max(manifest.SchemaVersion, 3);
+        manifest.ProjectId = projectId;
+        manifest.AddonId = addonId;
+        ProjectStore.Save(manifest);
+        return identity;
     }
 
     public static string CreateProjectId() => Guid.NewGuid().ToString("N");
@@ -138,27 +120,13 @@ public sealed class AddonIdentityService
             return NormalizeAddonId(existing.AddonId);
         }
 
-        if (existing is not null
-            && (!string.IsNullOrWhiteSpace(existing.SourceVmdl)
-                || !string.IsNullOrWhiteSpace(existing.CompiledVmdl)))
-        {
-            return MakeLegacyAddonId(projectName);
-        }
-
-        return CreateUniqueAddonId(projectName);
+        return MakeLegacyAddonId(projectName);
     }
 
-    public static string CreateUniqueAddonId(string projectName)
-    {
-        const int maximumBaseLength = 48;
-        var baseId = MakeLegacyAddonId(projectName);
-        if (baseId.Length > maximumBaseLength)
-        {
-            baseId = baseId[..maximumBaseLength].TrimEnd('_');
-        }
-
-        return $"{baseId}_{Guid.NewGuid():N}"[..(baseId.Length + 9)];
-    }
+    // Kept for compatibility with existing callers. Addon IDs are intentionally
+    // deterministic now; collisions are reported instead of hidden behind a suffix.
+    public static string CreateUniqueAddonId(string projectName) =>
+        MakeLegacyAddonId(projectName);
 
     public static string MakeLegacyAddonId(string projectName)
     {
@@ -191,44 +159,22 @@ public sealed class AddonIdentityService
         return value;
     }
 
-    private string ResolveLegacyOrUniqueAddonId(
+    private string ResolveDeterministicAddonId(
         ProjectManifest manifest,
         string projectFolder,
         ref string projectId)
     {
-        var legacyAddonId = MakeLegacyAddonId(manifest.ProjectName);
-        var legacyIdentity = CreateIdentity(legacyAddonId);
-        var legacyOwnershipPath = Path.Combine(legacyIdentity.ContentRoot, OwnershipFileName);
-        var legacyOwnership = TryLoadOwnership(legacyOwnershipPath);
+        var addonId = MakeLegacyAddonId(manifest.ProjectName);
+        var identity = CreateIdentity(addonId);
+        var ownership = TryLoadOwnership(Path.Combine(identity.ContentRoot, OwnershipFileName));
 
-        if (legacyOwnership is not null
-            && PathsEqual(legacyOwnership.ProjectFolder, projectFolder))
+        if (ownership is not null
+            && PathsEqual(ownership.ProjectFolder, projectFolder))
         {
-            projectId = legacyOwnership.ProjectId;
-            return legacyAddonId;
+            projectId = ownership.ProjectId;
         }
 
-        var rootsAlreadyExist = Directory.Exists(legacyIdentity.ContentRoot)
-                                || Directory.Exists(legacyIdentity.GameRoot);
-        if (!rootsAlreadyExist || CanAdoptExistingRoots(manifest, legacyIdentity))
-        {
-            return legacyAddonId;
-        }
-
-        return FindAvailableUniqueAddonId(manifest.ProjectName);
-    }
-
-    private string FindAvailableUniqueAddonId(string projectName)
-    {
-        while (true)
-        {
-            var candidate = CreateUniqueAddonId(projectName);
-            var identity = CreateIdentity(candidate);
-            if (!Directory.Exists(identity.ContentRoot) && !Directory.Exists(identity.GameRoot))
-            {
-                return candidate;
-            }
-        }
+        return addonId;
     }
 
     private AddonIdentity CreateIdentity(string addonId) =>
