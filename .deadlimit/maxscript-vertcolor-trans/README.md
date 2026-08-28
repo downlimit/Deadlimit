@@ -1,15 +1,19 @@
 # MaxScript VertColor Trans
 
-`DeadlimitVertexColorFBX.ms` exports the selected 3ds Max geometry as `<dmx-name>_vertexcolor.fbx` beside the latest DMX exported by Wall Worm.
+`DeadlimitVertexColorFBX.ms` exports the selected 3ds Max geometry and renderable Shape/Spline objects as `<dmx-name>_vertexcolor.fbx` beside the latest DMX exported by Wall Worm.
 
 Workflow:
 
 1. Export the normal DMX with Wall Worm.
-2. Keep the same geometry selected.
+2. Keep the same geometry and renderable Shape/Spline objects selected.
 3. Run the script, choose the `FIXED GAMMA` mode described below, and press `EXPORT VERTEX COLOR FBX`.
 4. Run `PREPARE` in Deadlimit.
 
-During PREPARE, Deadlimit transfers Vertex Color to every DMX mesh whose assigned material name contains `vertexcolor`. A missing channel `0` produces neutral gray `(128, 128, 128, 255)`. The FBX remains beside the artist DMX as persistent project source data. PREPARE validates and reuses it for repeated PREPARE, BUILD FOR TEST, and ONLINE synchronization.
+Selected renderable Shape/Spline objects are evaluated through a temporary `Turn To Mesh` modifier so the FBX contains a Mesh that Deadlimit can match to the DMX. The original object type, modifier stack, selection, and scene dirty state are restored after success or failure.
+
+During PREPARE, Deadlimit transfers Vertex Color to every DMX mesh whose assigned material name contains `vertexcolor`. A missing channel `0` produces neutral gray `(128, 128, 128, 255)`. The FBX is a transactional sidecar: rejection, cancellation, or a later PREPARE failure keeps it for retry; complete PREPARE success removes it.
+
+Uniform-color meshes are transferred directly. Multi-color meshes are matched by UV topology or polygon positions, so UVs are optional when the FBX and DMX geometry correspond. Ambiguous coincident geometry with different colors is rejected with the mesh name instead of assigning colors by polygon order.
 
 The MaxScript contains no project path and no path to `Deadlimit.exe`. It only reads Wall Worm's last export folder from `3dsMax.ini`.
 

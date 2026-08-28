@@ -541,37 +541,121 @@ public static class VertexColorSidecarService
             return false;
         }
 
-        var sourcePolygonIndexes = Enumerable.Range(0, sources.Count).ToArray();
-        var cornerMappings = new int[]?[targets.Count];
-        for (var index = 0; index < targets.Count; index++)
+        if (sources.Any(polygon =>
+                polygon.Colors is null
+                || polygon.Colors.Count != polygon.ControlPoints.Count))
         {
-            if (targets[index].ControlPoints.Count != sources[index].ControlPoints.Count)
-            {
-                colors = Array.Empty<DmxColor>();
-                mismatchReason = $"Polygon corner count or order differs for mesh '{meshName}'.";
-                return false;
-            }
-
+            colors = Array.Empty<DmxColor>();
+            mismatchReason = $"FBX mesh '{meshName}' has an incomplete Vertex Color layer.";
+            return false;
         }
 
-        var result = new List<DmxColor>();
-        for (var index = 0; index < targets.Count; index++)
+        var targetCornerCount = targets.Sum(polygon => polygon.ControlPoints.Count);
+        var sourceCornerColors = sources
+            .SelectMany(polygon => polygon.Colors!)
+            .ToArray();
+        if (targetCornerCount != sourceCornerColors.Length || sourceCornerColors.Length == 0)
         {
-            var sourcePolygon = sources[sourcePolygonIndexes[index]];
-            var sourceColors = sourcePolygon.Colors;
-            if (sourceColors is null)
-            {
-                continue;
-            }
-
-            var cornerMap = cornerMappings[index]
-                ?? Enumerable.Range(0, sourcePolygon.ControlPoints.Count).ToArray();
-            result.AddRange(cornerMap.Select(sourceCorner => sourceColors[sourceCorner]));
+            colors = Array.Empty<DmxColor>();
+            mismatchReason = $"Polygon corner count differs for mesh '{meshName}'.";
+            return false;
         }
 
-        colors = result;
-        mismatchReason = string.Empty;
-        return true;
+        var firstColor = sourceCornerColors[0];
+        if (sourceCornerColors.All(color =>
+                EqualityComparer<DmxColor>.Default.Equals(color, firstColor)))
+        {
+            colors = Enumerable.Repeat(firstColor, targetCornerCount).ToArray();
+            mismatchReason = string.Empty;
+            return true;
+        }
+
+        int[] sourcePolygonIndexes;
+        int[]?[] cornerMappings;
+        var polygonsMatched = TryMatchPolygonsByTexcoords(
+            meshName,
+            targets,
+            sources,
+            targetTexcoords,
+            targetControlPoints,
+            out sourcePolygonIndexes,
+            out cornerMappings,
+            out var polygonMismatchReason);
+        if (!polygonsMatched)
+        {
+            polygonsMatched = TryMatchPolygonsByPositions(
+                meshName,
+                targets,
+                sources,
+                targetControlPoints,
+                sourceControlPoints,
+                out sourcePolygonIndexes,
+                out cornerMappings,
+                out polygonMismatchReason);
+        }
+
+        if (!polygonsMatched)
+        {
+            polygonsMatched = TryMatchSplitControlPointPolygons(
+                meshName,
+                targets,
+                sources,
+                targetControlPoints,
+                sourceControlPoints,
+                out sourcePolygonIndexes,
+                out cornerMappings,
+                out polygonMismatchReason);
+        }
+
+        if (polygonsMatched)
+        {
+            var result = new List<DmxColor>(targetCornerCount);
+            for (var index = 0; index < targets.Count; index++)
+            {
+                var sourcePolygon = sources[sourcePolygonIndexes[index]];
+                var sourceColors = sourcePolygon.Colors!;
+                var cornerMap = cornerMappings[index]
+                    ?? Enumerable.Range(0, sourcePolygon.ControlPoints.Count).ToArray();
+                result.AddRange(cornerMap.Select(sourceCorner => sourceColors[sourceCorner]));
+            }
+
+            colors = result;
+            mismatchReason = string.Empty;
+            return true;
+        }
+
+        if (TryMatchColorsByTexcoords(
+                meshName,
+                targets,
+                sources,
+                targetTexcoords,
+                out colors,
+                out var uvColorMismatchReason))
+        {
+            mismatchReason = string.Empty;
+            return true;
+        }
+
+        if (TryMatchColorsByControlPoints(
+                meshName,
+                targets,
+                sources,
+                targetControlPoints,
+                sourceControlPoints,
+                out colors,
+                out var positionColorMismatchReason))
+        {
+            mismatchReason = string.Empty;
+            return true;
+        }
+
+        colors = Array.Empty<DmxColor>();
+        mismatchReason =
+            $"Vertex Color correspondence is ambiguous for mesh '{meshName}'. " +
+            $"Polygon match: {polygonMismatchReason} " +
+            $"UV match: {uvColorMismatchReason} " +
+            $"Position match: {positionColorMismatchReason}";
+        return false;
     }
 
     private static bool TryMatchColorsByTexcoords(
@@ -982,6 +1066,134 @@ public static class VertexColorSidecarService
         return targetToSource.All(source => source >= 0);
     }
 
+    private static bool TryMatchPolygonsByPositions(
+        string meshName,
+        IReadOnlyList<TargetPolygon> targets,
+        IReadOnlyList<FbxVertexColorPolygon> sources,
+        IReadOnlyList<Vector3> targetControlPoints,
+        IReadOnlyList<Vector3> sourceControlPoints,
+        out int[] sourcePolygonIndexes,
+        out int[]?[] cornerMappings,
+        out string mismatchReason)
+    {
+        sourcePolygonIndexes = Array.Empty<int>();
+        cornerMappings = Array.Empty<int[]?>();
+        if (targetControlPoints.Count == 0 || sourceControlPoints.Count == 0)
+        {
+            mismatchReason = $"Position polygon validation failed for mesh '{meshName}': one position set is empty.";
+            return false;
+        }
+
+        var targetMin = GetBoundsMin(targetControlPoints);
+        var targetMax = GetBoundsMax(targetControlPoints);
+        var sourceMin = GetBoundsMin(sourceControlPoints);
+        var sourceMax = GetBoundsMax(sourceControlPoints);
+        var targetExtent = targetMax - targetMin;
+        var sourceExtent = sourceMax - sourceMin;
+        var scales = new List<float>();
+        foreach (var (targetAxis, sourceAxis) in new[]
+                 {
+                     (targetExtent.X, sourceExtent.X),
+                     (targetExtent.Y, sourceExtent.Y),
+                     (targetExtent.Z, sourceExtent.Z),
+                 })
+        {
+            if (Math.Abs(targetAxis) <= 0.000001f && Math.Abs(sourceAxis) <= 0.000001f)
+            {
+                continue;
+            }
+
+            if (Math.Abs(targetAxis) <= 0.000001f || Math.Abs(sourceAxis) <= 0.000001f)
+            {
+                mismatchReason = $"Position polygon validation failed for mesh '{meshName}': position bounds differ by axis.";
+                return false;
+            }
+
+            scales.Add(sourceAxis / targetAxis);
+        }
+
+        if (scales.Count == 0 || scales.Any(scale => !float.IsFinite(scale) || scale <= 0))
+        {
+            mismatchReason = $"Position polygon validation failed for mesh '{meshName}': a valid uniform scale could not be determined.";
+            return false;
+        }
+
+        var scale = scales.Average();
+        if (scales.Any(axisScale => Math.Abs(axisScale - scale) > Math.Max(0.00001f, scale * 0.0001f)))
+        {
+            mismatchReason = $"Position polygon validation failed for mesh '{meshName}': position bounds do not share one uniform scale.";
+            return false;
+        }
+
+        var translation = sourceMin - (targetMin * scale);
+        var tolerance = Math.Max(
+            0.0002f,
+            Vector3.Distance(sourceMin, sourceMax) * 0.00002f);
+        var sourcePolygonPositions = sources
+            .Select(polygon => polygon.ControlPoints
+                .Select(controlPoint => sourceControlPoints[controlPoint])
+                .ToArray())
+            .ToArray();
+
+        var matchedSourceIndexes = new int[targets.Count];
+        var matchedCornerMappings = new int[]?[targets.Count];
+        var consumed = new HashSet<int>();
+        for (var targetIndex = 0; targetIndex < targets.Count; targetIndex++)
+        {
+            var targetPositions = targets[targetIndex].ControlPoints
+                .Select(controlPoint => (targetControlPoints[controlPoint] * scale) + translation)
+                .ToArray();
+            var matches = new List<(int Index, int[] CornerMap)>();
+            for (var candidate = 0; candidate < sources.Count; candidate++)
+            {
+                if (consumed.Contains(candidate))
+                {
+                    continue;
+                }
+
+                if (TryMapPolygonCornersByPositions(
+                        targetPositions,
+                        sourcePolygonPositions[candidate],
+                        tolerance,
+                        out var cornerMap))
+                {
+                    matches.Add((candidate, cornerMap));
+                }
+            }
+
+            if (matches.Count == 0)
+            {
+                mismatchReason = $"Position polygon surface differs for mesh '{meshName}'.";
+                return false;
+            }
+
+            var referenceColors = matches[0].CornerMap
+                .Select(corner => sources[matches[0].Index].Colors![corner])
+                .ToArray();
+            if (matches.Skip(1).Any(match => !referenceColors.SequenceEqual(
+                    match.CornerMap.Select(corner => sources[match.Index].Colors![corner]))))
+            {
+                mismatchReason = $"Mesh '{meshName}' has coincident polygons with different Vertex Colors.";
+                return false;
+            }
+
+            matchedSourceIndexes[targetIndex] = matches[0].Index;
+            matchedCornerMappings[targetIndex] = matches[0].CornerMap;
+            consumed.Add(matches[0].Index);
+        }
+
+        if (consumed.Count != sources.Count)
+        {
+            mismatchReason = $"Not every FBX position polygon matched mesh '{meshName}'.";
+            return false;
+        }
+
+        sourcePolygonIndexes = matchedSourceIndexes;
+        cornerMappings = matchedCornerMappings;
+        mismatchReason = string.Empty;
+        return true;
+    }
+
     private static bool TryMatchSplitControlPointPolygons(
         string meshName,
         IReadOnlyList<TargetPolygon> targets,
@@ -1205,6 +1417,52 @@ public static class VertexColorSidecarService
             checked((long)Math.Round(position.X / tolerance)),
             checked((long)Math.Round(position.Y / tolerance)),
             checked((long)Math.Round(position.Z / tolerance)));
+
+    private static bool TryMapPolygonCornersByPositions(
+        IReadOnlyList<Vector3> target,
+        IReadOnlyList<Vector3> source,
+        float tolerance,
+        out int[] cornerMap)
+    {
+        if (target.Count != source.Count)
+        {
+            cornerMap = Array.Empty<int>();
+            return false;
+        }
+
+        for (var start = 0; start < source.Count; start++)
+        {
+            for (var direction = -1; direction <= 1; direction += 2)
+            {
+                var candidate = new int[target.Count];
+                var matches = true;
+                for (var targetCorner = 0; targetCorner < target.Count; targetCorner++)
+                {
+                    var sourceCorner = (start + (direction * targetCorner)) % source.Count;
+                    if (sourceCorner < 0)
+                    {
+                        sourceCorner += source.Count;
+                    }
+
+                    candidate[targetCorner] = sourceCorner;
+                    if (Vector3.Distance(target[targetCorner], source[sourceCorner]) > tolerance)
+                    {
+                        matches = false;
+                        break;
+                    }
+                }
+
+                if (matches)
+                {
+                    cornerMap = candidate;
+                    return true;
+                }
+            }
+        }
+
+        cornerMap = Array.Empty<int>();
+        return false;
+    }
 
     private static string MakePolygonKey(IReadOnlyList<int> controlPoints)
     {

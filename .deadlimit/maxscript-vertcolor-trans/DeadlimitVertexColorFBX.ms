@@ -3,8 +3,8 @@
 
     Run this script after exporting the regular DMX with Wall Worm. It reads the
     last Wall Worm export folder from 3dsMax.ini, finds the newest DMX there, and
-    exports selected geometry beside that DMX as <name>_vertexcolor.fbx.
-    Deadlimit validates/transfers it and keeps the FBX as project source data.
+    exports selected geometry and renderable Shape/Spline objects beside that DMX as <name>_vertexcolor.fbx.
+    Deadlimit consumes it during PREPARE and keeps failed/cancelled handoffs for retry.
 */
 
 plugin simpleMeshMod DeadlimitPaletteVertexFillModifier
@@ -56,8 +56,9 @@ global deadlimitVertexColorIsPrimaryDmx
 global deadlimitVertexColorFindLatestDmx
 global deadlimitVertexColorSetFbxParam
 global deadlimitVertexColorRestoreFbxParams
+global deadlimitVertexColorAttachShapeMeshModifiers
 global deadlimitVertexColorAttachFixedGammaModifiers
-global deadlimitVertexColorRemoveFixedGammaModifiers
+global deadlimitVertexColorRemoveTemporaryModifiers
 global deadlimitVertexColorExportSidecar
 global deadlimitVertexColorSelectedGeometry
 global deadlimitVertexColorSelectedBones
@@ -151,12 +152,12 @@ fn deadlimitVertexColorAttachFixedGammaModifiers nodes =
     )
     catch
     (
-        deadlimitVertexColorRemoveFixedGammaModifiers temporaryModifiers
+        deadlimitVertexColorRemoveTemporaryModifiers temporaryModifiers
         throw()
     )
 )
 
-fn deadlimitVertexColorRemoveFixedGammaModifiers temporaryModifiers =
+fn deadlimitVertexColorRemoveTemporaryModifiers temporaryModifiers =
 (
     with undo off
     (
@@ -165,14 +166,51 @@ fn deadlimitVertexColorRemoveFixedGammaModifiers temporaryModifiers =
     )
 )
 
+fn deadlimitVertexColorAttachShapeMeshModifiers nodes =
+(
+    local temporaryModifiers = #()
+    try
+    (
+        with undo off
+        (
+            for node in nodes where (superClassOf node) == shape do
+            (
+                local alreadyApplied = false
+                for existingModifier in node.modifiers while not alreadyApplied do
+                    alreadyApplied = (classOf existingModifier) == Turn_to_Mesh
+
+                if not alreadyApplied then
+                (
+                    local meshModifier = Turn_to_Mesh()
+                    addModifier node meshModifier before:1
+                    append temporaryModifiers #(node, meshModifier)
+                )
+            )
+        )
+        temporaryModifiers
+    )
+    catch
+    (
+        deadlimitVertexColorRemoveTemporaryModifiers temporaryModifiers
+        throw()
+    )
+)
+
 fn deadlimitVertexColorExportSidecar fixedGamma:false =
 (
     local primaryDmx = deadlimitVertexColorFindLatestDmx()
 
     local originalSelection = selection as array
-    local selectedGeometry = for node in originalSelection where (superClassOf node) == GeometryClass collect node
-    if selectedGeometry.count == 0 then
-        throw "Select at least one geometry object."
+    local selectedExportNodes = for node in originalSelection where
+    (
+        isValidNode node and
+        (
+            (superClassOf node) == GeometryClass or
+            ((superClassOf node) == shape and (try (node.renderable == true) catch (false)))
+        )
+    ) collect node
+    if selectedExportNodes.count == 0 then
+        throw "Select at least one geometry object or renderable shape."
 
     local folder = getFilenamePath primaryDmx
     local baseName = getFilenameFile primaryDmx
@@ -180,6 +218,7 @@ fn deadlimitVertexColorExportSidecar fixedGamma:false =
     local guidValue = ((dotNetClass "System.Guid").NewGuid()).ToString "N"
     local temporaryPath = folder + baseName + ".vertexcolor-" + guidValue + ".tmp.fbx"
     local fileClass = dotNetClass "System.IO.File"
+    local temporaryShapeModifiers = #()
     local temporaryGammaModifiers = #()
     local sceneWasDirty = getSaveRequired()
 
@@ -199,18 +238,21 @@ fn deadlimitVertexColorExportSidecar fixedGamma:false =
         deadlimitVertexColorSetFbxParam "Lights" false
         deadlimitVertexColorSetFbxParam "Triangulate" true
 
+        temporaryShapeModifiers = deadlimitVertexColorAttachShapeMeshModifiers selectedExportNodes
+
         if fixedGamma do
-            temporaryGammaModifiers = deadlimitVertexColorAttachFixedGammaModifiers selectedGeometry
+            temporaryGammaModifiers = deadlimitVertexColorAttachFixedGammaModifiers selectedExportNodes
 
         if doesFileExist temporaryPath do deleteFile temporaryPath
-        select selectedGeometry
+        select selectedExportNodes
         local exported = exportFile temporaryPath #noPrompt selectedOnly:true using:FBXEXP
         if exported != true or not (doesFileExist temporaryPath) then
             throw "3ds Max FBX exporter did not create the sidecar."
 
         fileClass.Copy temporaryPath sidecarPath true
         deleteFile temporaryPath
-        deadlimitVertexColorRemoveFixedGammaModifiers temporaryGammaModifiers
+        deadlimitVertexColorRemoveTemporaryModifiers temporaryGammaModifiers
+        deadlimitVertexColorRemoveTemporaryModifiers temporaryShapeModifiers
         deadlimitVertexColorRestoreFbxParams savedParams
         select originalSelection
         if not sceneWasDirty do setSaveRequired false autobackupRequired:false
@@ -220,7 +262,8 @@ fn deadlimitVertexColorExportSidecar fixedGamma:false =
     (
         local errorText = getCurrentException()
         if doesFileExist temporaryPath do deleteFile temporaryPath
-        deadlimitVertexColorRemoveFixedGammaModifiers temporaryGammaModifiers
+        deadlimitVertexColorRemoveTemporaryModifiers temporaryGammaModifiers
+        deadlimitVertexColorRemoveTemporaryModifiers temporaryShapeModifiers
         deadlimitVertexColorRestoreFbxParams savedParams
         select originalSelection
         if not sceneWasDirty do setSaveRequired false autobackupRequired:false
@@ -582,7 +625,7 @@ rollout deadlimitVertexColorBoneToolsRollout "BONE TOOLS"
 rollout deadlimitVertexColorFbxRollout "Vertex Color FBX Export" width:310
 (
     label targetLabel "" width:286 height:16 align:#left
-    button exportButton "EXPORT VERTEX COLOR FBX" width:184 height:26 across:2 tooltip:"Export selected geometry beside the latest Wall Worm DMX."
+    button exportButton "EXPORT VERTEX COLOR FBX" width:184 height:26 across:2 tooltip:"Export selected geometry and renderable Shape/Spline objects beside the latest Wall Worm DMX."
     checkbox fixedGammaCheckbox "FIXED GAMMA" checked:false width:94 height:26 offset:[50,0] tooltip:"Export RGB as value^(1/2.2) for Source 2. The scene colors stay unchanged. Leave off for unmodified/Marmoset export."
     label statusLabel "Export the regular DMX with Wall Worm first." width:286 height:16 align:#left
     label toolsLabel "VERTEX COLOR TOOLS" width:286 height:14 align:#left
@@ -635,7 +678,7 @@ rollout deadlimitVertexColorFbxRollout "Vertex Color FBX Export" width:310
             refreshTarget()
             format "Vertex Color FBX: %\nDMX: %\n" result[2] result[1]
             local gammaMessage = if result[3] then "ON: RGB ^ (1/2.2)" else "OFF: stored RGB unchanged"
-            local successMessage = "SUCCESS\n\nVertex Color FBX exported to:\n" + result[2] + "\n\nFixed Gamma: " + gammaMessage + "\n\nRun PREPARE in Deadlimit. The FBX remains project source data."
+            local successMessage = "SUCCESS\n\nVertex Color FBX exported to:\n" + result[2] + "\n\nFixed Gamma: " + gammaMessage + "\n\nRun PREPARE in Deadlimit. A failed or cancelled PREPARE keeps the FBX for retry."
             showResultMessage successMessage "VERTEX COLOR FBX READY" false
         )
         catch
