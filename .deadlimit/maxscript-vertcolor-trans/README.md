@@ -6,12 +6,18 @@ Workflow:
 
 1. Export the normal DMX with Wall Worm.
 2. Keep the same geometry selected.
-3. Run the script and press `EXPORT SELECTED VERTEX COLOR FBX`.
+3. Run the script, choose the `FIXED GAMMA` mode described below, and press `EXPORT VERTEX COLOR FBX`.
 4. Run `PREPARE` in Deadlimit.
 
 During PREPARE, Deadlimit transfers Vertex Color to every DMX mesh whose assigned material name contains `vertexcolor`. A missing channel `0` produces neutral gray `(128, 128, 128, 255)`. The FBX remains beside the artist DMX as persistent project source data. PREPARE validates and reuses it for repeated PREPARE, BUILD FOR TEST, and ONLINE synchronization.
 
 The MaxScript contains no project path and no path to `Deadlimit.exe`. It only reads Wall Worm's last export folder from `3dsMax.ini`.
+
+`FIXED GAMMA` is off by default:
+
+- Off exports the stored Vertex Color values unchanged. Use this for the regular/Marmoset path.
+- On exports channel `0` RGB as `value^(1/2.2)`, producing lighter stored values intended to compensate Source 2's Vertex Color interpretation.
+- The correction exists only in the exported FBX. The colors, modifier stacks, selection, and FBX settings in the 3ds Max scene are restored after success or failure.
 
 Vertex Color tools operate on the selected geometry and do not use Deadlimit or Wall Worm:
 
