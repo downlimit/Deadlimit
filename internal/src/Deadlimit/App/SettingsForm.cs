@@ -290,8 +290,8 @@ internal sealed class SettingsForm : Form
         toolTip.SetToolTip(
             openButton,
             UiText.T(
-                "Open the repository folder containing DeadlimitVertexColorFBX.ms and its README.",
-                "Открыть папку репозитория с DeadlimitVertexColorFBX.ms и кратким README."));
+                "Open the repository folder containing DeadlimitVertexColorFBX.ms and its README for Vertex Color export and selected-bone display tools.",
+                "Открыть папку репозитория с DeadlimitVertexColorFBX.ms и README по экспорту Vertex Color и визуальным инструментам выбранных костей."));
 
         grid.Controls.Add(caption, 0, row);
         grid.Controls.Add(openButton, 1, row);

@@ -31,8 +31,8 @@ internal static class VertexColorExportFeature
         toolTip.SetToolTip(
             button,
             UiText.T(
-                "Copies the repository MaxScript fileIn command. The helper exports selected Vertex Color to a persistent FBX beside the latest Wall Worm DMX. PREPARE validates and reuses this FBX; it is kept as project source data.",
-                "Копирует команду fileIn для MaxScript из репозитория. Скрипт экспортирует Vertex Color выделенных мешей в постоянный FBX рядом с последним DMX Wall Worm. PREPARE проверяет и повторно использует этот FBX; он сохраняется как исходник проекта."));
+                "Copies the repository MaxScript fileIn command. The helper exports selected Vertex Color to a persistent FBX beside the latest Wall Worm DMX and includes selected-bone display tools for hierarchy fitting, exact centimeter length, and visual X flipping. PREPARE validates and reuses the FBX as project source data.",
+                "Копирует команду fileIn для MaxScript из репозитория. Скрипт экспортирует Vertex Color выделенных мешей в постоянный FBX рядом с последним DMX Wall Worm и содержит инструменты визуальной длины выбранных костей: подгонку по иерархии, точную длину в сантиметрах и разворот по X. PREPARE проверяет и повторно использует FBX как исходник проекта."));
 
         void RefreshEnabledState()
         {

@@ -9,7 +9,7 @@ Workflow:
 3. Run the script and press `EXPORT SELECTED VERTEX COLOR FBX`.
 4. Run `PREPARE` in Deadlimit.
 
-During PREPARE, Deadlimit transfers Vertex Color to every DMX mesh whose assigned material name contains `vertexcolor`. A missing channel `0` produces neutral gray `(128, 128, 128, 255)`. The temporary FBX is deleted only after a successful validated transfer.
+During PREPARE, Deadlimit transfers Vertex Color to every DMX mesh whose assigned material name contains `vertexcolor`. A missing channel `0` produces neutral gray `(128, 128, 128, 255)`. The FBX remains beside the artist DMX as persistent project source data. PREPARE validates and reuses it for repeated PREPARE, BUILD FOR TEST, and ONLINE synchronization.
 
 The MaxScript contains no project path and no path to `Deadlimit.exe`. It only reads Wall Worm's last export folder from `3dsMax.ini`.
 
@@ -23,3 +23,13 @@ Vertex Color tools operate on the selected geometry and do not use Deadlimit or 
 - `Paste Palette` assigns the buffered color to the wire color of every selected mesh.
 - `Enable VertColor` enables shaded display of Vertex Color channel `0`.
 - `Disable VertColor` returns the selected objects to normal viewport shading.
+
+## Bone display tools
+
+`BONE TOOLS` is collapsed by default. Its operations change only the selected `BoneGeometry` nodes and each operation has a single Undo step:
+
+- `Fit Selected to Hierarchy` sets each selected bone's visual length to the average pivot distance to its direct bone children. A selected leaf bone uses half the distance to its parent pivot.
+- `Length (cm)` + `SET` assigns the entered visual length in centimeters to every selected bone, independent of the scene's system-unit display.
+- `Flip Selected X` reverses the selected bones' display geometry along local X. Node transforms, pivots, hierarchy, and names stay unchanged. Legacy negative-length flips are converted to positive-length rotated display geometry so the bone base remains convex.
+
+These controls are display-authoring helpers. They do not rename bones, relink the skeleton, or alter animation transforms.

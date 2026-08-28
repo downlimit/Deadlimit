@@ -28,6 +28,7 @@ classID:#(0x5a4b1031, 0x279d5612)
 )
 
 global deadlimitVertexColorFbxRollout
+global deadlimitVertexColorBoneToolsRollout
 global deadlimitVertexColorLastDmx
 global deadlimitVertexColorIsPrimaryDmx
 global deadlimitVertexColorFindLatestDmx
@@ -35,7 +36,11 @@ global deadlimitVertexColorSetFbxParam
 global deadlimitVertexColorRestoreFbxParams
 global deadlimitVertexColorExportSidecar
 global deadlimitVertexColorSelectedGeometry
+global deadlimitVertexColorSelectedBones
 global deadlimitVertexColorSetDisplay
+global deadlimitVertexColorFitBoneLengths
+global deadlimitVertexColorSetSelectedBoneLength
+global deadlimitVertexColorFlipSelectedBoneX
 global deadlimitVertexColorFillPaletteToVertex
 global deadlimitVertexColorFillVertexToPalette
 global deadlimitVertexColorClipboard
@@ -172,6 +177,101 @@ fn deadlimitVertexColorSetDisplay enabled =
     nodes.count
 )
 
+fn deadlimitVertexColorSelectedBones =
+(
+    local bones = for node in selection where isValidNode node and (classOf node) == BoneGeometry collect node
+    if bones.count == 0 then throw "Select at least one BoneGeometry bone."
+    bones
+)
+
+fn deadlimitVertexColorFitBoneLengths =
+(
+    local bones = deadlimitVertexColorSelectedBones()
+
+    -- Build the complete plan first so every target uses the original hierarchy.
+    local lengthPlan = #()
+    local skipped = 0
+    for bone in bones do
+    (
+        local boneChildren = for child in bone.children where isValidNode child and (classOf child) == BoneGeometry collect child
+        local targetWorldLength = undefined
+
+        if boneChildren.count > 0 then
+        (
+            local totalDistance = 0.0
+            for child in boneChildren do totalDistance += distance bone.pos child.pos
+            targetWorldLength = totalDistance / boneChildren.count
+        )
+        else if isValidNode bone.parent then
+        (
+            targetWorldLength = (distance bone.pos bone.parent.pos) * 0.5
+        )
+
+        local localXAxisScale = length bone.transform.row1
+        if targetWorldLength != undefined and targetWorldLength >= 0.0 and localXAxisScale > 0.000000001 then
+        (
+            local direction = if bone.length < 0.0 then -1.0 else 1.0
+            append lengthPlan #(bone, direction * targetWorldLength / localXAxisScale)
+        )
+        else
+            skipped += 1
+    )
+
+    undo "Fit Selected Bone Display Lengths" on
+    (
+        for item in lengthPlan do item[1].length = item[2]
+    )
+
+    redrawViews()
+    #(lengthPlan.count, skipped)
+)
+
+fn deadlimitVertexColorSetSelectedBoneLength centimeters =
+(
+    if centimeters < 0.0 then throw "Bone display length cannot be negative. Use Flip Selected X for direction."
+    local targetWorldLength = units.decodeValue ((centimeters as string) + "cm")
+    local bones = deadlimitVertexColorSelectedBones()
+    local lengthPlan = #()
+    local skipped = 0
+
+    for bone in bones do
+    (
+        local localXAxisScale = length bone.transform.row1
+        if localXAxisScale > 0.000000001 then
+        (
+            local direction = if bone.length < 0.0 then -1.0 else 1.0
+            append lengthPlan #(bone, direction * targetWorldLength / localXAxisScale)
+        )
+        else
+            skipped += 1
+    )
+
+    undo "Set Selected Bone Display Length" on
+    (
+        for item in lengthPlan do item[1].length = item[2]
+    )
+
+    redrawViews()
+    #(lengthPlan.count, skipped)
+)
+
+fn deadlimitVertexColorFlipSelectedBoneX =
+(
+    local bones = deadlimitVertexColorSelectedBones()
+    local displayFlip = quat 180 [0,0,1]
+    undo "Flip Selected Bone Display X" on
+    (
+        for bone in bones do
+        (
+            -- Convert the old negative-length flip to a regular convex bone mesh.
+            if bone.length < 0.0 then bone.length = -bone.length
+            -- Rotate only the display object around the node pivot. The node TM stays intact.
+            bone.objectOffsetRot = bone.objectOffsetRot * displayFlip
+        )
+    )
+    redrawViews()
+    bones.count
+)
 fn deadlimitVertexColorBakeNode node fillColor =
 (
     local paintModifier = undefined
@@ -360,6 +460,53 @@ fn deadlimitVertexColorResultText actionName result =
 
 try (destroyDialog deadlimitVertexColorFbxRollout) catch()
 
+rollout deadlimitVertexColorBoneToolsRollout "BONE TOOLS"
+(
+    button fitBoneLengthsButton "Fit Selected to Hierarchy" width:260 height:24 tooltip:"Fit selected BoneGeometry lengths to the average bone-child pivot distance. Selected leaf bones use half the parent-pivot distance."
+    spinner boneLengthCmSpinner "Length (cm):" range:[0.0,100000.0,10.0] type:#float scale:0.1 fieldWidth:64 width:133 align:#left across:2 tooltip:"Visual length in centimeters."
+    button setBoneLengthButton "SET" width:55 height:24 offset:[40,0] tooltip:"Set selected bones to this visual length while preserving their current X direction."
+    button flipBoneXButton "Flip Selected X" width:260 height:24 tooltip:"Flip selected BoneGeometry display meshes along local X while preserving node transforms, pivots, hierarchy, and names."
+
+    on fitBoneLengthsButton pressed do
+    (
+        try
+        (
+            local result = deadlimitVertexColorFitBoneLengths()
+            deadlimitVertexColorFbxRollout.statusLabel.text = "Fit Selected: " + (result[1] as string) + " resized, " + (result[2] as string) + " skipped."
+        )
+        catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
+    )
+
+    on setBoneLengthButton pressed do
+    (
+        try
+        (
+            local result = deadlimitVertexColorSetSelectedBoneLength boneLengthCmSpinner.value
+            deadlimitVertexColorFbxRollout.statusLabel.text = "Set Length: " + (result[1] as string) + " resized, " + (result[2] as string) + " skipped."
+        )
+        catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
+    )
+
+    on flipBoneXButton pressed do
+    (
+        try (deadlimitVertexColorFbxRollout.statusLabel.text = "Flip Selected X: " + ((deadlimitVertexColorFlipSelectedBoneX()) as string) + " bone(s).")
+        catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
+    )
+
+    on deadlimitVertexColorBoneToolsRollout rolledUp isOpen do
+    (
+        try
+        (
+            local oldHeight = deadlimitVertexColorFbxRollout.boneToolsSubRollout.height
+            local newHeight = if isOpen then 121 else 24
+            deadlimitVertexColorFbxRollout.boneToolsSubRollout.height = newHeight
+            local dialogSize = getDialogSize deadlimitVertexColorFbxRollout
+            setDialogSize deadlimitVertexColorFbxRollout [dialogSize.x, dialogSize.y + (newHeight - oldHeight)]
+        )
+        catch()
+    )
+)
+
 rollout deadlimitVertexColorFbxRollout "Vertex Color FBX Export" width:310
 (
     label targetLabel "" width:286 height:16 align:#left
@@ -374,6 +521,7 @@ rollout deadlimitVertexColorFbxRollout "Vertex Color FBX Export" width:310
     button pastePaletteButton "Paste Palette" width:139 height:24 tooltip:"Set the wire color on all selected meshes from the shared color buffer."
     button enableVertexColorButton "Enable VertColor" width:139 height:24 across:2 tooltip:"Show selected objects with shaded Vertex Color channel 0."
     button disableVertexColorButton "Disable VertColor" width:139 height:24 tooltip:"Return selected objects to normal viewport shading."
+    subRollout boneToolsSubRollout "" width:286 height:24 scrollBar:#off
 
     fn showResultMessage text title isError =
     (
@@ -397,7 +545,12 @@ rollout deadlimitVertexColorFbxRollout "Vertex Color FBX Export" width:310
         )
     )
 
-    on deadlimitVertexColorFbxRollout open do refreshTarget()
+    on deadlimitVertexColorFbxRollout open do
+    (
+        refreshTarget()
+        addSubRollout boneToolsSubRollout deadlimitVertexColorBoneToolsRollout rolledUp:true
+        deadlimitVertexColorBoneToolsRollout.open = false
+    )
 
     on exportButton pressed do
     (
@@ -486,6 +639,7 @@ rollout deadlimitVertexColorFbxRollout "Vertex Color FBX Export" width:310
         try (statusLabel.text = "Disable VertColor: " + ((deadlimitVertexColorSetDisplay false) as string) + " object(s).")
         catch (statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
     )
+
 )
 
 createDialog deadlimitVertexColorFbxRollout
