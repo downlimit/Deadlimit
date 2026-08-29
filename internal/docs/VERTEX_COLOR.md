@@ -13,14 +13,14 @@ The artist DMX starts as a normal Wall Worm export with all settings controlled 
 
 1. Export the normal DMX with Wall Worm.
 2. Keep the same geometry and renderable Shape/Spline objects selected in 3ds Max.
-3. Run `DeadlimitVertexColorFBX.ms`, choose the `FIXED GAMMA` mode, and press **EXPORT VERTEX COLOR FBX**.
+3. Run `DeadlimitPipelineScripts.ms`, choose the `FIXED GAMMA` mode, and press **EXPORT VERTEX COLOR FBX**.
 4. Run PREPARE normally.
 
 The helper reads Wall Worm's last export folder from `3dsMax.ini` and finds the newest primary DMX there. It does not read a Deadlimit project, launch Deadlimit, or contain a path to `Deadlimit.exe`.
 
-The FBX export is ASCII, selection-only, animation/cameras/lights disabled and triangulation enabled. Renderable Shape/Spline objects receive a temporary `Turn To Mesh` modifier before export. Optional `FIXED GAMMA` writes channel `0` RGB as `value^(1/2.2)` for Source 2 and stays off for unchanged/Marmoset export. The helper restores temporary modifiers, previous FBX settings, Max selection, and the scene dirty state after success or failure. During PREPARE, Deadlimit patches the CSDK-bound DMX copy and reloads and validates its color streams. An applied `_vertexcolor.fbx` remains beside the artist DMX until the complete PREPARE transaction has saved the VMDL, materials, project metadata and final log. Only then is the temporary FBX removed. Rejection, cancellation, or any later PREPARE failure leaves the FBX available for retry and diagnosis.
+The FBX export is ASCII, selection-only, animation/cameras/lights disabled and triangulation enabled. Renderable Shape/Spline objects receive a temporary `Turn To Mesh` modifier before export. `FIXED GAMMA` is on by default and writes channel `0` RGB as `value^(1/2.2)` for Source 2; disable it for unchanged/Marmoset export. The helper restores temporary modifiers, previous FBX settings, Max selection, and the scene dirty state after success or failure. During PREPARE, Deadlimit patches the CSDK-bound DMX copy and reloads and validates its color streams. An applied `_vertexcolor.fbx` remains beside the artist DMX until the complete PREPARE transaction has saved the VMDL, materials, project metadata and final log. Only then is the temporary FBX removed. Rejection, cancellation, or any later PREPARE failure leaves the FBX available for retry and diagnosis.
 
-The versioned helper and a short README live in `.deadlimit/maxscript-vertcolor-trans/` in the Deadlimit repository. Settings exposes `📂 MaxScript VertColor Trans` to open that folder.
+The versioned helper and a short README live in `.deadlimit/maxscript-vertcolor-trans/` in the Deadlimit repository. Settings exposes `📂 Deadlimit Pipeline Scripts` to open that folder.
 
 ## Material priority
 

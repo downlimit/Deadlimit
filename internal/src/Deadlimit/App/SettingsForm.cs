@@ -278,7 +278,7 @@ internal sealed class SettingsForm : Form
 
         var openButton = new Button
         {
-            Text = "📂 MaxScript VertColor Trans",
+            Text = "📂 Deadlimit Pipeline Scripts",
             AutoSize = true,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 5, 0, 5),
@@ -290,8 +290,8 @@ internal sealed class SettingsForm : Form
         toolTip.SetToolTip(
             openButton,
             UiText.T(
-                "Open the repository folder containing DeadlimitVertexColorFBX.ms and its README for Vertex Color export and selected-bone display tools.",
-                "Открыть папку репозитория с DeadlimitVertexColorFBX.ms и README по экспорту Vertex Color и визуальным инструментам выбранных костей."));
+                "Open the repository folder containing DeadlimitPipelineScripts.ms and its README for the 3ds Max Deadlock pipeline tools.",
+                "Открыть папку репозитория с DeadlimitPipelineScripts.ms и README по инструментам пайплайна Deadlock для 3ds Max."));
 
         grid.Controls.Add(caption, 0, row);
         grid.Controls.Add(openButton, 1, row);

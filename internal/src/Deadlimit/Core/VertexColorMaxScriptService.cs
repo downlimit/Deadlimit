@@ -5,9 +5,9 @@ namespace Deadlimit.Core;
 
 public static class VertexColorMaxScriptService
 {
-    private const string ResourceName = "Deadlimit.VertexColorSidecar.ms";
+    private const string ResourceName = "Deadlimit.PipelineScripts.ms";
     private const string RepositoryFolderName = "maxscript-vertcolor-trans";
-    private const string ScriptFileName = "DeadlimitVertexColorFBX.ms";
+    private const string ScriptFileName = "DeadlimitPipelineScripts.ms";
     private const string ReadmeFileName = "README.md";
 
     public static string GetBundledScriptFolder()
@@ -74,7 +74,7 @@ public static class VertexColorMaxScriptService
         var assembly = Assembly.GetExecutingAssembly();
         using var stream = assembly.GetManifestResourceStream(ResourceName)
             ?? throw new InvalidOperationException(
-                $"Embedded Vertex Color helper '{ResourceName}' was not found.");
+                $"Embedded Deadlimit Pipeline Scripts resource '{ResourceName}' was not found.");
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         return reader.ReadToEnd();
     }
