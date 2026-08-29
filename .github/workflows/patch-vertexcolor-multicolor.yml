@@ -1,0 +1,186 @@
+name: Patch Vertex Color Multicolor
+
+on:
+  push:
+    branches: [ fix/vertexcolor-multicolor-correspondence ]
+    paths: [ '.github/workflows/patch-vertexcolor-multicolor.yml' ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/vertexcolor-multicolor-correspondence
+      - name: Patch geometry-first multicolor correspondence
+        shell: pwsh
+        run: |
+          $path = 'internal/src/Deadlimit/Core/VertexColorSidecarService.cs'
+          $text = [System.IO.File]::ReadAllText($path).Replace("`r`n", "`n")
+          $old = @'
+                  int[] sourcePolygonIndexes;
+                  int[]?[] cornerMappings;
+                  var polygonsMatched = TryMatchPolygonsByTexcoords(
+                      meshName,
+                      targets,
+                      sources,
+                      targetTexcoords,
+                      targetControlPoints,
+                      out sourcePolygonIndexes,
+                      out cornerMappings,
+                      out var polygonMismatchReason);
+                  if (!polygonsMatched)
+                  {
+                      polygonsMatched = TryMatchPolygonsByPositions(
+                          meshName,
+                          targets,
+                          sources,
+                          targetControlPoints,
+                          sourceControlPoints,
+                          out sourcePolygonIndexes,
+                          out cornerMappings,
+                          out polygonMismatchReason);
+                  }
+          
+                  if (!polygonsMatched)
+                  {
+                      polygonsMatched = TryMatchSplitControlPointPolygons(
+                          meshName,
+                          targets,
+                          sources,
+                          targetControlPoints,
+                          sourceControlPoints,
+                          out sourcePolygonIndexes,
+                          out cornerMappings,
+                          out polygonMismatchReason);
+                  }
+          
+                  if (polygonsMatched)
+                  {
+                      var result = new List<DmxColor>(targetCornerCount);
+                      for (var index = 0; index < targets.Count; index++)
+                      {
+                          var sourcePolygon = sources[sourcePolygonIndexes[index]];
+                          var sourceColors = sourcePolygon.Colors!;
+                          var cornerMap = cornerMappings[index]
+                              ?? Enumerable.Range(0, sourcePolygon.ControlPoints.Count).ToArray();
+                          result.AddRange(cornerMap.Select(sourceCorner => sourceColors[sourceCorner]));
+                      }
+          
+                      colors = result;
+                      mismatchReason = string.Empty;
+                      return true;
+                  }
+          
+                  if (TryMatchColorsByTexcoords(
+                          meshName,
+                          targets,
+                          sources,
+                          targetTexcoords,
+                          out colors,
+                          out var uvColorMismatchReason))
+                  {
+                      mismatchReason = string.Empty;
+                      return true;
+                  }
+          
+                  if (TryMatchColorsByControlPoints(
+                          meshName,
+                          targets,
+                          sources,
+                          targetControlPoints,
+                          sourceControlPoints,
+                          out colors,
+                          out var positionColorMismatchReason))
+                  {
+                      mismatchReason = string.Empty;
+                      return true;
+                  }
+          
+                  colors = Array.Empty<DmxColor>();
+                  mismatchReason =
+                      $"Vertex Color correspondence is ambiguous for mesh '{meshName}'. " +
+                      $"Polygon match: {polygonMismatchReason} " +
+                      $"UV match: {uvColorMismatchReason} " +
+                      $"Position match: {positionColorMismatchReason}";
+                  return false;
+          '@
+          $new = @'
+                  int[] sourcePolygonIndexes;
+                  int[]?[] cornerMappings;
+                  var polygonsMatched = TryMatchPolygonsByPositions(
+                      meshName,
+                      targets,
+                      sources,
+                      targetControlPoints,
+                      sourceControlPoints,
+                      out sourcePolygonIndexes,
+                      out cornerMappings,
+                      out var polygonMismatchReason);
+          
+                  if (!polygonsMatched)
+                  {
+                      polygonsMatched = TryMatchSplitControlPointPolygons(
+                          meshName,
+                          targets,
+                          sources,
+                          targetControlPoints,
+                          sourceControlPoints,
+                          out sourcePolygonIndexes,
+                          out cornerMappings,
+                          out polygonMismatchReason);
+                  }
+          
+                  if (polygonsMatched)
+                  {
+                      var result = new List<DmxColor>(targetCornerCount);
+                      for (var index = 0; index < targets.Count; index++)
+                      {
+                          var sourcePolygon = sources[sourcePolygonIndexes[index]];
+                          var sourceColors = sourcePolygon.Colors!;
+                          var cornerMap = cornerMappings[index]
+                              ?? Enumerable.Range(0, sourcePolygon.ControlPoints.Count).ToArray();
+                          result.AddRange(cornerMap.Select(sourceCorner => sourceColors[sourceCorner]));
+                      }
+          
+                      colors = result;
+                      mismatchReason = string.Empty;
+                      return true;
+                  }
+          
+                  if (TryMatchColorsByControlPoints(
+                          meshName,
+                          targets,
+                          sources,
+                          targetControlPoints,
+                          sourceControlPoints,
+                          out colors,
+                          out var positionColorMismatchReason))
+                  {
+                      mismatchReason = string.Empty;
+                      return true;
+                  }
+          
+                  colors = Array.Empty<DmxColor>();
+                  mismatchReason =
+                      $"Vertex Color correspondence is ambiguous for multi-color mesh '{meshName}'. " +
+                      $"Geometry polygon match: {polygonMismatchReason} " +
+                      $"Position/color match: {positionColorMismatchReason} " +
+                      "UV-only transfer is intentionally disabled because it cannot prove polygon ownership.";
+                  return false;
+          '@
+          $old = $old.Replace("`r`n", "`n")
+          $new = $new.Replace("`r`n", "`n")
+          if (-not $text.Contains($old)) {
+            throw 'Expected Vertex Color matching block was not found.'
+          }
+          $updated = $text.Replace($old, $new)
+          [System.IO.File]::WriteAllText($path, $updated, [System.Text.UTF8Encoding]::new($false))
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add $path
+          git commit -m 'Make multicolor vertex transfer geometry-first'
+          git push origin HEAD:fix/vertexcolor-multicolor-correspondence
