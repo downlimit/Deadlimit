@@ -12,6 +12,7 @@ internal sealed record OnlinePreparationUpdate(
 internal sealed class OnlinePreparationSession : IDisposable
 {
     private const int DebounceMilliseconds = 900;
+    private const int VertexColorPairDebounceMilliseconds = 6660;
     private const int StableReadAttempts = 6;
     private const int StableReadDelayMilliseconds = 180;
 
@@ -36,6 +37,7 @@ internal sealed class OnlinePreparationSession : IDisposable
     private readonly Dictionary<string, string[]> _dmxMaterialReferences;
     private readonly HashSet<string> _knownRelevantFiles;
     private readonly HashSet<string> _pendingPaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _dmxAwaitingVertexColorSidecar = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _gate = new();
     private readonly FileSystemWatcher _watcher;
     private readonly System.Threading.Timer _debounceTimer;
@@ -216,7 +218,45 @@ internal sealed class OnlinePreparationSession : IDisposable
             }
 
             _pendingPaths.Add(fullPath);
-            _debounceTimer.Change(DebounceMilliseconds, Timeout.Infinite);
+            UpdateVertexColorDebounceState(fullPath);
+            var debounceMilliseconds = _dmxAwaitingVertexColorSidecar.Count == 0
+                ? DebounceMilliseconds
+                : VertexColorPairDebounceMilliseconds;
+            _debounceTimer.Change(debounceMilliseconds, Timeout.Infinite);
+        }
+    }
+
+    private void UpdateVertexColorDebounceState(string fullPath)
+    {
+        var extension = Path.GetExtension(fullPath);
+        if (extension.Equals(".dmx", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!File.Exists(fullPath))
+            {
+                _dmxAwaitingVertexColorSidecar.Remove(fullPath);
+                return;
+            }
+
+            var sidecarPath = VertexColorSidecarService.GetSidecarPath(fullPath);
+            if (File.Exists(sidecarPath)
+                && File.GetLastWriteTimeUtc(sidecarPath) < File.GetLastWriteTimeUtc(fullPath))
+            {
+                _dmxAwaitingVertexColorSidecar.Add(fullPath);
+            }
+            else
+            {
+                _dmxAwaitingVertexColorSidecar.Remove(fullPath);
+            }
+
+            return;
+        }
+
+        if (extension.Equals(".fbx", StringComparison.OrdinalIgnoreCase)
+            && VertexColorSidecarService.IsSidecarPath(fullPath)
+            && File.Exists(fullPath))
+        {
+            _dmxAwaitingVertexColorSidecar.Remove(
+                Path.GetFullPath(VertexColorSidecarService.GetArtistDmxPath(fullPath)));
         }
     }
 
@@ -229,6 +269,7 @@ internal sealed class OnlinePreparationSession : IDisposable
                 return;
             }
 
+            _dmxAwaitingVertexColorSidecar.Clear();
             if (_processing)
             {
                 _rerunRequested = true;
@@ -259,7 +300,13 @@ internal sealed class OnlinePreparationSession : IDisposable
 
                 lock (_gate)
                 {
-                    if (!_rerunRequested && _pendingPaths.Count == 0)
+                    if (_pendingPaths.Count == 0)
+                    {
+                        _processing = false;
+                        return;
+                    }
+
+                    if (!_rerunRequested)
                     {
                         _processing = false;
                         return;
