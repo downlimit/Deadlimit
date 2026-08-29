@@ -572,27 +572,15 @@ public static class VertexColorSidecarService
 
         int[] sourcePolygonIndexes;
         int[]?[] cornerMappings;
-        var polygonsMatched = TryMatchPolygonsByTexcoords(
+        var polygonsMatched = TryMatchPolygonsByPositions(
             meshName,
             targets,
             sources,
-            targetTexcoords,
             targetControlPoints,
+            sourceControlPoints,
             out sourcePolygonIndexes,
             out cornerMappings,
             out var polygonMismatchReason);
-        if (!polygonsMatched)
-        {
-            polygonsMatched = TryMatchPolygonsByPositions(
-                meshName,
-                targets,
-                sources,
-                targetControlPoints,
-                sourceControlPoints,
-                out sourcePolygonIndexes,
-                out cornerMappings,
-                out polygonMismatchReason);
-        }
 
         if (!polygonsMatched)
         {
@@ -624,18 +612,6 @@ public static class VertexColorSidecarService
             return true;
         }
 
-        if (TryMatchColorsByTexcoords(
-                meshName,
-                targets,
-                sources,
-                targetTexcoords,
-                out colors,
-                out var uvColorMismatchReason))
-        {
-            mismatchReason = string.Empty;
-            return true;
-        }
-
         if (TryMatchColorsByControlPoints(
                 meshName,
                 targets,
@@ -651,10 +627,10 @@ public static class VertexColorSidecarService
 
         colors = Array.Empty<DmxColor>();
         mismatchReason =
-            $"Vertex Color correspondence is ambiguous for mesh '{meshName}'. " +
-            $"Polygon match: {polygonMismatchReason} " +
-            $"UV match: {uvColorMismatchReason} " +
-            $"Position match: {positionColorMismatchReason}";
+            $"Vertex Color correspondence is ambiguous for multi-color mesh '{meshName}'. " +
+            $"Geometry polygon match: {polygonMismatchReason} " +
+            $"Position/color match: {positionColorMismatchReason} " +
+            "UV-only transfer is intentionally disabled because it cannot prove polygon ownership.";
         return false;
     }
 
