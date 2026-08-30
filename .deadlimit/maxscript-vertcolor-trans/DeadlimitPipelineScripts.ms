@@ -1,4 +1,51 @@
 /*
+    PORTING / MAINTENANCE CONTRACT
+    ==============================
+
+    This file is an artist-facing Deadlock/Source 2 pipeline tool. Preserve the
+    observable contracts below when moving it to another DCC (for example Blender).
+    Max-specific modifier-stack workarounds may be replaced by native DCC APIs.
+
+    Feature map:
+    1. Vertex Color tools convert and spread a single representative color between
+       geometry color attribute channel 0, object palette/wire color, and material.
+    2. Viewport ON/OFF makes the chosen DCC display the stored vertex colors without
+       changing their numeric values.
+    3. Bone tools change only the helper's visual shape/length. Joint transforms,
+       pivots, hierarchy, animation, naming, and exported orientation stay intact.
+    4. Inner Lineart turns selected inner edges into coincident zero-area seam faces.
+       The extra normals create Deadlock shader linework without a visible geometric gap.
+    5. Skin-aware Inner Lineart assigns every generated coincident vertex the exact
+       source vertex weights and keeps those pairs synchronized after later skin edits.
+    6. Vertex Color FBX is a temporary sidecar for Deadlimit PREPARE. Optional fixed
+       gamma affects only that export and never rewrites the artist's source colors.
+
+    Cross-feature invariants:
+    - Vertex Color means Max map channel 0. A Blender port should use one explicitly
+      named color attribute and preserve its corner/face-corner indexing.
+    - Selection order is data: SPREAD uses the first selected geometry as reference.
+    - All destructive-looking operations are one Undo transaction and fail before the
+      source stack is touched whenever the preflight can detect an unsafe topology.
+    - Temporary modifiers, snapshots, selections, exporter settings, and scene dirty
+      state are restored on success and failure. A real Skin repair intentionally keeps
+      the scene dirty so the artist can save it.
+    - Geometry indices in this MaxScript are 1-based. Translate them explicitly for a
+      0-based API; silent off-by-one errors corrupt Skin and map-corner ownership.
+    - Existing smoothing groups/hard edges, material IDs, edge visibility, every
+      supported map channel, and modifier order are part of the asset contract.
+
+    Suggested Blender architecture:
+    - Keep DCC-neutral algorithms (sector partitioning, seam-group metadata, color
+      conversion, validation) separate from Blender adapters (BMesh, color attributes,
+      vertex groups/Armature, modifier visibility, FBX operator, UI panels).
+    - Store seam groups as persistent object custom data with a schema/version key.
+    - Run topology work on a temporary mesh datablock, validate it, then commit it in
+      one operator. Do not depend on evaluated-mesh vertex indices for editable data.
+    - Add regression scenes for triangulated junctions, map seams, hard edges, Skin
+      weights/DQ equivalents, modifier sandwiches, save/reload, and repeated sync.
+*/
+
+/*
     Deadlimit Max Script for 3ds Max.
 
     Run this script after exporting the regular DMX with Wall Worm. It reads the
@@ -7,6 +54,18 @@
     Deadlimit Aggregator consumes it during PREPARE and keeps failed/cancelled handoffs for retry.
 */
 
+/*
+    FEATURE: PALETTE -> VERTEX COLOR FILL MODIFIER
+
+    Max's object wireColor is the compact per-object palette color used by the artist.
+    This modifier creates a complete channel-0 topology and writes one uniform color to
+    every geometric vertex/map corner. deadlimitVertexColorBakeNode later collapses it
+    below the user's existing modifiers so Skin and procedural work remain above it.
+
+    Porting invariant: this is a deliberate solid-color fill. Spatial resampling and
+    nearest-vertex transfer are outside its contract. Create valid data for every face corner, even
+    when the destination mesh previously had no color attribute.
+*/
 plugin simpleMeshMod DeadlimitPaletteVertexFillModifier
 name:"Deadlimit Palette Vertex Fill"
 classID:#(0x5a4b1031, 0x279d5612)
@@ -27,6 +86,17 @@ classID:#(0x5a4b1031, 0x279d5612)
     )
 )
 
+/*
+    FEATURE: SOURCE 2 FIXED-GAMMA EXPORT VIEW
+
+    Source 2 consumes this vertex-color FBX path with a different gamma expectation.
+    Export RGB is clamped to [0,1] and transformed as value^(1/2.2). Alpha/topology are
+    untouched. The modifier exists only during FBX export and is removed in cleanup.
+
+    Porting invariant: stored colors, viewport colors, and Marmoset-oriented exports stay
+    unchanged. Apply the transform to an evaluated/export copy when FIXED GAMMA is on.
+    Never bake this correction into the working asset as a side effect of export.
+*/
 plugin simpleMeshMod DeadlimitVertexColorFixedGammaModifier
 name:"Deadlimit Vertex Color Fixed Gamma"
 classID:#(0x5a4b1032, 0x279d5612)
@@ -49,6 +119,11 @@ classID:#(0x5a4b1032, 0x279d5612)
     )
 )
 
+/*
+    PUBLIC SCRIPT STATE
+    Globals keep rollout callbacks, tests, and repeated fileIn/reload calls pointing at
+    the newest function definitions. Treat these names as the script's internal API.
+*/
 global deadlimitVertexColorFbxRollout
 global deadlimitPipelineFloater
 global deadlimitVertexColorToolsRollout
@@ -90,6 +165,29 @@ global deadlimitVertexColorPastePalette
 global deadlimitVertexColorResultText
 global deadlimitInnerLineartSkinProperty = "DeadlimitInnerLineartSkinGroupsV1"
 
+/*
+    FEATURE: SKIN-AWARE INNER LINEART METADATA AND SYNCHRONIZATION
+
+    Metadata schema: each group is #(sourceVertex, cloneVertex, cloneVertex, ...).
+    The first member remains the authoritative artist-painted Skin vertex. Remaining
+    members are coincident topology clones made by Inner Lineart. Overlapping groups are
+    merged while retaining the oldest source, then serialized into an object user prop
+    so save/reload does not lose the relationship.
+
+    Create Lineart snapshots Skin modifiers above the edited stack level before topology
+    changes. It preserves regular bone influences/weights, DQ blend weight, normalization,
+    and supported rigid state. Existing vertices are validated and only repaired when Max
+    changed them; every new clone receives the exact source data.
+
+    SYNC LINEART SKIN re-copies the current source data after later manual weight painting.
+    It first evaluates the mesh immediately below each Skin and requires every stored group
+    to remain coincident. This rejects stale indices instead of painting weights onto an
+    unrelated vertex. FBX export runs the same sync automatically.
+
+    Porting invariant: use persistent editable-mesh IDs or a validated source/clone mapping.
+    Position matching alone is insufficient as identity; coincidence is only a safety check.
+    Exclusion lists and Skin gizmo internals are outside this per-vertex contract.
+*/
 fn deadlimitInnerLineartGroupsOverlap groupA groupB =
 (
     for vertexIndex in groupA where (findItem groupB vertexIndex) > 0 do return true
@@ -387,6 +485,25 @@ fn deadlimitVertexColorSyncInnerLineartSkin nodes:undefined =
     #(synchronizedNodes, synchronizedSkins, synchronizedGroups, changedClones)
 )
 
+/*
+    FEATURE: WALL WORM DMX + VERTEX-COLOR FBX SIDECAR
+
+    Wall Worm writes the primary DMX and remembers its last export folder in 3dsMax.ini.
+    This script finds the newest primary DMX, then exports selected geometry/renderable
+    shapes beside it as <dmx-name>_vertexcolor.fbx for Deadlimit PREPARE to consume.
+
+    Export contract:
+    - selection only; ASCII FBX; animation/cameras/lights off; triangulation on;
+    - renderable shapes receive a temporary mesh conversion;
+    - FIXED GAMMA receives the temporary gamma modifier described above;
+    - Inner Lineart Skin groups are synchronized before exporter evaluation;
+    - write a unique temporary FBX first, then replace the sidecar only after success;
+    - always restore selection, FBX settings, and temporary modifiers.
+
+    A Blender port should keep this handoff protocol even if its exporter options differ.
+    PREPARE owns validation and deletion of the accepted sidecar; failed/cancelled runs keep
+    the file for retry and diagnosis.
+*/
 fn deadlimitVertexColorIsPrimaryDmx path =
 (
     local fileName = toLower (filenameFromPath path)
@@ -585,6 +702,16 @@ fn deadlimitVertexColorExportSidecar fixedGamma:false =
     )
 )
 
+/*
+    FEATURE: VIEWPORT VERTEX-COLOR DISPLAY
+
+    These functions only change display flags. Numeric channel-0 data and materials are
+    untouched. ON/OFF uses a majority rule across the selected meshes: if most are on,
+    force all off; otherwise force all on. This makes mixed selections deterministic.
+
+    Porting invariant: configure the viewport/material preview to show the same stored
+    color attribute the exporter reads. Do not solve display mismatch by rewriting colors.
+*/
 fn deadlimitVertexColorSelectedGeometry =
 (
     local nodes = for node in selection where isValidNode node and (superClassOf node) == GeometryClass collect node
@@ -622,6 +749,21 @@ fn deadlimitVertexColorToggleDisplay =
     #(nodes.count, enableDisplay, enabledCount)
 )
 
+/*
+    FEATURE: BONE DISPLAY TOOLS
+
+    These commands edit BoneGeometry presentation only:
+    - FIT X uses average pivot-to-child-pivot distance; a leaf uses half its distance to
+      the parent. Length planning happens before mutation so a multi-selection is stable.
+    - SET applies a world-space centimeter length while compensating local X scale.
+    - FLIP X normalizes negative length and rotates objectOffsetRot 180 degrees, producing
+      a convex tail while the node transform/pivot remains unchanged.
+
+    Joint transforms, hierarchy, names, Skin bindings, animation controllers, and export
+    orientation must remain unchanged in their respective representations. A Blender port may use
+    custom bone-shape/display properties; never rotate edit bones or pose bones to imitate
+    this visual correction.
+*/
 fn deadlimitVertexColorSelectedBones =
 (
     local bones = for node in selection where isValidNode node and (classOf node) == BoneGeometry collect node
@@ -717,6 +859,25 @@ fn deadlimitVertexColorFlipSelectedBoneX =
     redrawViews()
     bones.count
 )
+
+/*
+    FEATURE: VERTEX COLOR CONVERT / SPREAD / CLIPBOARD
+
+    Terminology:
+    - "Palette" is node.wireColor, one RGB value per object.
+    - "Vertex" is Max map channel 0. readFirst samples the first map vertex actually used
+      by a map face, which is the representative color for this solid-color workflow.
+    - "Material" is the material reference itself; SPREAD assigns the same reference.
+
+    Palette to Vertex writes a valid uniform channel 0 below the existing modifier stack.
+    Vertex to Palette reads the representative channel-0 color. SPREAD uses the first
+    selected geometry as reference and applies enabled VERT/PALETTE/MAT fields to the rest.
+    Per-object failures are collected so one unsupported target does not cancel all targets.
+
+    Porting invariant: preserve selection order and place/bake the color attribute at the
+    editable level below deformation. This feature intentionally does not transfer a
+    spatially varying paint pattern between different meshes.
+*/
 fn deadlimitVertexColorBakeNode node fillColor =
 (
     local paintModifier = undefined
@@ -931,6 +1092,36 @@ fn deadlimitVertexColorPastePalette =
     nodes.count
 )
 
+/*
+    FEATURE: INNER LINEART TOPOLOGY KERNEL
+
+    User contract: selected manifold inner edges become an invisible, zero-width strip of
+    real faces. Coincident face normals give the Deadlock shader an inner outline. There is
+    no bevel width and no stack of chamfer rings. A chain endpoint collapses to one vertex;
+    a three-way junction gets a triangle, a four-way junction gets a quad, and higher-valence
+    junctions are capped without creating an arbitrary fan of visible internal rings.
+
+    Algorithm outline:
+    1. Validate non-zero selected edges, exactly two adjacent faces, and no pre-existing
+       zero-area lineart face along the selection.
+    2. At every selected vertex, partition its one-ring faces into sectors separated by the
+       selected edges. Order closed junction sectors by adjacency.
+    3. Create one coincident clone per sector and remap original face corners to their sector
+       clone. Keep #(source, clones...) for Skin synchronization.
+    4. Procedurally add the seam strip/junction cap and snap every clone to the original XYZ.
+       Exact coincidence is essential; tiny offsets cause shading leaks.
+    5. Rebuild all supported map channels by face-corner ownership. New seam map points are
+       collapsed at the matching source corner, so UVs and vertex colors remain valid.
+    6. Restore original smoothing groups, material IDs, edge visibility, and clear random
+       sub-object selections. New lineart faces receive an intentional smoothing group.
+    7. Optional VertexColor Marker halves participating channel-0 values, preserving the
+       artist's color relationships and avoiding an absolute-black marker.
+
+    deadlimitVertexColorBuildInnerLineart is DCC-neutral in intent. Its return contract is
+    #(newSeamFaces, newSeamEdges, resultingVertexCount, sourceCloneGroups). A Blender port
+    should implement this kernel with BMesh/custom data layers and unit-test triangulated
+    chains, T/X junctions, UV seams, color seams, hard edges, and repeated operations.
+*/
 fn deadlimitVertexColorPolyFaceArea poly faceIndex =
 (
     local faceVerts = polyop.getFaceVerts poly faceIndex
@@ -1424,6 +1615,30 @@ fn deadlimitVertexColorBuildInnerLineart node selectedEdges sourceSegments minim
 )
 
 
+/*
+    FEATURE: COMMIT INNER LINEART AT THE ACTIVE EDITABLE LEVEL
+
+    The artist chooses the destination by making either the base Editable Poly or one Edit
+    Poly modifier active. The operation must stay inside that exact level, including when
+    it is sandwiched between Skin and other modifiers. It must not add a surprise permanent
+    Edit Poly modifier at the top of the stack.
+
+    Max adapter strategy:
+    - Base Editable Poly: build on a copy, replace baseObject inside one Undo transaction,
+      then restore Skin and persistent seam metadata.
+    - Active Edit Poly modifier: isolate/evaluate only through that modifier on a temporary
+      node, run the kernel, attach the complete result into the same modifier, remove the
+      old faces there, restore smoothing/selections, and delete the temporary node.
+    - Bare Editable Mesh: convert it to Editable Poly in the same Undo transaction. A mesh
+      with modifiers requires the user to choose an explicit Edit Poly level first.
+
+    Preflight compares vertex/face/edge counts at the chosen level. Any topology-changing
+    modifier between that level and Skin is rejected before commit because Skin's index-based
+    weights would address the wrong vertices. Runtime failure rolls back the whole transaction.
+
+    Porting invariant: expose an explicit editable target and preserve modifier order. Build
+    and validate temporary topology first, then atomically replace/commit only that target.
+*/
 fn deadlimitVertexColorCreateInnerLineartFromBase useUndo:true vertexMarker:false =
 (
     if selection.count != 1 then throw "Select one Editable Poly object and its inner edges."
@@ -1837,6 +2052,18 @@ fn deadlimitVertexColorResultText actionName result =
     text
 )
 
+/*
+    UI / WORKFLOW CONTRACT
+
+    Keep the interface compact and ordered as follows: Bone Tools, Vertex Color, Inner
+    Lineart, Export Vertex Color. All rollouts open by default. The export controls stay at
+    the bottom so topology/color preparation reads top-to-bottom.
+
+    Status and modal messages are part of the artist workflow: batch operations report
+    changed/skipped targets; Skin sync reports changed clones; export reports both the FBX
+    sidecar and gamma state. A Blender port should preserve these confirmations and surface
+    preflight errors without partially editing the asset.
+*/
 try (destroyDialog deadlimitVertexColorFbxRollout) catch()
 try (closeRolloutFloater deadlimitPipelineFloater) catch()
 
