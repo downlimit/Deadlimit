@@ -75,6 +75,7 @@ internal static class Program
         Application.SetCompatibleTextRenderingDefault(false);
 
         var settings = ProjectStore.GetToolPathSettings();
+        DeadlockToolsLayoutMigration.TryMigrateManagedRelease(settings.DeadlockToolsRoot);
         UiTheme.ConfigureApplication(settings.UiTheme);
 
         using var startup = startupSmoke
