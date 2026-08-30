@@ -44,7 +44,7 @@ internal static class BuildFeature
         toolTip.SetToolTip(
             prepareButton,
             UiText.T(
-                "Prepare the selected project's project working files for Reduced CSDK12 / ModelDoc / Material Editor.\n\nA normal click preserves manual VMAT tuning while synchronizing project textures. Hold SHIFT to back up and regenerate Deadlimit Aggregator custom materials from their templates.",
+                "Prepare the selected project's working files for Reduced CSDK12 / ModelDoc / Material Editor.\n\nA normal click preserves manual VMAT tuning while synchronizing project textures. Hold SHIFT to back up and regenerate Deadlimit Aggregator custom materials from their templates.",
                 "Подготовить рабочие файлы выбранного проекта для Reduced CSDK12 / ModelDoc / Material Editor.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует текстуры проекта. Удерживайте SHIFT, чтобы создать резервную копию и пересоздать custom-материалы Deadlimit Aggregator из шаблонов."));
         toolTip.SetToolTip(
             buildAndTestButton,
@@ -287,13 +287,13 @@ internal static class BuildFeature
             }
 
             animator.Update(new BuildAndTestProgress(
-                UiText.T("Checking игровой клиент Deadlock mod loading...", "Проверка загрузки модов в игровой клиент Deadlock..."),
+                UiText.T("Checking Deadlock game-client mod loading...", "Проверка загрузки модов в игровом клиенте Deadlock..."),
                 1));
             var modLoading = await Task.Run(() =>
                 new RetailModLoadingService(paths).EnsureEnabled(manifest));
 
             animator.Update(new BuildAndTestProgress(
-                UiText.T("Checking VPK игрового клиента Deadlock release slot...", "Проверка VPK игрового клиента Deadlock-слота..."),
+                UiText.T("Checking Deadlock game-client VPK release slot...", "Проверка слота VPK игрового клиента Deadlock..."),
                 1));
             var slotGuard = new VpkSlotOwnershipService(paths);
             var slotCheck = await Task.Run(() => slotGuard.EnsureSlotAvailable(manifest));
@@ -342,7 +342,7 @@ internal static class BuildFeature
 
             var modLoadingSummary = modLoading.Patched
                 ? UiText.T(
-                    "\nRetail mod loading: repaired automatically. The next Deadlock launch will use the repaired search path.",
+                    "\nDeadlock game-client mod loading: repaired automatically. The next Deadlock launch will use the repaired resource search path.",
                     "\nЗагрузка модов в игровом клиенте Deadlock автоматически восстановлена. Следующий запуск Deadlock будет использовать исправленный путь поиска ресурсов.")
                 : string.Empty;
             var legacySlotSummary = slotCheck.LegacyOwnershipAdopted

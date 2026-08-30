@@ -171,7 +171,7 @@ internal static class ProjectHeaderFeature
         toolTip.SetToolTip(
             prepareOverlay,
             UiText.T(
-                "Prepare the selected project's project working files for Reduced CSDK12.\n\nA normal click preserves manual VMAT tuning and synchronizes project textures. Hold SHIFT to back up and regenerate the project's Deadlimit Aggregator custom materials from current templates.",
+                "Prepare the selected project's working files for Reduced CSDK12.\n\nA normal click preserves manual VMAT tuning and synchronizes project textures. Hold SHIFT to back up and regenerate the project's Deadlimit Aggregator custom materials from current templates.",
                 "Подготовить рабочие файлы выбранного проекта для Reduced CSDK12.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует текстуры проекта. Удерживайте SHIFT, чтобы создать резервную копию и пересоздать custom-материалы Deadlimit Aggregator из текущих шаблонов."));
         toolTip.SetToolTip(
             buildOverlay,

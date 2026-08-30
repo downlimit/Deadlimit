@@ -18,7 +18,7 @@ internal sealed class BuildTestSuccessDialog : Form
         UiText.T("Prepare for CSDK complete", "Подготовка для CSDK готова"),
         message,
         UiText.T(
-            "Close this preparation summary.\n\nThe project working files is already prepared; launch CSDK separately when you are ready to work with it.",
+            "Close this preparation summary.\n\nThe project working files are already prepared; launch CSDK separately when you are ready to work with it.",
             "Закрыть сводку подготовки.\n\nРабочие файлы проекта уже подготовлены; запустите CSDK отдельно, когда будете готовы с ним работать."));
 
     private BuildTestSuccessDialog(string title, string body, string okToolTip)

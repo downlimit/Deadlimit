@@ -153,7 +153,7 @@ internal static class SteamStatusFeature
                     rightLabel,
                     UiText.T(
                         "Release ID determines the game-client VPK file name.\n\nFor example: ID 05 → pak05_dir.vpk.",
-                        "Release ID определяет имя VPK игрового клиента Deadlock-файла.\n\nНапример: ID 05 → pak05_dir.vpk."));
+                        "Release ID определяет имя VPK-файла игрового клиента Deadlock.\n\nНапример: ID 05 → pak05_dir.vpk."));
                 return;
             }
 
