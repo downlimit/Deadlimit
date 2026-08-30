@@ -18,8 +18,12 @@ function Run-Git([string]$workingDirectory, [Parameter(ValueFromRemainingArgumen
 
 function Run-Updater([string]$workingDirectory) {
     $bootstrap = Join-Path $workingDirectory 'DeadlimitUpdater.bat'
-    & cmd.exe /d /c "`"$bootstrap`" -NoWait"
-    return $LASTEXITCODE
+    $output = & cmd.exe /d /c "`"$bootstrap`" -NoWait" 2>&1
+    $exitCode = $LASTEXITCODE
+    foreach ($line in $output) {
+        Write-Host $line
+    }
+    return $exitCode
 }
 
 try {
