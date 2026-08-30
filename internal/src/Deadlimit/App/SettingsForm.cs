@@ -645,9 +645,14 @@ internal sealed class SettingsForm : Form
 
         if (_deadlockToolsStatus.Kind is ToolchainStatusKind.NotSpecified or ToolchainStatusKind.InvalidPath or ToolchainStatusKind.Installed)
         {
+            var current = _deadlockToolsRootText.Text.Trim();
+            var initialDirectory = Directory.Exists(current)
+                && string.Equals(new DirectoryInfo(current).Name, "DeadlockTools", StringComparison.OrdinalIgnoreCase)
+                    ? Directory.GetParent(current)?.FullName ?? current
+                    : current;
             var destination = ChooseFolder(
                 UiText.T("Choose an empty folder for DeadlockTools", "Выберите пустую папку для DeadlockTools"),
-                _deadlockToolsRootText.Text,
+                initialDirectory,
                 showNewFolderButton: true,
                 fallbackInitialDirectory: DeadlimitPaths.DefaultWorkspaceRoot);
             if (destination is null)
@@ -712,6 +717,14 @@ internal sealed class SettingsForm : Form
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             MessageBox.Show(this, exception.Message, errorTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (_csdkStatus.Kind == ToolchainStatusKind.Working)
+            {
+                await RefreshCsdkStatusAsync();
+            }
+            if (_deadlockToolsStatus.Kind == ToolchainStatusKind.Working)
+            {
+                await RefreshDeadlockToolsStatusAsync();
+            }
         }
         finally
         {
@@ -1033,10 +1046,14 @@ internal sealed class SettingsForm : Form
                 error = UiText.T($"DeadlockTools folder does not exist:\n{candidate.DeadlockToolsRoot}", $"Папка DeadlockTools не существует:\n{candidate.DeadlockToolsRoot}");
                 return false;
             }
-            var executable = Path.Combine(candidate.DeadlockToolsRoot, "DeadlockTools", "bin", "Release", "net10.0", "DeadlockTools.exe");
+            var flatExecutable = Path.Combine(candidate.DeadlockToolsRoot, "DeadlockTools.exe");
+            var legacyExecutable = Path.Combine(candidate.DeadlockToolsRoot, "DeadlockTools", "bin", "Release", "net10.0", "DeadlockTools.exe");
+            var executable = File.Exists(flatExecutable) ? flatExecutable : legacyExecutable;
             if (!File.Exists(executable))
             {
-                error = UiText.T($"DeadlockTools.exe was not found at the expected location:\n{executable}", $"DeadlockTools.exe не найден по ожидаемому пути:\n{executable}");
+                error = UiText.T(
+                    $"DeadlockTools.exe was not found in the selected DeadlockTools folder:\n{candidate.DeadlockToolsRoot}",
+                    $"DeadlockTools.exe не найден в выбранной папке DeadlockTools:\n{candidate.DeadlockToolsRoot}");
                 return false;
             }
         }

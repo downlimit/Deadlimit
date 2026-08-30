@@ -44,6 +44,20 @@ Folder ready
 
 When known, CSDK generation is shown directly in the status, for example `Up to date · CSDK 12`. Managed DeadlockTools installations show the GitHub release tag, for example `Up to date · v1.1.0`. The useful result must remain visible in the row; tooltips contain additional detail rather than being the only feedback.
 
+## Download and long-operation feedback
+
+Any Settings action that downloads or performs a long managed-tool operation must expose visible progress inside the Settings window. Updating only the title bar or changing the row to `Working…` is not sufficient feedback.
+
+Progress rules:
+
+- HTTP downloads use real byte progress when the server exposes a content length;
+- the row reports transferred size and an approximate ETA when enough data exists to estimate it;
+- stages that do not expose a trustworthy total, such as an interactive DepotDownloader run, use indeterminate progress rather than invented percentages;
+- archive/VPK extraction and file-application stages report stage progress where a real item count exists;
+- every active managed-tool operation exposes `CANCEL` / `ОТМЕНА`;
+- cancellation propagates to HTTP reads, archive extraction, VPK extraction and child processes where possible;
+- completion, failure or cancellation must always leave the dependency row in a usable state. `Working…` must never remain stuck after the operation has ended.
+
 ## Reduced CSDK
 
 User-facing UI refers to the dependency as `Reduced CSDK`; the current generation number is version/state information rather than part of the stable dependency name. Historical/current physical distribution folder names such as `Reduced_CSDK_12` remain valid and are not renamed.
@@ -96,7 +110,17 @@ https://github.com/dotryen/DeadlockTools
 
 The normal user path is release-based rather than source-build-based.
 
-`INSTALL…` downloads the latest official `DeadlockTools-windows-x64.zip` GitHub Release into an empty selected folder and records the installed release tag in machine-local dependency metadata. This avoids requiring the user to manually download the repository or have the .NET SDK merely to install the dependency.
+`INSTALL…` asks for the location in which DeadlockTools should live. The user does not need to pre-create an empty `DeadlockTools` folder. Deadlimit creates exactly one `DeadlockTools` folder itself and installs the latest official `DeadlockTools-windows-x64.zip` release directly into that root.
+
+Normal managed layout:
+
+```text
+<selected location>\DeadlockTools\
+    DeadlockTools.exe
+    ...release files...
+```
+
+There must not be a generated `DeadlockTools\DeadlockTools\bin\Release\...` folder chain for release installs. That deeper layout remains recognized only for legacy managed installs and source/Git checkouts.
 
 For a Deadlimit-managed release installation, `CHECK` compares the recorded installed tag with the latest official GitHub release. `UPDATE…` downloads and overlays the newest release and updates the marker.
 
@@ -104,11 +128,7 @@ Existing Git checkouts remain supported. For them, `CHECK` compares the local co
 
 A manually copied build without release metadata or Git metadata can still be selected with `BROWSE…`, but its version cannot be proven. In that state the row shows `Version unknown` and the primary action remains `INSTALL…`, allowing the user to switch to a managed current release. It must not offer a `CHECK` action that cannot actually establish freshness.
 
-The executable location consumed by the existing pipeline remains compatible:
-
-```text
-<DeadlockTools root>\DeadlockTools\bin\Release\net10.0\DeadlockTools.exe
-```
+Deadlimit also performs a guarded one-time migration for its own previous managed-release layout. Migration only runs when the folder contains the Deadlimit release marker and the exact old nested output tree without unrelated top-level user content. The new flat executable is verified before the old nested tree is removed.
 
 ## Deadlock client
 

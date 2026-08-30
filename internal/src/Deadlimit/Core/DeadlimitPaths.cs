@@ -37,7 +37,7 @@ public sealed class DeadlimitPaths
     public string CsdkLauncherPath => Path.Combine(CsdkRoot, "csdkcfg.exe");
     public string ResourceCompilerPath => Path.Combine(CsdkRoot, "game", "bin_cs2", "win64", "resourcecompiler.exe");
     public string VpkPackerPath => Path.Combine(CsdkRoot, "game", "bin", "win64", "CSDKCfgVPK.exe");
-    public string DeadlockToolsExePath => Path.Combine(DeadlockToolsRoot, "DeadlockTools", "bin", "Release", "net10.0", "DeadlockTools.exe");
+    public string DeadlockToolsExePath => ResolveDeadlockToolsExecutable(DeadlockToolsRoot);
 
     public IReadOnlyList<ToolProbe> ProbeTools() =>
     [
@@ -55,6 +55,17 @@ public sealed class DeadlimitPaths
         }
 
         return Path.GetFullPath(configured.Trim());
+    }
+
+    private static string ResolveDeadlockToolsExecutable(string root)
+    {
+        var managedRelease = Path.Combine(root, "DeadlockTools.exe");
+        if (File.Exists(managedRelease))
+        {
+            return managedRelease;
+        }
+
+        return Path.Combine(root, "DeadlockTools", "bin", "Release", "net10.0", "DeadlockTools.exe");
     }
 
     private static ToolProbe Probe(string name, string path)

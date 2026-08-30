@@ -231,15 +231,41 @@ public sealed class ToolchainDependencyService
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        EnsureEmptyDestination(destinationRoot, "Reduced CSDK");
-        Directory.CreateDirectory(destinationRoot);
-        var catalog = await GetLatestCsdkCatalogAsync(cancellationToken).ConfigureAwait(false);
-        progress?.Report($"Downloading CSDK {catalog.Generation}...");
-        await InstallCsdkArchiveAsync(catalog, destinationRoot, false, cancellationToken).ConfigureAwait(false);
-        WriteCsdkMarker(destinationRoot, catalog, setup: false);
-        return new(
-            Path.GetFullPath(destinationRoot),
-            new(ToolchainStatusKind.UpToDate, $"Installed CSDK generation: {catalog.Generation}.", true, catalog.Generation, catalog.Generation));
+        using var operation = ToolchainOperationHub.Begin(
+            ToolchainOperationTarget.Csdk,
+            cancellationToken,
+            ProgressText("Preparing Reduced CSDK installation…", "Подготовка установки Reduced CSDK…"));
+        var destinationExisted = Directory.Exists(destinationRoot);
+        try
+        {
+            EnsureEmptyDestination(destinationRoot, "Reduced CSDK");
+            Directory.CreateDirectory(destinationRoot);
+            Report(operation, progress, ProgressText("Checking current CSDK release…", "Проверка актуального релиза CSDK…"), 3);
+            var catalog = await GetLatestCsdkCatalogAsync(operation.Token).ConfigureAwait(false);
+            Report(operation, progress, ProgressText($"Downloading CSDK {catalog.Generation}…", $"Загрузка CSDK {catalog.Generation}…"), 7);
+            await InstallCsdkArchiveAsync(catalog, destinationRoot, false, operation, progress, 7, 96).ConfigureAwait(false);
+            WriteCsdkMarker(destinationRoot, catalog, setup: false);
+            var complete = ProgressText($"CSDK {catalog.Generation} installed.", $"CSDK {catalog.Generation} установлен.");
+            ToolchainOperationHub.Complete(operation, complete);
+            return new(
+                Path.GetFullPath(destinationRoot),
+                new(ToolchainStatusKind.UpToDate, $"Installed CSDK generation: {catalog.Generation}.", true, catalog.Generation, catalog.Generation));
+        }
+        catch (OperationCanceledException)
+        {
+            if (!destinationExisted)
+            {
+                TryDeleteDirectory(destinationRoot);
+            }
+            var cancelled = ProgressText("CSDK installation cancelled.", "Установка CSDK отменена.");
+            ToolchainOperationHub.Cancelled(operation, cancelled);
+            return new(string.Empty, new(ToolchainStatusKind.NotSpecified, cancelled));
+        }
+        catch (Exception exception)
+        {
+            ToolchainOperationHub.Fail(operation, exception.Message);
+            throw;
+        }
     }
 
     public async Task<ToolchainInstallResult> UpdateCsdkAsync(
@@ -247,14 +273,43 @@ public sealed class ToolchainDependencyService
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        ValidateCsdkRoot(root);
-        var catalog = await GetLatestCsdkCatalogAsync(cancellationToken).ConfigureAwait(false);
-        progress?.Report($"Downloading CSDK {catalog.Generation}...");
-        await InstallCsdkArchiveAsync(catalog, root, true, cancellationToken).ConfigureAwait(false);
-        WriteCsdkMarker(root, catalog, setup: false);
-        return new(
-            Path.GetFullPath(root),
-            new(ToolchainStatusKind.UpToDate, $"Installed CSDK generation: {catalog.Generation}.", true, catalog.Generation, catalog.Generation));
+        using var operation = ToolchainOperationHub.Begin(
+            ToolchainOperationTarget.Csdk,
+            cancellationToken,
+            ProgressText("Preparing CSDK update…", "Подготовка обновления CSDK…"));
+        CsdkCatalog? catalog = null;
+        try
+        {
+            ValidateCsdkRoot(root);
+            Report(operation, progress, ProgressText("Checking current CSDK release…", "Проверка актуального релиза CSDK…"), 3);
+            catalog = await GetLatestCsdkCatalogAsync(operation.Token).ConfigureAwait(false);
+            Report(operation, progress, ProgressText($"Downloading CSDK {catalog.Generation}…", $"Загрузка CSDK {catalog.Generation}…"), 7);
+            await InstallCsdkArchiveAsync(catalog, root, true, operation, progress, 7, 96).ConfigureAwait(false);
+            WriteCsdkMarker(root, catalog, setup: false);
+            var complete = ProgressText($"CSDK {catalog.Generation} updated.", $"CSDK {catalog.Generation} обновлён.");
+            ToolchainOperationHub.Complete(operation, complete);
+            return new(
+                Path.GetFullPath(root),
+                new(ToolchainStatusKind.UpToDate, $"Installed CSDK generation: {catalog.Generation}.", true, catalog.Generation, catalog.Generation));
+        }
+        catch (OperationCanceledException)
+        {
+            var cancelled = ProgressText("CSDK update cancelled.", "Обновление CSDK отменено.");
+            ToolchainOperationHub.Cancelled(operation, cancelled);
+            return new(
+                Path.GetFullPath(root),
+                new(
+                    ToolchainStatusKind.Installed,
+                    cancelled,
+                    catalog is not null,
+                    TryReadCsdkGeneration(root),
+                    catalog?.Generation));
+        }
+        catch (Exception exception)
+        {
+            ToolchainOperationHub.Fail(operation, exception.Message);
+            throw;
+        }
     }
 
     public async Task<ToolchainInstallResult> InstallDeadlockToolsAsync(
@@ -262,20 +317,47 @@ public sealed class ToolchainDependencyService
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        EnsureEmptyDestination(destinationRoot, "DeadlockTools");
-        Directory.CreateDirectory(destinationRoot);
-        var release = await GetLatestDeadlockToolsReleaseAsync(cancellationToken).ConfigureAwait(false);
-        progress?.Report($"Downloading DeadlockTools {release.TagName}...");
-        await InstallDeadlockToolsReleaseAsync(release, destinationRoot, overwrite: false, cancellationToken).ConfigureAwait(false);
-        WriteDeadlockToolsMarker(destinationRoot, release);
-        return new(
-            Path.GetFullPath(destinationRoot),
-            new(
-                ToolchainStatusKind.UpToDate,
-                $"Installed DeadlockTools release: {release.TagName}.",
-                true,
-                InstalledVersion: release.TagName,
-                AvailableVersion: release.TagName));
+        using var operation = ToolchainOperationHub.Begin(
+            ToolchainOperationTarget.DeadlockTools,
+            cancellationToken,
+            ProgressText("Preparing DeadlockTools installation…", "Подготовка установки DeadlockTools…"));
+        var installRoot = ResolveDeadlockToolsInstallRoot(destinationRoot);
+        var rootExisted = Directory.Exists(installRoot);
+        try
+        {
+            EnsureEmptyDestination(installRoot, "DeadlockTools");
+            Directory.CreateDirectory(installRoot);
+            Report(operation, progress, ProgressText("Checking latest DeadlockTools release…", "Проверка последнего релиза DeadlockTools…"), 3);
+            var release = await GetLatestDeadlockToolsReleaseAsync(operation.Token).ConfigureAwait(false);
+            Report(operation, progress, ProgressText($"Downloading DeadlockTools {release.TagName}…", $"Загрузка DeadlockTools {release.TagName}…"), 7);
+            await InstallDeadlockToolsReleaseAsync(release, installRoot, overwrite: false, operation, progress, 7, 96).ConfigureAwait(false);
+            WriteDeadlockToolsMarker(installRoot, release);
+            var complete = ProgressText($"DeadlockTools {release.TagName} installed.", $"DeadlockTools {release.TagName} установлен.");
+            ToolchainOperationHub.Complete(operation, complete);
+            return new(
+                Path.GetFullPath(installRoot),
+                new(
+                    ToolchainStatusKind.UpToDate,
+                    $"Installed DeadlockTools release: {release.TagName}.",
+                    true,
+                    InstalledVersion: release.TagName,
+                    AvailableVersion: release.TagName));
+        }
+        catch (OperationCanceledException)
+        {
+            if (!rootExisted)
+            {
+                TryDeleteDirectory(installRoot);
+            }
+            var cancelled = ProgressText("DeadlockTools installation cancelled.", "Установка DeadlockTools отменена.");
+            ToolchainOperationHub.Cancelled(operation, cancelled);
+            return new(string.Empty, new(ToolchainStatusKind.NotSpecified, cancelled));
+        }
+        catch (Exception exception)
+        {
+            ToolchainOperationHub.Fail(operation, exception.Message);
+            throw;
+        }
     }
 
     public async Task<ToolchainStatus> UpdateDeadlockToolsAsync(
@@ -283,36 +365,65 @@ public sealed class ToolchainDependencyService
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        var executable = GetDeadlockToolsExecutable(root);
-        if (!Directory.Exists(root) || !File.Exists(executable))
+        using var operation = ToolchainOperationHub.Begin(
+            ToolchainOperationTarget.DeadlockTools,
+            cancellationToken,
+            ProgressText("Preparing DeadlockTools update…", "Подготовка обновления DeadlockTools…"));
+        DeadlockToolsRelease? release = null;
+        try
         {
-            throw new InvalidOperationException("A valid DeadlockTools installation is required.");
-        }
+            var executable = GetDeadlockToolsExecutable(root);
+            if (!Directory.Exists(root) || !File.Exists(executable))
+            {
+                throw new InvalidOperationException("A valid DeadlockTools installation is required.");
+            }
 
-        if (Directory.Exists(Path.Combine(root, ".git")) && string.IsNullOrWhiteSpace(TryReadDeadlockToolsVersion(root)))
+            if (Directory.Exists(Path.Combine(root, ".git")) && string.IsNullOrWhiteSpace(TryReadDeadlockToolsVersion(root)))
+            {
+                Report(operation, progress, ProgressText("Updating DeadlockTools Git checkout…", "Обновление Git checkout DeadlockTools…"), null);
+                await RunAsync("git", $"-C {Quote(root)} pull --ff-only origin master", root, operation.Token).ConfigureAwait(false);
+                Report(operation, progress, ProgressText("Building DeadlockTools Release…", "Сборка DeadlockTools Release…"), null);
+                await BuildDeadlockToolsAsync(root, operation.Token).ConfigureAwait(false);
+                var result = await CheckDeadlockToolsAsync(root, operation.Token).ConfigureAwait(false);
+                ToolchainOperationHub.Complete(operation, ProgressText("DeadlockTools updated.", "DeadlockTools обновлён."));
+                return result;
+            }
+
+            var installedVersion = TryReadDeadlockToolsVersion(root);
+            if (string.IsNullOrWhiteSpace(installedVersion))
+            {
+                throw new InvalidOperationException("This DeadlockTools installation has no managed release metadata. Use INSTALL to install the current official release.");
+            }
+
+            Report(operation, progress, ProgressText("Checking latest DeadlockTools release…", "Проверка последнего релиза DeadlockTools…"), 3);
+            release = await GetLatestDeadlockToolsReleaseAsync(operation.Token).ConfigureAwait(false);
+            Report(operation, progress, ProgressText($"Downloading DeadlockTools {release.TagName}…", $"Загрузка DeadlockTools {release.TagName}…"), 7);
+            await InstallDeadlockToolsReleaseAsync(release, root, overwrite: true, operation, progress, 7, 96).ConfigureAwait(false);
+            WriteDeadlockToolsMarker(root, release);
+            ToolchainOperationHub.Complete(operation, ProgressText($"DeadlockTools {release.TagName} updated.", $"DeadlockTools {release.TagName} обновлён."));
+            return new(
+                ToolchainStatusKind.UpToDate,
+                $"Installed DeadlockTools release: {release.TagName}.",
+                true,
+                InstalledVersion: release.TagName,
+                AvailableVersion: release.TagName);
+        }
+        catch (OperationCanceledException)
         {
-            progress?.Report("Updating DeadlockTools Git checkout...");
-            await RunAsync("git", $"-C {Quote(root)} pull --ff-only origin master", root, cancellationToken).ConfigureAwait(false);
-            progress?.Report("Building DeadlockTools Release...");
-            await BuildDeadlockToolsAsync(root, cancellationToken).ConfigureAwait(false);
-            return await CheckDeadlockToolsAsync(root, cancellationToken).ConfigureAwait(false);
+            var cancelled = ProgressText("DeadlockTools update cancelled.", "Обновление DeadlockTools отменено.");
+            ToolchainOperationHub.Cancelled(operation, cancelled);
+            return new(
+                ToolchainStatusKind.Installed,
+                cancelled,
+                release is not null,
+                InstalledVersion: TryReadDeadlockToolsVersion(root),
+                AvailableVersion: release?.TagName);
         }
-
-        if (string.IsNullOrWhiteSpace(TryReadDeadlockToolsVersion(root)))
+        catch (Exception exception)
         {
-            throw new InvalidOperationException("This DeadlockTools installation has no managed release metadata. Use INSTALL to install the current official release into an empty folder.");
+            ToolchainOperationHub.Fail(operation, exception.Message);
+            throw;
         }
-
-        var release = await GetLatestDeadlockToolsReleaseAsync(cancellationToken).ConfigureAwait(false);
-        progress?.Report($"Downloading DeadlockTools {release.TagName}...");
-        await InstallDeadlockToolsReleaseAsync(release, root, overwrite: true, cancellationToken).ConfigureAwait(false);
-        WriteDeadlockToolsMarker(root, release);
-        return new(
-            ToolchainStatusKind.UpToDate,
-            $"Installed DeadlockTools release: {release.TagName}.",
-            true,
-            InstalledVersion: release.TagName,
-            AvailableVersion: release.TagName);
     }
 
     public async Task SetupCsdkAsync(
@@ -321,61 +432,88 @@ public sealed class ToolchainDependencyService
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        ValidateCsdkRoot(csdkRoot);
-        if (CheckRetailDeadlock(retailDeadlockRoot).Kind != ToolchainStatusKind.Ready)
+        using var operation = ToolchainOperationHub.Begin(
+            ToolchainOperationTarget.Csdk,
+            cancellationToken,
+            ProgressText("Preparing full CSDK setup…", "Подготовка полной настройки CSDK…"));
+        try
         {
-            throw new InvalidOperationException("A valid Deadlock game client path is required before CSDK setup can run.");
-        }
-
-        var catalog = await GetLatestCsdkCatalogAsync(cancellationToken).ConfigureAwait(false);
-        if (catalog.Depots.Count == 0)
-        {
-            throw new InvalidOperationException("The current CSDK guide does not expose the required full-game depot manifests.");
-        }
-
-        progress?.Report("Preparing DepotDownloader...");
-        var depotDownloader = await EnsureDepotDownloaderAsync(cancellationToken).ConfigureAwait(false);
-        var fallbackApplied = false;
-        foreach (var depot in catalog.Depots)
-        {
-            progress?.Report($"Downloading Deadlock depot {depot.DepotId}...");
-            try
+            ValidateCsdkRoot(csdkRoot);
+            if (CheckRetailDeadlock(retailDeadlockRoot).Kind != ToolchainStatusKind.Ready)
             {
-                await RunInteractiveAsync(
-                    depotDownloader,
-                    DepotArguments(depot, csdkRoot),
-                    Path.GetDirectoryName(depotDownloader)!,
-                    cancellationToken).ConfigureAwait(false);
+                throw new InvalidOperationException("A valid Deadlock game client path is required before CSDK setup can run.");
             }
-            catch (InvalidOperationException) when (!fallbackApplied && catalog.ManifestArchiveUri is not null)
+
+            Report(operation, progress, ProgressText("Reading current CSDK setup guide…", "Чтение актуальной инструкции CSDK…"), 2);
+            var catalog = await GetLatestCsdkCatalogAsync(operation.Token).ConfigureAwait(false);
+            if (catalog.Depots.Count == 0)
             {
-                progress?.Report("Applying the manifest fallback published with the current CSDK guide...");
-                await ApplyManifestFallbackAsync(catalog.ManifestArchiveUri, csdkRoot, cancellationToken).ConfigureAwait(false);
-                fallbackApplied = true;
-                await RunInteractiveAsync(
-                    depotDownloader,
-                    DepotArguments(depot, csdkRoot),
-                    Path.GetDirectoryName(depotDownloader)!,
-                    cancellationToken).ConfigureAwait(false);
+                throw new InvalidOperationException("The current CSDK guide does not expose the required full-game depot manifests.");
             }
-        }
 
-        var citadelRoot = Path.Combine(csdkRoot, "game", "citadel");
-        var citadelVpk = Path.Combine(citadelRoot, "pak01_dir.vpk");
-        if (!File.Exists(citadelVpk))
+            Report(operation, progress, ProgressText("Preparing DepotDownloader…", "Подготовка DepotDownloader…"), 5);
+            var depotDownloader = await EnsureDepotDownloaderAsync(operation, progress).ConfigureAwait(false);
+            var fallbackApplied = false;
+            for (var depotIndex = 0; depotIndex < catalog.Depots.Count; depotIndex++)
+            {
+                var depot = catalog.Depots[depotIndex];
+                Report(
+                    operation,
+                    progress,
+                    ProgressText(
+                        $"Downloading Deadlock depot {depot.DepotId} ({depotIndex + 1}/{catalog.Depots.Count})…",
+                        $"Загрузка депо Deadlock {depot.DepotId} ({depotIndex + 1}/{catalog.Depots.Count})…"),
+                    null);
+                try
+                {
+                    await RunInteractiveAsync(
+                        depotDownloader,
+                        DepotArguments(depot, csdkRoot),
+                        Path.GetDirectoryName(depotDownloader)!,
+                        operation.Token).ConfigureAwait(false);
+                }
+                catch (InvalidOperationException) when (!fallbackApplied && catalog.ManifestArchiveUri is not null)
+                {
+                    Report(operation, progress, ProgressText("Applying manifest fallback…", "Применение fallback-манифестов…"), 38);
+                    await ApplyManifestFallbackAsync(catalog.ManifestArchiveUri, csdkRoot, operation, progress).ConfigureAwait(false);
+                    fallbackApplied = true;
+                    await RunInteractiveAsync(
+                        depotDownloader,
+                        DepotArguments(depot, csdkRoot),
+                        Path.GetDirectoryName(depotDownloader)!,
+                        operation.Token).ConfigureAwait(false);
+                }
+            }
+
+            var citadelRoot = Path.Combine(csdkRoot, "game", "citadel");
+            var citadelVpk = Path.Combine(citadelRoot, "pak01_dir.vpk");
+            if (!File.Exists(citadelVpk))
+            {
+                throw new FileNotFoundException("DepotDownloader completed, but game\\citadel\\pak01_dir.vpk was not found.", citadelVpk);
+            }
+
+            Report(operation, progress, ProgressText("Extracting full game files from VPK…", "Извлечение полных файлов игры из VPK…"), 52);
+            ExtractVpkAsIs(citadelVpk, citadelRoot, operation, progress, operation.Token, 52, 80);
+            DeletePak01Vpks(citadelRoot);
+            DeletePak01Vpks(Path.Combine(csdkRoot, "game", "core"));
+
+            Report(operation, progress, ProgressText("Re-applying current Reduced CSDK files…", "Повторное наложение актуальных файлов Reduced CSDK…"), 82);
+            await InstallCsdkArchiveAsync(catalog, csdkRoot, true, operation, progress, 82, 98).ConfigureAwait(false);
+            WriteCsdkMarker(csdkRoot, catalog, setup: true);
+            progress?.Report("CSDK setup complete.");
+            ToolchainOperationHub.Complete(operation, ProgressText("CSDK setup complete.", "Настройка CSDK завершена."));
+        }
+        catch (OperationCanceledException)
         {
-            throw new FileNotFoundException("DepotDownloader completed, but game\\citadel\\pak01_dir.vpk was not found.", citadelVpk);
+            var cancelled = ProgressText("CSDK setup cancelled.", "Настройка CSDK отменена.");
+            progress?.Report(cancelled);
+            ToolchainOperationHub.Cancelled(operation, cancelled);
         }
-
-        progress?.Report("Extracting full game files from the downloaded VPK...");
-        ExtractVpkAsIs(citadelVpk, citadelRoot, progress, cancellationToken);
-        DeletePak01Vpks(citadelRoot);
-        DeletePak01Vpks(Path.Combine(csdkRoot, "game", "core"));
-
-        progress?.Report("Re-applying the current Reduced CSDK files...");
-        await InstallCsdkArchiveAsync(catalog, csdkRoot, true, cancellationToken).ConfigureAwait(false);
-        WriteCsdkMarker(csdkRoot, catalog, setup: true);
-        progress?.Report("CSDK setup complete.");
+        catch (Exception exception)
+        {
+            ToolchainOperationHub.Fail(operation, exception.Message);
+            throw;
+        }
     }
 
     private async Task<CsdkCatalog> GetLatestCsdkCatalogAsync(CancellationToken cancellationToken)
@@ -459,7 +597,14 @@ public sealed class ToolchainDependencyService
         return new(tagName, new Uri(htmlUrl), new Uri(assetUrl));
     }
 
-    private async Task InstallCsdkArchiveAsync(CsdkCatalog catalog, string destinationRoot, bool overwrite, CancellationToken cancellationToken)
+    private async Task InstallCsdkArchiveAsync(
+        CsdkCatalog catalog,
+        string destinationRoot,
+        bool overwrite,
+        ToolchainOperationHub.OperationScope operation,
+        IProgress<string>? progress,
+        int startPercent,
+        int endPercent)
     {
         var workRoot = CreateTempFolder("csdk");
         var archive = Path.Combine(workRoot, "csdk.zip");
@@ -467,11 +612,21 @@ public sealed class ToolchainDependencyService
         Directory.CreateDirectory(extract);
         try
         {
-            await DownloadFileAsync(catalog.DownloadUri, archive, cancellationToken).ConfigureAwait(false);
-            ZipFile.ExtractToDirectory(archive, extract, true);
+            var downloadEnd = Math.Max(startPercent + 1, endPercent - 18);
+            await DownloadFileAsync(
+                catalog.DownloadUri,
+                archive,
+                operation,
+                progress,
+                ProgressText($"Downloading CSDK {catalog.Generation}", $"Загрузка CSDK {catalog.Generation}"),
+                startPercent,
+                downloadEnd).ConfigureAwait(false);
+            Report(operation, progress, ProgressText("Extracting CSDK archive…", "Распаковка архива CSDK…"), downloadEnd + 1);
+            await ExtractZipAsync(archive, extract, true, operation.Token, operation, progress, downloadEnd + 1, endPercent - 8).ConfigureAwait(false);
             var launcher = Directory.EnumerateFiles(extract, "csdkcfg.exe", SearchOption.AllDirectories).FirstOrDefault()
                 ?? throw new InvalidDataException("The downloaded CSDK archive does not contain csdkcfg.exe.");
-            CopyDirectory(Path.GetDirectoryName(launcher)!, destinationRoot, overwrite);
+            Report(operation, progress, ProgressText("Applying CSDK files…", "Применение файлов CSDK…"), endPercent - 7);
+            CopyDirectory(Path.GetDirectoryName(launcher)!, destinationRoot, overwrite, operation.Token, operation, progress, endPercent - 7, endPercent);
         }
         finally
         {
@@ -483,7 +638,10 @@ public sealed class ToolchainDependencyService
         DeadlockToolsRelease release,
         string destinationRoot,
         bool overwrite,
-        CancellationToken cancellationToken)
+        ToolchainOperationHub.OperationScope operation,
+        IProgress<string>? progress,
+        int startPercent,
+        int endPercent)
     {
         var workRoot = CreateTempFolder("deadlocktools");
         var archive = Path.Combine(workRoot, DeadlockToolsWindowsAssetName);
@@ -491,12 +649,21 @@ public sealed class ToolchainDependencyService
         Directory.CreateDirectory(extract);
         try
         {
-            await DownloadFileAsync(release.DownloadUri, archive, cancellationToken).ConfigureAwait(false);
-            ZipFile.ExtractToDirectory(archive, extract, true);
+            var downloadEnd = Math.Max(startPercent + 1, endPercent - 18);
+            await DownloadFileAsync(
+                release.DownloadUri,
+                archive,
+                operation,
+                progress,
+                ProgressText($"Downloading DeadlockTools {release.TagName}", $"Загрузка DeadlockTools {release.TagName}"),
+                startPercent,
+                downloadEnd).ConfigureAwait(false);
+            Report(operation, progress, ProgressText("Extracting DeadlockTools…", "Распаковка DeadlockTools…"), downloadEnd + 1);
+            await ExtractZipAsync(archive, extract, true, operation.Token, operation, progress, downloadEnd + 1, endPercent - 8).ConfigureAwait(false);
             var executable = Directory.EnumerateFiles(extract, "DeadlockTools.exe", SearchOption.AllDirectories).FirstOrDefault()
                 ?? throw new InvalidDataException("The downloaded DeadlockTools release does not contain DeadlockTools.exe.");
-            var outputRoot = Path.Combine(destinationRoot, "DeadlockTools", "bin", "Release", "net10.0");
-            CopyDirectory(Path.GetDirectoryName(executable)!, outputRoot, overwrite);
+            Report(operation, progress, ProgressText("Installing DeadlockTools files…", "Установка файлов DeadlockTools…"), endPercent - 7);
+            CopyDirectory(Path.GetDirectoryName(executable)!, destinationRoot, overwrite, operation.Token, operation, progress, endPercent - 7, endPercent);
         }
         finally
         {
@@ -504,14 +671,25 @@ public sealed class ToolchainDependencyService
         }
     }
 
-    private async Task ApplyManifestFallbackAsync(Uri uri, string csdkRoot, CancellationToken cancellationToken)
+    private async Task ApplyManifestFallbackAsync(
+        Uri uri,
+        string csdkRoot,
+        ToolchainOperationHub.OperationScope operation,
+        IProgress<string>? progress)
     {
         var workRoot = CreateTempFolder("depot-manifests");
         var archive = Path.Combine(workRoot, "DepotDownloaderManifests.zip");
         try
         {
-            await DownloadFileAsync(uri, archive, cancellationToken).ConfigureAwait(false);
-            ZipFile.ExtractToDirectory(archive, csdkRoot, true);
+            await DownloadFileAsync(
+                uri,
+                archive,
+                operation,
+                progress,
+                ProgressText("Downloading manifest fallback", "Загрузка fallback-манифестов"),
+                38,
+                43).ConfigureAwait(false);
+            await ExtractZipAsync(archive, csdkRoot, true, operation.Token, operation, progress, 43, 45).ConfigureAwait(false);
         }
         finally
         {
@@ -519,7 +697,9 @@ public sealed class ToolchainDependencyService
         }
     }
 
-    private async Task<string> EnsureDepotDownloaderAsync(CancellationToken cancellationToken)
+    private async Task<string> EnsureDepotDownloaderAsync(
+        ToolchainOperationHub.OperationScope operation,
+        IProgress<string>? progress)
     {
         var cacheRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Deadlimit", "tools", "DepotDownloader");
         var executable = Path.Combine(cacheRoot, "DepotDownloader.exe");
@@ -528,10 +708,10 @@ public sealed class ToolchainDependencyService
             return executable;
         }
 
-        using var response = await _http.GetAsync(DepotDownloaderLatestReleaseApiUrl, cancellationToken).ConfigureAwait(false);
+        using var response = await _http.GetAsync(DepotDownloaderLatestReleaseApiUrl, operation.Token).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        await using var stream = await response.Content.ReadAsStreamAsync(operation.Token).ConfigureAwait(false);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: operation.Token).ConfigureAwait(false);
         var assetUrl = document.RootElement.GetProperty("assets")
             .EnumerateArray()
             .Where(asset => string.Equals(asset.GetProperty("name").GetString(), "DepotDownloader-windows-x64.zip", StringComparison.OrdinalIgnoreCase))
@@ -543,9 +723,16 @@ public sealed class ToolchainDependencyService
         var archive = Path.Combine(workRoot, "DepotDownloader.zip");
         try
         {
-            await DownloadFileAsync(new Uri(assetUrl), archive, cancellationToken).ConfigureAwait(false);
+            await DownloadFileAsync(
+                new Uri(assetUrl),
+                archive,
+                operation,
+                progress,
+                ProgressText("Downloading DepotDownloader", "Загрузка DepotDownloader"),
+                5,
+                12).ConfigureAwait(false);
             Directory.CreateDirectory(cacheRoot);
-            ZipFile.ExtractToDirectory(archive, cacheRoot, true);
+            await ExtractZipAsync(archive, cacheRoot, true, operation.Token, operation, progress, 12, 15).ConfigureAwait(false);
         }
         finally
         {
@@ -556,18 +743,55 @@ public sealed class ToolchainDependencyService
             : throw new FileNotFoundException("DepotDownloader.exe was not found after extraction.", executable);
     }
 
-    private async Task DownloadFileAsync(Uri uri, string destination, CancellationToken cancellationToken)
+    private async Task DownloadFileAsync(
+        Uri uri,
+        string destination,
+        ToolchainOperationHub.OperationScope operation,
+        IProgress<string>? progress,
+        string label,
+        int startPercent,
+        int endPercent)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-        using var response = await _http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        using var response = await _http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, operation.Token).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         if (string.Equals(response.Content.Headers.ContentType?.MediaType, "text/html", StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException("The download provider returned an HTML page instead of an archive.");
         }
-        await using var source = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+        var total = response.Content.Headers.ContentLength;
+        await using var source = await response.Content.ReadAsStreamAsync(operation.Token).ConfigureAwait(false);
         await using var target = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, 1024 * 1024, true);
-        await source.CopyToAsync(target, cancellationToken).ConfigureAwait(false);
+        var buffer = new byte[256 * 1024];
+        long transferred = 0;
+        var stopwatch = Stopwatch.StartNew();
+        while (true)
+        {
+            var read = await source.ReadAsync(buffer, operation.Token).ConfigureAwait(false);
+            if (read == 0)
+            {
+                break;
+            }
+
+            await target.WriteAsync(buffer.AsMemory(0, read), operation.Token).ConfigureAwait(false);
+            transferred += read;
+            if (total is > 0)
+            {
+                var fraction = Math.Clamp((double)transferred / total.Value, 0d, 1d);
+                var percent = startPercent + (int)Math.Round((endPercent - startPercent) * fraction);
+                var message = FormatDownloadMessage(label, transferred, total.Value, stopwatch.Elapsed);
+                Report(operation, progress, message, percent);
+            }
+            else
+            {
+                Report(operation, progress, $"{label}… {FormatBytes(transferred)}", null);
+            }
+        }
+
+        Report(operation, progress, total is > 0
+            ? FormatDownloadMessage(label, transferred, total.Value, stopwatch.Elapsed)
+            : $"{label}… {FormatBytes(transferred)}", endPercent);
     }
 
     private async Task<string> GetDeadlockToolsRemoteCommitAsync(CancellationToken cancellationToken)
@@ -640,6 +864,23 @@ public sealed class ToolchainDependencyService
             throw new InvalidOperationException($"Required command '{fileName}' is not available.", exception);
         }
 
+        using var cancellationRegistration = cancellationToken.Register(() =>
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch (InvalidOperationException)
+            {
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+            }
+        });
+
         var outputTask = interactive ? Task.FromResult(string.Empty) : process.StandardOutput.ReadToEndAsync(cancellationToken);
         var errorTask = interactive ? Task.FromResult(string.Empty) : process.StandardError.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
@@ -655,7 +896,14 @@ public sealed class ToolchainDependencyService
         }
     }
 
-    private static void ExtractVpkAsIs(string vpkPath, string outputRoot, IProgress<string>? progress, CancellationToken cancellationToken)
+    private static void ExtractVpkAsIs(
+        string vpkPath,
+        string outputRoot,
+        ToolchainOperationHub.OperationScope operation,
+        IProgress<string>? progress,
+        CancellationToken cancellationToken,
+        int startPercent,
+        int endPercent)
     {
         using var package = new Package();
         package.Read(vpkPath);
@@ -672,7 +920,55 @@ public sealed class ToolchainDependencyService
             File.WriteAllBytes(outputPath, data);
             if (index == 0 || (index + 1) % 500 == 0 || index == entries.Length - 1)
             {
-                progress?.Report($"Extracting full game files: {index + 1}/{entries.Length}");
+                var fraction = entries.Length == 0 ? 1d : (double)(index + 1) / entries.Length;
+                var percent = startPercent + (int)Math.Round((endPercent - startPercent) * fraction);
+                var message = ProgressText(
+                    $"Extracting full game files: {index + 1}/{entries.Length}",
+                    $"Извлечение полных файлов игры: {index + 1}/{entries.Length}");
+                Report(operation, progress, message, percent);
+            }
+        }
+    }
+
+    private static async Task ExtractZipAsync(
+        string archivePath,
+        string outputRoot,
+        bool overwrite,
+        CancellationToken cancellationToken,
+        ToolchainOperationHub.OperationScope operation,
+        IProgress<string>? progress,
+        int startPercent,
+        int endPercent)
+    {
+        using var archive = ZipFile.OpenRead(archivePath);
+        var entries = archive.Entries;
+        for (var index = 0; index < entries.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var entry = entries[index];
+            var relative = entry.FullName.Replace('/', Path.DirectorySeparatorChar);
+            var outputPath = SafePath.ResolveUnderRoot(outputRoot, relative, "toolchain ZIP extraction");
+            if (string.IsNullOrEmpty(entry.Name))
+            {
+                Directory.CreateDirectory(outputPath);
+            }
+            else
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+                if (!overwrite && File.Exists(outputPath))
+                {
+                    throw new IOException($"File already exists: {outputPath}");
+                }
+                await using var source = entry.Open();
+                await using var target = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None, 128 * 1024, true);
+                await source.CopyToAsync(target, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (index == 0 || (index + 1) % 50 == 0 || index == entries.Count - 1)
+            {
+                var fraction = entries.Count == 0 ? 1d : (double)(index + 1) / entries.Count;
+                var percent = startPercent + (int)Math.Round((endPercent - startPercent) * fraction);
+                Report(operation, progress, ProgressText("Extracting archive…", "Распаковка архива…"), percent);
             }
         }
     }
@@ -689,14 +985,31 @@ public sealed class ToolchainDependencyService
         }
     }
 
-    private static void CopyDirectory(string sourceRoot, string destinationRoot, bool overwrite)
+    private static void CopyDirectory(
+        string sourceRoot,
+        string destinationRoot,
+        bool overwrite,
+        CancellationToken cancellationToken,
+        ToolchainOperationHub.OperationScope operation,
+        IProgress<string>? progress,
+        int startPercent,
+        int endPercent)
     {
         Directory.CreateDirectory(destinationRoot);
-        foreach (var source in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+        var files = Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories).ToArray();
+        for (var index = 0; index < files.Length; index++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            var source = files[index];
             var destination = Path.Combine(destinationRoot, Path.GetRelativePath(sourceRoot, source));
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             File.Copy(source, destination, overwrite);
+            if (index == 0 || (index + 1) % 50 == 0 || index == files.Length - 1)
+            {
+                var fraction = files.Length == 0 ? 1d : (double)(index + 1) / files.Length;
+                var percent = startPercent + (int)Math.Round((endPercent - startPercent) * fraction);
+                Report(operation, progress, ProgressText("Applying files…", "Применение файлов…"), percent);
+            }
         }
     }
 
@@ -785,7 +1098,7 @@ public sealed class ToolchainDependencyService
         }
         if (Directory.Exists(path) && Directory.EnumerateFileSystemEntries(path).Any())
         {
-            throw new InvalidOperationException($"{toolName} installation requires an empty destination folder.");
+            throw new InvalidOperationException($"{toolName} installation target already exists and is not empty: {path}");
         }
     }
 
@@ -797,8 +1110,29 @@ public sealed class ToolchainDependencyService
         }
     }
 
-    private static string GetDeadlockToolsExecutable(string root) =>
-        Path.Combine(root, "DeadlockTools", "bin", "Release", "net10.0", "DeadlockTools.exe");
+    private static string ResolveDeadlockToolsInstallRoot(string selectedPath)
+    {
+        if (string.IsNullOrWhiteSpace(selectedPath))
+        {
+            throw new ArgumentException("DeadlockTools installation location is empty.", nameof(selectedPath));
+        }
+
+        var full = Path.GetFullPath(selectedPath.Trim()).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return string.Equals(Path.GetFileName(full), "DeadlockTools", StringComparison.OrdinalIgnoreCase)
+            ? full
+            : Path.Combine(full, "DeadlockTools");
+    }
+
+    private static string GetDeadlockToolsExecutable(string root)
+    {
+        var managedRelease = Path.Combine(root, "DeadlockTools.exe");
+        if (File.Exists(managedRelease))
+        {
+            return managedRelease;
+        }
+
+        return Path.Combine(root, "DeadlockTools", "bin", "Release", "net10.0", "DeadlockTools.exe");
+    }
 
     private static string DepotArguments(DepotManifest depot, string csdkRoot) =>
         $"-app {depot.AppId} -depot {depot.DepotId} -manifest {depot.ManifestId} -qr -dir {Quote(csdkRoot)}";
@@ -823,6 +1157,56 @@ public sealed class ToolchainDependencyService
         {
         }
     }
+
+    private static void Report(
+        ToolchainOperationHub.OperationScope operation,
+        IProgress<string>? progress,
+        string message,
+        int? percent)
+    {
+        progress?.Report(message);
+        ToolchainOperationHub.Report(operation, message, percent);
+    }
+
+    private static string FormatDownloadMessage(string label, long transferred, long total, TimeSpan elapsed)
+    {
+        var fraction = total <= 0 ? 0d : Math.Clamp((double)transferred / total, 0d, 1d);
+        var percent = (int)Math.Round(fraction * 100d);
+        var eta = string.Empty;
+        if (transferred > 0 && elapsed.TotalSeconds > 0.5 && transferred < total)
+        {
+            var bytesPerSecond = transferred / elapsed.TotalSeconds;
+            if (bytesPerSecond > 1)
+            {
+                var remaining = TimeSpan.FromSeconds((total - transferred) / bytesPerSecond);
+                eta = ProgressText(
+                    $" · ~{FormatDuration(remaining)} left",
+                    $" · осталось ~{FormatDuration(remaining)}");
+            }
+        }
+
+        return $"{label}… {percent}% · {FormatBytes(transferred)}/{FormatBytes(total)}{eta}";
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        const double mb = 1024d * 1024d;
+        return $"{bytes / mb:0.0} MB";
+    }
+
+    private static string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalMinutes >= 1)
+        {
+            return $"{Math.Ceiling(duration.TotalMinutes):0} min";
+        }
+        return $"{Math.Max(1, Math.Ceiling(duration.TotalSeconds)):0} s";
+    }
+
+    private static string ProgressText(string english, string russian) =>
+        string.Equals(ProjectStore.GetToolPathSettings().UiLanguage, "ru", StringComparison.OrdinalIgnoreCase)
+            ? russian
+            : english;
 
     private static bool IsNetworkException(Exception exception) =>
         exception is HttpRequestException or TaskCanceledException;
