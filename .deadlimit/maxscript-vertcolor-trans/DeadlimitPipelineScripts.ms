@@ -91,8 +91,11 @@ classID:#(0x5a4b1031, 0x279d5612)
     FEATURE: SOURCE 2 FIXED-GAMMA EXPORT VIEW
 
     Source 2 consumes this vertex-color FBX path with a different gamma expectation.
-    Export RGB is clamped to [0,1] and transformed as value^(1/2.2). Alpha/topology are
-    untouched. The modifier exists only during FBX export and is removed in cleanup.
+    Export RGB is clamped to [0,1] and transformed as value^(GAMMA/2.2). The artist-facing
+    default is GAMMA 1.0, which applies the established 1/2.2 correction. GAMMA 2.2
+    produces exponent 1.0 and therefore preserves the stored RGB values.
+    Alpha/topology are untouched. The modifier exists only during FBX export and is removed
+    or restored in cleanup.
 
     Porting invariant: stored colors, viewport colors, and Marmoset-oriented exports stay
     unchanged. Apply the transform to an evaluated/export copy when FIXED GAMMA is on.
@@ -102,11 +105,16 @@ plugin simpleMeshMod DeadlimitVertexColorFixedGammaModifier
 name:"Deadlimit Vertex Color Fixed Gamma"
 classID:#(0x5a4b1032, 0x279d5612)
 (
+    parameters main
+    (
+        gammaExponent type:#float default:(1.0 / 2.2) animatable:false
+    )
+
     on modifyMesh do
     (
         if meshop.getMapSupport mesh 0 do
         (
-            local inverseGamma = 1.0 / 2.2
+            local appliedExponent = amax 0.000001 gammaExponent
             local mapVertexCount = meshop.getNumMapVerts mesh 0
             for mapVertexIndex = 1 to mapVertexCount do
             (
@@ -114,7 +122,7 @@ classID:#(0x5a4b1032, 0x279d5612)
                 if mapColor.x < 0.0 then mapColor.x = 0.0 else if mapColor.x > 1.0 then mapColor.x = 1.0
                 if mapColor.y < 0.0 then mapColor.y = 0.0 else if mapColor.y > 1.0 then mapColor.y = 1.0
                 if mapColor.z < 0.0 then mapColor.z = 0.0 else if mapColor.z > 1.0 then mapColor.z = 1.0
-                meshop.setMapVert mesh 0 mapVertexIndex [mapColor.x ^ inverseGamma, mapColor.y ^ inverseGamma, mapColor.z ^ inverseGamma]
+                meshop.setMapVert mesh 0 mapVertexIndex [mapColor.x ^ appliedExponent, mapColor.y ^ appliedExponent, mapColor.z ^ appliedExponent]
             )
         )
     )
@@ -556,8 +564,9 @@ fn deadlimitVertexColorRestoreFbxParams params =
     )
 )
 
-fn deadlimitVertexColorAttachFixedGammaModifiers nodes =
+fn deadlimitVertexColorAttachFixedGammaModifiers nodes gammaExponent:(1.0 / 2.2) =
 (
+    if gammaExponent <= 0.0 then throw "Fixed Gamma EXP must be greater than zero."
     local temporaryModifiers = #()
     try
     (
@@ -565,15 +574,21 @@ fn deadlimitVertexColorAttachFixedGammaModifiers nodes =
         (
             for node in nodes do
             (
-                local alreadyApplied = false
-                for existingModifier in node.modifiers while not alreadyApplied do
-                    alreadyApplied = (classOf existingModifier) == DeadlimitVertexColorFixedGammaModifier
+                local existingGammaModifier = undefined
+                for existingModifier in node.modifiers while existingGammaModifier == undefined do
+                    if (classOf existingModifier) == DeadlimitVertexColorFixedGammaModifier do existingGammaModifier = existingModifier
 
-                if not alreadyApplied then
+                if existingGammaModifier == undefined then
                 (
-                    local gammaModifier = DeadlimitVertexColorFixedGammaModifier()
+                    local gammaModifier = DeadlimitVertexColorFixedGammaModifier gammaExponent:gammaExponent
                     addModifier node gammaModifier before:1
-                    append temporaryModifiers #(node, gammaModifier)
+                    append temporaryModifiers #(node, gammaModifier, #delete)
+                )
+                else
+                (
+                    local previousExponent = existingGammaModifier.gammaExponent
+                    existingGammaModifier.gammaExponent = gammaExponent
+                    append temporaryModifiers #(node, existingGammaModifier, #restoreGamma, previousExponent)
                 )
             )
         )
@@ -591,7 +606,18 @@ fn deadlimitVertexColorRemoveTemporaryModifiers temporaryModifiers =
     with undo off
     (
         for item in temporaryModifiers do
-            if isValidNode item[1] do try (deleteModifier item[1] item[2]) catch()
+            if isValidNode item[1] do
+            (
+                if item.count >= 4 then
+                (
+                    if item[3] == #restoreGamma then
+                        try(item[2].gammaExponent = item[4])catch()
+                    else
+                        try(deleteModifier item[1] item[2])catch()
+                )
+                else
+                    try(deleteModifier item[1] item[2])catch()
+            )
     )
 )
 
@@ -625,9 +651,11 @@ fn deadlimitVertexColorAttachShapeMeshModifiers nodes =
     )
 )
 
-fn deadlimitVertexColorExportSidecar fixedGamma:false =
+fn deadlimitVertexColorExportSidecar fixedGamma:false gammaValue:1.0 =
 (
     local primaryDmx = deadlimitVertexColorFindLatestDmx()
+    if gammaValue <= 0.0 then throw "Fixed Gamma value must be greater than zero."
+    local gammaExponent = gammaValue / 2.2
 
     local originalSelection = selection as array
     local selectedExportNodes = for node in originalSelection where
@@ -673,7 +701,9 @@ fn deadlimitVertexColorExportSidecar fixedGamma:false =
         temporaryShapeModifiers = deadlimitVertexColorAttachShapeMeshModifiers selectedExportNodes
 
         if fixedGamma do
-            temporaryGammaModifiers = deadlimitVertexColorAttachFixedGammaModifiers selectedExportNodes
+        (
+            temporaryGammaModifiers = deadlimitVertexColorAttachFixedGammaModifiers selectedExportNodes gammaExponent:gammaExponent
+        )
 
         if doesFileExist temporaryPath do deleteFile temporaryPath
         select selectedExportNodes
@@ -688,7 +718,7 @@ fn deadlimitVertexColorExportSidecar fixedGamma:false =
         deadlimitVertexColorRestoreFbxParams savedParams
         select originalSelection
         if not sceneWasDirty and skinSyncResult[4] == 0 do setSaveRequired false autobackupRequired:false
-        #(primaryDmx, sidecarPath, fixedGamma, skinSyncResult)
+        #(primaryDmx, sidecarPath, fixedGamma, skinSyncResult, gammaValue, gammaExponent)
     )
     catch
     (
@@ -2236,7 +2266,8 @@ rollout deadlimitVertexColorFbxRollout "EXPORT VERTEX COLOR"
     label statusLabel "Export the regular DMX with Wall Worm first." width:270 height:28 align:#left
     label exportTopSpacer "" width:270 height:10
     button exportButton "EXPORT VERTEX COLOR FBX" width:190 height:26 align:#center tooltip:"Export selected geometry and renderable Shape/Spline objects beside the latest Wall Worm DMX."
-    checkbox fixedGammaCheckbox "FIXED GAMMA" checked:true width:110 height:22 align:#center tooltip:"Export RGB as value^(1/2.2) for Source 2. The scene colors stay unchanged. Disable for unmodified/Marmoset export."
+    checkbox fixedGammaCheckbox "FIXED GAMMA" checked:true width:120 height:22 across:2 tooltip:"Enable the temporary RGB power transform for Source 2. Disable for unchanged/Marmoset export."
+    spinner gammaValueSpinner "GAMMA" range:[0.01,4.0,1.0] type:#float scale:0.01 fieldwidth:55 width:115 height:22 enabled:true tooltip:"Export power is GAMMA / 2.2. Default 1.0 applies the Source 2 correction; 2.2 preserves the stored RGB."
     label exportBottomSpacer "" width:270 height:12
 
     fn showResultMessage text title isError =
@@ -2266,17 +2297,22 @@ rollout deadlimitVertexColorFbxRollout "EXPORT VERTEX COLOR"
         refreshTarget()
     )
 
+    on fixedGammaCheckbox changed state do
+    (
+        gammaValueSpinner.enabled = state
+    )
+
     on exportButton pressed do
     (
         try
         (
-            local result = deadlimitVertexColorExportSidecar fixedGamma:fixedGammaCheckbox.checked
-            local gammaStatus = if result[3] then " | FIXED GAMMA" else ""
+            local result = deadlimitVertexColorExportSidecar fixedGamma:fixedGammaCheckbox.checked gammaValue:gammaValueSpinner.value
+            local gammaStatus = if result[3] then (" | GAMMA " + (result[5] as string)) else ""
             statusLabel.text = "SUCCESS: sidecar ready for PREPARE" + gammaStatus
             refreshTarget()
             format "Vertex Color FBX: %\nDMX: %\n" result[2] result[1]
             format "Inner Lineart Skin: % Skin(s), % clone(s) updated.\n" result[4][2] result[4][4]
-            local gammaMessage = if result[3] then "ON: RGB ^ (1/2.2)" else "OFF: stored RGB unchanged"
+            local gammaMessage = if result[3] then ("ON: " + (result[5] as string) + " / 2.2 = RGB exponent " + (result[6] as string)) else "OFF: stored RGB unchanged"
             local successMessage = "SUCCESS\n\nVertex Color FBX exported to:\n" + result[2] + "\n\nFixed Gamma: " + gammaMessage + "\nLineart Skin: " + (result[4][4] as string) + " clone(s) synchronized\n\nRun PREPARE in Deadlimit Aggregator. A failed or cancelled PREPARE keeps the FBX for retry."
             showResultMessage successMessage "VERTEX COLOR FBX READY" false
         )

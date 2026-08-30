@@ -17,7 +17,7 @@ The sidecar is written as `<dmx-name>_vertexcolor.fbx` beside the latest DMX exp
 
 During PREPARE, Deadlimit Manager transfers Vertex Color to every DMX mesh whose assigned material name contains `vertexcolor`. A missing channel 0 produces neutral gray (128, 128, 128, 255). Uniform-color meshes transfer directly. Multi-color meshes are matched by UV topology or polygon positions, so UVs are optional when the FBX and DMX geometry correspond.
 
-FIXED GAMMA is on by default. It exports channel 0 RGB as value^(1/2.2), intended for Source 2. Disable it for unchanged stored values and the regular/Marmoset path. The correction exists only in the exported FBX.
+FIXED GAMMA is on by default. Its adjacent GAMMA spinner uses the export power `RGB^(GAMMA/2.2)`. The default `1.0` applies the established `1/2.2` Source 2 correction; `2.2` produces exponent `1.0` and preserves the stored RGB. The spinner locks while FIXED GAMMA is off. The correction exists only in the exported FBX.
 
 ## Vertex Color tools
 
