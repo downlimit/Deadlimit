@@ -44,13 +44,13 @@ internal static class BuildFeature
         toolTip.SetToolTip(
             prepareButton,
             UiText.T(
-                "Prepare the selected project's authoring content for Reduced CSDK12 / ModelDoc / Material Editor.\n\nA normal click preserves manual VMAT tuning while synchronizing project textures. Hold SHIFT to back up and regenerate Deadlimit Aggregator custom materials from their templates.",
-                "Подготовить authoring-контент выбранного проекта для Reduced CSDK12 / ModelDoc / Material Editor.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует текстуры проекта. Удерживайте SHIFT, чтобы создать резервную копию и пересоздать custom-материалы Deadlimit Aggregator из шаблонов."));
+                "Prepare the selected project's working files for Reduced CSDK12 / ModelDoc / Material Editor.\n\nA normal click preserves manual VMAT tuning while synchronizing project textures. Hold SHIFT to back up and regenerate Deadlimit Aggregator custom materials from their templates.",
+                "Подготовить рабочие файлы выбранного проекта для Reduced CSDK12 / ModelDoc / Material Editor.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует текстуры проекта. Удерживайте SHIFT, чтобы создать резервную копию и пересоздать custom-материалы Deadlimit Aggregator из шаблонов."));
         toolTip.SetToolTip(
             buildAndTestButton,
             UiText.T(
-                "Compile the current project and deploy its VPK into retail Deadlock so it is ready for testing.\n\nThis action does not launch the game. If Deadlock is already running, it must be closed because the loaded VPK is locked. Hold SHIFT while clicking to force a full clean rebuild.",
-                "Скомпилировать текущий проект и установить его VPK в retail Deadlock, чтобы мод был готов к тесту.\n\nЭта кнопка не запускает игру. Если Deadlock уже запущен, его нужно закрыть: загруженный VPK заблокирован игрой. Удерживайте SHIFT при клике для полной чистой пересборки."));
+                "Compile the current project and deploy its VPK into Deadlock game client so it is ready for testing.\n\nThis action does not launch the game. If Deadlock is already running, it must be closed because the loaded VPK is locked. Hold SHIFT while clicking to force a full clean rebuild.",
+                "Скомпилировать текущий проект и установить его VPK в игровой клиент Deadlock, чтобы мод был готов к тесту.\n\nЭта кнопка не запускает игру. Если Deadlock уже запущен, его нужно закрыть: загруженный VPK заблокирован игрой. Удерживайте SHIFT при клике для полной чистой пересборки."));
         toolTip.SetToolTip(
             launchCsdkButton,
             UiText.T(
@@ -163,7 +163,7 @@ internal static class BuildFeature
                     $"Папка custom-материалов:\n{result.CustomMaterialContentFolder}\n");
 
             var message = UiText.T(
-                $"Authoring content prepared.\n\n" +
+                $"Project working files prepared.\n\n" +
                 $"Addon: {result.AddonName}\n" +
                 $"DMX overlays: {result.DmxCount}\n" +
                 $"Vertex Color sidecars applied: {result.VertexColorAppliedDmxCount}\n" +
@@ -175,13 +175,13 @@ internal static class BuildFeature
                 $"VMDL remaps added: {result.AddedMaterialRemapCount}\n" +
                 $"Total VMDL remaps: {result.ExistingMaterialRemapCount + result.AddedMaterialRemapCount}\n" +
                 customMaterialSummary +
-                $"Retail source files copied: {result.RetailSourceFilesCopied}\n\n" +
+                $"Game-client source files copied: {result.RetailSourceFilesCopied}\n\n" +
                 $"CSDK content:\n{result.AddonContentRoot}\n\n" +
                 $"Model source:\n{result.SourceVmdlPath}\n\n" +
                 $"CSDK game output: CLEAN. {gameState}\n" +
-                $"Deadlimit Aggregator did not compile it; use LAUNCH CSDK while authoring, or BUILD FOR TEST when you want to compile and deploy the retail VPK. Launch the game separately when you are ready.\n\n" +
+                $"Deadlimit Aggregator did not compile it; use LAUNCH CSDK while working on the model and materials, or BUILD FOR TEST when you want to compile and deploy the game-client VPK. Launch the game separately when you are ready.\n\n" +
                 $"Log: {result.LogPath}",
-                $"Authoring-контент подготовлен.\n\n" +
+                $"Рабочие файлы проекта подготовлены.\n\n" +
                 $"Аддон: {result.AddonName}\n" +
                 $"DMX overlays: {result.DmxCount}\n" +
                 $"Vertex Color sidecars применено: {result.VertexColorAppliedDmxCount}\n" +
@@ -193,11 +193,11 @@ internal static class BuildFeature
                 $"VMDL remaps добавлено: {result.AddedMaterialRemapCount}\n" +
                 $"Всего VMDL remaps: {result.ExistingMaterialRemapCount + result.AddedMaterialRemapCount}\n" +
                 customMaterialSummary +
-                $"Retail source файлов скопировано: {result.RetailSourceFilesCopied}\n\n" +
+                $"Файлов из игрового клиента Deadlock скопировано: {result.RetailSourceFilesCopied}\n\n" +
                 $"CSDK content:\n{result.AddonContentRoot}\n\n" +
                 $"Исходник модели:\n{result.SourceVmdlPath}\n\n" +
                 $"CSDK game output: CLEAN. {gameState}\n" +
-                $"Deadlimit Aggregator его не компилировал; для authoring используйте ЗАПУСК CSDK, а для компиляции и установки retail VPK — СОБРАТЬ ДЛЯ ТЕСТА. Игру запускайте отдельно, когда будете готовы.\n\n" +
+                $"Deadlimit Aggregator его не компилировал; для работы с моделью и материалами используйте ЗАПУСК CSDK, а для компиляции и установки VPK игрового клиента Deadlock — СОБРАТЬ ДЛЯ ТЕСТА. Игру запускайте отдельно, когда будете готовы.\n\n" +
                 $"Лог: {result.LogPath}");
 
             using var dialog = BuildTestSuccessDialog.CreatePrepareSummary(message);
@@ -287,13 +287,13 @@ internal static class BuildFeature
             }
 
             animator.Update(new BuildAndTestProgress(
-                UiText.T("Checking retail Deadlock mod loading...", "Проверка загрузки модов в retail Deadlock..."),
+                UiText.T("Checking Deadlock game-client mod loading...", "Проверка загрузки модов в игровом клиенте Deadlock..."),
                 1));
             var modLoading = await Task.Run(() =>
                 new RetailModLoadingService(paths).EnsureEnabled(manifest));
 
             animator.Update(new BuildAndTestProgress(
-                UiText.T("Checking retail VPK release slot...", "Проверка retail VPK-слота..."),
+                UiText.T("Checking Deadlock game-client VPK release slot...", "Проверка слота VPK игрового клиента Deadlock..."),
                 1));
             var slotGuard = new VpkSlotOwnershipService(paths);
             var slotCheck = await Task.Run(() => slotGuard.EnsureSlotAvailable(manifest));
@@ -342,8 +342,8 @@ internal static class BuildFeature
 
             var modLoadingSummary = modLoading.Patched
                 ? UiText.T(
-                    "\nRetail mod loading: repaired automatically. The next Deadlock launch will use the repaired search path.",
-                    "\nЗагрузка retail-модов: автоматически восстановлена. Следующий запуск Deadlock будет использовать исправленный search path.")
+                    "\nDeadlock game-client mod loading: repaired automatically. The next Deadlock launch will use the repaired resource search path.",
+                    "\nЗагрузка модов в игровом клиенте Deadlock автоматически восстановлена. Следующий запуск Deadlock будет использовать исправленный путь поиска ресурсов.")
                 : string.Empty;
             var legacySlotSummary = slotCheck.LegacyOwnershipAdopted
                 ? UiText.T(
@@ -437,7 +437,7 @@ internal static class BuildFeature
         {
             return 85;
         }
-        if (message.StartsWith("Authoring content prepared", StringComparison.OrdinalIgnoreCase))
+        if (message.StartsWith("Project working files prepared", StringComparison.OrdinalIgnoreCase))
         {
             return 100;
         }

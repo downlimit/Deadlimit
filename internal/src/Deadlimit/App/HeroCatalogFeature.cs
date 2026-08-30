@@ -94,8 +94,8 @@ internal static class HeroCatalogFeature
         toolTip.SetToolTip(
             refreshButton,
             UiText.T(
-                "Re-read the available hero names from the currently configured retail Deadlock installation.\n\nThe refreshed catalog is cached by Deadlimit Aggregator; it does not change the hero assigned to the current project.",
-                "Перечитать доступные имена героев из указанной в настройках retail-установки Deadlock.\n\nОбновлённый каталог сохраняется в кэше Deadlimit Aggregator и сам по себе не меняет героя текущего проекта."));
+                "Re-read the available hero names from the currently configured Deadlock game client installation.\n\nThe refreshed catalog is cached by Deadlimit Aggregator; it does not change the hero assigned to the current project.",
+                "Перечитать доступные имена героев из установленного через Steam Deadlock, указанного в настройках.\n\nОбновлённый каталог сохраняется в кэше Deadlimit Aggregator и сам по себе не меняет героя текущего проекта."));
 
         var syncing = false;
         var hasCatalog = false;
@@ -259,8 +259,8 @@ internal static class HeroCatalogFeature
         {
             refreshButton.Enabled = false;
             SetStatus(form, UiText.T(
-                "Refreshing hero list from retail Deadlock...",
-                "Обновление списка героев из retail Deadlock..."));
+                "Refreshing hero list from Deadlock game client...",
+                "Обновление списка героев из игрового клиента Deadlock..."));
 
             try
             {
