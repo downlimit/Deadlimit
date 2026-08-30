@@ -1,0 +1,37 @@
+# Deadlimit UI guidelines
+
+## Tooltips
+
+Tooltips must be readable as compact help, not rendered as one long sentence.
+
+- Split different ideas into separate paragraphs with a blank line between them.
+- Keep each paragraph short. Prefer 1-2 sentences per paragraph.
+- Put the primary action first, modifiers/alternate actions second, and warnings or side effects last.
+- When a modifier or input chord is important, write it as an emphasized token such as `**SHIFT+LMB**` instead of relying only on uppercase text.
+- Deadlimit's tooltip renderer supports `**bold**` spans. Use bold only for short keywords, shortcuts and state names, not whole sentences.
+- Avoid implementation jargon in user-facing tooltips when a plain product term exists. For example, say `Deadlock game client` / `игровой клиент Deadlock` instead of `Retail Deadlock` unless the distinction itself is being explained.
+
+Example:
+
+```text
+Launch the Deadlock game client through Steam.
+
+Hold **SHIFT+LMB** to copy the camera-lock command instead of launching the game.
+```
+
+## Status feedback
+
+Actions that perform validation, network checks, installs or updates must provide visible state feedback in the window itself.
+
+- The action button changes to a busy label such as `CHECKING...` / `WORKING...` while the action is running.
+- The corresponding status text changes immediately and is repainted before awaiting network or process work.
+- A completed check leaves a persistent, explicit result such as `Up to date`, `Update available`, `Installed - version unknown`, `Game client ready`, or `Network issue`.
+- Do not hide the only useful result inside a tooltip.
+
+## Language and theme
+
+Changing language or theme must not require the user to manually relaunch Deadlimit Manager.
+
+- Theme preview may apply immediately while Settings is open.
+- After Save, the main UI is rebuilt in-process with the selected language/theme.
+- Do not use `Application.Restart()` for normal language/theme changes.
