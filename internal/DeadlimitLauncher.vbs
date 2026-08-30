@@ -1,16 +1,18 @@
 Option Explicit
 
+' Legacy compatibility entry point. The active launcher is DeadlimitAggregatorLauncher.vbs.
 Dim shell, fso, internalDir, rootDir, commandPath
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")
 
 internalDir = fso.GetParentFolderName(WScript.ScriptFullName)
 rootDir = fso.GetParentFolderName(internalDir)
-commandPath = rootDir & "\Deadlimit.cmd"
+commandPath = rootDir & "\DeadlimitAggregator.cmd"
 
 On Error Resume Next
 HideInfrastructurePath rootDir & "\.github"
 HideInfrastructurePath commandPath
+HideInfrastructurePath rootDir & "\Deadlimit.cmd"
 On Error GoTo 0
 
 shell.CurrentDirectory = rootDir
