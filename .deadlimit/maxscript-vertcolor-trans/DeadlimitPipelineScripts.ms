@@ -1122,8 +1122,6 @@ fn deadlimitVertexColorCreateInnerLineartFromBase useUndo:true vertexMarker:fals
     local node = selection[1]
     if not isValidNode node or (classOf node.baseObject) != Editable_Poly then
         throw "INNER LINEART requires one Editable Poly base object."
-    if node.modifiers.count > 0 then
-        throw "Make the intended Edit Poly modifier active before creating INNER LINEART inside an existing modifier stack."
     if subObjectLevel != 2 then throw "Enter Edge sub-object mode and select the inner edges."
 
     local sourcePoly = node.baseObject
@@ -1179,33 +1177,26 @@ fn deadlimitVertexColorCreateInnerLineartFromBase useUndo:true vertexMarker:fals
     local workingPoly = copy sourcePoly
     local operationResult = deadlimitVertexColorBuildInnerLineart workingPoly selectedEdges sourceSegments minimumLength oldVertCount oldFaceCount vertexMarker:vertexMarker
     for faceIndex = 1 to oldFaceCount do polyop.setFaceSmoothGroup workingPoly faceIndex sourceSmoothingGroups[faceIndex]
-    local preparedSmoothingGroups = deadlimitVertexColorReadFaceSmoothingGroups workingPoly
-    local workingNode = undefined
-    local helperModifier = undefined
     local applyError = undefined
     local originalMaterial = node.material
 
-    try
-    (
-        with undo off with redraw off
-        (
-            workingNode = copy node
-            workingNode.name = uniqueName "__DEADLIMIT_INNER_LINEART_WORK__"
-            workingNode.baseObject = workingPoly
-            update workingNode
-        )
-    )
-    catch
-    (
-        with undo off try(if isValidNode workingNode do delete workingNode)catch()
-        throw()
-    )
-
     if useUndo then
     (
-        undo "Create Inner Lineart Pass" on
+        undo "Create Inner Lineart" on
         (
-            try (helperModifier = deadlimitVertexColorApplyInnerLineartModifierResult node undefined workingNode oldFaceCount originalMaterial preparedSmoothingGroups undefined)
+            try
+            (
+                node.baseObject = workingPoly
+                node.material = originalMaterial
+                polyop.setVertSelection node.baseObject #{}
+                polyop.setEdgeSelection node.baseObject #{}
+                polyop.setFaceSelection node.baseObject #{}
+                update node
+                select node
+                max modify mode
+                modPanel.setCurrentObject node.baseObject node:node ui:true
+                subObjectLevel = 2
+            )
             catch (applyError = getCurrentException())
         )
     )
@@ -1213,35 +1204,32 @@ fn deadlimitVertexColorCreateInnerLineartFromBase useUndo:true vertexMarker:fals
     (
         with undo off
         (
-            try (helperModifier = deadlimitVertexColorApplyInnerLineartModifierResult node undefined workingNode oldFaceCount originalMaterial preparedSmoothingGroups undefined)
+            try
+            (
+                node.baseObject = workingPoly
+                node.material = originalMaterial
+                polyop.setVertSelection node.baseObject #{}
+                polyop.setEdgeSelection node.baseObject #{}
+                polyop.setFaceSelection node.baseObject #{}
+                update node
+                select node
+                max modify mode
+                modPanel.setCurrentObject node.baseObject node:node ui:true
+                subObjectLevel = 2
+            )
             catch (applyError = getCurrentException())
         )
     )
 
     if applyError != undefined then
     (
-        with undo off try(if isValidNode workingNode do delete workingNode)catch()
+        if useUndo do try(max undo)catch()
+        with undo off try(node.baseObject = sourcePoly)catch()
         throw applyError
     )
 
     redrawViews()
     #(sourceEdgeCount, operationResult[1].numberSet, operationResult[2].numberSet, operationResult[3] - oldVertCount)
-)
-fn deadlimitVertexColorInsertModifierAbove node sourceModifier newModifier =
-(
-    local sourceIndex = modPanel.getModifierIndex node sourceModifier
-    if sourceIndex == undefined then throw "The active Edit Poly modifier is no longer in the selected object's stack."
-
-    if sourceIndex <= 1 then
-        addModifier node newModifier
-    else
-        addModifier node newModifier before:(sourceIndex - 1)
-
-    local insertedIndex = modPanel.getModifierIndex node newModifier
-    local movedSourceIndex = modPanel.getModifierIndex node sourceModifier
-    if insertedIndex == undefined or movedSourceIndex == undefined or insertedIndex != (movedSourceIndex - 1) then
-        throw "INNER LINEART could not insert its helper directly above the active Edit Poly modifier."
-    insertedIndex
 )
 fn deadlimitVertexColorReadFaceSmoothingGroups poly =
 (
@@ -1279,49 +1267,42 @@ fn deadlimitVertexColorSetModifierSelections modifier node selections =
     modifier.SetSelection #Edge (copy selections[2]) node:node
     modifier.SetSelection #Face (copy selections[3]) node:node
 )
-fn deadlimitVertexColorApplyInnerLineartModifierResult node sourceModifier workingNode oldFaceCount originalMaterial preparedSmoothingGroups sourceSelections =
+fn deadlimitVertexColorApplyInnerLineartModifierResult node sourceModifier workingNode oldFaceCount originalMaterial preparedSmoothingGroups =
 (
-    local helperModifier = undefined
+    if sourceModifier == undefined or (modPanel.getModifierIndex node sourceModifier) == undefined then
+        throw "The active Edit Poly modifier is no longer in the selected object's stack."
     try
     (
         select node
         max modify mode
         subObjectLevel = 0
 
-        helperModifier = Edit_Poly()
-        helperModifier.name = uniqueName "DEADLIMIT INNER LINEART"
-        if sourceModifier == undefined then
-            addModifier node helperModifier
-        else
-            deadlimitVertexColorInsertModifierAbove node sourceModifier helperModifier
-        modPanel.setCurrentObject helperModifier node:node ui:true
+        modPanel.setCurrentObject sourceModifier node:node ui:true
 
-        helperModifier.Attach workingNode editPolyNode:node
+        sourceModifier.Attach workingNode editPolyNode:node
         node.material = originalMaterial
         update node
-        deadlimitVertexColorRestoreModifierSmoothingGroups helperModifier node preparedSmoothingGroups faceOffset:oldFaceCount
+        deadlimitVertexColorRestoreModifierSmoothingGroups sourceModifier node preparedSmoothingGroups faceOffset:oldFaceCount
 
         local originalFaces = #{1..oldFaceCount}
-        helperModifier.SetEPolySelLevel #Face
+        sourceModifier.SetEPolySelLevel #Face
         subObjectLevel = 4
-        helperModifier.SetSelection #Face originalFaces node:node
-        helperModifier.Select #Face originalFaces node:node
-        helperModifier.ButtonOp #DeleteFace
-        helperModifier.ButtonOp #RemoveIsoVerts
+        sourceModifier.SetSelection #Face originalFaces node:node
+        sourceModifier.Select #Face originalFaces node:node
+        sourceModifier.ButtonOp #DeleteFace
+        sourceModifier.ButtonOp #RemoveIsoVerts
         update node
-        deadlimitVertexColorRestoreModifierSmoothingGroups helperModifier node preparedSmoothingGroups
-        deadlimitVertexColorSetModifierSelections helperModifier node #(#{}, #{}, #{})
-        if sourceModifier != undefined do deadlimitVertexColorSetModifierSelections sourceModifier node sourceSelections
+        deadlimitVertexColorRestoreModifierSmoothingGroups sourceModifier node preparedSmoothingGroups
+        deadlimitVertexColorSetModifierSelections sourceModifier node #(#{}, #{}, #{})
         update node
 
-        modPanel.setCurrentObject helperModifier node:node ui:true
-        helperModifier.SetEPolySelLevel #Object
-        subObjectLevel = 0
-        helperModifier
+        modPanel.setCurrentObject sourceModifier node:node ui:true
+        sourceModifier.SetEPolySelLevel #Edge
+        subObjectLevel = 2
+        sourceModifier
     )
     catch
     (
-        try(if helperModifier != undefined and (modPanel.getModifierIndex node helperModifier) != undefined do deleteModifier node helperModifier)catch()
         throw()
     )
 )
@@ -1333,18 +1314,8 @@ fn deadlimitVertexColorCreateInnerLineartFromModifier node sourceModifier useUnd
     if subObjectLevel != 2 then throw "Enter Edge sub-object mode in the active Edit Poly modifier and select the inner edges."
 
     local selectedEdges = copy (sourceModifier.GetSelection #Edge node:node)
-    local sourceSelections = #(
-        copy (sourceModifier.GetSelection #Vertex node:node),
-        copy selectedEdges,
-        copy (sourceModifier.GetSelection #Face node:node))
     local sourceEdgeCount = selectedEdges.numberSet
     if sourceEdgeCount == 0 then throw "Select at least one inner edge in the active Edit Poly modifier."
-
-    for modifierIndex = 1 to (sourceModifierIndex - 1) do
-    (
-        if matchPattern node.modifiers[modifierIndex].name pattern:"INNER LINEART*" ignoreCase:true then
-            throw "An INNER LINEART result already exists above this Edit Poly. Add/select a new Edit Poly above that result for another lineart pass."
-    )
 
     local oldVertCount = sourceModifier.GetNumVertices node:node
     local oldFaceCount = sourceModifier.GetNumFaces node:node
@@ -1430,7 +1401,7 @@ fn deadlimitVertexColorCreateInnerLineartFromModifier node sourceModifier useUnd
         throw()
     )
 
-    local helperModifier = undefined
+    local appliedModifier = undefined
     local applyError = undefined
     local originalMaterial = node.material
 
@@ -1439,7 +1410,7 @@ fn deadlimitVertexColorCreateInnerLineartFromModifier node sourceModifier useUnd
     (
         undo "Create Inner Lineart" on
         (
-            try (helperModifier = deadlimitVertexColorApplyInnerLineartModifierResult node sourceModifier workingNode oldFaceCount originalMaterial preparedSmoothingGroups sourceSelections)
+            try (appliedModifier = deadlimitVertexColorApplyInnerLineartModifierResult node sourceModifier workingNode oldFaceCount originalMaterial preparedSmoothingGroups)
             catch
             (
                 applyError = getCurrentException()
@@ -1450,7 +1421,7 @@ fn deadlimitVertexColorCreateInnerLineartFromModifier node sourceModifier useUnd
     (
         with undo off
         (
-            try (helperModifier = deadlimitVertexColorApplyInnerLineartModifierResult node sourceModifier workingNode oldFaceCount originalMaterial preparedSmoothingGroups sourceSelections)
+            try (appliedModifier = deadlimitVertexColorApplyInnerLineartModifierResult node sourceModifier workingNode oldFaceCount originalMaterial preparedSmoothingGroups)
             catch
             (
                 applyError = getCurrentException()
@@ -1460,6 +1431,7 @@ fn deadlimitVertexColorCreateInnerLineartFromModifier node sourceModifier useUnd
 
     if applyError != undefined then
     (
+        if useUndo do try(max undo)catch()
         with undo off try(if isValidNode workingNode do delete workingNode)catch()
         throw applyError
     )
@@ -1516,8 +1488,10 @@ fn deadlimitVertexColorCreateInnerLineart useUndo:true vertexMarker:false =
 
     if currentStackObject != undefined and (classOf currentStackObject) == Edit_Poly and (modPanel.getModifierIndex node currentStackObject) != undefined then
         deadlimitVertexColorCreateInnerLineartFromModifier node currentStackObject useUndo:useUndo vertexMarker:vertexMarker
-    else if (classOf node.baseObject) == Editable_Poly then
+    else if (classOf node.baseObject) == Editable_Poly and (node.modifiers.count == 0 or currentStackObject == node.baseObject or currentStackObject == node) then
         deadlimitVertexColorCreateInnerLineartFromBase useUndo:useUndo vertexMarker:vertexMarker
+    else if (classOf node.baseObject) == Editable_Poly then
+        throw "Make the base Editable Poly or the intended Edit Poly modifier active before creating INNER LINEART."
     else if (classOf node.baseObject) == Editable_Mesh then
         deadlimitVertexColorCreateInnerLineartFromMesh useUndo:useUndo vertexMarker:vertexMarker
     else
@@ -1631,14 +1605,14 @@ rollout deadlimitVertexColorBoneToolsRollout "BONE TOOLS"
 rollout deadlimitVertexColorInnerLineartRollout "INNER LINEART"
 (
     checkbox vertexMarkerCheckbox "VertexColor Marker" checked:false width:120 across:2 tooltip:"Darken the participating Vertex Color corners while creating lineart topology."
-    button createInnerLineartButton "Create Lineart" width:137 height:22 tooltip:"Create a switchable DEADLIMIT INNER LINEART Edit Poly pass from the selected inner edges."
+    button createInnerLineartButton "Create Lineart" width:137 height:22 tooltip:"Create lineart topology inside the currently active/base Editable Poly."
 
     on createInnerLineartButton pressed do
     (
         try
         (
             local result = deadlimitVertexColorCreateInnerLineart vertexMarker:vertexMarkerCheckbox.checked
-            deadlimitVertexColorFbxRollout.statusLabel.text = "Inner Lineart pass: " + (result[1] as string) + " edge(s), " + (result[2] as string) + " face(s)."
+            deadlimitVertexColorFbxRollout.statusLabel.text = "Inner Lineart: " + (result[1] as string) + " edge(s), " + (result[2] as string) + " face(s)."
         )
         catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
     )
