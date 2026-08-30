@@ -1,8 +1,8 @@
-# Deadlimit — Machine-local settings and quick access
+# Deadlimit Aggregator — Machine-local settings and quick access
 
 ## Purpose
 
-Deadlimit must not depend on one developer machine having the historical default directory layout. Tool/install roots and UI preferences are machine-local configuration and are deliberately kept outside project manifests and outside the Git repository.
+Deadlimit Aggregator must not depend on one developer machine having the historical default directory layout. Tool/install roots and UI preferences are machine-local configuration and are deliberately kept outside project manifests and outside the Git repository.
 
 The desktop UI exposes `SETTINGS` for:
 
@@ -13,7 +13,7 @@ Retail Deadlock root (Steam Project8Staging)
 Interface language: English / Русский
 ```
 
-Settings also exposes `📂 Deadlimit Pipeline Scripts`. It opens the bundled repository folder `.deadlimit/maxscript-vertcolor-trans/`, which contains the path-free `DeadlimitPipelineScripts.ms` and its README.
+Settings also exposes `📂 Deadlimit Max Script`. It opens the bundled repository folder `.deadlimit/maxscript-vertcolor-trans/`, which contains the compatibility-named `DeadlimitPipelineScripts.ms` implementation and its README.
 
 The current known local path defaults remain fallbacks only:
 
@@ -28,7 +28,7 @@ Retail Deadlock:
 D:\Program Files (x86)\Steam\steamapps\common\Project8Staging
 ```
 
-Saved values live in the machine-local Deadlimit settings file under `%LOCALAPPDATA%\Deadlimit\settings.json`. They are not written to `.deadlimit\project.json`, because a project may be moved or opened on another workstation with different installs and UI preferences.
+Saved values continue to live in the legacy machine-local settings file under `%LOCALAPPDATA%\Deadlimit\settings.json`. This path is intentionally retained for backward compatibility. The values are not written to `.deadlimit\project.json`, because a project may be moved or opened on another workstation with different installs and UI preferences.
 
 ## Validation
 
@@ -43,7 +43,7 @@ If a future DeadlockTools release changes its executable layout, update only pat
 
 ## Consumers
 
-A new `DeadlimitPaths()` resolves the latest saved machine-local paths immediately. Existing actions therefore pick up a path change without restarting Deadlimit:
+A new `DeadlimitPaths()` resolves the latest saved machine-local paths immediately. Existing actions therefore pick up a path change without restarting Deadlimit Aggregator:
 
 ```text
 EXTRACT HERO SOURCE -> Retail Deadlock root
@@ -52,7 +52,7 @@ BUILD & TEST        -> Reduced CSDK12 + Retail Deadlock + DeadlockTools
 LAUNCH CSDK         -> Reduced CSDK12\csdkcfg.exe
 ```
 
-Language is also stored in the same machine-local settings file. Changing language intentionally restarts the small desktop app once so all already-created WinForms controls, tooltips and dialogs are rebuilt consistently in the selected language.
+Language is also stored in the same machine-local settings file. Changing language intentionally restarts the desktop app once so all already-created WinForms controls, tooltips and dialogs are rebuilt consistently in the selected language.
 
 Current UI language coverage includes:
 
@@ -62,7 +62,7 @@ Current UI language coverage includes:
 - BUILD & TEST result dialog;
 - the app-owned progress/status messages around the build transaction.
 
-Low-level compiler/tool output and exception text may remain in the language emitted by the external tool; Deadlimit does not rewrite diagnostic logs.
+Low-level compiler/tool output and exception text may remain in the language emitted by the external tool; Deadlimit Aggregator does not rewrite diagnostic logs.
 
 ## Quick-access UI
 
