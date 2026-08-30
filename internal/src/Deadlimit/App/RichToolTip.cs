@@ -87,9 +87,9 @@ internal sealed class RichToolTip : IDisposable
         e.DrawBackground();
         e.DrawBorder();
 
-        var text = e.AssociatedControl is not null && _texts.TryGetValue(e.AssociatedControl, out var stored)
+        var text = (e.AssociatedControl is not null && _texts.TryGetValue(e.AssociatedControl, out var stored)
             ? stored
-            : e.ToolTipText;
+            : e.ToolTipText) ?? string.Empty;
         Font regularFont = e.Font ?? e.AssociatedControl?.Font ?? Control.DefaultFont;
         using var boldFont = new Font(regularFont, FontStyle.Bold);
         var textColor = SystemColors.InfoText;
