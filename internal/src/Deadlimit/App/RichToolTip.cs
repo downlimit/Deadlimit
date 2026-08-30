@@ -10,6 +10,7 @@ internal sealed class RichToolTip : IDisposable
     private static readonly Color BackgroundColor = Color.White;
     private static readonly Color BorderColor = Color.FromArgb(118, 118, 118);
     private static readonly Color TextColor = Color.Black;
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Control, RichToolTip> KeepAlive = new();
 
     private static readonly string[] AutoBoldKeywords =
     [
@@ -85,12 +86,26 @@ internal sealed class RichToolTip : IDisposable
     public void SetToolTip(Control control, string text)
     {
         var normalized = Normalize(text);
+        if (normalized.Length == 0)
+        {
+            KeepAlive.Remove(control);
+            _texts.Remove(control);
+            _toolTip.SetToolTip(control, string.Empty);
+            return;
+        }
+
         _texts[control] = normalized;
+        KeepAlive.Remove(control);
+        KeepAlive.Add(control, this);
         _toolTip.SetToolTip(control, normalized);
     }
 
     public void Dispose()
     {
+        foreach (var control in _texts.Keys.ToArray())
+        {
+            KeepAlive.Remove(control);
+        }
         _toolTip.Popup -= MeasurePopup;
         _toolTip.Draw -= DrawPopup;
         _toolTip.Dispose();
@@ -199,41 +214,87 @@ internal sealed class RichToolTip : IDisposable
             foreach (var run in ParseRuns(sourceLine))
             {
                 var font = run.Bold ? boldFont : regularFont;
-                foreach (var token in Tokenize(run.Text))
+                foreach (var rawToken in Tokenize(run.Text))
                 {
-                    if (token.Length == 0)
+                    if (rawToken.Length == 0)
                     {
                         continue;
                     }
 
-                    var isWhitespace = char.IsWhiteSpace(token[0]);
-                    if (isWhitespace && currentRuns.Count == 0)
+                    var isWhitespace = char.IsWhiteSpace(rawToken[0]);
+                    if (isWhitespace)
                     {
+                        if (currentRuns.Count == 0)
+                        {
+                            continue;
+                        }
+
+                        var whitespaceSize = MeasureToken(graphics, rawToken, font);
+                        if (currentWidth + whitespaceSize.Width > MaxContentWidth)
+                        {
+                            FlushLine();
+                            continue;
+                        }
+
+                        currentRuns.Add(new LayoutRun(rawToken, run.Bold, whitespaceSize.Width));
+                        currentWidth += whitespaceSize.Width;
+                        currentHeight = Math.Max(currentHeight, whitespaceSize.Height);
                         continue;
                     }
 
-                    var size = MeasureToken(graphics, token, font);
-                    if (!isWhitespace && currentRuns.Count > 0 && currentWidth + size.Width > MaxContentWidth)
+                    foreach (var token in SplitTokenToFit(graphics, rawToken, font))
                     {
-                        FlushLine();
-                    }
+                        var size = MeasureToken(graphics, token, font);
+                        if (currentRuns.Count > 0 && currentWidth + size.Width > MaxContentWidth)
+                        {
+                            FlushLine();
+                        }
 
-                    if (isWhitespace && currentWidth + size.Width > MaxContentWidth)
-                    {
-                        FlushLine();
-                        continue;
+                        currentRuns.Add(new LayoutRun(token, run.Bold, size.Width));
+                        currentWidth += size.Width;
+                        currentHeight = Math.Max(currentHeight, size.Height);
                     }
-
-                    currentRuns.Add(new LayoutRun(token, run.Bold, size.Width));
-                    currentWidth += size.Width;
-                    currentHeight = Math.Max(currentHeight, size.Height);
                 }
             }
 
             FlushLine();
         }
 
-        return new RichLayout(rows, Math.Min(MaxContentWidth, Math.Max(1, maxWidth)), Math.Max(1, totalHeight));
+        return new RichLayout(rows, Math.Max(1, maxWidth), Math.Max(1, totalHeight));
+    }
+
+    private static IEnumerable<string> SplitTokenToFit(Graphics graphics, string token, Font font)
+    {
+        if (MeasureToken(graphics, token, font).Width <= MaxContentWidth)
+        {
+            yield return token;
+            yield break;
+        }
+
+        var start = 0;
+        while (start < token.Length)
+        {
+            var low = 1;
+            var high = token.Length - start;
+            var best = 1;
+            while (low <= high)
+            {
+                var length = low + ((high - low) / 2);
+                var candidate = token.Substring(start, length);
+                if (MeasureToken(graphics, candidate, font).Width <= MaxContentWidth)
+                {
+                    best = length;
+                    low = length + 1;
+                }
+                else
+                {
+                    high = length - 1;
+                }
+            }
+
+            yield return token.Substring(start, best);
+            start += best;
+        }
     }
 
     private static Size MeasureToken(Graphics graphics, string text, Font font) =>
