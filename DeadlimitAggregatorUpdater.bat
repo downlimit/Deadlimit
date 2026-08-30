@@ -6,11 +6,11 @@ set "LAUNCHER=%ROOT%DeadlimitAggregator.cmd"
 set "APP=%ROOT%internal\src\Deadlimit\bin\Release\net10.0-windows\DeadlimitAggregator.exe"
 
 rem Preserve the existing workstation updater behavior during migration when it is present.
-if exist "%LEGACY_UPDATER%" (
-    call "%LEGACY_UPDATER%" %*
-    exit /b %errorlevel%
-)
+if not exist "%LEGACY_UPDATER%" goto :native_update
+call "%LEGACY_UPDATER%" %*
+exit /b %errorlevel%
 
+:native_update
 where git >nul 2>nul
 if errorlevel 1 (
     echo ERROR: Git was not found. Deadlimit Aggregator Updater cannot update this checkout.
