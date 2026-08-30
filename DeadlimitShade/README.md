@@ -8,7 +8,7 @@ Initial investigation: 2026-08-30.
 
 ## Goal
 
-Build a Deadlock-focused Substance 3D Painter kit inspired by the role SoMuchDota 2 Shader plays for Dota 2: a Painter viewport setup that makes authored textures behave as close as practical to their final appearance in retail Deadlock.
+Build a Deadlock-focused Substance 3D Painter kit that provides a viewport material preview aligned as closely as practical with retail Deadlock rendering.
 
 The target is broader than a single GLSL file. The intended end state is a small toolkit containing:
 
