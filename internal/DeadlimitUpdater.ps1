@@ -1,11 +1,16 @@
 param(
-    [switch]$ResolveRootOnly
+    [switch]$ResolveRootOnly,
+    [switch]$NoWait
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 function Wait-ForAnyKey {
+    if ($NoWait) {
+        return
+    }
+
     Write-Host ""
     Write-Host "Press any key to close . . ."
 
