@@ -111,9 +111,9 @@ internal static class OnlinePreparationFeature
             MessageBox.Show(
                 _form,
                 UiText.T(
-                    "Save the current Deadlimit project before enabling ONLINE PREPARATION.",
-                    "Сохраните текущий проект Deadlimit перед включением ONLINE PREPARATION."),
-                "Deadlimit",
+                    "Save the current Deadlimit Aggregator project before enabling ONLINE PREPARATION.",
+                    "Сохраните текущий проект Deadlimit Aggregator перед включением ONLINE PREPARATION."),
+                "Deadlimit Aggregator",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
             return false;
@@ -136,7 +136,7 @@ internal static class OnlinePreparationFeature
             {
                 if (_form is not null && !_form.IsDisposed)
                 {
-                    _form.Text = $"Deadlimit — ONLINE PREPARATION — {update.Message}";
+                    _form.Text = $"Deadlimit Aggregator — ONLINE PREPARATION — {update.Message}";
                 }
             });
 
