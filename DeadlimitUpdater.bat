@@ -10,5 +10,5 @@ if not exist "%WORKER%" (
     exit /b 1
 )
 
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%WORKER%" -Root "%ROOT%"
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%WORKER%"
 exit /b %ERRORLEVEL%
