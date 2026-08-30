@@ -9,6 +9,16 @@ public static class DeadlockInstallLocator
         "\\\"path\\\"\\s+\\\"(?<path>[^\\\"]+)\\\"",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
+    private static readonly string[] CommonSteamRoots =
+    [
+        @"Program Files (x86)\Steam",
+        @"Program Files\Steam",
+        @"SteamLibrary",
+        @"Steam",
+        @"Games\SteamLibrary",
+        @"Games\Steam",
+    ];
+
     public static string? FindInstallation()
     {
         foreach (var candidate in EnumerateCandidates())
@@ -95,28 +105,27 @@ public static class DeadlockInstallLocator
         }
     }
 
-    private static IEnumerable<string> EnumerateRegistrySteamRoots()
+    private static IReadOnlyList<string> EnumerateRegistrySteamRoots()
     {
+        var roots = new List<string>();
         if (!OperatingSystem.IsWindows())
         {
-            yield break;
+            return roots;
         }
 
         foreach (var hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
         {
             foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
             {
-                RegistryKey? baseKey = null;
-                RegistryKey? steamKey = null;
                 try
                 {
-                    baseKey = RegistryKey.OpenBaseKey(hive, view);
-                    steamKey = baseKey.OpenSubKey(@"SOFTWARE\Valve\Steam");
+                    using var baseKey = RegistryKey.OpenBaseKey(hive, view);
+                    using var steamKey = baseKey.OpenSubKey(@"SOFTWARE\Valve\Steam");
                     var path = steamKey?.GetValue("SteamPath") as string
                                ?? steamKey?.GetValue("InstallPath") as string;
                     if (!string.IsNullOrWhiteSpace(path))
                     {
-                        yield return path.Trim();
+                        roots.Add(path.Trim());
                     }
                 }
                 catch (Exception exception) when (exception is UnauthorizedAccessException
@@ -125,23 +134,19 @@ public static class DeadlockInstallLocator
                 {
                     // Registry access is optional; fall back to common locations.
                 }
-                finally
-                {
-                    steamKey?.Dispose();
-                    baseKey?.Dispose();
-                }
             }
         }
+
+        return roots;
     }
 
-    private static IEnumerable<string> EnumerateSteamLibraries(string steamRoot)
+    private static IReadOnlyList<string> EnumerateSteamLibraries(string steamRoot)
     {
-        yield return steamRoot;
-
+        var libraries = new List<string> { steamRoot };
         var vdfPath = Path.Combine(steamRoot, "steamapps", "libraryfolders.vdf");
         if (!File.Exists(vdfPath))
         {
-            yield break;
+            return libraries;
         }
 
         string text;
@@ -151,23 +156,24 @@ public static class DeadlockInstallLocator
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            yield break;
+            return libraries;
         }
 
         foreach (Match match in SteamLibraryPathRegex.Matches(text))
         {
             var raw = match.Groups["path"].Value;
-            if (string.IsNullOrWhiteSpace(raw))
+            if (!string.IsNullOrWhiteSpace(raw))
             {
-                continue;
+                libraries.Add(raw.Replace("\\\\", "\\", StringComparison.Ordinal).Trim());
             }
-
-            yield return raw.Replace("\\\\", "\\", StringComparison.Ordinal).Trim();
         }
+
+        return libraries;
     }
 
-    private static IEnumerable<string> EnumerateFixedDriveRoots()
+    private static IReadOnlyList<string> EnumerateFixedDriveRoots()
     {
+        var roots = new List<string>();
         DriveInfo[] drives;
         try
         {
@@ -175,35 +181,24 @@ public static class DeadlockInstallLocator
         }
         catch (IOException)
         {
-            yield break;
+            return roots;
         }
 
         foreach (var drive in drives)
         {
-            bool usable;
             try
             {
-                usable = drive.DriveType == DriveType.Fixed && drive.IsReady;
+                if (drive.DriveType == DriveType.Fixed && drive.IsReady)
+                {
+                    roots.Add(drive.RootDirectory.FullName);
+                }
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                usable = false;
-            }
-
-            if (usable)
-            {
-                yield return drive.RootDirectory.FullName;
+                // Ignore inaccessible drives.
             }
         }
-    }
 
-    private static readonly string[] CommonSteamRoots =
-    [
-        @"Program Files (x86)\Steam",
-        @"Program Files\Steam",
-        @"SteamLibrary",
-        @"Steam",
-        @"Games\SteamLibrary",
-        @"Games\Steam",
-    ];
+        return roots;
+    }
 }
