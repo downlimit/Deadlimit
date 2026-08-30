@@ -35,6 +35,7 @@ jobs:
           $requiredFiles = @(
             'DeadlimitManager.cmd',
             'DeadlimitUpdater.bat',
+            'internal/DeadlimitUpdater.ps1',
             'internal/DeadlimitManager.cmd',
             'internal/DeadlimitManagerLauncher.vbs',
             'internal/assets/DeadlimitManager_128_v4.ico',
@@ -51,8 +52,10 @@ jobs:
             @{ Path = 'DeadlimitManager.cmd'; Pattern = 'Deadlimit Updater.lnk' },
             @{ Path = 'DeadlimitManager.cmd'; Pattern = 'DeadlimitManager.exe' },
             @{ Path = 'DeadlimitManager.cmd'; Pattern = "@('Deadlimit Manager.lnk','Deadlimit Updater.lnk')" },
-            @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'Updating the Deadlimit repository from origin/main' },
-            @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'DeadlimitManager.cmd' },
+            @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'internal\DeadlimitUpdater.ps1' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'Updating the Deadlimit repository from origin/main' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'DeadlimitManager.cmd' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'status --porcelain --untracked-files=no' },
             @{ Path = 'internal/src/Deadlimit/App/WindowProgressFeature.cs'; Pattern = 'UiText.ProductName' },
             @{ Path = 'internal/src/Deadlimit/Program.cs'; Pattern = 'Usage: DeadlimitManager.exe' }
           )
@@ -60,6 +63,16 @@ jobs:
             if (-not (Select-String -LiteralPath $check.Path -SimpleMatch $check.Pattern -Quiet)) {
               throw "Required Manager/updater contract is missing in $($check.Path): $($check.Pattern)"
             }
+          }
+
+          $tokens = $null
+          $parseErrors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'internal/DeadlimitUpdater.ps1'),
+            [ref]$tokens,
+            [ref]$parseErrors)
+          if ($parseErrors.Count -gt 0) {
+            throw "DeadlimitUpdater.ps1 has PowerShell parse errors: $($parseErrors -join '; ')"
           }
 
           $forbidden = @(
