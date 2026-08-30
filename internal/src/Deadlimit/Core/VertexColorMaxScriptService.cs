@@ -5,7 +5,7 @@ namespace Deadlimit.Core;
 
 public static class VertexColorMaxScriptService
 {
-    private const string ResourceName = "Deadlimit.PipelineScripts.ms";
+    private const string ResourceName = "Deadlimit.MaxScript.PipelineScripts.ms";
     private const string RepositoryFolderName = "maxscript-vertcolor-trans";
     private const string ScriptFileName = "DeadlimitPipelineScripts.ms";
     private const string ReadmeFileName = "README.md";
@@ -36,7 +36,7 @@ public static class VertexColorMaxScriptService
         }
 
         throw new DirectoryNotFoundException(
-            $"Bundled MaxScript folder '.deadlimit\\{RepositoryFolderName}' was not found beside Deadlimit.");
+            $"Bundled Deadlimit Max Script folder '.deadlimit\\{RepositoryFolderName}' was not found beside the Deadlimit repository.");
     }
 
     public static string GetBundledScriptPath() =>
@@ -74,7 +74,7 @@ public static class VertexColorMaxScriptService
         var assembly = Assembly.GetExecutingAssembly();
         using var stream = assembly.GetManifestResourceStream(ResourceName)
             ?? throw new InvalidOperationException(
-                $"Embedded Deadlimit Pipeline Scripts resource '{ResourceName}' was not found.");
+                $"Embedded Deadlimit Max Script resource '{ResourceName}' was not found.");
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         return reader.ReadToEnd();
     }
