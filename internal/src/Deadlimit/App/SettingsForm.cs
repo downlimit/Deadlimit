@@ -15,9 +15,10 @@ internal sealed class SettingsForm : Form
     private readonly Label _projectsStatusLabel = CreateStatusLabel();
 
     private readonly Button _csdkPrimaryButton = CreateActionButton();
-    private readonly Button _csdkSetupButton = CreateSecondaryActionButton();
+    private readonly Button _csdkSetupButton = CreateUtilityActionButton("\uE713");
     private readonly Button _deadlockToolsPrimaryButton = CreateActionButton();
     private readonly Button _retailDeadlockCheckButton = CreateActionButton();
+    private readonly Button _retailDeadlockFindButton = CreateUtilityActionButton("\uE721");
 
     private readonly ComboBox _languageCombo = new()
     {
@@ -148,9 +149,9 @@ internal sealed class SettingsForm : Form
         };
 
         var toolsGrid = CreateToolsGrid();
-        AddCsdkRow(toolsGrid, 0);
-        AddDeadlockToolsRow(toolsGrid, 1);
-        AddDeadlockGameRow(toolsGrid, 2);
+        AddDeadlockGameRow(toolsGrid, 0);
+        AddCsdkRow(toolsGrid, 1);
+        AddDeadlockToolsRow(toolsGrid, 2);
         AddProjectsRow(toolsGrid, 3);
         content.Controls.Add(toolsGrid);
 
@@ -224,13 +225,13 @@ internal sealed class SettingsForm : Form
             Margin = Padding.Empty,
             Width = 910,
         };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 145));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 400));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 32));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 36));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 84));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 33));
         return grid;
     }
 
@@ -243,7 +244,7 @@ internal sealed class SettingsForm : Form
             () => RefreshCsdkStatusAsync());
 
         _csdkPrimaryButton.Click += async (_, _) => await HandleCsdkPrimaryActionAsync();
-        _csdkSetupButton.Text = "SETUP";
+        _csdkSetupButton.AccessibleName = UiText.T("Full CSDK setup", "Полная настройка CSDK");
         _csdkSetupButton.Click += async (_, _) => await SetupCsdkAsync();
 
         _toolTip.SetToolTip(
@@ -318,6 +319,13 @@ internal sealed class SettingsForm : Form
             UiText.T(
                 "Select the folder where the **Deadlock client** is installed.\n\nFor a standard Steam installation this folder is named Project8Staging.",
                 "Выбрать папку, в которой установлен **Deadlock клиент**.\n\nВ стандартной установке Steam эта папка называется Project8Staging."));
+        _retailDeadlockFindButton.AccessibleName = UiText.T("Find Deadlock automatically", "Найти Deadlock автоматически");
+        _retailDeadlockFindButton.Click += async (_, _) => await AutoFindDeadlockAsync();
+        _toolTip.SetToolTip(
+            _retailDeadlockFindButton,
+            UiText.T(
+                "Try to find the installed **Deadlock client** automatically.\n\nDeadlimit checks Steam library folders first, then common Steam locations on local drives. If Deadlock is found, its folder is filled in automatically. Nothing is modified.",
+                "Попытаться автоматически найти установленный **Deadlock клиент**.\n\nDeadlimit сначала проверит библиотеки Steam, затем типичные папки Steam на локальных дисках. Если Deadlock найден, путь подставится автоматически. Никакие файлы не изменяются."));
 
         AddToolRow(
             grid,
@@ -325,7 +333,7 @@ internal sealed class SettingsForm : Form
             UiText.T("Deadlock client", "Deadlock клиент"),
             _retailDeadlockStatusLabel,
             _retailDeadlockCheckButton,
-            CreateActionSpacer(),
+            _retailDeadlockFindButton,
             _retailDeadlockRootText,
             openButton,
             browseButton);
@@ -372,11 +380,11 @@ internal sealed class SettingsForm : Form
             Margin = new Padding(0, 8, 10, 8),
         }, 0, row);
         grid.Controls.Add(status, 1, row);
-        grid.Controls.Add(primaryAction, 2, row);
-        grid.Controls.Add(secondaryAction, 3, row);
-        grid.Controls.Add(path, 4, row);
-        grid.Controls.Add(open, 5, row);
-        grid.Controls.Add(browse, 6, row);
+        grid.Controls.Add(path, 2, row);
+        grid.Controls.Add(open, 3, row);
+        grid.Controls.Add(browse, 4, row);
+        grid.Controls.Add(primaryAction, 5, row);
+        grid.Controls.Add(secondaryAction, 6, row);
     }
 
     private void AddLanguageRow(TableLayoutPanel grid, int row)
@@ -505,6 +513,59 @@ internal sealed class SettingsForm : Form
         SetRetailStatus(_toolchain.CheckRetailDeadlock(_retailDeadlockRootText.Text.Trim()));
     }
 
+    private async Task AutoFindDeadlockAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        UseWaitCursor = true;
+        SetRetailStatus(new ToolchainStatus(ToolchainStatusKind.Checking));
+        await Task.Yield();
+
+        try
+        {
+            var found = await Task.Run(DeadlockInstallLocator.FindInstallation);
+            if (string.IsNullOrWhiteSpace(found))
+            {
+                RefreshDeadlockGameStatus();
+                MessageBox.Show(
+                    this,
+                    UiText.T(
+                        "Deadlock was not found automatically. Use BROWSE… to select the Project8Staging folder manually.",
+                        "Deadlock не удалось найти автоматически. Нажмите ОБЗОР… и выберите папку Project8Staging вручную."),
+                    UiText.T("Deadlock not found", "Deadlock не найден"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
+            _retailDeadlockRootText.Text = found;
+            RefreshDeadlockGameStatus();
+        }
+        catch (Exception exception) when (exception is IOException
+                                           or UnauthorizedAccessException
+                                           or ArgumentException
+                                           or InvalidOperationException)
+        {
+            RefreshDeadlockGameStatus();
+            MessageBox.Show(
+                this,
+                exception.Message,
+                UiText.T("Could not search for Deadlock", "Не удалось найти Deadlock"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+        finally
+        {
+            UseWaitCursor = false;
+            _busy = false;
+            UpdateActionAvailability();
+        }
+    }
+
     private void RefreshProjectsStatus()
     {
         _projectsStatus = _toolchain.CheckProjectsRoot(_projectsRootText.Text.Trim());
@@ -544,6 +605,7 @@ internal sealed class SettingsForm : Form
         _csdkPrimaryButton.Enabled = !_busy && _csdkStatus.Kind is not ToolchainStatusKind.Checking and not ToolchainStatusKind.Working;
         _deadlockToolsPrimaryButton.Enabled = !_busy && _deadlockToolsStatus.Kind is not ToolchainStatusKind.Checking and not ToolchainStatusKind.Working;
         _retailDeadlockCheckButton.Enabled = !_busy && _retailDeadlockStatus.Kind != ToolchainStatusKind.Checking;
+        _retailDeadlockFindButton.Enabled = !_busy;
 
         var csdkValid = Directory.Exists(_csdkRootText.Text.Trim())
             && File.Exists(Path.Combine(_csdkRootText.Text.Trim(), "csdkcfg.exe"));
@@ -564,6 +626,7 @@ internal sealed class SettingsForm : Form
         _csdkPrimaryButton.Refresh();
         _deadlockToolsPrimaryButton.Refresh();
         _retailDeadlockCheckButton.Refresh();
+        _retailDeadlockFindButton.Refresh();
     }
 
     private static string CsdkPrimaryActionText(ToolchainStatusKind kind) => kind switch
@@ -1108,7 +1171,7 @@ internal sealed class SettingsForm : Form
     private static Label CreateStatusLabel() => new()
     {
         AutoSize = false,
-        Width = 162,
+        Width = 137,
         Height = 24,
         TextAlign = ContentAlignment.MiddleLeft,
         Anchor = AnchorStyles.Left,
@@ -1124,13 +1187,18 @@ internal sealed class SettingsForm : Form
         Margin = new Padding(0, 3, 5, 3),
     };
 
-    private static Button CreateSecondaryActionButton() => new()
+    private static Button CreateUtilityActionButton(string glyph) => new()
     {
+        Text = glyph,
         AutoSize = false,
-        Width = 74,
+        Width = 28,
         Height = 26,
         Anchor = AnchorStyles.Left,
-        Margin = new Padding(0, 3, 5, 3),
+        Margin = new Padding(0, 3, 4, 3),
+        Padding = Padding.Empty,
+        TabStop = false,
+        Font = new Font("Segoe MDL2 Assets", 10F, FontStyle.Regular, GraphicsUnit.Point),
+        TextAlign = ContentAlignment.MiddleCenter,
     };
 
     private static Control CreateActionSpacer() => new Panel
