@@ -95,10 +95,11 @@ jobs:
           forbidden = []
           for path in files:
               for no, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
-                  literals = string_literal.findall(line)
+                  visible_line = interpolation.sub('', line)
+                  literals = string_literal.findall(visible_line)
                   if not literals:
                       continue
-                  probe = ' '.join(interpolation.sub('', literal) for literal in literals)
+                  probe = ' '.join(literals)
                   if not cyrillic.search(probe):
                       continue
                   low = probe.lower()
