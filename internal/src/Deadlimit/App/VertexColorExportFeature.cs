@@ -31,8 +31,8 @@ internal static class VertexColorExportFeature
         toolTip.SetToolTip(
             button,
             UiText.T(
-                "Copies the repository MaxScript fileIn command. The helper exports selected geometry and renderable Shape/Spline objects to a Vertex Color FBX beside the latest Wall Worm DMX and includes selected-bone display tools. Optional Fixed Gamma writes RGB^(1/2.2) for Source 2; leave it off for unchanged/Marmoset export. PREPARE matches multi-color meshes by UV or polygon positions and keeps a rejected sidecar for retry.",
-                "Копирует команду fileIn для MaxScript из репозитория. Скрипт экспортирует выделенную геометрию и renderable Shape/Spline в Vertex Color FBX рядом с последним DMX Wall Worm и содержит инструменты выбранных костей. Опциональный Fixed Gamma записывает RGB^(1/2.2) для Source 2; для обычного экспорта и Marmoset оставьте его выключенным. PREPARE сопоставляет многоцветные меши по UV или позициям полигонов и сохраняет отклонённый sidecar для повтора."));
+                "Copies the repository MaxScript fileIn command. The helper exports selected geometry and renderable Shape/Spline objects to a **Vertex Color FBX** beside the latest Wall Worm DMX.\n\nOptional **Fixed Gamma** writes RGB^(1/2.2) for Source 2; leave it off for unchanged/Marmoset export.\n\n**PREPARE FOR CSDK** matches multi-color meshes by UV or polygon positions and keeps a rejected sidecar for retry.",
+                "Копирует команду fileIn для MaxScript из репозитория. Скрипт экспортирует выделенную геометрию и renderable Shape/Spline в **Vertex Color FBX** рядом с последним DMX Wall Worm.\n\nОпциональный **Fixed Gamma** записывает RGB^(1/2.2) для Source 2; для обычного экспорта и Marmoset оставьте его выключенным.\n\n**ПОДГОТОВИТЬ ДЛЯ CSDK** сопоставляет многоцветные меши по UV или позициям полигонов и сохраняет отклонённый sidecar для повтора."));
 
         void RefreshEnabledState()
         {
