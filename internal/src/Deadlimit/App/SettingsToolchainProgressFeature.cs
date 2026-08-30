@@ -1,4 +1,3 @@
-using System.Reflection;
 using Deadlimit.Core;
 
 namespace Deadlimit.App;
@@ -157,44 +156,11 @@ internal static class SettingsToolchainProgressFeature
             ui.ProgressBar.Value = Math.Clamp(update.Percent ?? 0, 0, 100);
         }
 
-        if (update.State is ToolchainOperationState.Failed or ToolchainOperationState.Cancelled)
-        {
-            QueueStatusRefresh(form, update.Target);
-        }
-
         if (update.State != ToolchainOperationState.Running)
         {
             ui.HideTimer.Interval = update.State == ToolchainOperationState.Completed ? 1200 : 2200;
             ui.HideTimer.Start();
         }
-    }
-
-    private static void QueueStatusRefresh(SettingsForm form, ToolchainOperationTarget target)
-    {
-        form.BeginInvoke((Action)(async () =>
-        {
-            await Task.Delay(100);
-            if (form.IsDisposed)
-            {
-                return;
-            }
-
-            var methodName = target == ToolchainOperationTarget.Csdk
-                ? "RefreshCsdkStatusAsync"
-                : "RefreshDeadlockToolsStatusAsync";
-            var method = typeof(SettingsForm).GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);
-            if (method?.Invoke(form, [false]) is Task task)
-            {
-                try
-                {
-                    await task;
-                }
-                catch
-                {
-                    // The Settings form owns presentation of status-check failures.
-                }
-            }
-        }));
     }
 
     private sealed class ProgressUi : IDisposable
