@@ -103,8 +103,8 @@ internal static class ProjectSaveStateFeature
             MessageBox.Show(
                 form,
                 UiText.T(
-                    $"Release ID {release} is already used by {projects}.\n\nBoth projects target the same retail VPK: {vpkName}. The project was saved, but choose another ID if this overlap is not intentional.",
-                    $"Release ID {release} уже занят проектом {projects}.\n\nОба проекта используют один и тот же retail VPK: {vpkName}. Проект сохранён, но выберите другой ID, если это пересечение не было намеренным."),
+                    $"Release ID {release} is already used by {projects}.\n\nBoth projects target the same game-client VPK: {vpkName}. The project was saved, but choose another ID if this overlap is not intentional.",
+                    $"Release ID {release} уже занят проектом {projects}.\n\nОба проекта используют один и тот же VPK игрового клиента Deadlock: {vpkName}. Проект сохранён, но выберите другой ID, если это пересечение не было намеренным."),
                 UiText.T("Release ID already in use", "Release ID уже занят"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);

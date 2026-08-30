@@ -13,7 +13,8 @@ Tooltips must be readable as compact help, not rendered as one long sentence.
 - When a modifier or input chord is important, write it as an emphasized token such as `**SHIFT+LMB**` instead of relying only on uppercase text.
 - The shared renderer preserves explicit `**bold**` spans and also emphasizes common action/modifier tokens such as SHIFT interactions, PREPARE FOR CSDK, BUILD FOR TEST, LAUNCH CSDK, Release ID and managed-tool actions.
 - Use bold only for short keywords, shortcuts and state names, not whole sentences.
-- Avoid implementation jargon in user-facing tooltips when a plain product term exists. For example, say `Deadlock client` / `Deadlock клиент` instead of `Retail Deadlock` unless the distinction itself is being explained.
+- Avoid implementation jargon in user-facing tooltips when a plain product term exists.
+- Russian UI copy must not use untranslated pipeline jargon such as `authoring-контент` or `retail Deadlock`. Say `рабочие файлы проекта` / `файлы проекта` and `игровой клиент Deadlock` instead. Technical file/resource names such as DMX, VMAT, VPK, ModelDoc and Material Editor may stay as-is when they identify an actual format or tool. For example, say `Deadlock client` / `Deadlock клиент` instead of `Retail Deadlock` unless the distinction itself is being explained.
 
 Example:
 

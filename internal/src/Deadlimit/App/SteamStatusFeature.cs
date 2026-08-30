@@ -152,8 +152,8 @@ internal static class SteamStatusFeature
                 toolTip.SetToolTip(
                     rightLabel,
                     UiText.T(
-                        "Release ID determines the retail VPK file name.\n\nFor example: ID 05 → pak05_dir.vpk.",
-                        "Release ID определяет имя retail VPK-файла.\n\nНапример: ID 05 → pak05_dir.vpk."));
+                        "Release ID determines the game-client VPK file name.\n\nFor example: ID 05 → pak05_dir.vpk.",
+                        "Release ID определяет имя VPK игрового клиента Deadlock-файла.\n\nНапример: ID 05 → pak05_dir.vpk."));
                 return;
             }
 
@@ -181,8 +181,8 @@ internal static class SteamStatusFeature
             toolTip.SetToolTip(
                 rightLabel,
                 UiText.T(
-                    $"Release ID: {releaseText}\nRetail VPK: {vpkName}\n\nChanging the ID changes the VPK slot/file name.",
-                    $"Release ID: {releaseText}\nRetail VPK: {vpkName}\n\nИзменение ID меняет VPK-слот и имя файла."));
+                    $"Release ID: {releaseText}\nGame-client VPK: {vpkName}\n\nChanging the ID changes the VPK slot/file name.",
+                    $"Release ID: {releaseText}\nVPK игрового клиента Deadlock: {vpkName}\n\nИзменение ID меняет VPK-слот и имя файла."));
         }
 
         void UpdateOperation()

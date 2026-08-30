@@ -590,8 +590,8 @@ public sealed class MainForm : Form
             var answer = MessageBox.Show(
                 this,
                 UiText.T(
-                    "0source already contains files. Refresh it from the current retail Deadlock build?\n\nThe previous 0source will be preserved as a hidden backup until the new extraction succeeds.",
-                    "0source уже содержит файлы. Обновить его из текущей retail-сборки Deadlock?\n\nПредыдущий 0source будет сохранён как скрытый backup до успешного завершения нового извлечения."),
+                    "0source already contains files. Refresh it from the current Deadlock game client build?\n\nThe previous 0source will be preserved as a hidden backup until the new extraction succeeds.",
+                    "0source уже содержит файлы. Обновить его из текущей установленной версии Deadlock?\n\nПредыдущий 0source будет сохранён как скрытый backup до успешного завершения нового извлечения."),
                 UiText.T("Refresh hero source", "Обновить исходники героя"),
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question);

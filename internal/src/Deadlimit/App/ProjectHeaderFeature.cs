@@ -171,18 +171,18 @@ internal static class ProjectHeaderFeature
         toolTip.SetToolTip(
             prepareOverlay,
             UiText.T(
-                "Prepare the selected project's authoring content for Reduced CSDK12.\n\nA normal click preserves manual VMAT tuning and synchronizes project textures. Hold SHIFT to back up and regenerate the project's Deadlimit Aggregator custom materials from current templates.",
-                "Подготовить authoring-контент выбранного проекта для Reduced CSDK12.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует текстуры проекта. Удерживайте SHIFT, чтобы создать резервную копию и пересоздать custom-материалы Deadlimit Aggregator из текущих шаблонов."));
+                "Prepare the selected project's project working files for Reduced CSDK12.\n\nA normal click preserves manual VMAT tuning and synchronizes project textures. Hold SHIFT to back up and regenerate the project's Deadlimit Aggregator custom materials from current templates.",
+                "Подготовить рабочие файлы выбранного проекта для Reduced CSDK12.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует текстуры проекта. Удерживайте SHIFT, чтобы создать резервную копию и пересоздать custom-материалы Deadlimit Aggregator из текущих шаблонов."));
         toolTip.SetToolTip(
             buildOverlay,
             UiText.T(
-                "Compile the current project and deploy its VPK into retail Deadlock.\n\nThis action does not launch the game. Hold SHIFT while clicking to force a full clean rebuild.",
-                "Скомпилировать текущий проект и установить его VPK в retail Deadlock.\n\nЭта кнопка не запускает игру. Удерживайте SHIFT при клике для полной чистой пересборки."));
+                "Compile the current project and deploy its VPK into Deadlock game client.\n\nThis action does not launch the game. Hold SHIFT while clicking to force a full clean rebuild.",
+                "Скомпилировать текущий проект и установить его VPK в игровой клиент Deadlock.\n\nЭта кнопка не запускает игру. Удерживайте SHIFT при клике для полной чистой пересборки."));
         toolTip.SetToolTip(
             launchGameButton,
             UiText.T(
-                $"Launch retail Deadlock through Steam.\n\nHold SHIFT while clicking to copy '{CameraLockCommand}' to the clipboard without launching the game.",
-                $"Запустить retail Deadlock через Steam.\n\nУдерживайте SHIFT при клике, чтобы скопировать '{CameraLockCommand}' в буфер обмена без запуска игры."));
+                $"Launch Deadlock game client through Steam.\n\nHold SHIFT while clicking to copy '{CameraLockCommand}' to the clipboard without launching the game.",
+                $"Запустить Deadlock через Steam.\n\nУдерживайте SHIFT при клике, чтобы скопировать '{CameraLockCommand}' в буфер обмена без запуска игры."));
 
         void PositionControls()
         {
