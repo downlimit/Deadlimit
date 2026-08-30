@@ -6,6 +6,10 @@ internal sealed class RichToolTip : IDisposable
     private const int VerticalPadding = 8;
     private const int ParagraphGap = 6;
 
+    private static readonly Color BackgroundColor = Color.White;
+    private static readonly Color BorderColor = Color.FromArgb(118, 118, 118);
+    private static readonly Color TextColor = Color.Black;
+
     private readonly ToolTip _toolTip;
     private readonly Dictionary<Control, string> _texts = [];
 
@@ -84,15 +88,25 @@ internal sealed class RichToolTip : IDisposable
 
     private void DrawPopup(object? sender, DrawToolTipEventArgs e)
     {
-        e.DrawBackground();
-        e.DrawBorder();
+        using (var background = new SolidBrush(BackgroundColor))
+        {
+            e.Graphics.FillRectangle(background, e.Bounds);
+        }
+        using (var border = new Pen(BorderColor))
+        {
+            var borderBounds = new Rectangle(
+                e.Bounds.Left,
+                e.Bounds.Top,
+                Math.Max(0, e.Bounds.Width - 1),
+                Math.Max(0, e.Bounds.Height - 1));
+            e.Graphics.DrawRectangle(border, borderBounds);
+        }
 
         var text = (e.AssociatedControl is not null && _texts.TryGetValue(e.AssociatedControl, out var stored)
             ? stored
             : e.ToolTipText) ?? string.Empty;
         Font regularFont = e.Font ?? e.AssociatedControl?.Font ?? Control.DefaultFont;
         using var boldFont = new Font(regularFont, FontStyle.Bold);
-        var textColor = SystemColors.InfoText;
         var x = e.Bounds.Left + HorizontalPadding;
         var y = e.Bounds.Top + VerticalPadding;
 
@@ -120,7 +134,7 @@ internal sealed class RichToolTip : IDisposable
                     run.Text,
                     font,
                     new Point(cursorX, y),
-                    textColor,
+                    TextColor,
                     TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
                 cursorX += size.Width;
                 lineHeight = Math.Max(lineHeight, size.Height);
