@@ -28,10 +28,17 @@ function Wait-ForAnyKey {
 }
 
 try {
-    # Resolve the checkout from this tracked worker instead of accepting a path
-    # from cmd.exe. A quoted batch argument ending in '\' can reach PowerShell
-    # with a stray quote and make GetFullPath reject an otherwise valid path.
-    $rootPath = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+    # DeadlimitUpdater.bat normally executes a fresh copy of this worker from
+    # origin/main in %TEMP%. In that mode the stable bootstrap passes the real
+    # checkout through DEADLIMIT_UPDATER_ROOT. Direct/local execution keeps the
+    # tracked-worker fallback for diagnostics and CI.
+    $bootstrapRoot = $env:DEADLIMIT_UPDATER_ROOT
+    if (-not [string]::IsNullOrWhiteSpace($bootstrapRoot)) {
+        $rootPath = [IO.Path]::GetFullPath($bootstrapRoot.Trim())
+    }
+    else {
+        $rootPath = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+    }
     $rootPath = $rootPath.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
 
     if ($ResolveRootOnly) {
@@ -59,10 +66,15 @@ try {
         throw "Could not read the current Deadlimit revision."
     }
 
-    Write-Host "Checking origin/main for Deadlimit updates..."
-    & $git.Source -C $rootPath fetch origin main
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not fetch origin/main."
+    if ($env:DEADLIMIT_UPDATER_BOOTSTRAPPED -eq "1") {
+        Write-Host "Latest Deadlimit Updater loaded; origin/main is already refreshed."
+    }
+    else {
+        Write-Host "Checking origin/main for Deadlimit updates..."
+        & $git.Source -C $rootPath fetch origin main
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not fetch origin/main."
+        }
     }
 
     # Local tracked work is allowed when the incoming update does not touch the
