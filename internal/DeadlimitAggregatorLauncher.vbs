@@ -1,6 +1,5 @@
 Option Explicit
 
-' Legacy compatibility entry point. The active launcher is DeadlimitAggregatorLauncher.vbs.
 Dim shell, fso, internalDir, rootDir, commandPath
 Set shell = CreateObject("WScript.Shell")
 Set fso = CreateObject("Scripting.FileSystemObject")

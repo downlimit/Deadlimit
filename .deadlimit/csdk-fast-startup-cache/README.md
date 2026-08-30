@@ -4,7 +4,7 @@
 
 Run it after a clean Reduced CSDK12 installation, after replacing the extracted Deadlock files, or whenever CSDK starts spending several minutes on `Updating dependency information`.
 
-The tool reads `CsdkRoot` from `%LOCALAPPDATA%\Deadlimit\settings.json`. Open Deadlimit Settings, configure **Reduced CSDK12**, and press **SAVE** before the first run.
+The tool reads `CsdkRoot` from the legacy compatibility path `%LOCALAPPDATA%\Deadlimit\settings.json`. Open Deadlimit Aggregator Settings, configure **Reduced CSDK12**, and press **SAVE** before the first run.
 
 Close all CSDK windows, then double-click `Fix CSDK Fast Startup.cmd`. The tool:
 
@@ -25,4 +25,4 @@ Reduced_CSDK_12\game\citadel\addons\luaunlocker\readonly_tools_asset_info.bin
 
 `Fix CSDK Fast Startup.cmd` пересоздаёт постоянный кеш AssetSystem для Reduced CSDK12. Запускайте его после чистой установки CSDK, замены распакованных файлов Deadlock или если запуск снова надолго зависает на `Updating dependency information`.
 
-Скрипт берёт путь `Reduced CSDK12` из настроек Deadlimit. Перед запуском закройте все окна CSDK. Предыдущий рабочий кеш сохраняется до успешного завершения и восстанавливается при ошибке.
+Скрипт берёт путь `Reduced CSDK12` из настроек Deadlimit Aggregator. Сами настройки по-прежнему хранятся в `%LOCALAPPDATA%\Deadlimit\settings.json` ради совместимости. Перед запуском закройте все окна CSDK. Предыдущий рабочий кеш сохраняется до успешного завершения и восстанавливается при ошибке.

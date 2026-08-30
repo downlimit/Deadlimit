@@ -166,13 +166,13 @@ internal static class ProjectHeaderFeature
         toolTip.SetToolTip(
             settingsOverlay,
             UiText.T(
-                "Open Deadlimit settings.\n\nConfigure the projects folder, tool locations, interface language and theme.",
-                "Открыть настройки Deadlimit.\n\nЗдесь задаются папка проектов, пути к инструментам, язык и тема интерфейса."));
+                "Open Deadlimit Aggregator settings.\n\nConfigure the projects folder, tool locations, interface language and theme.",
+                "Открыть настройки Deadlimit Aggregator.\n\nЗдесь задаются папка проектов, пути к инструментам, язык и тема интерфейса."));
         toolTip.SetToolTip(
             prepareOverlay,
             UiText.T(
-                "Prepare the selected project's authoring content for Reduced CSDK12.\n\nA normal click preserves manual VMAT tuning and synchronizes project textures. Hold SHIFT to back up and regenerate the project's Deadlimit custom materials from current templates.",
-                "Подготовить authoring-контент выбранного проекта для Reduced CSDK12.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует текстуры проекта. Удерживайте SHIFT, чтобы создать резервную копию и пересоздать custom-материалы Deadlimit из текущих шаблонов."));
+                "Prepare the selected project's authoring content for Reduced CSDK12.\n\nA normal click preserves manual VMAT tuning and synchronizes project textures. Hold SHIFT to back up and regenerate the project's Deadlimit Aggregator custom materials from current templates.",
+                "Подготовить authoring-контент выбранного проекта для Reduced CSDK12.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует текстуры проекта. Удерживайте SHIFT, чтобы создать резервную копию и пересоздать custom-материалы Deadlimit Aggregator из текущих шаблонов."));
         toolTip.SetToolTip(
             buildOverlay,
             UiText.T(

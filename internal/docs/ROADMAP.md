@@ -1,11 +1,11 @@
-# Deadlimit — Roadmap
+# Deadlimit Aggregator — Roadmap
 
 ## Stage 0 — Repository / environment baseline — ACCEPTED
 
 - private `downlimit/Deadlimit` repository and durable project docs;
 - machine-local CSDK12 / DeadlockTools / retail Deadlock paths;
 - project manifest + hidden `.deadlimit` metadata;
-- desktop launcher/updater/icon workflow.
+- Deadlimit Aggregator desktop launcher/updater/icon workflow.
 
 ## Stage 1 — Project ingestion and CSDK authoring preparation — ACCEPTED FOR CURRENT IVY PIPELINE
 
@@ -52,8 +52,8 @@ Implemented behavior:
 - project-root PNG naming binds standard and compatible specialty Texture* slots;
 - adding a matching texture on a later PREPARE binds it;
 - removing that texture later restores the safe default and removes the stale derived PNG;
-- Deadlimit-managed VMAT texture slots reconcile on every PREPARE;
-- user-authored/custom VMAT settings outside Deadlimit-managed texture reconciliation remain preserved.
+- Deadlimit Aggregator-managed VMAT texture slots reconcile on every PREPARE;
+- user-authored/custom VMAT settings outside Deadlimit Aggregator-managed texture reconciliation remain preserved.
 
 The current Ivy pipeline has already produced the custom `ivy_mason` material in CSDK and reached compiled model preview. Additional cross-hero/material variants remain compatibility validation rather than blockers for the normal iteration workflow.
 
@@ -82,9 +82,9 @@ Implemented safeguards/UX:
 - VPK created in-process through ValvePak and verified before final deployment;
 - automatic retail `gameinfo.gi` guard ensures `Game citadel/addons`, creates a backup before a safe patch, and fails closed on unknown layout;
 - project-owned VPK slot/hash tracking prevents silently overwriting another mod;
-- if Release ID changes, an old slot is removed only when its file still matches Deadlimit's recorded hash;
+- if Release ID changes, an old slot is removed only when its file still matches Deadlimit Aggregator's recorded hash;
 - completion dialog offers OK / launch Deadlock when the game is not running;
-- if Deadlock is already running, Deadlimit does not force a restart while hot-reload behavior is still unproven;
+- if Deadlock is already running, Deadlimit Aggregator does not force a restart while hot-reload behavior is still unproven;
 - English / Russian UI preference is stored in machine-local settings;
 - user-facing build buttons have tooltips.
 
@@ -92,16 +92,16 @@ Already live-proven before the latest UX/safety layer:
 
 - BUILD & TEST compiled the current Ivy project and produced a VPK directly in retail addons.
 
-Final acceptance for Stage 3 requires one run after Updater that proves the **current** implementation:
+Final acceptance for Stage 3 requires one run after Deadlimit Aggregator Updater that proves the **current** implementation:
 
 ```text
-Updater
+Deadlimit Aggregator Updater
 → BUILD & TEST
 → no external CSDKCfgVPK Success popup
 → progress UI works
 → gameinfo guard does not add bureaucracy when already configured
 → existing own pak slot is accepted and ownership state is recorded
-→ final Deadlimit dialog appears
+→ final Deadlimit Aggregator dialog appears
 → VPK works in Deadlock
 ```
 
@@ -124,7 +124,7 @@ If the new asset appears consistently, ordinary iteration stays restart-free. If
 
 ## Stage 4 — Desktop interface improvement — NEXT AFTER STAGE 3 ACCEPTANCE
 
-Goal: improve the artist-facing application now that the functional pipeline is closed.
+Goal: improve the artist-facing Deadlimit Aggregator application now that the functional pipeline is closed.
 
 Focus:
 

@@ -16,7 +16,93 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Restore
         run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
-      - name: Build
+      - name: Build Deadlimit Aggregator
         run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+      - name: Verify Aggregator rename contract
+        shell: pwsh
+        run: |
+          $output = 'internal/src/Deadlimit/bin/Release/net10.0-windows'
+          if (-not (Test-Path "$output/DeadlimitAggregator.exe")) {
+            throw 'DeadlimitAggregator.exe was not produced.'
+          }
+          if (Test-Path "$output/Deadlimit.exe") {
+            throw 'Legacy Deadlimit.exe was produced.'
+          }
+
+          $requiredFiles = @(
+            'DeadlimitAggregator.cmd',
+            'DeadlimitAggregatorUpdater.bat',
+            'internal/DeadlimitAggregator.cmd',
+            'internal/DeadlimitAggregatorLauncher.vbs',
+            'internal/assets/DeadlimitAggregator_128_v4.ico',
+            'internal/assets/DeadlimitAggregatorUpdater_128_v4.ico'
+          )
+          foreach ($path in $requiredFiles) {
+            if (-not (Test-Path -LiteralPath $path)) {
+              throw "Required renamed entry point or asset is missing: $path"
+            }
+          }
+
+          $forbidden = @(
+            @{ Path = 'internal/src/Deadlimit/App/MainForm.cs'; Pattern = 'Text = "Deadlimit"' },
+            @{ Path = 'internal/src/Deadlimit/App/StartupProgressForm.cs'; Pattern = 'Starting Deadlimit...' },
+            @{ Path = 'internal/src/Deadlimit/App/SettingsForm.cs'; Pattern = 'Deadlimit Settings' },
+            @{ Path = 'internal/src/Deadlimit/App/SettingsForm.cs'; Pattern = 'Deadlimit Pipeline Scripts' },
+            @{ Path = 'internal/src/Deadlimit/Program.cs'; Pattern = 'Usage: Deadlimit.exe' },
+            @{ Path = 'DeadlimitAggregator.cmd'; Pattern = '\Deadlimit.exe' },
+            @{ Path = '.deadlimit/maxscript-vertcolor-trans/DeadlimitPipelineScripts.ms'; Pattern = 'newRolloutFloater "Deadlimit Pipeline Scripts"' },
+            @{ Path = '.deadlimit/maxscript-vertcolor-trans/DeadlimitPipelineScripts.ms'; Pattern = 'Run PREPARE in Deadlimit.' }
+          )
+
+          foreach ($check in $forbidden) {
+            if (Select-String -LiteralPath $check.Path -SimpleMatch $check.Pattern -Quiet) {
+              throw "Legacy Aggregator user-facing name remains in $($check.Path): $($check.Pattern)"
+            }
+          }
+
+          $currentDocs = @(
+            'internal/docs/ARCHITECTURE.md',
+            'internal/docs/BUILD_TEST.md',
+            'internal/docs/CONTEXT.md',
+            'internal/docs/DECISIONS.md',
+            'internal/docs/EXTRACTION.md',
+            'internal/docs/MATERIALS.md',
+            'internal/docs/OUTPUT_LIFECYCLE.md',
+            'internal/docs/PROJECT.md',
+            'internal/docs/README.md',
+            'internal/docs/ROADMAP.md',
+            'internal/docs/RUNNING_GAME.md',
+            'internal/docs/SETTINGS.md',
+            'internal/docs/TEXTURES.md',
+            'internal/docs/UI.md',
+            'internal/docs/UI_STYLE.md',
+            'internal/docs/WORKSPACE.md'
+          )
+          foreach ($path in $currentDocs) {
+            if (Select-String -LiteralPath $path -SimpleMatch '# Deadlimit —' -Quiet) {
+              throw "Current operational documentation still uses the old application heading: $path"
+            }
+          }
+
+          if (-not (Select-String -LiteralPath 'DeadlimitAggregator.cmd' -SimpleMatch 'DeadlimitAggregatorUpdater.bat' -Quiet)) {
+            throw 'Aggregator launcher does not target DeadlimitAggregatorUpdater.bat.'
+          }
+          if (-not (Select-String -LiteralPath 'DeadlimitAggregatorUpdater.bat' -SimpleMatch 'DeadlimitAggregator.cmd' -Quiet)) {
+            throw 'Aggregator updater does not refresh through DeadlimitAggregator.cmd.'
+          }
+      - name: Audit remaining Deadlimit identifiers
+        shell: pwsh
+        run: |
+          $matches = git grep -n -i deadlimit -- .
+          $grepExit = $LASTEXITCODE
+          $matches | Sort-Object | Set-Content -LiteralPath deadlimit-identifier-audit.txt -Encoding utf8
+          if ($grepExit -gt 1) {
+            throw "git grep failed with exit code $grepExit"
+          }
+      - name: Upload identifier audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: deadlimit-identifier-audit
+          path: deadlimit-identifier-audit.txt
       - name: Startup smoke
         run: dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --startup-smoke

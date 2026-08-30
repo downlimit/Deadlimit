@@ -1,7 +1,12 @@
-# Local launch helpers and shortcuts generated for this workstation.
+# Local Aggregator shortcuts generated for this workstation.
+/Deadlimit Aggregator.lnk
+/Deadlimit Aggregator Updater.lnk
+
+# Legacy local updater/shortcut names retained only for migration compatibility.
 /DEADLIMIT_LocalUpdater.bat
 /Deadlimit.lnk
 /Updater.lnk
+/Deadlimit Updater.lnk
 
 # Superseded local icon draft.
 /internal/assets/Deadlimit_v2.ico

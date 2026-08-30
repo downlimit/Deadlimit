@@ -214,7 +214,7 @@ internal static class ProjectLibraryFeature
                 UiText.T(
                     "Projects folder is unavailable. Set it in Settings first.",
                     "Папка проектов недоступна. Сначала укажите её в настройках."),
-                "Deadlimit",
+                "Deadlimit Aggregator",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
             return;

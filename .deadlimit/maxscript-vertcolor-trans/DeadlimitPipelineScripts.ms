@@ -1,10 +1,10 @@
 /*
-    Deadlimit Pipeline Scripts for 3ds Max.
+    Deadlimit Max Script for 3ds Max.
 
     Run this script after exporting the regular DMX with Wall Worm. It reads the
     last Wall Worm export folder from 3dsMax.ini, finds the newest DMX there, and
     exports selected geometry and renderable Shape/Spline objects beside that DMX as <name>_vertexcolor.fbx.
-    Deadlimit consumes it during PREPARE and keeps failed/cancelled handoffs for retry.
+    Deadlimit Aggregator consumes it during PREPARE and keeps failed/cancelled handoffs for retry.
 */
 
 plugin simpleMeshMod DeadlimitPaletteVertexFillModifier
@@ -1690,7 +1690,7 @@ rollout deadlimitVertexColorFbxRollout "EXPORT VERTEX COLOR"
             refreshTarget()
             format "Vertex Color FBX: %\nDMX: %\n" result[2] result[1]
             local gammaMessage = if result[3] then "ON: RGB ^ (1/2.2)" else "OFF: stored RGB unchanged"
-            local successMessage = "SUCCESS\n\nVertex Color FBX exported to:\n" + result[2] + "\n\nFixed Gamma: " + gammaMessage + "\n\nRun PREPARE in Deadlimit. A failed or cancelled PREPARE keeps the FBX for retry."
+            local successMessage = "SUCCESS\n\nVertex Color FBX exported to:\n" + result[2] + "\n\nFixed Gamma: " + gammaMessage + "\n\nRun PREPARE in Deadlimit Aggregator. A failed or cancelled PREPARE keeps the FBX for retry."
             showResultMessage successMessage "VERTEX COLOR FBX READY" false
         )
         catch
@@ -1704,7 +1704,7 @@ rollout deadlimitVertexColorFbxRollout "EXPORT VERTEX COLOR"
 
 )
 
-deadlimitPipelineFloater = newRolloutFloater "Deadlimit Pipeline Scripts" 380 410
+deadlimitPipelineFloater = newRolloutFloater "Deadlimit Max Script" 380 410
 addRollout deadlimitVertexColorBoneToolsRollout deadlimitPipelineFloater rolledUp:false
 addRollout deadlimitVertexColorToolsRollout deadlimitPipelineFloater rolledUp:false
 addRollout deadlimitVertexColorInnerLineartRollout deadlimitPipelineFloater rolledUp:false

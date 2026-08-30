@@ -31,7 +31,7 @@ internal sealed class SettingsForm : Form
         _initialLanguage = settings.UiLanguage;
         _initialTheme = settings.UiTheme;
 
-        Text = UiText.T("Deadlimit Settings", "Настройки Deadlimit");
+        Text = UiText.T("Deadlimit Aggregator Settings", "Настройки Deadlimit Aggregator");
         StartPosition = FormStartPosition.CenterParent;
         Width = 840;
         Height = 480;
@@ -87,8 +87,8 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             Dock = DockStyle.Fill,
             Text = UiText.T(
-                "Projects folder, machine-local tool paths, interface language and theme. Language and theme changes are applied after Deadlimit restarts.",
-                "Папка проектов, локальные пути к инструментам, язык и тема интерфейса. Смена языка и темы применяется после перезапуска Deadlimit."),
+                "Projects folder, machine-local tool paths, interface language and theme. Language and theme changes are applied after Deadlimit Aggregator restarts.",
+                "Папка проектов, локальные пути к инструментам, язык и тема интерфейса. Смена языка и темы применяется после перезапуска Deadlimit Aggregator."),
             Margin = new Padding(0, 0, 0, 12),
         };
         root.Controls.Add(description, 0, 0);
@@ -143,8 +143,8 @@ internal sealed class SettingsForm : Form
         toolTip.SetToolTip(
             saveButton,
             UiText.T(
-                "Validate and save all paths and interface settings.\n\nLanguage or theme changes restart Deadlimit before they take effect.",
-                "Проверить и сохранить все пути и настройки интерфейса.\n\nПосле смены языка или темы Deadlimit перезапустится, чтобы применить изменения."));
+                "Validate and save all paths and interface settings.\n\nLanguage or theme changes restart Deadlimit Aggregator before they take effect.",
+                "Проверить и сохранить все пути и настройки интерфейса.\n\nПосле смены языка или темы Deadlimit Aggregator перезапустится, чтобы применить изменения."));
         toolTip.SetToolTip(
             cancelButton,
             UiText.T(
@@ -278,7 +278,7 @@ internal sealed class SettingsForm : Form
 
         var openButton = new Button
         {
-            Text = "📂 Deadlimit Pipeline Scripts",
+            Text = "📂 Deadlimit Max Script",
             AutoSize = true,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 5, 0, 5),
@@ -290,8 +290,8 @@ internal sealed class SettingsForm : Form
         toolTip.SetToolTip(
             openButton,
             UiText.T(
-                "Open the repository folder containing DeadlimitPipelineScripts.ms and its README for the 3ds Max Deadlock pipeline tools.",
-                "Открыть папку репозитория с DeadlimitPipelineScripts.ms и README по инструментам пайплайна Deadlock для 3ds Max."));
+                "Open the Deadlimit Max Script repository folder containing DeadlimitPipelineScripts.ms and its README.",
+                "Открыть папку Deadlimit Max Script с DeadlimitPipelineScripts.ms и README."));
 
         grid.Controls.Add(caption, 0, row);
         grid.Controls.Add(openButton, 1, row);

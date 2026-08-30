@@ -44,8 +44,8 @@ internal static class BuildFeature
         toolTip.SetToolTip(
             prepareButton,
             UiText.T(
-                "Prepare the selected project's authoring content for Reduced CSDK12 / ModelDoc / Material Editor.\n\nA normal click preserves manual VMAT tuning while synchronizing project textures. Hold SHIFT to back up and regenerate Deadlimit custom materials from their templates.",
-                "Подготовить authoring-контент выбранного проекта для Reduced CSDK12 / ModelDoc / Material Editor.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует текстуры проекта. Удерживайте SHIFT, чтобы создать резервную копию и пересоздать custom-материалы Deadlimit из шаблонов."));
+                "Prepare the selected project's authoring content for Reduced CSDK12 / ModelDoc / Material Editor.\n\nA normal click preserves manual VMAT tuning while synchronizing project textures. Hold SHIFT to back up and regenerate Deadlimit Aggregator custom materials from their templates.",
+                "Подготовить authoring-контент выбранного проекта для Reduced CSDK12 / ModelDoc / Material Editor.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует текстуры проекта. Удерживайте SHIFT, чтобы создать резервную копию и пересоздать custom-материалы Deadlimit Aggregator из шаблонов."));
         toolTip.SetToolTip(
             buildAndTestButton,
             UiText.T(
@@ -95,9 +95,9 @@ internal static class BuildFeature
             MessageBox.Show(
                 form,
                 UiText.T(
-                    "Save the current Deadlimit project before running PREPARE FOR CSDK.",
-                    "Сохраните текущий проект Deadlimit перед запуском ПОДГОТОВИТЬ ДЛЯ CSDK."),
-                "Deadlimit",
+                    "Save the current Deadlimit Aggregator project before running PREPARE FOR CSDK.",
+                    "Сохраните текущий проект Deadlimit Aggregator перед запуском ПОДГОТОВИТЬ ДЛЯ CSDK."),
+                "Deadlimit Aggregator",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
             return;
@@ -108,8 +108,8 @@ internal static class BuildFeature
             var answer = MessageBox.Show(
                 form,
                 UiText.T(
-                    "SHIFT+PREPARE will back up and regenerate every custom VMAT currently referenced by this project. Manual Material Editor tuning in those VMAT files will be replaced by the current Deadlimit templates and project textures.\n\nContinue?",
-                    "SHIFT+ПОДГОТОВИТЬ создаст резервную копию и пересоздаст все custom-VMAT, на которые сейчас ссылается проект. Ручные настройки этих VMAT из Material Editor будут заменены текущими шаблонами Deadlimit и текстурами проекта.\n\nПродолжить?"),
+                    "SHIFT+PREPARE will back up and regenerate every custom VMAT currently referenced by this project. Manual Material Editor tuning in those VMAT files will be replaced by the current Deadlimit Aggregator templates and project textures.\n\nContinue?",
+                    "SHIFT+ПОДГОТОВИТЬ создаст резервную копию и пересоздаст все custom-VMAT, на которые сейчас ссылается проект. Ручные настройки этих VMAT из Material Editor будут заменены текущими шаблонами Deadlimit Aggregator и текстурами проекта.\n\nПродолжить?"),
                 UiText.T("Clean material preparation", "Чистая подготовка материалов"),
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Warning);
@@ -179,7 +179,7 @@ internal static class BuildFeature
                 $"CSDK content:\n{result.AddonContentRoot}\n\n" +
                 $"Model source:\n{result.SourceVmdlPath}\n\n" +
                 $"CSDK game output: CLEAN. {gameState}\n" +
-                $"Deadlimit did not compile it; use LAUNCH CSDK while authoring, or BUILD FOR TEST when you want to compile and deploy the retail VPK. Launch the game separately when you are ready.\n\n" +
+                $"Deadlimit Aggregator did not compile it; use LAUNCH CSDK while authoring, or BUILD FOR TEST when you want to compile and deploy the retail VPK. Launch the game separately when you are ready.\n\n" +
                 $"Log: {result.LogPath}",
                 $"Authoring-контент подготовлен.\n\n" +
                 $"Аддон: {result.AddonName}\n" +
@@ -197,7 +197,7 @@ internal static class BuildFeature
                 $"CSDK content:\n{result.AddonContentRoot}\n\n" +
                 $"Исходник модели:\n{result.SourceVmdlPath}\n\n" +
                 $"CSDK game output: CLEAN. {gameState}\n" +
-                $"Deadlimit его не компилировал; для authoring используйте ЗАПУСК CSDK, а для компиляции и установки retail VPK — СОБРАТЬ ДЛЯ ТЕСТА. Игру запускайте отдельно, когда будете готовы.\n\n" +
+                $"Deadlimit Aggregator его не компилировал; для authoring используйте ЗАПУСК CSDK, а для компиляции и установки retail VPK — СОБРАТЬ ДЛЯ ТЕСТА. Игру запускайте отдельно, когда будете готовы.\n\n" +
                 $"Лог: {result.LogPath}");
 
             using var dialog = BuildTestSuccessDialog.CreatePrepareSummary(message);
@@ -232,9 +232,9 @@ internal static class BuildFeature
             MessageBox.Show(
                 form,
                 UiText.T(
-                    "Save the current Deadlimit project before running BUILD FOR TEST.",
-                    "Сохраните текущий проект Deadlimit перед запуском СОБРАТЬ ДЛЯ ТЕСТА."),
-                "Deadlimit",
+                    "Save the current Deadlimit Aggregator project before running BUILD FOR TEST.",
+                    "Сохраните текущий проект Deadlimit Aggregator перед запуском СОБРАТЬ ДЛЯ ТЕСТА."),
+                "Deadlimit Aggregator",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
             return;
@@ -246,8 +246,8 @@ internal static class BuildFeature
             var closeAnswer = MessageBox.Show(
                 form,
                 UiText.T(
-                    "Deadlock is running and has the loaded VPK locked, so Deadlimit cannot replace the current mod archive while the game is open.\n\nClose Deadlock automatically and continue BUILD FOR TEST?",
-                    "Deadlock сейчас запущен и блокирует загруженный VPK, поэтому Deadlimit не может заменить текущий архив мода, пока игра открыта.\n\nАвтоматически закрыть Deadlock и продолжить СОБРАТЬ ДЛЯ ТЕСТА?"),
+                    "Deadlock is running and has the loaded VPK locked, so Deadlimit Aggregator cannot replace the current mod archive while the game is open.\n\nClose Deadlock automatically and continue BUILD FOR TEST?",
+                    "Deadlock сейчас запущен и блокирует загруженный VPK, поэтому Deadlimit Aggregator не может заменить текущий архив мода, пока игра открыта.\n\nАвтоматически закрыть Deadlock и продолжить СОБРАТЬ ДЛЯ ТЕСТА?"),
                 UiText.T("Deadlock must be closed", "Нужно закрыть Deadlock"),
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Information);
@@ -347,8 +347,8 @@ internal static class BuildFeature
                 : string.Empty;
             var legacySlotSummary = slotCheck.LegacyOwnershipAdopted
                 ? UiText.T(
-                    "\nVPK slot ownership: adopted from the previous Deadlimit build state.",
-                    "\nVPK-слот: владение принято из предыдущего состояния сборки Deadlimit.")
+                    "\nVPK slot ownership: adopted from the previous legacy Deadlimit build state.",
+                    "\nVPK-слот: владение принято из предыдущего legacy-состояния сборки Deadlimit.")
                 : string.Empty;
             var forceSummary = forceFullRebuild
                 ? UiText.T("\nForced full rebuild: yes (SHIFT).", "\nПринудительная полная пересборка: да (SHIFT).")

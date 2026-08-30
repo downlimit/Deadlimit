@@ -1,2 +1,3 @@
 @echo off
-call "%~dp0..\Deadlimit.cmd"
+rem Legacy compatibility shim.
+call "%~dp0DeadlimitAggregator.cmd" %*

@@ -4,7 +4,7 @@ namespace Deadlimit.App;
 
 internal static class SettingsVersionFeature
 {
-    private const string VersionValueName = "DeadlimitVersionValue";
+    private const string VersionValueName = "DeadlimitAggregatorVersionValue";
 
     public static void Attach()
     {

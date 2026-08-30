@@ -103,8 +103,8 @@ internal static class ProjectIdentityFeature
         toolTip.SetToolTip(
             extractButton,
             UiText.T(
-                "Save the project and extract the selected hero's current source resources from retail Deadlock into 0source.\n\nIf 0source already contains files, Deadlimit asks whether to refresh it while keeping the previous copy as a hidden backup or to refresh without retaining that backup.",
-                "Сохранить проект и извлечь актуальные исходные ресурсы выбранного героя из retail Deadlock в 0source.\n\nЕсли в 0source уже есть файлы, Deadlimit предложит обновить их с сохранением предыдущей копии в скрытый backup или обновить без сохранения backup."));
+                "Save the project and extract the selected hero's current source resources from retail Deadlock into 0source.\n\nIf 0source already contains files, Deadlimit Aggregator asks whether to refresh it while keeping the previous copy as a hidden backup or to refresh without retaining that backup.",
+                "Сохранить проект и извлечь актуальные исходные ресурсы выбранного героя из retail Deadlock в 0source.\n\nЕсли в 0source уже есть файлы, Deadlimit Aggregator предложит обновить их с сохранением предыдущей копии в скрытый backup или обновить без сохранения backup."));
     }
 
     private static void MoveSaveButtonUnderHeroRefresh(TableLayoutPanel grid)

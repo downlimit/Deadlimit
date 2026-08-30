@@ -89,8 +89,8 @@ internal static class ProjectLogsFeature
         toolTip.SetToolTip(
             logsButton,
             UiText.T(
-                "Open this project's Deadlimit logs folder in Explorer.\n\nPREPARE FOR CSDK and BUILD FOR TEST write their diagnostic .log files here.",
-                "Открыть папку логов этого проекта Deadlimit в Проводнике.\n\nПОДГОТОВИТЬ ДЛЯ CSDK и СОБРАТЬ ДЛЯ ТЕСТА сохраняют сюда диагностические .log-файлы."));
+                "Open this project's Deadlimit Aggregator logs folder in Explorer.\n\nPREPARE FOR CSDK and BUILD FOR TEST write their diagnostic .log files here.",
+                "Открыть папку логов этого проекта Deadlimit Aggregator в Проводнике.\n\nПОДГОТОВИТЬ ДЛЯ CSDK и СОБРАТЬ ДЛЯ ТЕСТА сохраняют сюда диагностические .log-файлы."));
     }
 
     private static void OpenLogsFolder(Form form, string projectFolder)

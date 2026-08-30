@@ -2,7 +2,7 @@ namespace Deadlimit.App;
 
 internal static class WindowProgressFeature
 {
-    private const string AppTitle = "Deadlimit";
+    private const string AppTitle = "Deadlimit Aggregator";
     private const string ProgressTitlePrefix = AppTitle + " — ";
 
     public static void Attach(MainForm form)
