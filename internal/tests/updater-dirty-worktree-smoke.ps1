@@ -1,0 +1,93 @@
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+$repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
+$updaterSource = Join-Path $repositoryRoot 'internal\DeadlimitUpdater.ps1'
+$testRoot = Join-Path ([IO.Path]::GetTempPath()) ('deadlimit-updater-dirty-' + [Guid]::NewGuid().ToString('N'))
+$remote = Join-Path $testRoot 'remote.git'
+$seed = Join-Path $testRoot 'seed'
+$work = Join-Path $testRoot 'work'
+
+function Run-Git([string]$workingDirectory, [Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments) {
+    & git.exe -C $workingDirectory @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "git failed in '$workingDirectory': $($Arguments -join ' ')"
+    }
+}
+
+try {
+    New-Item -ItemType Directory -Path $testRoot | Out-Null
+    & git.exe init --bare $remote
+    if ($LASTEXITCODE -ne 0) { throw 'Could not initialize updater smoke remote.' }
+
+    & git.exe init -b main $seed
+    if ($LASTEXITCODE -ne 0) { throw 'Could not initialize updater smoke seed.' }
+    Run-Git $seed config user.email 'deadlimit-ci@example.invalid'
+    Run-Git $seed config user.name 'Deadlimit CI'
+
+    New-Item -ItemType Directory -Path (Join-Path $seed 'internal') | Out-Null
+    Copy-Item -LiteralPath $updaterSource -Destination (Join-Path $seed 'internal\DeadlimitUpdater.ps1')
+    Set-Content -LiteralPath (Join-Path $seed 'DeadlimitManager.cmd') -Value "@echo off`r`nexit /b 0`r`n" -Encoding ascii
+    Set-Content -LiteralPath (Join-Path $seed 'local.txt') -Value 'base local' -Encoding ascii
+    Set-Content -LiteralPath (Join-Path $seed 'incoming.txt') -Value 'base incoming' -Encoding ascii
+    Run-Git $seed add .
+    Run-Git $seed commit -m 'seed'
+    Run-Git $seed remote add origin $remote
+    Run-Git $seed push -u origin main
+
+    & git.exe clone --branch main $remote $work
+    if ($LASTEXITCODE -ne 0) { throw 'Could not clone updater smoke worktree.' }
+
+    Set-Content -LiteralPath (Join-Path $work 'local.txt') -Value 'parallel local edit' -Encoding ascii
+    Set-Content -LiteralPath (Join-Path $seed 'incoming.txt') -Value 'remote unrelated update' -Encoding ascii
+    Run-Git $seed add incoming.txt
+    Run-Git $seed commit -m 'unrelated remote update'
+    Run-Git $seed push origin main
+
+    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $work 'internal\DeadlimitUpdater.ps1') -NoWait
+    if ($LASTEXITCODE -ne 0) {
+        throw "Updater rejected an unrelated local tracked change with exit code $LASTEXITCODE."
+    }
+
+    $localContent = (Get-Content -LiteralPath (Join-Path $work 'local.txt') -Raw).Trim()
+    if ($localContent -ne 'parallel local edit') {
+        throw 'Updater did not preserve the unrelated local tracked edit.'
+    }
+
+    $workHead = (& git.exe -C $work rev-parse HEAD).Trim()
+    $remoteHead = (& git.exe -C $seed rev-parse HEAD).Trim()
+    if ($workHead -ne $remoteHead) {
+        throw 'Updater did not fast-forward when local tracked edits were unrelated.'
+    }
+
+    Set-Content -LiteralPath (Join-Path $seed 'local.txt') -Value 'remote conflicting update' -Encoding ascii
+    Run-Git $seed add local.txt
+    Run-Git $seed commit -m 'overlapping remote update'
+    Run-Git $seed push origin main
+
+    $headBeforeOverlap = (& git.exe -C $work rev-parse HEAD).Trim()
+    $overlapOutput = & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $work 'internal\DeadlimitUpdater.ps1') -NoWait 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        throw 'Updater accepted an incoming update that overlaps local tracked work.'
+    }
+    if (-not ($overlapOutput -match 'origin/main also changes files you are editing locally')) {
+        throw 'Updater overlap failure did not explain the exact reason.'
+    }
+    if (-not ($overlapOutput -match 'local.txt')) {
+        throw 'Updater overlap failure did not list the conflicting file.'
+    }
+
+    $headAfterOverlap = (& git.exe -C $work rev-parse HEAD).Trim()
+    if ($headBeforeOverlap -ne $headAfterOverlap) {
+        throw 'Updater moved HEAD despite an overlapping local tracked edit.'
+    }
+    $localContentAfterOverlap = (Get-Content -LiteralPath (Join-Path $work 'local.txt') -Raw).Trim()
+    if ($localContentAfterOverlap -ne 'parallel local edit') {
+        throw 'Updater modified local work during overlap rejection.'
+    }
+
+    Write-Host 'Updater dirty-worktree smoke passed.'
+}
+finally {
+    Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
