@@ -42,5 +42,13 @@ jobs:
               throw "Legacy Aggregator name remains in $($check.Path): $($check.Pattern)"
             }
           }
+      - name: Audit remaining Deadlimit identifiers
+        shell: pwsh
+        run: |
+          git grep -il -i deadlimit -- . | Sort-Object
+          if ($LASTEXITCODE -gt 1) {
+            throw "git grep failed with exit code $LASTEXITCODE"
+          }
+          exit 0
       - name: Startup smoke
         run: dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --startup-smoke
