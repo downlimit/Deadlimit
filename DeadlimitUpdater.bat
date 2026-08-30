@@ -1,6 +1,14 @@
 @echo off
 setlocal EnableExtensions
-set "ROOT=%~dp0"
+
+pushd "%~dp0" >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: Deadlimit Updater could not resolve its repository folder.
+    pause
+    exit /b 1
+)
+set "ROOT=%CD%"
+popd
 
 where git.exe >nul 2>&1
 if errorlevel 1 (
