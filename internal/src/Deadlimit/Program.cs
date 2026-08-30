@@ -87,6 +87,7 @@ internal static class Program
         }
 
         SettingsVersionFeature.Attach();
+        SettingsToolchainProgressFeature.Attach();
         using var context = new DeadlimitApplicationContext(startupSmoke, startup);
         Application.Run(context);
         return 0;
