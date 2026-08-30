@@ -112,7 +112,7 @@ internal static class MessageBox
         Show(text, caption, MessageBoxButtons.OK, MessageBoxIcon.None);
 
     public static DialogResult Show(string text) =>
-        Show(text, "Deadlimit", MessageBoxButtons.OK, MessageBoxIcon.None);
+        Show(text, "Deadlimit Aggregator", MessageBoxButtons.OK, MessageBoxIcon.None);
 
     public static DeadlimitDialogChoice ShowCustom(
         IWin32Window owner,
@@ -182,7 +182,7 @@ internal static class MessageBox
 
         using var dialog = new Form
         {
-            Text = string.IsNullOrWhiteSpace(caption) ? "Deadlimit" : caption,
+            Text = string.IsNullOrWhiteSpace(caption) ? "Deadlimit Aggregator" : caption,
             StartPosition = FormStartPosition.CenterParent,
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false,
@@ -227,7 +227,7 @@ internal static class MessageBox
         Button? cancelButton = null;
 
         // RightToLeft places the first added control at the right edge, matching the
-        // existing build-summary dialog and standard Deadlimit action layout.
+        // existing build-summary dialog and standard Deadlimit Aggregator action layout.
         foreach (var definition in effectiveButtons)
         {
             var button = new Button
