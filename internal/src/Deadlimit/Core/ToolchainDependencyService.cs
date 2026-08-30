@@ -25,7 +25,9 @@ public sealed record ToolchainStatus(
     string Detail = "",
     bool NetworkAvailable = false,
     int? InstalledGeneration = null,
-    int? AvailableGeneration = null);
+    int? AvailableGeneration = null,
+    string? InstalledVersion = null,
+    string? AvailableVersion = null);
 
 public sealed record ToolchainInstallResult(string RootPath, ToolchainStatus Status);
 
@@ -36,9 +38,12 @@ public sealed class ToolchainDependencyService
     private const string CsdkFallbackDriveId = "1-Z-4CszWQNudzwzs6e6abPsp5RGFOURS";
     private const string DeadlockToolsRepositoryUrl = "https://github.com/dotryen/DeadlockTools.git";
     private const string DeadlockToolsCommitApiUrl = "https://api.github.com/repos/dotryen/DeadlockTools/commits/master";
+    private const string DeadlockToolsLatestReleaseApiUrl = "https://api.github.com/repos/dotryen/DeadlockTools/releases/latest";
+    private const string DeadlockToolsWindowsAssetName = "DeadlockTools-windows-x64.zip";
     private const string DepotDownloaderLatestReleaseApiUrl = "https://api.github.com/repos/SteamRE/DepotDownloader/releases/latest";
     private const string CsdkMarkerFileName = ".deadlimit-csdk.json";
     private const string CsdkSetupMarkerFileName = ".deadlimit-csdk-setup.json";
+    private const string DeadlockToolsMarkerFileName = ".deadlimit-deadlocktools.json";
 
     private static readonly Regex CsdkGenerationRegex = new(
         "\\bCSDK\\s+(?<generation>\\d+)\\b",
@@ -80,7 +85,7 @@ public sealed class ToolchainDependencyService
         {
             return new(ToolchainStatusKind.InvalidPath, "The selected folder does not contain game\\citadel.");
         }
-        return new(ToolchainStatusKind.Ready, "Retail Deadlock installation detected.");
+        return new(ToolchainStatusKind.Ready, "Deadlock game client installation detected.");
     }
 
     public ToolchainStatus CheckProjectsRoot(string root)
@@ -147,38 +152,77 @@ public sealed class ToolchainDependencyService
         {
             return new(ToolchainStatusKind.NotSpecified);
         }
-        if (!Directory.Exists(root) || !File.Exists(GetDeadlockToolsExecutable(root)))
+
+        var executable = GetDeadlockToolsExecutable(root);
+        if (!Directory.Exists(root) || !File.Exists(executable))
         {
-            return new(ToolchainStatusKind.InvalidPath, "DeadlockTools.exe was not found at the expected Release build path.");
-        }
-        if (!Directory.Exists(Path.Combine(root, ".git")))
-        {
-            return new(
-                ToolchainStatusKind.Installed,
-                "DeadlockTools is valid, but this folder is not a Git checkout, so freshness cannot be verified automatically.");
+            return new(ToolchainStatusKind.InvalidPath, "DeadlockTools.exe was not found in the selected DeadlockTools folder.");
         }
 
+        var installedRelease = TryReadDeadlockToolsVersion(root);
         try
         {
-            var localCommit = (await RunForOutputAsync(
-                "git",
-                $"-C {Quote(root)} rev-parse HEAD",
-                root,
-                cancellationToken).ConfigureAwait(false)).Trim();
-            var remoteCommit = await GetDeadlockToolsRemoteCommitAsync(cancellationToken).ConfigureAwait(false);
-            return string.Equals(localCommit, remoteCommit, StringComparison.OrdinalIgnoreCase)
-                ? new(ToolchainStatusKind.UpToDate, $"Current commit: {ShortSha(localCommit)}.", true)
-                : new(ToolchainStatusKind.UpdateAvailable, $"Installed: {ShortSha(localCommit)}. Available: {ShortSha(remoteCommit)}.", true);
+            var latestRelease = await GetLatestDeadlockToolsReleaseAsync(cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(installedRelease))
+            {
+                if (string.Equals(installedRelease, latestRelease.TagName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return new(
+                        ToolchainStatusKind.UpToDate,
+                        $"Installed DeadlockTools release: {installedRelease}.",
+                        true,
+                        InstalledVersion: installedRelease,
+                        AvailableVersion: latestRelease.TagName);
+                }
+
+                return new(
+                    ToolchainStatusKind.UpdateAvailable,
+                    $"Installed DeadlockTools {installedRelease}; {latestRelease.TagName} is available.",
+                    true,
+                    InstalledVersion: installedRelease,
+                    AvailableVersion: latestRelease.TagName);
+            }
+
+            if (Directory.Exists(Path.Combine(root, ".git")))
+            {
+                var localCommit = (await RunForOutputAsync(
+                    "git",
+                    $"-C {Quote(root)} rev-parse HEAD",
+                    root,
+                    cancellationToken).ConfigureAwait(false)).Trim();
+                var remoteCommit = await GetDeadlockToolsRemoteCommitAsync(cancellationToken).ConfigureAwait(false);
+                return string.Equals(localCommit, remoteCommit, StringComparison.OrdinalIgnoreCase)
+                    ? new(
+                        ToolchainStatusKind.UpToDate,
+                        $"Git checkout is at the latest upstream commit ({ShortSha(localCommit)}). Latest packaged release: {latestRelease.TagName}.",
+                        true,
+                        AvailableVersion: latestRelease.TagName)
+                    : new(
+                        ToolchainStatusKind.UpdateAvailable,
+                        $"Git checkout {ShortSha(localCommit)} is behind upstream {ShortSha(remoteCommit)}. Latest packaged release: {latestRelease.TagName}.",
+                        true,
+                        AvailableVersion: latestRelease.TagName);
+            }
+
+            return new(
+                ToolchainStatusKind.Installed,
+                $"DeadlockTools is present, but its version cannot be identified. Latest official release: {latestRelease.TagName}. Use INSTALL to switch to a Deadlimit-managed release installation.",
+                true,
+                AvailableVersion: latestRelease.TagName);
         }
         catch (Exception exception) when (IsNetworkException(exception))
         {
             return new(
                 ToolchainStatusKind.NetworkIssue,
-                "DeadlockTools is installed, but freshness could not be checked because the update source is unavailable.");
+                "DeadlockTools is installed, but freshness could not be checked because GitHub is unavailable.",
+                InstalledVersion: installedRelease);
         }
         catch (InvalidOperationException exception)
         {
-            return new(ToolchainStatusKind.Installed, exception.Message);
+            return new(
+                ToolchainStatusKind.Installed,
+                exception.Message,
+                InstalledVersion: installedRelease);
         }
     }
 
@@ -220,15 +264,18 @@ public sealed class ToolchainDependencyService
     {
         EnsureEmptyDestination(destinationRoot, "DeadlockTools");
         Directory.CreateDirectory(destinationRoot);
-        progress?.Report("Cloning DeadlockTools...");
-        await RunAsync("git", $"clone {Quote(DeadlockToolsRepositoryUrl)} .", destinationRoot, cancellationToken).ConfigureAwait(false);
-        progress?.Report("Building DeadlockTools Release...");
-        await BuildDeadlockToolsAsync(destinationRoot, cancellationToken).ConfigureAwait(false);
-        if (!File.Exists(GetDeadlockToolsExecutable(destinationRoot)))
-        {
-            throw new InvalidOperationException("DeadlockTools build did not produce the expected executable.");
-        }
-        return new(Path.GetFullPath(destinationRoot), await CheckDeadlockToolsAsync(destinationRoot, cancellationToken).ConfigureAwait(false));
+        var release = await GetLatestDeadlockToolsReleaseAsync(cancellationToken).ConfigureAwait(false);
+        progress?.Report($"Downloading DeadlockTools {release.TagName}...");
+        await InstallDeadlockToolsReleaseAsync(release, destinationRoot, overwrite: false, cancellationToken).ConfigureAwait(false);
+        WriteDeadlockToolsMarker(destinationRoot, release);
+        return new(
+            Path.GetFullPath(destinationRoot),
+            new(
+                ToolchainStatusKind.UpToDate,
+                $"Installed DeadlockTools release: {release.TagName}.",
+                true,
+                InstalledVersion: release.TagName,
+                AvailableVersion: release.TagName));
     }
 
     public async Task<ToolchainStatus> UpdateDeadlockToolsAsync(
@@ -236,15 +283,36 @@ public sealed class ToolchainDependencyService
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        if (!Directory.Exists(Path.Combine(root, ".git")))
+        var executable = GetDeadlockToolsExecutable(root);
+        if (!Directory.Exists(root) || !File.Exists(executable))
         {
-            throw new InvalidOperationException("This DeadlockTools installation is not a Git checkout and cannot be updated in place.");
+            throw new InvalidOperationException("A valid DeadlockTools installation is required.");
         }
-        progress?.Report("Updating DeadlockTools...");
-        await RunAsync("git", $"-C {Quote(root)} pull --ff-only origin master", root, cancellationToken).ConfigureAwait(false);
-        progress?.Report("Building DeadlockTools Release...");
-        await BuildDeadlockToolsAsync(root, cancellationToken).ConfigureAwait(false);
-        return await CheckDeadlockToolsAsync(root, cancellationToken).ConfigureAwait(false);
+
+        if (Directory.Exists(Path.Combine(root, ".git")) && string.IsNullOrWhiteSpace(TryReadDeadlockToolsVersion(root)))
+        {
+            progress?.Report("Updating DeadlockTools Git checkout...");
+            await RunAsync("git", $"-C {Quote(root)} pull --ff-only origin master", root, cancellationToken).ConfigureAwait(false);
+            progress?.Report("Building DeadlockTools Release...");
+            await BuildDeadlockToolsAsync(root, cancellationToken).ConfigureAwait(false);
+            return await CheckDeadlockToolsAsync(root, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (string.IsNullOrWhiteSpace(TryReadDeadlockToolsVersion(root)))
+        {
+            throw new InvalidOperationException("This DeadlockTools installation has no managed release metadata. Use INSTALL to install the current official release into an empty folder.");
+        }
+
+        var release = await GetLatestDeadlockToolsReleaseAsync(cancellationToken).ConfigureAwait(false);
+        progress?.Report($"Downloading DeadlockTools {release.TagName}...");
+        await InstallDeadlockToolsReleaseAsync(release, root, overwrite: true, cancellationToken).ConfigureAwait(false);
+        WriteDeadlockToolsMarker(root, release);
+        return new(
+            ToolchainStatusKind.UpToDate,
+            $"Installed DeadlockTools release: {release.TagName}.",
+            true,
+            InstalledVersion: release.TagName,
+            AvailableVersion: release.TagName);
     }
 
     public async Task SetupCsdkAsync(
@@ -256,7 +324,7 @@ public sealed class ToolchainDependencyService
         ValidateCsdkRoot(csdkRoot);
         if (CheckRetailDeadlock(retailDeadlockRoot).Kind != ToolchainStatusKind.Ready)
         {
-            throw new InvalidOperationException("A valid Retail Deadlock path is required before CSDK setup can run.");
+            throw new InvalidOperationException("A valid Deadlock game client path is required before CSDK setup can run.");
         }
 
         var catalog = await GetLatestCsdkCatalogAsync(cancellationToken).ConfigureAwait(false);
@@ -371,6 +439,26 @@ public sealed class ToolchainDependencyService
         return new(generation, pageUri, downloadUri, depots, fallbackUri);
     }
 
+    private async Task<DeadlockToolsRelease> GetLatestDeadlockToolsReleaseAsync(CancellationToken cancellationToken)
+    {
+        using var response = await _http.GetAsync(DeadlockToolsLatestReleaseApiUrl, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var root = document.RootElement;
+        var tagName = root.GetProperty("tag_name").GetString()
+            ?? throw new InvalidDataException("DeadlockTools latest release response did not contain tag_name.");
+        var htmlUrl = root.GetProperty("html_url").GetString()
+            ?? throw new InvalidDataException("DeadlockTools latest release response did not contain html_url.");
+        var assetUrl = root.GetProperty("assets")
+            .EnumerateArray()
+            .Where(asset => string.Equals(asset.GetProperty("name").GetString(), DeadlockToolsWindowsAssetName, StringComparison.OrdinalIgnoreCase))
+            .Select(asset => asset.GetProperty("browser_download_url").GetString())
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
+            ?? throw new InvalidOperationException($"DeadlockTools {tagName} does not contain {DeadlockToolsWindowsAssetName}.");
+        return new(tagName, new Uri(htmlUrl), new Uri(assetUrl));
+    }
+
     private async Task InstallCsdkArchiveAsync(CsdkCatalog catalog, string destinationRoot, bool overwrite, CancellationToken cancellationToken)
     {
         var workRoot = CreateTempFolder("csdk");
@@ -384,6 +472,31 @@ public sealed class ToolchainDependencyService
             var launcher = Directory.EnumerateFiles(extract, "csdkcfg.exe", SearchOption.AllDirectories).FirstOrDefault()
                 ?? throw new InvalidDataException("The downloaded CSDK archive does not contain csdkcfg.exe.");
             CopyDirectory(Path.GetDirectoryName(launcher)!, destinationRoot, overwrite);
+        }
+        finally
+        {
+            TryDeleteDirectory(workRoot);
+        }
+    }
+
+    private async Task InstallDeadlockToolsReleaseAsync(
+        DeadlockToolsRelease release,
+        string destinationRoot,
+        bool overwrite,
+        CancellationToken cancellationToken)
+    {
+        var workRoot = CreateTempFolder("deadlocktools");
+        var archive = Path.Combine(workRoot, DeadlockToolsWindowsAssetName);
+        var extract = Path.Combine(workRoot, "extract");
+        Directory.CreateDirectory(extract);
+        try
+        {
+            await DownloadFileAsync(release.DownloadUri, archive, cancellationToken).ConfigureAwait(false);
+            ZipFile.ExtractToDirectory(archive, extract, true);
+            var executable = Directory.EnumerateFiles(extract, "DeadlockTools.exe", SearchOption.AllDirectories).FirstOrDefault()
+                ?? throw new InvalidDataException("The downloaded DeadlockTools release does not contain DeadlockTools.exe.");
+            var outputRoot = Path.Combine(destinationRoot, "DeadlockTools", "bin", "Release", "net10.0");
+            CopyDirectory(Path.GetDirectoryName(executable)!, outputRoot, overwrite);
         }
         finally
         {
@@ -610,6 +723,26 @@ public sealed class ToolchainDependencyService
             : null;
     }
 
+    private static string? TryReadDeadlockToolsVersion(string root)
+    {
+        var marker = Path.Combine(root, DeadlockToolsMarkerFileName);
+        if (!File.Exists(marker))
+        {
+            return null;
+        }
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(marker));
+            return document.RootElement.TryGetProperty("tag", out var tag)
+                ? tag.GetString()
+                : null;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return null;
+        }
+    }
+
     private static void WriteCsdkMarker(string root, CsdkCatalog catalog, bool setup)
     {
         var marker = JsonSerializer.Serialize(new
@@ -630,6 +763,18 @@ public sealed class ToolchainDependencyService
             depots = catalog.Depots,
         }, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(Path.Combine(root, CsdkSetupMarkerFileName), setupMarker);
+    }
+
+    private static void WriteDeadlockToolsMarker(string root, DeadlockToolsRelease release)
+    {
+        var marker = JsonSerializer.Serialize(new
+        {
+            tag = release.TagName,
+            source = release.PageUri.ToString(),
+            asset = DeadlockToolsWindowsAssetName,
+            updatedUtc = DateTimeOffset.UtcNow,
+        }, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(Path.Combine(root, DeadlockToolsMarkerFileName), marker);
     }
 
     private static void EnsureEmptyDestination(string path, string toolName)
@@ -688,6 +833,7 @@ public sealed class ToolchainDependencyService
 
     private sealed record ProcessResult(int ExitCode, string Output, string Error);
     private sealed record DepotManifest(string AppId, string DepotId, string ManifestId);
+    private sealed record DeadlockToolsRelease(string TagName, Uri PageUri, Uri DownloadUri);
     private sealed record CsdkCatalog(
         int Generation,
         Uri PageUri,
