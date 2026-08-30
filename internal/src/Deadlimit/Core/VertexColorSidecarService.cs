@@ -570,17 +570,43 @@ public static class VertexColorSidecarService
             return true;
         }
 
-        int[] sourcePolygonIndexes;
-        int[]?[] cornerMappings;
-        var polygonsMatched = TryMatchPolygonsByPositions(
-            meshName,
-            targets,
-            sources,
-            targetControlPoints,
-            sourceControlPoints,
-            out sourcePolygonIndexes,
-            out cornerMappings,
-            out var polygonMismatchReason);
+        int[] sourcePolygonIndexes = [];
+        int[]?[] cornerMappings = [];
+        var polygonsMatched = false;
+        var polygonMismatchReason =
+            $"Control-point count differs for mesh '{meshName}': DMX {targetControlPoints.Count}, FBX {sourceControlPoints.Count}.";
+
+        // A topology-preserving modifier may legitimately move or non-uniformly deform
+        // vertices between the DMX and Vertex Color FBX exports. When both exporters
+        // retained the same control-point numbering and polygon connectivity, that
+        // connectivity is a stronger ownership proof than absolute positions.
+        if (targetControlPoints.Count == sourceControlPoints.Count)
+        {
+            var identityControlPointMap = Enumerable.Range(0, targetControlPoints.Count).ToArray();
+            polygonsMatched = TryMatchPolygonsFromControlPointMap(
+                meshName,
+                targets,
+                sources,
+                identityControlPointMap,
+                out sourcePolygonIndexes,
+                out cornerMappings,
+                out polygonMismatchReason);
+        }
+
+        // Position-based matching remains the fallback for exporters that renumber
+        // control points while keeping the same geometric surface.
+        if (!polygonsMatched)
+        {
+            polygonsMatched = TryMatchPolygonsByPositions(
+                meshName,
+                targets,
+                sources,
+                targetControlPoints,
+                sourceControlPoints,
+                out sourcePolygonIndexes,
+                out cornerMappings,
+                out polygonMismatchReason);
+        }
 
         if (!polygonsMatched)
         {

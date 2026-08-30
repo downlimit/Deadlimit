@@ -33,7 +33,7 @@ A DMX mesh is selected for transfer when any assigned material identity contains
 The transfer contract is all-or-nothing:
 
 - every selected mesh must have one exact-name FBX mesh;
-- every selected mesh must pass geometry validation;
+- every selected mesh must pass topology/geometry validation;
 - a selected mesh with map channel `0` receives its exported colors;
 - a selected mesh without map channel `0` receives neutral gray RGBA `(128, 128, 128, 255)`;
 - a failure on any selected mesh rejects the whole sidecar and reports all failed mesh names together;
@@ -45,15 +45,25 @@ If no material name contains `vertexcolor`, the operation fails without changing
 
 PREPARE applies the sidecar to its copied DMX target. The artist's primary DMX remains a normal Wall Worm export. Rejected sidecars are recorded in the PREPARE log and left beside the artist DMX. Successfully applied sidecars are queued for best-effort deletion after the complete PREPARE succeeds; a cleanup failure is logged and does not invalidate the prepared content.
 
+For multi-color meshes, correspondence is resolved in this order:
+
+1. exact control-point-index topology when DMX and FBX retain the same control-point count and polygon connectivity;
+2. transformed polygon positions;
+3. split-control-point geometric correspondence;
+4. unambiguous per-control-point color correspondence.
+
+The first path intentionally ignores absolute vertex positions. A modifier that deforms, bends, offsets or non-uniformly scales a mesh without changing its control-point numbering or polygon connectivity therefore does not invalidate Vertex Color transfer. Modifiers that add/remove vertices, edges or polygons still fail topology validation unless a later geometric path can prove an unambiguous correspondence.
+
 Validation requires:
 
 - a valid Autodesk ASCII FBX mesh graph;
 - unique matching mesh node names after the DMX `_mesh` suffix is removed;
 - equal polygon counts and corner counts for each transferred mesh;
-- direct UV/color correspondence, transformed polygon-position correspondence, or geometric control-point correspondence;
-- UV-less multi-color meshes when polygon positions correspond;
+- exact indexed polygon topology or a proven transformed/geometric correspondence for multi-color transfer;
+- UV-less multi-color meshes when topology or polygon positions correspond;
 - direct transfer for uniform-color meshes, where polygon order cannot affect the result;
 - rejection of ambiguous coincident geometry carrying different colors;
+- tolerance for topology-preserving modifiers even when DMX/FBX position bounds no longer share one uniform scale;
 - tolerance for FBX/DMX vertex splitting and different internal triangulation when color remains unambiguous;
 - FBX model transforms and coordinate-system conversion before geometric matching;
 - a supported FBX color mapping (`ByPolygonVertex` or `ByControlPoint`) and reference mode (`Direct` or `IndexToDirect`);
