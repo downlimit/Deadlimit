@@ -11,11 +11,11 @@ The window uses four open stacked sections: BONE TOOLS, VERTEX COLOR, INNER LINE
 1. Export the normal DMX with Wall Worm.
 2. Keep the same geometry and renderable Shape/Spline objects selected.
 3. Run `DeadlimitPipelineScripts.ms` and press EXPORT VERTEX COLOR FBX.
-4. Run PREPARE in Deadlimit Aggregator.
+4. Run PREPARE in Deadlimit Manager.
 
 The sidecar is written as `<dmx-name>_vertexcolor.fbx` beside the latest DMX exported by Wall Worm. Renderable Shape/Spline objects are evaluated through a temporary Turn To Mesh modifier. Object types, modifier stacks, selection, scene dirty state, and FBX settings are restored after success or failure.
 
-During PREPARE, Deadlimit Aggregator transfers Vertex Color to every DMX mesh whose assigned material name contains `vertexcolor`. A missing channel 0 produces neutral gray (128, 128, 128, 255). Uniform-color meshes transfer directly. Multi-color meshes are matched by UV topology or polygon positions, so UVs are optional when the FBX and DMX geometry correspond.
+During PREPARE, Deadlimit Manager transfers Vertex Color to every DMX mesh whose assigned material name contains `vertexcolor`. A missing channel 0 produces neutral gray (128, 128, 128, 255). Uniform-color meshes transfer directly. Multi-color meshes are matched by UV topology or polygon positions, so UVs are optional when the FBX and DMX geometry correspond.
 
 FIXED GAMMA is on by default. It exports channel 0 RGB as value^(1/2.2), intended for Source 2. Disable it for unchanged stored values and the regular/Marmoset path. The correction exists only in the exported FBX.
 
