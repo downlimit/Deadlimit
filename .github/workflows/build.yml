@@ -55,9 +55,14 @@ jobs:
             @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'internal\DeadlimitUpdater.ps1' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = '$PSScriptRoot' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'ResolveRootOnly' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'NoWait' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'Checking origin/main for Deadlimit updates' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'diff --no-renames --name-only HEAD --' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'diff --no-renames --name-only $oldHead origin/main --' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'origin/main also changes files you are editing locally' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'No stash, reset, or local-file overwrite was performed' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'Updating the Deadlimit repository from origin/main' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'DeadlimitManager.cmd' },
-            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'status --porcelain --untracked-files=no' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = '--refresh-only' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'Updated Deadlimit:' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'log --reverse --pretty=format:' },
@@ -85,6 +90,7 @@ jobs:
           $forbidden = @(
             @{ Path = 'DeadlimitUpdater.bat'; Pattern = '-Root "%ROOT%"' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'Start-Process' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'The local checkout has tracked changes. Commit or revert them before running Deadlimit Updater.' },
             @{ Path = 'internal/src/Deadlimit/Deadlimit.csproj'; Pattern = '<AssemblyName>DeadlimitAggregator</AssemblyName>' },
             @{ Path = 'internal/src/Deadlimit/Deadlimit.csproj'; Pattern = '<Product>Deadlimit Aggregator</Product>' },
             @{ Path = 'internal/src/Deadlimit/Program.cs'; Pattern = 'Usage: DeadlimitAggregator.exe' },
@@ -107,6 +113,9 @@ jobs:
           if (-not [string]::Equals($resolved, $expected, [StringComparison]::OrdinalIgnoreCase)) {
             throw "Updater resolved '$resolved', expected '$expected'."
           }
+      - name: Updater dirty-worktree smoke
+        shell: pwsh
+        run: internal/tests/updater-dirty-worktree-smoke.ps1
       - name: Root presentation smoke
         shell: cmd
         run: call DeadlimitManager.cmd --refresh-only
