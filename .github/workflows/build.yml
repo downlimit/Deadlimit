@@ -52,10 +52,16 @@ jobs:
             @{ Path = 'DeadlimitManager.cmd'; Pattern = 'Deadlimit Updater.lnk' },
             @{ Path = 'DeadlimitManager.cmd'; Pattern = 'DeadlimitManager.exe' },
             @{ Path = 'DeadlimitManager.cmd'; Pattern = "@('Deadlimit Manager.lnk','Deadlimit Updater.lnk')" },
-            @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'internal\DeadlimitUpdater.ps1' },
+            @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'Loading the latest Deadlimit Updater from origin/main' },
+            @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'fetch origin main' },
+            @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'show origin/main:internal/DeadlimitUpdater.ps1' },
+            @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'DEADLIMIT_UPDATER_ROOT' },
+            @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'DEADLIMIT_UPDATER_BOOTSTRAPPED' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = '$PSScriptRoot' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = '$env:DEADLIMIT_UPDATER_ROOT' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'ResolveRootOnly' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'NoWait' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'Latest Deadlimit Updater loaded; origin/main is already refreshed.' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'Checking origin/main for Deadlimit updates' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'diff --no-renames --name-only HEAD --' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'diff --no-renames --name-only $oldHead origin/main --' },
@@ -113,7 +119,7 @@ jobs:
           if (-not [string]::Equals($resolved, $expected, [StringComparison]::OrdinalIgnoreCase)) {
             throw "Updater resolved '$resolved', expected '$expected'."
           }
-      - name: Updater dirty-worktree smoke
+      - name: Updater self-bootstrap and dirty-worktree smoke
         shell: pwsh
         run: internal/tests/updater-dirty-worktree-smoke.ps1
       - name: Root presentation smoke
