@@ -157,6 +157,7 @@ global deadlimitVertexColorSetSelectedBoneLength
 global deadlimitVertexColorFlipSelectedBoneX
 global deadlimitVertexColorCreateInnerLineart
 global deadlimitVertexColorBuildInnerLineart
+global deadlimitInnerLineartFindFreeSmoothingGroup
 global deadlimitVertexColorSyncInnerLineartSkin
 global deadlimitVertexColorCaptureInnerLineartSkins
 global deadlimitVertexColorRestoreInnerLineartSkins
@@ -1228,7 +1229,10 @@ fn deadlimitVertexColorPastePalette =
     5. Rebuild all supported map channels by face-corner ownership. New seam map points are
        collapsed at the matching source corner, so UVs and vertex colors remain valid.
     6. Restore original smoothing groups, material IDs, edge visibility, and clear random
-       sub-object selections. New lineart faces receive an intentional smoothing group.
+       sub-object selections. When both sides of a selected seam have the same smoothing
+       mask, new lineart faces inherit it. A seam between different masks receives one
+       globally unused smoothing-group bit so it stays distinct from both surfaces. Junction
+       caps use the same all-equal versus mixed-neighborhood rule.
     7. Optional Alpha Marker writes black to special map channel -2 for every participating
        face corner. Existing non-marker alpha remains intact; a missing alpha channel is
        initialized white. Channel 0 RGB vertex paint is never modified by the marker.
@@ -1401,6 +1405,19 @@ fn deadlimitInnerLineartDirectedEdge faceVerts vertA vertB =
     undefined
 )
 
+fn deadlimitInnerLineartFindFreeSmoothingGroup smoothingGroups =
+(
+    local usedMask = 0
+    for smoothingGroup in smoothingGroups do usedMask = bit.or usedMask smoothingGroup
+
+    for bitIndex = 0 to 31 do
+    (
+        local candidate = bit.shift 1 bitIndex
+        if (bit.and usedMask candidate) == 0 do return candidate
+    )
+    0
+)
+
 fn deadlimitInnerLineartThreeUnique verts =
 (
     verts.count == 3 and verts[1] != verts[2] and verts[1] != verts[3] and verts[2] != verts[3]
@@ -1454,6 +1471,7 @@ fn deadlimitVertexColorBuildInnerLineart node selectedEdges sourceSegments minim
         append sourceFaceMaterials (polyop.getFaceMatID node faceIndex)
         append sourceFaceEdgeVisibility (for edgeIndex in faceEdges collect (polyop.getEdgeVis node edgeIndex))
     )
+    local separateSeamSmoothing = deadlimitInnerLineartFindFreeSmoothingGroup sourceFaceSmoothing
 
     local sourceNumMaps = polyop.getNumMaps node
     local sourceMapChannels = #(-2, -1)
@@ -1552,6 +1570,14 @@ fn deadlimitVertexColorBuildInnerLineart node selectedEdges sourceSegments minim
         local sourceB = directed[2]
         local faceA = edgeFaces[1]
         local faceB = edgeFaces[2]
+        local smoothingA = sourceFaceSmoothing[faceA]
+        local smoothingB = sourceFaceSmoothing[faceB]
+        local seamSmoothing = smoothingA
+        if smoothingA != smoothingB do
+        (
+            if separateSeamSmoothing == 0 then throw "INNER LINEART needs one free smoothing group for a mixed-smoothing seam."
+            seamSmoothing = separateSeamSmoothing
+        )
         local aA = deadlimitInnerLineartCloneForFace vertexRecords sourceA faceA
         local bA = deadlimitInnerLineartCloneForFace vertexRecords sourceB faceA
         local aB = deadlimitInnerLineartCloneForFace vertexRecords sourceA faceB
@@ -1562,12 +1588,12 @@ fn deadlimitVertexColorBuildInnerLineart node selectedEdges sourceSegments minim
         local madeB = false
         if deadlimitInnerLineartThreeUnique triA do
         (
-            append faceRecords #(triA, sourceFaceSmoothing[faceA], sourceFaceMaterials[faceA], #(true,true,true), #(#(faceA,sourceB), #(faceA,sourceA), #(faceA,sourceA)), true)
+            append faceRecords #(triA, seamSmoothing, sourceFaceMaterials[faceA], #(true,true,true), #(#(faceA,sourceB), #(faceA,sourceA), #(faceA,sourceA)), true)
             madeA = true
         )
         if deadlimitInnerLineartThreeUnique triB do
         (
-            append faceRecords #(triB, sourceFaceSmoothing[faceB], sourceFaceMaterials[faceB], #(true,true,true), #(#(faceB,sourceB), #(faceB,sourceA), #(faceB,sourceB)), true)
+            append faceRecords #(triB, seamSmoothing, sourceFaceMaterials[faceB], #(true,true,true), #(#(faceB,sourceB), #(faceB,sourceA), #(faceB,sourceB)), true)
             madeB = true
         )
         if madeA and madeB do append hiddenEdgePairs #(bA, aB)
@@ -1584,7 +1610,7 @@ fn deadlimitVertexColorBuildInnerLineart node selectedEdges sourceSegments minim
             for groupIndex = 1 to seamGroups.count where seamGroups[groupIndex][1] == sourceB do (append seamGroups[groupIndex] extraClone; foundSourceGroup = true)
             if not foundSourceGroup do append seamGroups #(sourceB, extraClone)
             local fallbackTri = #(bA, aA, extraClone)
-            append faceRecords #(fallbackTri, sourceFaceSmoothing[faceA], sourceFaceMaterials[faceA], #(true,true,true), #(#(faceA,sourceB), #(faceA,sourceA), #(faceA,sourceB)), true)
+            append faceRecords #(fallbackTri, seamSmoothing, sourceFaceMaterials[faceA], #(true,true,true), #(#(faceA,sourceB), #(faceA,sourceA), #(faceA,sourceB)), true)
         )
     )
 
@@ -1595,6 +1621,14 @@ fn deadlimitVertexColorBuildInnerLineart node selectedEdges sourceSegments minim
         local sourceFace = record[2][1][1]
         local sourceRef = #(sourceFace, sourceVert)
         local capSmoothing = sourceFaceSmoothing[sourceFace]
+        local mixedCapSmoothing = false
+        for sector in record[2] while not mixedCapSmoothing do
+            for incidentFace in sector where sourceFaceSmoothing[incidentFace] != capSmoothing do mixedCapSmoothing = true
+        if mixedCapSmoothing do
+        (
+            if separateSeamSmoothing == 0 then throw "INNER LINEART needs one free smoothing group for a mixed-smoothing junction."
+            capSmoothing = separateSeamSmoothing
+        )
         local capMaterial = sourceFaceMaterials[sourceFace]
 
         if clones.count <= 4 then

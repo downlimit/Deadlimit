@@ -51,7 +51,7 @@ The deterministic sector builder records source vertices and face corners, parti
 
 Every supported map channel, including Vertex Alpha and Vertex Illumination, is reconstructed corner-for-corner. New seam faces receive collapsed map faces at matching source corners, so their UV area is zero and existing UV seams remain unchanged. With Alpha Marker enabled, every participating Vertex Alpha corner becomes black. Existing non-marker alpha remains unchanged; a missing alpha channel receives a white background. Vertex Color RGB in channel 0 remains unchanged.
 
-Smoothing groups, material IDs, and edge visibility are restored for original faces. The generated topology is written directly into the Editable Poly where the selected edges live. The tool does not add a helper modifier.
+Smoothing groups, material IDs, and edge visibility are restored for original faces. New seam faces inherit the neighboring smoothing mask when both sides match. A seam between different masks, including mixed junctions, receives the first globally unused smoothing-group bit so it remains distinct from every original surface. The generated topology is written directly into the Editable Poly where the selected edges live. The tool does not add a helper modifier.
 
 When an Edit Poly modifier is active anywhere inside a stack, that same modifier receives the topology and stays in its original position. Modifiers above and below it, including Skin, remain in place. An active base Editable Poly is changed directly, including when other modifiers exist above it. A bare Editable Mesh is converted to Editable Poly first while retaining its physical edge selection. Conversion and topology creation use one Undo step.
 
