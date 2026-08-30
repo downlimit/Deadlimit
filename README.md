@@ -4,15 +4,15 @@ Deadlimit is the umbrella repository for a family of Deadlock modding tools.
 
 ## Projects
 
-### Deadlimit Aggregator
+### Deadlimit Manager
 
-The main Windows desktop application. It aggregates the Deadlock modding pipeline and related tools, including project handling, source extraction, CSDK authoring preparation, build/test flow, and integration with the external tooling used by the project.
+The main Windows desktop application. It manages the Deadlock modding pipeline and related tools, including project handling, source extraction, CSDK authoring preparation, build/test flow, and integration with the external tooling used by the project.
 
 Source: `internal/src/Deadlimit/`
 
-User-facing launcher: `DeadlimitAggregator.cmd`
+User-facing launcher: `DeadlimitManager.cmd`
 
-Built application: `DeadlimitAggregator.exe`
+Built application: `DeadlimitManager.exe`
 
 ### Deadlimit Max Script
 
@@ -24,9 +24,13 @@ Substance 3D Painter shader/preset/tooling work for reproducing Deadlock materia
 
 Directory: `DeadlimitShade/`
 
+## Repository updater
+
+`Deadlimit Updater` updates the entire Deadlimit repository from `origin/main`. It is not tied to one subproduct. After updating the checkout it refreshes the local Deadlimit Manager build and the two user-facing root shortcuts.
+
 ## Naming and compatibility
 
-`Deadlimit` remains the repository/family name. The desktop application is `Deadlimit Aggregator`.
+`Deadlimit` remains the repository/family name. The desktop application is `Deadlimit Manager`. The repository-wide updater is `Deadlimit Updater`.
 
 Some legacy technical identifiers intentionally remain unchanged because they are persisted or are part of the established repository/project contract:
 

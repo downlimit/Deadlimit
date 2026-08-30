@@ -2,7 +2,7 @@
 setlocal EnableExtensions DisableDelayedExpansion
 
 chcp 65001 >nul
-title Deadlimit Aggregator - Fix CSDK Fast Startup
+title Deadlimit Manager - Fix CSDK Fast Startup
 
 set "TOOL_DIR=%~dp0"
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%TOOL_DIR%Fix-CsdkFastStartup.ps1"

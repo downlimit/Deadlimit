@@ -1,3 +1,3 @@
-Shortcut bootstrap builds the Release Deadlimit Aggregator executable, refreshes Deadlimit Aggregator and Deadlimit Aggregator Updater icons, and points Deadlimit Aggregator.lnk directly at DeadlimitAggregator.exe.
+Shortcut bootstrap builds the Release Deadlimit Manager executable and recreates exactly two user-facing root shortcuts: Deadlimit Manager.lnk and Deadlimit Updater.lnk.
 
-The preferred local updater filename is DeadlimitAggregatorUpdater.bat. During migration the launcher also accepts the legacy untracked DEADLIMIT_LocalUpdater.bat and removes old Deadlimit/Updater shortcut names.
+DeadlimitManager.cmd then marks every other root item Hidden+System so the checkout stays complete while normal Explorer view remains clean. DeadlimitUpdater.bat updates the entire repository from origin/main, refreshes the Manager build, and recreates the two shortcuts. Historical Deadlimit/Aggregator launchers remain only as hidden compatibility shims.

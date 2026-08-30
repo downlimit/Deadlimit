@@ -2,8 +2,9 @@ namespace Deadlimit.App;
 
 internal static class WindowProgressFeature
 {
-    private const string AppTitle = "Deadlimit Aggregator";
+    private const string AppTitle = UiText.ProductName;
     private const string ProgressTitlePrefix = AppTitle + " — ";
+    private const string LegacyProgressTitlePrefix = "Deadlimit Aggregator — ";
 
     public static void Attach(MainForm form)
     {
@@ -34,12 +35,17 @@ internal static class WindowProgressFeature
     private static bool TryExtractProgressMessage(string title, out string message)
     {
         message = string.Empty;
-        if (!title.StartsWith(ProgressTitlePrefix, StringComparison.Ordinal))
+        var prefixLength = title.StartsWith(ProgressTitlePrefix, StringComparison.Ordinal)
+            ? ProgressTitlePrefix.Length
+            : title.StartsWith(LegacyProgressTitlePrefix, StringComparison.Ordinal)
+                ? LegacyProgressTitlePrefix.Length
+                : 0;
+        if (prefixLength == 0)
         {
             return false;
         }
 
-        var progressText = title[ProgressTitlePrefix.Length..].Trim();
+        var progressText = title[prefixLength..].Trim();
 
         // BUILD FOR TEST historically wrote "[42% spinner] - message" into the title.
         // The percent already has its own label beside the bottom progress bar, so only
@@ -58,7 +64,7 @@ internal static class WindowProgressFeature
             return false;
         }
 
-        message = progressText;
+        message = UiText.NormalizeProductNames(progressText);
         return true;
     }
 

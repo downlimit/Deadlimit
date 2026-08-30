@@ -1,14 +1,14 @@
-# Deadlimit Aggregator — Product Definition
+# Deadlimit Manager — Product Definition
 
 ## Purpose
 
-Deadlimit Aggregator should remove repetitive mechanical work from Deadlock character replacement modding while preserving an explicit authoring stage for model/material work.
+Deadlimit Manager should remove repetitive mechanical work from Deadlock character replacement modding while preserving an explicit authoring stage for model/material work.
 
 ## User workflow
 
 ### 1. New project
 
-The user points Deadlimit Aggregator at an existing artist project folder.
+The user points Deadlimit Manager at an existing artist project folder.
 
 The current project-root convention is intentionally simple:
 
@@ -21,9 +21,9 @@ The current project-root convention is intentionally simple:
 └─ .deadlimit\  # hidden Deadlimit project metadata
 ```
 
-The project folder name is the canonical project name. Deadlimit Aggregator does not maintain a second user-editable display name for the same project.
+The project folder name is the canonical project name. Deadlimit Manager does not maintain a second user-editable display name for the same project.
 
-Each project manifest also carries a permanent `ProjectId` and `AddonId`. New projects receive a readable addon prefix plus a short unique suffix. Existing prepared projects retain their legacy addon folder when the recorded `SourceVmdl` or `CompiledVmdl` proves that folder already belongs to them. Deadlimit Aggregator writes `.deadlimit-addon-owner.json` inside the addon content root and verifies it before deleting or overwriting either CSDK addon tree.
+Each project manifest also carries a permanent `ProjectId` and `AddonId`. New projects receive a readable addon prefix plus a short unique suffix. Existing prepared projects retain their legacy addon folder when the recorded `SourceVmdl` or `CompiledVmdl` proves that folder already belongs to them. Deadlimit Manager writes `.deadlimit-addon-owner.json` inside the addon content root and verifies it before deleting or overwriting either CSDK addon tree.
 
 At minimum the user provides:
 
@@ -31,11 +31,11 @@ At minimum the user provides:
 - the Deadlock hero;
 - optionally a release/VPK slot or target identifier, once the loader/deploy convention is finalized.
 
-Deadlimit Aggregator must not reorganize the artist's source files merely to initialize a project. The detailed workspace contract lives in `WORKSPACE.md`.
+Deadlimit Manager must not reorganize the artist's source files merely to initialize a project. The detailed workspace contract lives in `WORKSPACE.md`.
 
 ### 2. Authoring stage
 
-Deadlimit Aggregator produces an intermediate CSDK-ready result that the user can inspect and edit with Source 2 tools.
+Deadlimit Manager produces an intermediate CSDK-ready result that the user can inspect and edit with Source 2 tools.
 
 The user must be able to:
 
@@ -45,13 +45,13 @@ The user must be able to:
 - open custom VMATs in Material Editor;
 - connect color/normal/mask/other texture inputs;
 - tune shader parameters;
-- save and close the tools without Deadlimit Aggregator overwriting authored material changes.
+- save and close the tools without Deadlimit Manager overwriting authored material changes.
 
 ### 3. Release
 
-The user returns to Deadlimit Aggregator and presses a single release/build action.
+The user returns to Deadlimit Manager and presses a single release/build action.
 
-Deadlimit Aggregator should then:
+Deadlimit Manager should then:
 
 - validate project inputs;
 - compile changed Source 2 resources;
@@ -63,7 +63,7 @@ Deadlimit Aggregator should then:
 
 ## Extract Hero module
 
-Deadlimit Aggregator should provide hero extraction as a project action rather than requiring manual VPK navigation.
+Deadlimit Manager should provide hero extraction as a project action rather than requiring manual VPK navigation.
 
 Intended behavior:
 
@@ -80,12 +80,12 @@ The extraction should be refreshable so `0source` can represent a current retail
 
 ## Material model
 
-Deadlimit Aggregator must distinguish between:
+Deadlimit Manager must distinguish between:
 
 - **REUSE** — an existing retail Deadlock material referenced by the model; no copy should be created in the addon;
 - **CUSTOM** — a project-owned material that must exist in the addon and remain editable by the user.
 
-For a new custom material, Deadlimit Aggregator may create the initial VMAT and texture folder/metadata. Once a user has authored that VMAT, routine builds must not overwrite it.
+For a new custom material, Deadlimit Manager may create the initial VMAT and texture folder/metadata. Once a user has authored that VMAT, routine builds must not overwrite it.
 
 ## UX constraint
 
