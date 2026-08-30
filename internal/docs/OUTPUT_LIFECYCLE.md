@@ -1,4 +1,4 @@
-# Deadlimit — content/game output lifecycle
+# Deadlimit Aggregator — content/game output lifecycle
 
 ## 2026-08-23 — authoritative source and stale-output cleanup
 
@@ -16,9 +16,9 @@ game/citadel_addons/<addon>
 
 Compiled assets normally appear in `game` with `_c` suffixes. CSDK12 tools automatically compile source assets from the addon's `content` tree into the corresponding `game` tree.
 
-### Deadlimit contract
+### Deadlimit Aggregator contract
 
-Deadlimit treats the two trees asymmetrically:
+Deadlimit Aggregator treats the two trees asymmetrically:
 
 ```text
 content = authoritative authoring state
@@ -27,13 +27,13 @@ game    = disposable compiled output
 
 `game/citadel_addons/<addon>` must never be treated as an independent source of truth.
 
-The addon name comes from the manifest's permanent `AddonId`. Before either transaction touches CSDK output, Deadlimit verifies `.deadlimit-addon-owner.json` in the addon content root against the project's permanent `ProjectId`. An unreadable record, a foreign owner, or a pre-existing unclaimed folder stops the operation before recursive cleanup. Legacy projects may adopt their existing addon only when their stored source/compiled VMDL path proves the relationship.
+The addon name comes from the manifest's permanent `AddonId`. Before either transaction touches CSDK output, Deadlimit Aggregator verifies `.deadlimit-addon-owner.json` in the addon content root against the project's permanent `ProjectId`. An unreadable record, a foreign owner, or a pre-existing unclaimed folder stops the operation before recursive cleanup. Legacy projects may adopt their existing addon only when their stored source/compiled VMDL path proves the relationship.
 
 All manifest resource paths, VMDL `RenderMeshFile` destinations and build-state output mappings are resolved beneath their declared project/addon root before filesystem access. Rooted paths and lexical traversal outside that root fail validation. The same containment rule guards the previous VPK path loaded from deployment ownership before old-slot cleanup.
 
 ## Two output policies
 
-Deadlimit now has two deliberately different transactions.
+Deadlimit Aggregator now has two deliberately different transactions.
 
 ### PREPARE FOR CSDK — clean authoring transaction
 
@@ -88,7 +88,7 @@ The build snapshot is updated only after compile, required AG2 restoration and V
 
 ## Texture removal lifecycle
 
-For Deadlimit-managed CUSTOM materials, the project-root PNG set remains authoritative.
+For Deadlimit Aggregator-managed CUSTOM materials, the project-root PNG set remains authoritative.
 
 Example in the normal daily path:
 
@@ -125,7 +125,7 @@ directly to the configured retail Deadlock installation:
 
 where `##` is the project's Release ID (`01` through `99`). Existing numeric chunks for that same slot are removed before repacking.
 
-Packaging is now owned in-process by Deadlimit through ValvePak rather than the external CSDKCfgVPK GUI. The archive is built as VPK version 2 in a temporary retail-adjacent file, hash/file checksums are verified, and only then is the previous configured retail VPK replaced. This prevents the external packer's modal success dialog from interrupting the one-action BUILD & TEST workflow.
+Packaging is now owned in-process by Deadlimit Aggregator through ValvePak rather than the external CSDKCfgVPK GUI. The archive is built as VPK version 2 in a temporary retail-adjacent file, hash/file checksums are verified, and only then is the previous configured retail VPK replaced. This prevents the external packer's modal success dialog from interrupting the one-action BUILD & TEST workflow.
 
 ## Current implementation status
 
@@ -134,12 +134,12 @@ Confirmed in current code:
 - standalone `PrepareAuthoringService` still deletes `game/citadel_addons/<current_addon>` recursively at the start of PREPARE when it exists;
 - that deletion is scoped to the configured CSDK `game` root plus the normalized current addon name;
 - `CustomMaterialAuthoringService.SyncTextureSourceFolder` removes derived PNG files that no longer exist in the project root;
-- Deadlimit-managed V4 VMATs reconcile texture assignments on every preparation, including add/remove behavior;
+- Deadlimit Aggregator-managed V4 VMATs reconcile texture assignments on every preparation, including add/remove behavior;
 - `BuildAndTestService` preserves previous addon game output around PREPARE only when a prior successful Build & Test state exists;
 - changed prepared content is hashed and compiled incrementally;
 - known removed source outputs are pruned, while ambiguous removals force a clean rebuild;
 - freshly recompiled character VMDLs receive the previously validated DeadlockTools `add ag2` post-process using a skeleton reference discovered from the project's own `0source`;
-- ValvePak creates and verifies the final VPK in-process, then Deadlimit deploys it transactionally into retail `game/citadel/addons`;
+- ValvePak creates and verifies the final VPK in-process, then Deadlimit Aggregator deploys it transactionally into retail `game/citadel/addons`;
 - Build & Test reports overall percentage progress to the UI while compiling/packing.
 
 Live local validation of the new in-process VPK transaction and progress/completion UX is pending. The previous CSDKCfgVPK-based transaction already produced a working retail `pak01_dir.vpk`; the next acceptance run determines whether the silent ValvePak replacement is behaviorally equivalent for the current Deadlock addon loader.
