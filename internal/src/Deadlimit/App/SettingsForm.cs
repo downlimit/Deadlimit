@@ -15,7 +15,7 @@ internal sealed class SettingsForm : Form
     private readonly Label _projectsStatusLabel = CreateStatusLabel();
 
     private readonly Button _csdkPrimaryButton = CreateActionButton();
-    private readonly Button _csdkSetupButton = CreateActionButton();
+    private readonly Button _csdkSetupButton = CreateSecondaryActionButton();
     private readonly Button _deadlockToolsPrimaryButton = CreateActionButton();
     private readonly Button _retailDeadlockCheckButton = CreateActionButton();
 
@@ -23,14 +23,14 @@ internal sealed class SettingsForm : Form
     {
         DropDownStyle = ComboBoxStyle.DropDownList,
         Anchor = AnchorStyles.Left,
-        Width = 180,
+        Width = 170,
     };
 
     private readonly ComboBox _themeCombo = new()
     {
         DropDownStyle = ComboBoxStyle.DropDownList,
         Anchor = AnchorStyles.Left,
-        Width = 180,
+        Width = 170,
     };
 
     private readonly RichToolTip _toolTip = new();
@@ -55,9 +55,8 @@ internal sealed class SettingsForm : Form
         Text = UiText.T("Deadlimit Manager Settings", "Настройки Deadlimit Manager");
         Icon = LoadAppIcon();
         StartPosition = FormStartPosition.CenterParent;
-        Width = 1180;
-        Height = 560;
-        MinimumSize = new Size(1040, 520);
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        ClientSize = new Size(940, 510);
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
@@ -71,10 +70,10 @@ internal sealed class SettingsForm : Form
         _languageCombo.Items.Add(new LanguageItem("ru", "Русский"));
         _languageCombo.SelectedIndex = string.Equals(settings.UiLanguage, "ru", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
 
-        _themeCombo.Items.Add(new ThemeItem("system", UiText.T("System theme", "Системная тема")));
+        _themeCombo.Items.Add(new ThemeItem("system", UiText.T("System", "Системная")));
         _themeCombo.Items.Add(new ThemeItem("light", UiText.T("Light", "Светлая")));
         _themeCombo.Items.Add(new ThemeItem("gray", UiText.T("Gray", "Серая")));
-        _themeCombo.Items.Add(new ThemeItem("dark", UiText.T("Original theme", "Исходная тема")));
+        _themeCombo.Items.Add(new ThemeItem("dark", UiText.T("Dark", "Тёмная")));
         _themeCombo.SelectedIndex = settings.UiTheme switch
         {
             "light" => 1,
@@ -123,7 +122,7 @@ internal sealed class SettingsForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 3,
-            Padding = new Padding(14),
+            Padding = new Padding(12),
         };
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -134,9 +133,9 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             Dock = DockStyle.Fill,
             Text = UiText.T(
-                "Tool status is checked when this window opens. Theme changes preview immediately; language and theme are applied to the main window after Save without restarting Deadlimit Manager.",
-                "Состояние инструментов проверяется при открытии окна. Тема меняется сразу для предпросмотра; после сохранения язык и тема применяются к главному окну без перезапуска Deadlimit Manager."),
-            Margin = new Padding(0, 0, 0, 12),
+                "Tool status is checked when this window opens. Theme changes preview immediately; Save applies language and theme without restarting Deadlimit Manager.",
+                "Состояние инструментов проверяется при открытии окна. Тема меняется сразу; после сохранения язык и тема применяются без перезапуска Deadlimit Manager."),
+            Margin = new Padding(0, 0, 0, 10),
         }, 0, 0);
 
         var content = new FlowLayoutPanel
@@ -161,9 +160,9 @@ internal sealed class SettingsForm : Form
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 2,
             RowCount = 4,
-            Margin = new Padding(0, 14, 0, 0),
+            Margin = new Padding(0, 10, 0, 0),
         };
-        preferencesGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
+        preferencesGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 145));
         preferencesGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         AddLanguageRow(preferencesGrid, 0);
         AddThemeRow(preferencesGrid, 1);
@@ -178,7 +177,7 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false,
-            Margin = new Padding(0, 12, 0, 0),
+            Margin = new Padding(0, 10, 0, 0),
         };
 
         var cancelButton = new Button
@@ -223,15 +222,15 @@ internal sealed class SettingsForm : Form
             ColumnCount = 7,
             RowCount = 4,
             Margin = Padding.Empty,
-            Width = 1120,
+            Width = 910,
         };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 155));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 95));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 430));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 38));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 300));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 36));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 84));
         return grid;
     }
 
@@ -250,13 +249,13 @@ internal sealed class SettingsForm : Form
         _toolTip.SetToolTip(
             _csdkPrimaryButton,
             UiText.T(
-                "**INSTALL…** selects an empty destination and downloads the current Reduced CSDK distribution.\n\n**UPDATE…** overlays the current distribution onto the configured CSDK folder.\n\n**CHECK** validates the local installation and checks whether a newer CSDK generation is published.",
-                "**УСТАНОВИТЬ…** выбирает пустую папку и скачивает актуальный дистрибутив Reduced CSDK.\n\n**ОБНОВИТЬ…** накладывает актуальный дистрибутив поверх настроенной папки CSDK.\n\n**ПРОВЕРИТЬ** валидирует локальную установку и проверяет, опубликовано ли более новое поколение CSDK."));
+                "**INSTALL…** selects an empty folder and downloads the current Reduced CSDK.\n\n**UPDATE…** overlays the current distribution onto the configured CSDK folder.\n\n**CHECK** validates the installation and checks the latest published CSDK generation.",
+                "**УСТАНОВИТЬ…** выбирает пустую папку и скачивает актуальный Reduced CSDK.\n\n**ОБНОВИТЬ…** накладывает актуальный дистрибутив поверх настроенной папки CSDK.\n\n**ПРОВЕРИТЬ** валидирует установку и проверяет последнее опубликованное поколение CSDK."));
         _toolTip.SetToolTip(
             _csdkSetupButton,
             UiText.T(
-                "Run the optional full CSDK setup from the current installation guide.\n\nDeadlimit downloads the required Deadlock depots, extracts the downloaded VPK as-is, removes the temporary pak01 VPK set, then re-applies Reduced CSDK.\n\nDepotDownloader may open a console for Steam QR authentication.\n\nThe configured Deadlock game client folder is only validated and is **never modified**.",
-                "Выполнить дополнительную полную настройку CSDK по актуальной инструкции.\n\nDeadlimit скачивает нужные депо Deadlock, извлекает скачанный VPK без декомпиляции, удаляет временный набор pak01 VPK и повторно накладывает Reduced CSDK.\n\nDepotDownloader может открыть консоль для Steam-авторизации по QR.\n\nПапка игрового клиента Deadlock только проверяется и **никогда не изменяется**."));
+                "Run the optional full CSDK setup from the current installation guide.\n\nDeadlimit downloads the required Deadlock depots, extracts the downloaded VPK as-is, removes the temporary pak01 VPK set, then re-applies Reduced CSDK.\n\nDepotDownloader may open a console for Steam QR authentication.\n\nThe configured Deadlock client folder is only validated and is **never modified**.",
+                "Выполнить дополнительную полную настройку CSDK по актуальной инструкции.\n\nDeadlimit скачивает нужные депо Deadlock, извлекает скачанный VPK без декомпиляции, удаляет временный набор pak01 VPK и повторно накладывает Reduced CSDK.\n\nDepotDownloader может открыть консоль для Steam-авторизации по QR.\n\nПапка Deadlock клиента только проверяется и **никогда не изменяется**."));
         _toolTip.SetToolTip(
             browseButton,
             UiText.T(
@@ -271,20 +270,20 @@ internal sealed class SettingsForm : Form
         var openButton = CreateOpenFolderButton(_deadlockToolsRootText);
         var browseButton = CreateBrowseButton(
             _deadlockToolsRootText,
-            UiText.T("Select an existing DeadlockTools repository folder", "Выберите существующую папку репозитория DeadlockTools"),
+            UiText.T("Select an existing DeadlockTools folder", "Выберите существующую папку DeadlockTools"),
             () => RefreshDeadlockToolsStatusAsync());
 
         _deadlockToolsPrimaryButton.Click += async (_, _) => await HandleDeadlockToolsPrimaryActionAsync();
         _toolTip.SetToolTip(
             _deadlockToolsPrimaryButton,
             UiText.T(
-                "**INSTALL…** clones DeadlockTools into an empty folder and builds Release.\n\n**UPDATE…** fast-forwards the Git checkout and rebuilds it.\n\n**CHECK** compares the local commit with the current upstream commit.",
-                "**УСТАНОВИТЬ…** клонирует DeadlockTools в пустую папку и собирает Release.\n\n**ОБНОВИТЬ…** обновляет Git checkout через fast-forward и пересобирает его.\n\n**ПРОВЕРИТЬ** сравнивает локальный коммит с текущим upstream-коммитом."));
+                "**INSTALL…** downloads the latest official Windows x64 release from GitHub into an empty folder.\n\n**UPDATE…** updates a Deadlimit-managed release installation. Git checkouts are updated through Git and rebuilt.\n\n**CHECK** compares a managed install or Git checkout with the current upstream state.\n\nIf the version of a manually copied build cannot be identified, **INSTALL…** remains available instead of offering a meaningless CHECK.",
+                "**УСТАНОВИТЬ…** скачивает последний официальный Windows x64 release с GitHub в пустую папку.\n\n**ОБНОВИТЬ…** обновляет установку release, которой управляет Deadlimit. Git checkout обновляется через Git и пересобирается.\n\n**ПРОВЕРИТЬ** сравнивает управляемую установку или Git checkout с текущим upstream.\n\nЕсли версию вручную скопированной сборки определить нельзя, остаётся доступна кнопка **УСТАНОВИТЬ…**, а не бесполезная проверка."));
         _toolTip.SetToolTip(
             browseButton,
             UiText.T(
-                "Select an existing DeadlockTools folder.\n\nA Git checkout can be freshness-checked and updated automatically. A manually copied valid build can only be validated.",
-                "Выбрать существующую папку DeadlockTools.\n\nGit checkout можно автоматически проверять и обновлять. Вручную скопированную валидную сборку можно только проверить."));
+                "Select an existing DeadlockTools folder.\n\nDeadlimit can fully track installations it installed itself and Git checkouts. A manually copied build may show **Version unknown**.",
+                "Выбрать существующую папку DeadlockTools.\n\nDeadlimit полностью отслеживает установки, которые установил сам, и Git checkout. Вручную скопированная сборка может показывать **Версия неизвестна**."));
 
         AddToolRow(grid, row, "DeadlockTools", _deadlockToolsStatusLabel, _deadlockToolsPrimaryButton, CreateActionSpacer(), _deadlockToolsRootText, openButton, browseButton);
     }
@@ -294,7 +293,7 @@ internal sealed class SettingsForm : Form
         var openButton = CreateOpenFolderButton(_retailDeadlockRootText);
         var browseButton = CreateBrowseButton(
             _retailDeadlockRootText,
-            UiText.T("Select the installed Deadlock game folder (Project8Staging)", "Выберите папку установленной игры Deadlock (Project8Staging)"),
+            UiText.T("Select the installed Deadlock folder (Project8Staging)", "Выберите папку установленного Deadlock (Project8Staging)"),
             () =>
             {
                 RefreshDeadlockGameStatus();
@@ -312,18 +311,18 @@ internal sealed class SettingsForm : Form
         _toolTip.SetToolTip(
             _retailDeadlockCheckButton,
             UiText.T(
-                "Validate the installed **Deadlock game client** used by Steam.\n\nDeadlimit checks that the selected Project8Staging folder contains the expected game files.\n\nDeadlimit does not install or update the Steam game from Settings.",
-                "Проверить установленный **игровой клиент Deadlock**, который запускается через Steam.\n\nDeadlimit проверит, что выбранная папка Project8Staging содержит ожидаемые игровые файлы.\n\nDeadlimit не устанавливает и не обновляет игру через Steam из окна настроек."));
+                "Validate the installed **Deadlock client** used by Steam.\n\nDeadlimit checks that the selected Project8Staging folder contains the expected game files.\n\nDeadlimit does not install or update the Steam game from Settings.",
+                "Проверить установленный **Deadlock клиент**, который запускается через Steam.\n\nDeadlimit проверит, что выбранная папка Project8Staging содержит ожидаемые игровые файлы.\n\nDeadlimit не устанавливает и не обновляет игру через Steam из окна настроек."));
         _toolTip.SetToolTip(
             browseButton,
             UiText.T(
-                "Select the folder where the **Deadlock game client** is installed.\n\nFor a standard Steam installation this folder is named Project8Staging.",
-                "Выбрать папку, в которой установлен **игровой клиент Deadlock**.\n\nВ стандартной установке Steam эта папка называется Project8Staging."));
+                "Select the folder where the **Deadlock client** is installed.\n\nFor a standard Steam installation this folder is named Project8Staging.",
+                "Выбрать папку, в которой установлен **Deadlock клиент**.\n\nВ стандартной установке Steam эта папка называется Project8Staging."));
 
         AddToolRow(
             grid,
             row,
-            UiText.T("Deadlock game client", "Игровой клиент Deadlock"),
+            UiText.T("Deadlock client", "Deadlock клиент"),
             _retailDeadlockStatusLabel,
             _retailDeadlockCheckButton,
             CreateActionSpacer(),
@@ -370,7 +369,7 @@ internal sealed class SettingsForm : Form
             Text = name + ":",
             AutoSize = true,
             Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 9, 12, 9),
+            Margin = new Padding(0, 8, 10, 8),
         }, 0, row);
         grid.Controls.Add(status, 1, row);
         grid.Controls.Add(primaryAction, 2, row);
@@ -384,7 +383,7 @@ internal sealed class SettingsForm : Form
     {
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         grid.Controls.Add(CreatePreferenceCaption(UiText.T("Interface language", "Язык интерфейса")), 0, row);
-        _languageCombo.Margin = new Padding(0, 5, 8, 5);
+        _languageCombo.Margin = new Padding(0, 4, 8, 4);
         grid.Controls.Add(_languageCombo, 1, row);
     }
 
@@ -392,7 +391,7 @@ internal sealed class SettingsForm : Form
     {
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         grid.Controls.Add(CreatePreferenceCaption(UiText.T("Interface theme", "Тема интерфейса")), 0, row);
-        _themeCombo.Margin = new Padding(0, 5, 8, 5);
+        _themeCombo.Margin = new Padding(0, 4, 8, 4);
         grid.Controls.Add(_themeCombo, 1, row);
     }
 
@@ -404,7 +403,7 @@ internal sealed class SettingsForm : Form
             Text = "📂 Deadlimit Max Script",
             AutoSize = true,
             Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 5, 0, 5),
+            Margin = new Padding(0, 4, 0, 4),
             Font = new Font("Segoe UI Emoji", 9F, FontStyle.Regular, GraphicsUnit.Point),
         };
         openButton.Click += (_, _) => OpenMaxScriptFolder();
@@ -425,7 +424,7 @@ internal sealed class SettingsForm : Form
             Text = "📂 CSDK Fast Startup Fix",
             AutoSize = true,
             Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 5, 0, 5),
+            Margin = new Padding(0, 4, 0, 4),
             Font = new Font("Segoe UI Emoji", 9F, FontStyle.Regular, GraphicsUnit.Point),
         };
         openButton.Click += (_, _) => OpenCsdkCacheToolFolder();
@@ -536,8 +535,8 @@ internal sealed class SettingsForm : Form
 
     private void UpdateActionAvailability()
     {
-        _csdkPrimaryButton.Text = PrimaryActionText(_csdkStatus.Kind);
-        _deadlockToolsPrimaryButton.Text = PrimaryActionText(_deadlockToolsStatus.Kind);
+        _csdkPrimaryButton.Text = CsdkPrimaryActionText(_csdkStatus.Kind);
+        _deadlockToolsPrimaryButton.Text = DeadlockToolsPrimaryActionText(_deadlockToolsStatus.Kind);
         _retailDeadlockCheckButton.Text = _retailDeadlockStatus.Kind == ToolchainStatusKind.Checking
             ? UiText.T("CHECKING…", "ПРОВЕРКА…")
             : UiText.T("CHECK", "ПРОВЕРИТЬ");
@@ -567,9 +566,18 @@ internal sealed class SettingsForm : Form
         _retailDeadlockCheckButton.Refresh();
     }
 
-    private static string PrimaryActionText(ToolchainStatusKind kind) => kind switch
+    private static string CsdkPrimaryActionText(ToolchainStatusKind kind) => kind switch
     {
         ToolchainStatusKind.NotSpecified or ToolchainStatusKind.InvalidPath => UiText.T("INSTALL…", "УСТАНОВИТЬ…"),
+        ToolchainStatusKind.UpdateAvailable => UiText.T("UPDATE…", "ОБНОВИТЬ…"),
+        ToolchainStatusKind.Checking => UiText.T("CHECKING…", "ПРОВЕРКА…"),
+        ToolchainStatusKind.Working => UiText.T("WORKING…", "ВЫПОЛНЕНИЕ…"),
+        _ => UiText.T("CHECK", "ПРОВЕРИТЬ"),
+    };
+
+    private static string DeadlockToolsPrimaryActionText(ToolchainStatusKind kind) => kind switch
+    {
+        ToolchainStatusKind.NotSpecified or ToolchainStatusKind.InvalidPath or ToolchainStatusKind.Installed => UiText.T("INSTALL…", "УСТАНОВИТЬ…"),
         ToolchainStatusKind.UpdateAvailable => UiText.T("UPDATE…", "ОБНОВИТЬ…"),
         ToolchainStatusKind.Checking => UiText.T("CHECKING…", "ПРОВЕРКА…"),
         ToolchainStatusKind.Working => UiText.T("WORKING…", "ВЫПОЛНЕНИЕ…"),
@@ -635,10 +643,10 @@ internal sealed class SettingsForm : Form
             return;
         }
 
-        if (_deadlockToolsStatus.Kind is ToolchainStatusKind.NotSpecified or ToolchainStatusKind.InvalidPath)
+        if (_deadlockToolsStatus.Kind is ToolchainStatusKind.NotSpecified or ToolchainStatusKind.InvalidPath or ToolchainStatusKind.Installed)
         {
             var destination = ChooseFolder(
-                UiText.T("Choose the folder that will become the DeadlockTools repository root", "Выберите папку, которая станет корнем репозитория DeadlockTools"),
+                UiText.T("Choose an empty folder for DeadlockTools", "Выберите пустую папку для DeadlockTools"),
                 _deadlockToolsRootText.Text,
                 showNewFolderButton: true,
                 fallbackInitialDirectory: DeadlimitPaths.DefaultWorkspaceRoot);
@@ -723,9 +731,7 @@ internal sealed class SettingsForm : Form
             label.Font = new Font(label.Font, FontStyle.Bold);
         }
         label.Refresh();
-
-        var detail = StatusDetail(status, context);
-        _toolTip.SetToolTip(label, detail);
+        _toolTip.SetToolTip(label, StatusDetail(status, context));
     }
 
     private static string FormatStatus(ToolchainStatus status, StatusContext context)
@@ -733,17 +739,19 @@ internal sealed class SettingsForm : Form
         return status.Kind switch
         {
             ToolchainStatusKind.NotSpecified => UiText.T("○ Not specified", "○ Не указано"),
-            ToolchainStatusKind.Installed when context == StatusContext.Csdk => UiText.T("● Installed · version unknown", "● Установлено · версия неизвестна"),
-            ToolchainStatusKind.Installed => UiText.T("● Installed · version unknown", "● Установлено · версия неизвестна"),
+            ToolchainStatusKind.Installed when context == StatusContext.DeadlockTools => UiText.T("● Version unknown", "● Версия неизвестна"),
+            ToolchainStatusKind.Installed => UiText.T("● Version unknown", "● Версия неизвестна"),
             ToolchainStatusKind.UpToDate when context == StatusContext.Csdk && status.InstalledGeneration is int generation => $"✓ {UiText.T("Up to date", "Актуально")} · CSDK {generation}",
+            ToolchainStatusKind.UpToDate when context == StatusContext.DeadlockTools && !string.IsNullOrWhiteSpace(status.InstalledVersion) => $"✓ {UiText.T("Up to date", "Актуально")} · {status.InstalledVersion}",
             ToolchainStatusKind.UpToDate => $"✓ {UiText.T("Up to date", "Актуально")}",
-            ToolchainStatusKind.UpdateAvailable when status.AvailableGeneration is int available => $"↑ {UiText.T("Update available", "Есть обновление")} · CSDK {available}",
+            ToolchainStatusKind.UpdateAvailable when context == StatusContext.Csdk && status.AvailableGeneration is int availableGeneration => $"↑ {UiText.T("Update", "Обновление")} · CSDK {availableGeneration}",
+            ToolchainStatusKind.UpdateAvailable when context == StatusContext.DeadlockTools && !string.IsNullOrWhiteSpace(status.AvailableVersion) => $"↑ {UiText.T("Update", "Обновление")} · {status.AvailableVersion}",
             ToolchainStatusKind.UpdateAvailable => $"↑ {UiText.T("Update available", "Есть обновление")}",
             ToolchainStatusKind.InvalidPath => $"× {UiText.T("Invalid path", "Неверный путь")}",
             ToolchainStatusKind.NetworkIssue => $"! {UiText.T("Network issue", "Ошибка сети")}",
             ToolchainStatusKind.Checking => $"↻ {UiText.T("Checking…", "Проверка…")}",
             ToolchainStatusKind.Working => $"↻ {UiText.T("Working…", "Выполнение…")}",
-            ToolchainStatusKind.Ready when context == StatusContext.DeadlockGame => $"✓ {UiText.T("Game client ready", "Игровой клиент готов")}",
+            ToolchainStatusKind.Ready when context == StatusContext.DeadlockGame => $"✓ {UiText.T("Client ready", "Клиент готов")}",
             ToolchainStatusKind.Ready when context == StatusContext.Projects => $"✓ {UiText.T("Folder ready", "Папка готова")}",
             ToolchainStatusKind.Ready => $"✓ {UiText.T("Ready", "Готово")}",
             _ => UiText.T("? Unknown", "? Неизвестно"),
@@ -757,15 +765,15 @@ internal sealed class SettingsForm : Form
             return status.Kind switch
             {
                 ToolchainStatusKind.NotSpecified => UiText.T(
-                    "No Deadlock game client folder has been selected yet.\n\nUse **BROWSE…** to select the installed Project8Staging folder.",
-                    "Папка игрового клиента Deadlock пока не указана.\n\nНажмите **ОБЗОР…** и выберите установленную папку Project8Staging."),
+                    "No Deadlock client folder has been selected yet.\n\nUse **BROWSE…** to select the installed Project8Staging folder.",
+                    "Папка Deadlock клиента пока не указана.\n\nНажмите **ОБЗОР…** и выберите установленную папку Project8Staging."),
                 ToolchainStatusKind.Ready => UiText.T(
-                    "The selected folder is a valid **Deadlock game client** installation.\n\nDeadlimit found the expected game\\citadel structure.",
-                    "Выбранная папка является валидной установкой **игрового клиента Deadlock**.\n\nDeadlimit нашёл ожидаемую структуру game\\citadel."),
+                    "The selected folder is a valid **Deadlock client** installation.\n\nDeadlimit found the expected game\\citadel structure.",
+                    "Выбранная папка является валидной установкой **Deadlock клиента**.\n\nDeadlimit нашёл ожидаемую структуру game\\citadel."),
                 ToolchainStatusKind.InvalidPath => UiText.T(
-                    "The selected folder is not a valid Deadlock game client installation.\n\nChoose the Project8Staging folder that contains game\\citadel.",
-                    "Выбранная папка не является валидной установкой игрового клиента Deadlock.\n\nВыберите папку Project8Staging, внутри которой находится game\\citadel."),
-                ToolchainStatusKind.Checking => UiText.T("Checking the Deadlock game client folder…", "Проверка папки игрового клиента Deadlock…"),
+                    "The selected folder is not a valid Deadlock client installation.\n\nChoose the Project8Staging folder that contains game\\citadel.",
+                    "Выбранная папка не является валидной установкой Deadlock клиента.\n\nВыберите папку Project8Staging, внутри которой находится game\\citadel."),
+                ToolchainStatusKind.Checking => UiText.T("Checking the Deadlock client folder…", "Проверка папки Deadlock клиента…"),
                 _ => status.Detail,
             };
         }
@@ -840,10 +848,10 @@ internal sealed class SettingsForm : Form
         {
             Text = "📂",
             AutoSize = false,
-            Width = 30,
+            Width = 28,
             Height = 24,
             Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 5, 6, 5),
+            Margin = new Padding(0, 4, 4, 4),
             Padding = Padding.Empty,
             TabStop = false,
             Font = new Font("Segoe UI Emoji", 10F, FontStyle.Regular, GraphicsUnit.Point),
@@ -866,7 +874,7 @@ internal sealed class SettingsForm : Form
             Text = UiText.T("BROWSE…", "ОБЗОР…"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 5, 0, 5),
+            Margin = new Padding(0, 4, 0, 4),
         };
         button.Click += async (_, _) =>
         {
@@ -1028,7 +1036,7 @@ internal sealed class SettingsForm : Form
             var executable = Path.Combine(candidate.DeadlockToolsRoot, "DeadlockTools", "bin", "Release", "net10.0", "DeadlockTools.exe");
             if (!File.Exists(executable))
             {
-                error = UiText.T($"DeadlockTools.exe was not found at the expected Release build path:\n{executable}", $"DeadlockTools.exe не найден по ожидаемому пути Release:\n{executable}");
+                error = UiText.T($"DeadlockTools.exe was not found at the expected location:\n{executable}", $"DeadlockTools.exe не найден по ожидаемому пути:\n{executable}");
                 return false;
             }
         }
@@ -1037,12 +1045,12 @@ internal sealed class SettingsForm : Form
         {
             if (!Directory.Exists(candidate.RetailDeadlockRoot))
             {
-                error = UiText.T($"Deadlock game client folder does not exist:\n{candidate.RetailDeadlockRoot}", $"Папка игрового клиента Deadlock не существует:\n{candidate.RetailDeadlockRoot}");
+                error = UiText.T($"Deadlock client folder does not exist:\n{candidate.RetailDeadlockRoot}", $"Папка Deadlock клиента не существует:\n{candidate.RetailDeadlockRoot}");
                 return false;
             }
             if (!Directory.Exists(Path.Combine(candidate.RetailDeadlockRoot, "game", "citadel")))
             {
-                error = UiText.T($"The selected Deadlock game client folder does not contain game\\citadel:\n{candidate.RetailDeadlockRoot}", $"В выбранной папке игрового клиента Deadlock нет game\\citadel:\n{candidate.RetailDeadlockRoot}");
+                error = UiText.T($"The selected Deadlock client folder does not contain game\\citadel:\n{candidate.RetailDeadlockRoot}", $"В выбранной папке Deadlock клиента нет game\\citadel:\n{candidate.RetailDeadlockRoot}");
                 return false;
             }
         }
@@ -1077,26 +1085,35 @@ internal sealed class SettingsForm : Form
     {
         ReadOnly = true,
         Anchor = AnchorStyles.Left | AnchorStyles.Right,
-        Margin = new Padding(0, 5, 8, 5),
+        Margin = new Padding(0, 4, 6, 4),
     };
 
     private static Label CreateStatusLabel() => new()
     {
         AutoSize = false,
-        Width = 182,
+        Width = 162,
         Height = 24,
         TextAlign = ContentAlignment.MiddleLeft,
         Anchor = AnchorStyles.Left,
-        Margin = new Padding(0, 5, 8, 5),
+        Margin = new Padding(0, 4, 6, 4),
     };
 
     private static Button CreateActionButton() => new()
     {
         AutoSize = false,
-        Width = 102,
+        Width = 94,
         Height = 26,
         Anchor = AnchorStyles.Left,
-        Margin = new Padding(0, 4, 7, 4),
+        Margin = new Padding(0, 3, 5, 3),
+    };
+
+    private static Button CreateSecondaryActionButton() => new()
+    {
+        AutoSize = false,
+        Width = 74,
+        Height = 26,
+        Anchor = AnchorStyles.Left,
+        Margin = new Padding(0, 3, 5, 3),
     };
 
     private static Control CreateActionSpacer() => new Panel
@@ -1111,7 +1128,7 @@ internal sealed class SettingsForm : Form
         Text = text,
         AutoSize = true,
         Anchor = AnchorStyles.Left,
-        Margin = new Padding(0, 9, 12, 9),
+        Margin = new Padding(0, 8, 10, 8),
     };
 
     private static string? ChooseFolder(
