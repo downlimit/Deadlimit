@@ -24,10 +24,10 @@ FIXED GAMMA is on by default. Its adjacent GAMMA spinner uses the export power `
 VERTEX COLOR operates on selected geometry:
 
 - The Convert row contains Palette to Vertex, Vertex to Palette, and ON/OFF Vertex.
-- Palette to Vertex fills channel 0 from each selected object's wire color. It bakes below Skin and the existing modifier stack and enables shaded Vertex Color display.
+- Palette to Vertex fills channel 0 from each selected object's wire color. On an Editable Poly base object it writes the map channel directly, preserving the exact base-object instance, vertex/edge/face selections, and every existing modifier instance, order, enabled state, and setting. It enables shaded Vertex Color display.
 - Vertex to Palette copies the first used channel 0 color to each selected object's wire color.
 - ON/OFF Vertex counts the selected meshes whose shaded Vertex Color display is enabled. When a strict majority is enabled, every selected mesh is forced OFF. Otherwise every selected mesh is forced ON.
-- The next row contains VERT, PALETTE, MAT, and SPREAD in that order. SPREAD treats the first selected mesh as the reference and applies enabled data to every later selected mesh in one Undo step. VERT copies the first used channel 0 color, PALETTE copies the wire color, and MAT assigns the reference material. All three switches are on by default; the reference mesh stays unchanged.
+- The next row contains VERT, PALETTE, MAT, and SPREAD in that order. SPREAD treats the first selected mesh as the reference and applies enabled data to every later selected mesh in one Undo step. Its VERT path uses the same non-collapsing Editable Poly write described above. PALETTE copies the wire color, and MAT assigns the reference material. All three switches are on by default; the reference mesh stays unchanged.
 
 ## Bone display tools
 

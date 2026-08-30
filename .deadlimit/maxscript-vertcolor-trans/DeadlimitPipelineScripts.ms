@@ -168,6 +168,7 @@ global deadlimitVertexColorRedistribute
 global deadlimitVertexColorClipboard
 global deadlimitVertexColorReadFirst
 global deadlimitVertexColorBakeNode
+global deadlimitVertexColorBakeEditablePoly
 global deadlimitVertexColorCopyVertex
 global deadlimitVertexColorCopyPalette
 global deadlimitVertexColorPasteVertex
@@ -931,17 +932,69 @@ fn deadlimitVertexColorFlipSelectedBoneX =
       by a map face, which is the representative color for this solid-color workflow.
     - "Material" is the material reference itself; SPREAD assigns the same reference.
 
-    Palette to Vertex writes a valid uniform channel 0 below the existing modifier stack.
+    Palette to Vertex writes a valid uniform channel 0 into an Editable Poly base object
+    without collapsing or rebuilding its modifier stack. Vertex, edge, and face selections
+    are restored explicitly after the map-channel write. Non-Editable-Poly targets keep the
+    legacy temporary-modifier path for compatibility.
     Vertex to Palette reads the representative channel-0 color. SPREAD uses the first
     selected geometry as reference and applies enabled VERT/PALETTE/MAT fields to the rest.
     Per-object failures are collected so one unsupported target does not cancel all targets.
 
-    Porting invariant: preserve selection order and place/bake the color attribute at the
-    editable level below deformation. This feature intentionally does not transfer a
-    spatially varying paint pattern between different meshes.
+    Porting invariant: preserve selection order, editable base-object type, component
+    selections, modifier instances/order/settings, and place the color attribute below
+    deformation. This feature intentionally does not transfer a spatially varying paint
+    pattern between different meshes.
 */
+fn deadlimitVertexColorBakeEditablePoly node fillColor =
+(
+    local editablePoly = node.baseObject
+    if (classOf editablePoly) != Editable_Poly then
+        throw "Direct Vertex Color write requires an Editable Poly base object."
+
+    local vertexSelection = copy (polyop.getVertSelection editablePoly)
+    local edgeSelection = copy (polyop.getEdgeSelection editablePoly)
+    local faceSelection = copy (polyop.getFaceSelection editablePoly)
+    local mapColor = [fillColor.r / 255.0, fillColor.g / 255.0, fillColor.b / 255.0]
+    local vertexCount = polyop.getNumVerts editablePoly
+    local faceCount = polyop.getNumFaces editablePoly
+
+    try
+    (
+        with redraw off
+        (
+            polyop.setMapSupport editablePoly 0 true
+            polyop.setNumMapVerts editablePoly 0 vertexCount keep:false
+            for vertexIndex = 1 to vertexCount do
+                polyop.setMapVert editablePoly 0 vertexIndex mapColor
+
+            polyop.setNumMapFaces editablePoly 0 faceCount keep:false
+            for faceIndex = 1 to faceCount do
+                polyop.setMapFace editablePoly 0 faceIndex (polyop.getFaceVerts editablePoly faceIndex)
+
+            polyop.setVertSelection editablePoly vertexSelection
+            polyop.setEdgeSelection editablePoly edgeSelection
+            polyop.setFaceSelection editablePoly faceSelection
+            update node
+            node.vertexColorType = #color
+            node.showVertexColors = true
+            node.vertexColorsShaded = true
+        )
+        true
+    )
+    catch
+    (
+        try(polyop.setVertSelection editablePoly vertexSelection)catch()
+        try(polyop.setEdgeSelection editablePoly edgeSelection)catch()
+        try(polyop.setFaceSelection editablePoly faceSelection)catch()
+        throw()
+    )
+)
+
 fn deadlimitVertexColorBakeNode node fillColor =
 (
+    if (classOf node.baseObject) == Editable_Poly then
+        return deadlimitVertexColorBakeEditablePoly node fillColor
+
     local paintModifier = undefined
     local fillModifier = undefined
     try
