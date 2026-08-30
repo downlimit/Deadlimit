@@ -10,7 +10,7 @@ try {
     # from cmd.exe. A quoted batch argument ending in '\' can reach PowerShell
     # with a stray quote and make GetFullPath reject an otherwise valid path.
     $rootPath = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
-        .TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    $rootPath = $rootPath.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
 
     if ($ResolveRootOnly) {
         Write-Output $rootPath
