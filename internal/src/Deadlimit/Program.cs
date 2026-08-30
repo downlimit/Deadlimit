@@ -208,11 +208,9 @@ internal static class Program
                 previous.Close();
                 previous.Dispose();
 
-                var replacement = CreateMainForm(startup: null)
-                {
-                    StartPosition = FormStartPosition.Manual,
-                    Location = location,
-                };
+                var replacement = CreateMainForm(startup: null);
+                replacement.StartPosition = FormStartPosition.Manual;
+                replacement.Location = location;
                 ShowMainForm(replacement, initial: false, show: wasVisible);
             }
             finally
