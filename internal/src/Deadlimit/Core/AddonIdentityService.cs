@@ -45,9 +45,9 @@ public sealed class AddonIdentityService
         if (ownershipExists && ownership is null)
         {
             throw new InvalidOperationException(
-                $"CSDK addon '{addonId}' already exists, but its Deadlimit ownership file cannot be read.\n\n" +
+                $"CSDK addon '{addonId}' already exists, but its Deadlimit Aggregator ownership file cannot be read.\n\n" +
                 $"Ownership file: {ownershipPath}\n\n" +
-                "Deadlimit will not create a suffixed addon name, adopt this folder, delete it, or overwrite it automatically. " +
+                "Deadlimit Aggregator will not create a suffixed addon name, adopt this folder, delete it, or overwrite it automatically. " +
                 "Repair or remove the conflicting addon intentionally, then run the action again.");
         }
 
@@ -66,10 +66,10 @@ public sealed class AddonIdentityService
             if (!ownedByProject)
             {
                 throw new InvalidOperationException(
-                    $"CSDK addon name conflict: '{addonId}' is already owned by another Deadlimit project.\n\n" +
+                    $"CSDK addon name conflict: '{addonId}' is already owned by another Deadlimit Aggregator project.\n\n" +
                     $"Owner project: {ownership.ProjectFolder}\n" +
                     $"Current project: {projectFolder}\n\n" +
-                    "Deadlimit will not add a random suffix or overwrite the existing addon. " +
+                    "Deadlimit Aggregator will not add a random suffix or overwrite the existing addon. " +
                     "Rename one of the projects/addons intentionally or remove the conflicting addon, then try again.");
             }
 
@@ -81,7 +81,7 @@ public sealed class AddonIdentityService
                         $"CSDK addon '{addonId}' is linked to another existing project folder.\n\n" +
                         $"Owner project: {ownership.ProjectFolder}\n" +
                         $"Current project: {projectFolder}\n\n" +
-                        "This project appears to be a copied manifest. Deadlimit will not create a suffixed addon or overwrite the existing owner.");
+                        "This project appears to be a copied manifest. Deadlimit Aggregator will not create a suffixed addon or overwrite the existing owner.");
                 }
 
                 WriteOwnership(ownershipPath, addonId, projectId, projectFolder);
@@ -93,10 +93,10 @@ public sealed class AddonIdentityService
             if (rootsAlreadyExist && !CanAdoptExistingRoots(manifest, identity))
             {
                 throw new InvalidOperationException(
-                    $"CSDK addon name conflict: '{addonId}' already exists without Deadlimit ownership proof.\n\n" +
+                    $"CSDK addon name conflict: '{addonId}' already exists without Deadlimit Aggregator ownership proof.\n\n" +
                     $"Content: {identity.ContentRoot}\n" +
                     $"Game: {identity.GameRoot}\n\n" +
-                    "Deadlimit will not add a random suffix, adopt these folders, delete them, or overwrite them automatically. " +
+                    "Deadlimit Aggregator will not add a random suffix, adopt these folders, delete them, or overwrite them automatically. " +
                     "Remove or repair the conflicting addon intentionally, then try again.");
             }
 
@@ -206,7 +206,7 @@ public sealed class AddonIdentityService
             || normalized.Any(character => !char.IsLetterOrDigit(character) && character != '_')
             || char.IsDigit(normalized[0]))
         {
-            throw new InvalidDataException($"Invalid Deadlimit addon ID: '{value}'.");
+            throw new InvalidDataException($"Invalid Deadlimit Aggregator addon ID: '{value}'.");
         }
         return normalized;
     }
