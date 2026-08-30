@@ -17,5 +17,7 @@ internal static class UiText
     public static string NormalizeProductNames(string value) =>
         value
             .Replace("Deadlimit Aggregator", ProductName, StringComparison.Ordinal)
-            .Replace("DeadlimitAggregator.exe", "DeadlimitManager.exe", StringComparison.Ordinal);
+            .Replace("DeadlimitAggregator.exe", "DeadlimitManager.exe", StringComparison.Ordinal)
+            .Replace("Reduced CSDK12", "Reduced CSDK", StringComparison.Ordinal)
+            .Replace("CSDK12", "CSDK", StringComparison.Ordinal);
 }
