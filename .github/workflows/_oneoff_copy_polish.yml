@@ -1,0 +1,61 @@
+name: One-off UI copy polish
+
+on:
+  push:
+    branches:
+      - fix/plain-russian-ui-copy
+
+permissions:
+  contents: write
+
+jobs:
+  polish:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Polish rewritten copy
+        shell: python
+        run: |
+          from pathlib import Path
+
+          replacements = {
+              'internal/src/Deadlimit/App/BuildFeature.cs': {
+                  "Prepare the selected project's project working files": "Prepare the selected project's working files",
+                  'Checking игровой клиент Deadlock mod loading...': 'Checking Deadlock game-client mod loading...',
+                  'Проверка загрузки модов в игровой клиент Deadlock...': 'Проверка загрузки модов в игровом клиенте Deadlock...',
+                  'Checking VPK игрового клиента Deadlock release slot...': 'Checking Deadlock game-client VPK release slot...',
+                  'Проверка VPK игрового клиента Deadlock-слота...': 'Проверка слота VPK игрового клиента Deadlock...',
+                  'Retail mod loading: repaired automatically. The next Deadlock launch will use the repaired search path.': 'Deadlock game-client mod loading: repaired automatically. The next Deadlock launch will use the repaired resource search path.',
+              },
+              'internal/src/Deadlimit/App/BuildTestSuccessDialog.cs': {
+                  'The project working files is already prepared': 'The project working files are already prepared',
+              },
+              'internal/src/Deadlimit/App/ProjectHeaderFeature.cs': {
+                  "Prepare the selected project's project working files": "Prepare the selected project's working files",
+              },
+              'internal/src/Deadlimit/App/SteamStatusFeature.cs': {
+                  'Release ID определяет имя VPK игрового клиента Deadlock-файла.': 'Release ID определяет имя VPK-файла игрового клиента Deadlock.',
+              },
+          }
+
+          for name, mapping in replacements.items():
+              path = Path(name)
+              text = path.read_text(encoding='utf-8')
+              old = text
+              for src, dst in mapping.items():
+                  if src not in text:
+                      raise SystemExit(f'Expected text not found in {name}: {src}')
+                  text = text.replace(src, dst)
+              if text != old:
+                  path.write_text(text, encoding='utf-8')
+
+          Path('.github/workflows/_oneoff_copy_polish.yml').unlink()
+      - name: Commit polish
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Polish plain-language UI wording"
+          git push origin HEAD:fix/plain-russian-ui-copy
