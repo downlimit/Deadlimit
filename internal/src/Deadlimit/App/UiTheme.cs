@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Runtime.CompilerServices;
 
 namespace Deadlimit.App;
 
@@ -34,7 +35,7 @@ internal static class UiTheme
         ButtonBorderSize: 1,
         ButtonHoverBorderSize: 1);
 
-    // Measured from the current CSDK12 reference. Normal buttons are #3C3C3C without
+    // Measured from the current CSDK reference. Normal buttons are #3C3C3C without
     // a bright outline; hovered buttons are #464646 with an approximately #969696 outline.
     private static readonly Palette DarkPalette = new(
         Background: Color.FromArgb(27, 27, 27),
@@ -50,6 +51,9 @@ internal static class UiTheme
         ButtonText: Color.FromArgb(180, 180, 180),
         ButtonBorderSize: 0,
         ButtonHoverBorderSize: 1);
+
+    private static readonly ConditionalWeakTable<Button, ButtonThemeState> ButtonStates = new();
+    private static readonly ConditionalWeakTable<GroupBox, GroupBoxThemeState> GroupBoxStates = new();
 
     public static void ConfigureApplication(string theme)
     {
@@ -95,7 +99,7 @@ internal static class UiTheme
                 groupBox.FlatStyle = FlatStyle.Flat;
                 groupBox.BackColor = palette.Surface;
                 groupBox.ForeColor = palette.MutedText;
-                groupBox.Paint += (_, e) => DrawGroupBox(groupBox, e.Graphics, palette.Border);
+                ConfigureGroupBox(groupBox, palette);
                 break;
 
             case TextBoxBase textBox:
@@ -111,8 +115,6 @@ internal static class UiTheme
                 break;
 
             case ListBox listBox:
-                // Native WinForms list borders can pick up the Windows accent/focus color.
-                // The enclosing Deadlimit section already provides the visual boundary.
                 listBox.BorderStyle = BorderStyle.None;
                 listBox.BackColor = palette.Input;
                 listBox.ForeColor = palette.Text;
@@ -171,45 +173,75 @@ internal static class UiTheme
         }
     }
 
+    private static void ConfigureGroupBox(GroupBox groupBox, Palette palette)
+    {
+        var state = GroupBoxStates.GetValue(groupBox, box =>
+        {
+            var created = new GroupBoxThemeState();
+            box.Paint += (_, e) => DrawGroupBox(box, e.Graphics, created.BorderColor);
+            return created;
+        });
+        state.BorderColor = palette.Border;
+        groupBox.Invalidate();
+    }
+
     private static void ConfigureButton(Button button, Palette palette)
     {
         button.UseVisualStyleBackColor = false;
         button.FlatStyle = FlatStyle.Flat;
-        button.ForeColor = palette.ButtonText;
         button.TabStop = false;
 
+        var state = ButtonStates.GetValue(button, target =>
+        {
+            var created = new ButtonThemeState();
+            target.MouseEnter += (_, _) =>
+            {
+                if (created.Palette is not null)
+                {
+                    SetButtonHover(target, created.Palette);
+                }
+            };
+            target.MouseLeave += (_, _) =>
+            {
+                if (created.Palette is not null)
+                {
+                    SetButtonNormal(target, created.Palette);
+                }
+            };
+            target.MouseDown += (_, e) =>
+            {
+                if (e.Button == MouseButtons.Left && created.Palette is not null)
+                {
+                    target.BackColor = created.Palette.ButtonPressed;
+                    target.FlatAppearance.BorderColor = created.Palette.HoverBorder;
+                    target.FlatAppearance.BorderSize = created.Palette.ButtonHoverBorderSize;
+                }
+            };
+            target.MouseUp += (_, _) =>
+            {
+                if (created.Palette is null)
+                {
+                    return;
+                }
+
+                var pointer = target.PointToClient(Cursor.Position);
+                if (target.ClientRectangle.Contains(pointer))
+                {
+                    SetButtonHover(target, created.Palette);
+                }
+                else
+                {
+                    SetButtonNormal(target, created.Palette);
+                }
+            };
+            target.Click += (_, _) => ClearButtonFocus(target);
+            return created;
+        });
+
+        state.Palette = palette;
+        button.ForeColor = palette.ButtonText;
         SetButtonNormal(button, palette);
-
-        // Explicit state changes are used instead of relying only on FlatAppearance's
-        // themed hover handling, which is inconsistent under WinForms dark mode.
-        button.MouseEnter += (_, _) => SetButtonHover(button, palette);
-        button.MouseLeave += (_, _) => SetButtonNormal(button, palette);
-        button.MouseDown += (_, e) =>
-        {
-            if (e.Button == MouseButtons.Left)
-            {
-                button.BackColor = palette.ButtonPressed;
-                button.FlatAppearance.BorderColor = palette.HoverBorder;
-                button.FlatAppearance.BorderSize = palette.ButtonHoverBorderSize;
-            }
-        };
-        button.MouseUp += (_, _) =>
-        {
-            var pointer = button.PointToClient(Cursor.Position);
-            if (button.ClientRectangle.Contains(pointer))
-            {
-                SetButtonHover(button, palette);
-            }
-            else
-            {
-                SetButtonNormal(button, palette);
-            }
-        };
-
-        // Native WinForms keeps keyboard focus on the last clicked Button and can then
-        // draw an extra focus/default outline. Deadlimit is mouse-driven, so release that
-        // focus after every button action while preserving hover/pressed feedback.
-        button.Click += (_, _) => ClearButtonFocus(button);
+        button.Invalidate();
     }
 
     private static void ClearButtonFocus(Button button)
@@ -252,8 +284,6 @@ internal static class UiTheme
             return;
         }
 
-        // Clear the native GroupBox painting entirely so Windows hover/focus accent
-        // rendering cannot leak through around the custom Deadlimit frame.
         graphics.Clear(groupBox.BackColor);
 
         var captionSize = TextRenderer.MeasureText(
@@ -293,6 +323,16 @@ internal static class UiTheme
     {
         var normalized = theme?.Trim().ToLowerInvariant();
         return normalized is "light" or "gray" or "dark" ? normalized : "system";
+    }
+
+    private sealed class ButtonThemeState
+    {
+        public Palette? Palette { get; set; }
+    }
+
+    private sealed class GroupBoxThemeState
+    {
+        public Color BorderColor { get; set; }
     }
 
     private sealed record Palette(
