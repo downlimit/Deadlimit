@@ -92,8 +92,6 @@ internal sealed class SettingsForm : Form
         Shown += async (_, _) => await RefreshAllStatusesAsync();
     }
 
-    // Kept for compatibility with older MainForm code. Interface changes are now
-    // rebuilt in-process through UiSettingsChangeBus, so a process restart is never required.
     public bool RestartRequired => false;
 
     public bool LanguageChanged => InterfaceChanged;
@@ -243,7 +241,7 @@ internal sealed class SettingsForm : Form
         var browseButton = CreateBrowseButton(
             _csdkRootText,
             UiText.T("Select an existing Reduced CSDK folder", "Выберите существующую папку Reduced CSDK"),
-            RefreshCsdkStatusAsync);
+            () => RefreshCsdkStatusAsync());
 
         _csdkPrimaryButton.Click += async (_, _) => await HandleCsdkPrimaryActionAsync();
         _csdkSetupButton.Text = "SETUP";
@@ -274,7 +272,7 @@ internal sealed class SettingsForm : Form
         var browseButton = CreateBrowseButton(
             _deadlockToolsRootText,
             UiText.T("Select an existing DeadlockTools repository folder", "Выберите существующую папку репозитория DeadlockTools"),
-            RefreshDeadlockToolsStatusAsync);
+            () => RefreshDeadlockToolsStatusAsync());
 
         _deadlockToolsPrimaryButton.Click += async (_, _) => await HandleDeadlockToolsPrimaryActionAsync();
         _toolTip.SetToolTip(
@@ -720,7 +718,10 @@ internal sealed class SettingsForm : Form
     {
         label.Text = FormatStatus(status, context);
         label.ForeColor = StatusColor(status.Kind);
-        label.Font = new Font(label.Font, FontStyle.Bold);
+        if (!label.Font.Bold)
+        {
+            label.Font = new Font(label.Font, FontStyle.Bold);
+        }
         label.Refresh();
 
         var detail = StatusDetail(status, context);
