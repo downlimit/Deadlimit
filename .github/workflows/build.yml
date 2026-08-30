@@ -16,7 +16,31 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Restore
         run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
-      - name: Build
+      - name: Build Deadlimit Aggregator
         run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+      - name: Verify Aggregator rename contract
+        shell: pwsh
+        run: |
+          $output = 'internal/src/Deadlimit/bin/Release/net10.0-windows'
+          if (-not (Test-Path "$output/DeadlimitAggregator.exe")) {
+            throw 'DeadlimitAggregator.exe was not produced.'
+          }
+          if (Test-Path "$output/Deadlimit.exe") {
+            throw 'Legacy Deadlimit.exe was produced.'
+          }
+
+          $forbidden = @(
+            @{ Path = 'internal/src/Deadlimit/App/MainForm.cs'; Pattern = 'Text = "Deadlimit"' },
+            @{ Path = 'internal/src/Deadlimit/App/StartupProgressForm.cs'; Pattern = 'Starting Deadlimit...' },
+            @{ Path = 'internal/src/Deadlimit/App/SettingsForm.cs'; Pattern = 'Deadlimit Settings' },
+            @{ Path = 'internal/src/Deadlimit/Program.cs'; Pattern = 'Usage: Deadlimit.exe' },
+            @{ Path = 'DeadlimitAggregator.cmd'; Pattern = '\Deadlimit.exe' }
+          )
+
+          foreach ($check in $forbidden) {
+            if (Select-String -LiteralPath $check.Path -SimpleMatch $check.Pattern -Quiet) {
+              throw "Legacy Aggregator name remains in $($check.Path): $($check.Pattern)"
+            }
+          }
       - name: Startup smoke
         run: dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --startup-smoke
