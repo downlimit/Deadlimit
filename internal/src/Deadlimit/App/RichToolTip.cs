@@ -90,7 +90,9 @@ internal sealed class RichToolTip : IDisposable
         var text = e.AssociatedControl is not null && _texts.TryGetValue(e.AssociatedControl, out var stored)
             ? stored
             : e.ToolTipText;
-        using var boldFont = new Font(e.Font, FontStyle.Bold);
+        var regularFont = e.Font ?? e.AssociatedControl?.Font ?? SystemFonts.MessageBoxFont;
+        using var boldFont = new Font(regularFont, FontStyle.Bold);
+        var textColor = e.AssociatedControl?.ForeColor ?? SystemColors.InfoText;
         var x = e.Bounds.Left + HorizontalPadding;
         var y = e.Bounds.Top + VerticalPadding;
 
@@ -103,10 +105,10 @@ internal sealed class RichToolTip : IDisposable
             }
 
             var cursorX = x;
-            var lineHeight = e.Font.Height;
+            var lineHeight = regularFont.Height;
             foreach (var run in ParseRuns(line))
             {
-                var font = run.Bold ? boldFont : e.Font;
+                var font = run.Bold ? boldFont : regularFont;
                 var size = TextRenderer.MeasureText(
                     e.Graphics,
                     run.Text,
@@ -118,7 +120,7 @@ internal sealed class RichToolTip : IDisposable
                     run.Text,
                     font,
                     new Point(cursorX, y),
-                    e.ForeColor,
+                    textColor,
                     TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
                 cursorX += size.Width;
                 lineHeight = Math.Max(lineHeight, size.Height);
