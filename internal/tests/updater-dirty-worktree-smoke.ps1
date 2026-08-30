@@ -2,7 +2,8 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
-$updaterSource = Join-Path $repositoryRoot 'internal\DeadlimitUpdater.ps1'
+$updaterWorkerSource = Join-Path $repositoryRoot 'internal\DeadlimitUpdater.ps1'
+$updaterBootstrapSource = Join-Path $repositoryRoot 'DeadlimitUpdater.bat'
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('deadlimit-updater-dirty-' + [Guid]::NewGuid().ToString('N'))
 $remote = Join-Path $testRoot 'remote.git'
 $seed = Join-Path $testRoot 'seed'
@@ -13,6 +14,12 @@ function Run-Git([string]$workingDirectory, [Parameter(ValueFromRemainingArgumen
     if ($LASTEXITCODE -ne 0) {
         throw "git failed in '$workingDirectory': $($Arguments -join ' ')"
     }
+}
+
+function Run-Updater([string]$workingDirectory) {
+    $bootstrap = Join-Path $workingDirectory 'DeadlimitUpdater.bat'
+    & cmd.exe /d /c "`"$bootstrap`" -NoWait"
+    return $LASTEXITCODE
 }
 
 try {
@@ -26,7 +33,8 @@ try {
     Run-Git $seed config user.name 'Deadlimit CI'
 
     New-Item -ItemType Directory -Path (Join-Path $seed 'internal') | Out-Null
-    Copy-Item -LiteralPath $updaterSource -Destination (Join-Path $seed 'internal\DeadlimitUpdater.ps1')
+    Copy-Item -LiteralPath $updaterWorkerSource -Destination (Join-Path $seed 'internal\DeadlimitUpdater.ps1')
+    Copy-Item -LiteralPath $updaterBootstrapSource -Destination (Join-Path $seed 'DeadlimitUpdater.bat')
     Set-Content -LiteralPath (Join-Path $seed 'DeadlimitManager.cmd') -Value "@echo off`r`nexit /b 0`r`n" -Encoding ascii
     Set-Content -LiteralPath (Join-Path $seed 'local.txt') -Value 'base local' -Encoding ascii
     Set-Content -LiteralPath (Join-Path $seed 'incoming.txt') -Value 'base incoming' -Encoding ascii
@@ -38,20 +46,30 @@ try {
     & git.exe clone --branch main $remote $work
     if ($LASTEXITCODE -ne 0) { throw 'Could not clone updater smoke worktree.' }
 
+    # Simulate the exact failure mode this bootstrap is meant to prevent: the
+    # checked-out updater worker is stale/broken while origin/main has a valid one.
+    $staleWorker = "Write-Host 'STALE LOCAL UPDATER MUST NOT RUN'`r`nexit 91`r`n"
+    Set-Content -LiteralPath (Join-Path $work 'internal\DeadlimitUpdater.ps1') -Value $staleWorker -Encoding ascii
     Set-Content -LiteralPath (Join-Path $work 'local.txt') -Value 'parallel local edit' -Encoding ascii
+
     Set-Content -LiteralPath (Join-Path $seed 'incoming.txt') -Value 'remote unrelated update' -Encoding ascii
     Run-Git $seed add incoming.txt
     Run-Git $seed commit -m 'unrelated remote update'
     Run-Git $seed push origin main
 
-    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $work 'internal\DeadlimitUpdater.ps1') -NoWait
-    if ($LASTEXITCODE -ne 0) {
-        throw "Updater rejected an unrelated local tracked change with exit code $LASTEXITCODE."
+    $exitCode = Run-Updater $work
+    if ($exitCode -ne 0) {
+        throw "Bootstrapped updater rejected unrelated local tracked changes with exit code $exitCode."
     }
 
     $localContent = (Get-Content -LiteralPath (Join-Path $work 'local.txt') -Raw).Trim()
     if ($localContent -ne 'parallel local edit') {
         throw 'Updater did not preserve the unrelated local tracked edit.'
+    }
+
+    $staleWorkerAfterUpdate = (Get-Content -LiteralPath (Join-Path $work 'internal\DeadlimitUpdater.ps1') -Raw).Trim()
+    if ($staleWorkerAfterUpdate -notmatch 'STALE LOCAL UPDATER MUST NOT RUN') {
+        throw 'Bootstrap unexpectedly replaced the local stale worker instead of executing the fresh origin/main copy from TEMP.'
     }
 
     $workHead = (& git.exe -C $work rev-parse HEAD).Trim()
@@ -66,7 +84,8 @@ try {
     Run-Git $seed push origin main
 
     $headBeforeOverlap = (& git.exe -C $work rev-parse HEAD).Trim()
-    $overlapOutput = & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $work 'internal\DeadlimitUpdater.ps1') -NoWait 2>&1
+    $bootstrap = Join-Path $work 'DeadlimitUpdater.bat'
+    $overlapOutput = & cmd.exe /d /c "`"$bootstrap`" -NoWait" 2>&1
     if ($LASTEXITCODE -eq 0) {
         throw 'Updater accepted an incoming update that overlaps local tracked work.'
     }
@@ -86,7 +105,7 @@ try {
         throw 'Updater modified local work during overlap rejection.'
     }
 
-    Write-Host 'Updater dirty-worktree smoke passed.'
+    Write-Host 'Updater self-bootstrap and dirty-worktree smoke passed.'
 }
 finally {
     Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
