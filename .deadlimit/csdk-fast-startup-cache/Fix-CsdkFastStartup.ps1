@@ -5,6 +5,7 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+# Keep the legacy settings path so existing Deadlimit Aggregator installations retain their configuration.
 $settingsPath = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)) "Deadlimit\settings.json"
 $generatorProcess = $null
 $backupRoot = $null
@@ -48,19 +49,19 @@ function Restore-PreviousCaches {
 }
 
 try {
-    Write-Host "Deadlimit CSDK Fast Startup Cache Repair" -ForegroundColor Cyan
+    Write-Host "Deadlimit Aggregator CSDK Fast Startup Cache Repair" -ForegroundColor Cyan
     Write-Host ""
 
     $configuredRoot = $CsdkRootOverride
     if ([string]::IsNullOrWhiteSpace($configuredRoot)) {
         if (-not (Test-Path -LiteralPath $settingsPath -PathType Leaf)) {
-            throw "Deadlimit settings were not found at '$settingsPath'. Open Deadlimit Settings, configure Reduced CSDK12, and press SAVE first."
+            throw "Deadlimit Aggregator settings were not found at '$settingsPath'. Open Deadlimit Aggregator Settings, configure Reduced CSDK12, and press SAVE first."
         }
 
         $settings = Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
         $configuredRoot = [string]$settings.CsdkRoot
         if ([string]::IsNullOrWhiteSpace($configuredRoot)) {
-            throw "Reduced CSDK12 is not configured. Open Deadlimit Settings, select its folder, and press SAVE first."
+            throw "Reduced CSDK12 is not configured. Open Deadlimit Aggregator Settings, select its folder, and press SAVE first."
         }
     }
 
@@ -74,7 +75,7 @@ try {
     $cachePaths = @($readonlyCachePath, $writableCachePath)
 
     if (-not (Test-Path -LiteralPath $deadlockExe -PathType Leaf)) {
-        throw "CSDK executable was not found: '$deadlockExe'. Check the Reduced CSDK12 path in Deadlimit Settings."
+        throw "CSDK executable was not found: '$deadlockExe'. Check the Reduced CSDK12 path in Deadlimit Aggregator Settings."
     }
     if (-not (Test-Path -LiteralPath $gameInfoPath -PathType Leaf)) {
         throw "CSDK gameinfo.gi was not found: '$gameInfoPath'. The Reduced CSDK12 installation is incomplete."
@@ -95,7 +96,7 @@ try {
         throw "Close every CSDK12 window and run this tool again. Running: $processNames"
     }
 
-    $backupRoot = Join-Path ([IO.Path]::GetTempPath()) ("Deadlimit-CsdkAssetCache-" + [Guid]::NewGuid().ToString("N"))
+    $backupRoot = Join-Path ([IO.Path]::GetTempPath()) ("DeadlimitAggregator-CsdkAssetCache-" + [Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Path $backupRoot | Out-Null
     foreach ($cachePath in $cachePaths) {
         if (Test-Path -LiteralPath $cachePath -PathType Leaf) {
