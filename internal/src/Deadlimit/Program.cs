@@ -177,7 +177,7 @@ internal static class Program
     {
         if (args.Length != 2 || string.IsNullOrWhiteSpace(args[1]))
         {
-            Console.Error.WriteLine("Usage: Deadlimit.exe --write-vertex-color-script <folder>");
+            Console.Error.WriteLine("Usage: DeadlimitAggregator.exe --write-vertex-color-script <folder>");
             return 64;
         }
 
@@ -195,8 +195,8 @@ internal static class Program
 
     private static Icon LoadAppIcon()
     {
-        using var stream = typeof(Program).Assembly.GetManifestResourceStream("Deadlimit.AppIcon.ico")
-            ?? throw new InvalidOperationException("Embedded Deadlimit application icon was not found.");
+        using var stream = typeof(Program).Assembly.GetManifestResourceStream("DeadlimitAggregator.AppIcon.ico")
+            ?? throw new InvalidOperationException("Embedded Deadlimit Aggregator application icon was not found.");
         using var source = new Icon(stream);
         return (Icon)source.Clone();
     }
