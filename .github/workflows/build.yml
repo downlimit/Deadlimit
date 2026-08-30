@@ -93,10 +93,16 @@ jobs:
       - name: Audit remaining Deadlimit identifiers
         shell: pwsh
         run: |
-          git grep -il -i deadlimit -- . | Sort-Object
-          if ($LASTEXITCODE -gt 1) {
-            throw "git grep failed with exit code $LASTEXITCODE"
+          $matches = git grep -n -i deadlimit -- .
+          $grepExit = $LASTEXITCODE
+          $matches | Sort-Object | Set-Content -LiteralPath deadlimit-identifier-audit.txt -Encoding utf8
+          if ($grepExit -gt 1) {
+            throw "git grep failed with exit code $grepExit"
           }
-          exit 0
+      - name: Upload identifier audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: deadlimit-identifier-audit
+          path: deadlimit-identifier-audit.txt
       - name: Startup smoke
         run: dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --startup-smoke
