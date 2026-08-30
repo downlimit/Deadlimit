@@ -4,7 +4,7 @@ internal sealed class RichToolTip : IDisposable
 {
     private const int HorizontalPadding = 10;
     private const int VerticalPadding = 8;
-    private const int ParagraphGap = 6;
+    private const int ParagraphGapPixels = 6;
     private const int MaxContentWidth = 520;
 
     private static readonly Color BackgroundColor = Color.White;
@@ -58,8 +58,6 @@ internal sealed class RichToolTip : IDisposable
         _toolTip.Draw += DrawPopup;
     }
 
-    // Keep the small surface used by the previous WinForms ToolTip declarations so
-    // existing feature code can switch to RichToolTip through one global alias.
     public bool ShowAlways
     {
         get => _toolTip.ShowAlways;
@@ -143,7 +141,7 @@ internal sealed class RichToolTip : IDisposable
         {
             if (row.IsParagraphGap)
             {
-                cursorY += ParagraphGap;
+                cursorY += ParagraphGapPixels;
                 continue;
             }
 
@@ -175,7 +173,7 @@ internal sealed class RichToolTip : IDisposable
             if (sourceLine.Length == 0)
             {
                 rows.Add(LayoutRow.ParagraphGap());
-                totalHeight += ParagraphGap;
+                totalHeight += ParagraphGapPixels;
                 continue;
             }
 
@@ -356,7 +354,7 @@ internal sealed class RichToolTip : IDisposable
     private sealed record LayoutRun(string Text, bool Bold, int Width);
     private sealed record LayoutRow(IReadOnlyList<LayoutRun> Runs, int Width, int Height, bool IsParagraphGap)
     {
-        public static LayoutRow ParagraphGap() => new([], 0, ParagraphGap, true);
+        public static LayoutRow ParagraphGap() => new([], 0, ParagraphGapPixels, true);
     }
     private sealed record RichLayout(IReadOnlyList<LayoutRow> Rows, int Width, int Height);
 }
