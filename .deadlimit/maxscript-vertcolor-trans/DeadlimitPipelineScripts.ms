@@ -72,6 +72,9 @@ global deadlimitVertexColorSetSelectedBoneLength
 global deadlimitVertexColorFlipSelectedBoneX
 global deadlimitVertexColorCreateInnerLineart
 global deadlimitVertexColorBuildInnerLineart
+global deadlimitVertexColorSyncInnerLineartSkin
+global deadlimitVertexColorCaptureInnerLineartSkins
+global deadlimitVertexColorRestoreInnerLineartSkins
 global deadlimitVertexColorReadFaceSmoothingGroups
 global deadlimitVertexColorApplyInnerLineartModifierResult
 global deadlimitVertexColorFillPaletteToVertex
@@ -85,6 +88,304 @@ global deadlimitVertexColorCopyPalette
 global deadlimitVertexColorPasteVertex
 global deadlimitVertexColorPastePalette
 global deadlimitVertexColorResultText
+global deadlimitInnerLineartSkinProperty = "DeadlimitInnerLineartSkinGroupsV1"
+
+fn deadlimitInnerLineartGroupsOverlap groupA groupB =
+(
+    for vertexIndex in groupA where (findItem groupB vertexIndex) > 0 do return true
+    false
+)
+
+fn deadlimitInnerLineartAppendUnique values value =
+(
+    if (findItem values value) == 0 do append values value
+    values
+)
+
+fn deadlimitInnerLineartMergeGroups existingGroups incomingGroups =
+(
+    local result = deepCopy existingGroups
+    for incomingGroup in incomingGroups where incomingGroup != undefined and incomingGroup.count > 1 do
+    (
+        local merged = #()
+        for vertexIndex in incomingGroup do deadlimitInnerLineartAppendUnique merged vertexIndex
+        local masterVertex = incomingGroup[1]
+        for existingGroup in result while masterVertex == incomingGroup[1] where deadlimitInnerLineartGroupsOverlap existingGroup merged do
+            masterVertex = existingGroup[1]
+
+        for groupIndex = result.count to 1 by -1 where deadlimitInnerLineartGroupsOverlap result[groupIndex] merged do
+        (
+            for vertexIndex in result[groupIndex] do deadlimitInnerLineartAppendUnique merged vertexIndex
+            deleteItem result groupIndex
+        )
+
+        local ordered = #(masterVertex)
+        for vertexIndex in merged where vertexIndex != masterVertex do append ordered vertexIndex
+        append result ordered
+    )
+    result
+)
+
+fn deadlimitInnerLineartSerializeGroups groups =
+(
+    local result = ""
+    for groupIndex = 1 to groups.count do
+    (
+        if groupIndex > 1 do result += ";"
+        local group = groups[groupIndex]
+        for itemIndex = 1 to group.count do
+        (
+            if itemIndex > 1 do result += ","
+            result += group[itemIndex] as string
+        )
+    )
+    result
+)
+
+fn deadlimitInnerLineartDeserializeGroups text =
+(
+    local result = #()
+    if text == undefined or text.count == 0 then return result
+    for groupText in (filterString text ";") do
+    (
+        local group = #()
+        for itemText in (filterString groupText ",") do
+        (
+            local vertexIndex = try(itemText as integer)catch(0)
+            if vertexIndex <= 0 then throw "Stored INNER LINEART Skin groups are malformed. Recreate the lineart data."
+            deadlimitInnerLineartAppendUnique group vertexIndex
+        )
+        if group.count > 1 do append result group
+    )
+    result
+)
+
+fn deadlimitInnerLineartReadGroups node =
+(
+    deadlimitInnerLineartDeserializeGroups (getUserProp node deadlimitInnerLineartSkinProperty)
+)
+
+fn deadlimitInnerLineartWriteGroups node groups =
+(
+    setUserProp node deadlimitInnerLineartSkinProperty (deadlimitInnerLineartSerializeGroups groups)
+    groups
+)
+
+fn deadlimitInnerLineartSkinWeightData skinModifier vertexIndex node:undefined =
+(
+    local boneIds = #()
+    local weights = #()
+    local influenceCount = skinOps.GetVertexWeightCount skinModifier vertexIndex
+    for influenceIndex = 1 to influenceCount do
+    (
+        append boneIds (skinOps.GetVertexWeightBoneID skinModifier vertexIndex influenceIndex)
+        append weights (skinOps.GetVertexWeight skinModifier vertexIndex influenceIndex)
+    )
+    local dqWeight = try(skinOps.getVertexDQWeight skinModifier vertexIndex)catch(undefined)
+    local rigid = try(skinOps.isRigidVertex skinModifier vertexIndex node:node)catch(false)
+    local unnormalized = try(skinOps.isUnNormalizeVertex skinModifier vertexIndex node:node)catch(false)
+    #(boneIds, weights, dqWeight, rigid, unnormalized)
+)
+
+fn deadlimitInnerLineartSkinWeightsEqual dataA dataB tolerance:1e-5 =
+(
+    if dataA[1].count != dataB[1].count then return false
+    for influenceIndex = 1 to dataA[1].count do
+    (
+        local matchingIndex = findItem dataB[1] dataA[1][influenceIndex]
+        if matchingIndex == 0 or abs(dataA[2][influenceIndex] - dataB[2][matchingIndex]) > tolerance then return false
+    )
+    if dataA[3] != undefined and dataB[3] != undefined and abs(dataA[3] - dataB[3]) > tolerance then return false
+    if dataA[4] != dataB[4] or dataA[5] != dataB[5] then return false
+    true
+)
+
+fn deadlimitInnerLineartApplySkinWeightData skinModifier node targetVertex data =
+(
+    if data[1].count == 0 then throw ("Skin vertex " + (targetVertex as string) + " has no bone influences and cannot be copied safely.")
+    skinOps.ReplaceVertexWeights skinModifier targetVertex data[1] data[2] node:node
+    if data[3] != undefined do skinOps.setVertexDQWeight skinModifier targetVertex data[3]
+    try(skinOps.unNormalizeVertex skinModifier targetVertex data[5] node:node)catch()
+    if data[4] do try(skinOps.rigidVertex skinModifier targetVertex node:node)catch()
+)
+
+fn deadlimitVertexColorCaptureInnerLineartSkins node sourceModifier oldVertCount =
+(
+    local sourceModifierIndex = if sourceModifier == undefined then (node.modifiers.count + 1) else modPanel.getModifierIndex node sourceModifier
+    if sourceModifierIndex == undefined then throw "The active Edit Poly modifier is no longer in the selected object's stack."
+    local result = #()
+    select node
+    max modify mode
+    for modifierIndex = 1 to (sourceModifierIndex - 1) do
+    (
+        local currentModifier = node.modifiers[modifierIndex]
+        if (classOf currentModifier) == Skin do
+        (
+            modPanel.setCurrentObject currentModifier node:node ui:true
+            local skinVertexCount = skinOps.GetNumberVertices currentModifier
+            if skinVertexCount != oldVertCount then
+                throw ("Skin '" + currentModifier.name + "' sees " + (skinVertexCount as string) + " vertices while INNER LINEART sees " + (oldVertCount as string) + ". Disable or move topology-changing modifiers between Edit Poly and Skin.")
+            local vertexData = for vertexIndex = 1 to oldVertCount collect (deadlimitInnerLineartSkinWeightData currentModifier vertexIndex node:node)
+            append result #(currentModifier, vertexData)
+        )
+    )
+    result
+)
+
+fn deadlimitVertexColorRestoreInnerLineartSkins node skinSnapshots seamGroups expectedVertCount =
+(
+    local restoredVertices = 0
+    local repairedExistingVertices = 0
+    select node
+    max modify mode
+    for snapshot in skinSnapshots do
+    (
+        local skinModifier = snapshot[1]
+        local oldVertexData = snapshot[2]
+        if (modPanel.getModifierIndex node skinModifier) == undefined then throw "A Skin modifier disappeared while INNER LINEART was running."
+        modPanel.setCurrentObject skinModifier node:node ui:true
+        local currentVertCount = skinOps.GetNumberVertices skinModifier
+        if currentVertCount != expectedVertCount then
+            throw ("Skin '" + skinModifier.name + "' produced " + (currentVertCount as string) + " vertices after INNER LINEART; expected " + (expectedVertCount as string) + ".")
+
+        for vertexIndex = 1 to oldVertexData.count do
+        (
+            local currentData = deadlimitInnerLineartSkinWeightData skinModifier vertexIndex node:node
+            if not (deadlimitInnerLineartSkinWeightsEqual oldVertexData[vertexIndex] currentData) do
+            (
+                deadlimitInnerLineartApplySkinWeightData skinModifier node vertexIndex oldVertexData[vertexIndex]
+                repairedExistingVertices += 1
+            )
+        )
+
+        for group in seamGroups do
+        (
+            local sourceVertex = group[1]
+            if sourceVertex > oldVertexData.count then throw "INNER LINEART generated a Skin group with an invalid source vertex."
+            for itemIndex = 2 to group.count do
+            (
+                if group[itemIndex] > currentVertCount then throw "INNER LINEART generated a Skin group outside the resulting topology."
+                deadlimitInnerLineartApplySkinWeightData skinModifier node group[itemIndex] oldVertexData[sourceVertex]
+                restoredVertices += 1
+            )
+        )
+        skinOps.Invalidate skinModifier 0
+        update node
+
+        for vertexIndex = 1 to oldVertexData.count where not (deadlimitInnerLineartSkinWeightsEqual oldVertexData[vertexIndex] (deadlimitInnerLineartSkinWeightData skinModifier vertexIndex node:node)) do
+            throw ("Skin '" + skinModifier.name + "' changed existing vertex " + (vertexIndex as string) + " during INNER LINEART.")
+        for group in seamGroups do
+        (
+            local sourceData = deadlimitInnerLineartSkinWeightData skinModifier group[1] node:node
+            for itemIndex = 2 to group.count where not (deadlimitInnerLineartSkinWeightsEqual sourceData (deadlimitInnerLineartSkinWeightData skinModifier group[itemIndex] node:node)) do
+                throw ("Skin '" + skinModifier.name + "' could not synchronize INNER LINEART vertex " + (group[itemIndex] as string) + ".")
+        )
+    )
+    #(skinSnapshots.count, restoredVertices, repairedExistingVertices)
+)
+
+fn deadlimitInnerLineartSnapshotBelowModifier node modifier =
+(
+    local modifierIndex = modPanel.getModifierIndex node modifier
+    if modifierIndex == undefined then throw "Skin modifier is no longer in the object's stack."
+    local workingNode = undefined
+    local resultMesh = undefined
+    try
+    (
+        with undo off with redraw off
+        (
+            workingNode = copy node
+            for removeIndex = 1 to modifierIndex do deleteModifier workingNode 1
+            resultMesh = snapshotAsMesh workingNode
+            delete workingNode
+            workingNode = undefined
+        )
+        resultMesh
+    )
+    catch
+    (
+        with undo off try(if isValidNode workingNode do delete workingNode)catch()
+        if resultMesh != undefined do try(delete resultMesh)catch()
+        throw()
+    )
+)
+
+fn deadlimitVertexColorSyncInnerLineartSkin nodes:undefined =
+(
+    local targetNodes = if nodes == undefined then deadlimitVertexColorSelectedGeometry() else nodes
+    local synchronizedNodes = 0
+    local synchronizedSkins = 0
+    local synchronizedGroups = 0
+    local changedClones = 0
+
+    for node in targetNodes where isValidNode node and (superClassOf node) == GeometryClass do
+    (
+        local groups = deadlimitInnerLineartReadGroups node
+        if groups.count > 0 do
+        (
+            local highestVertex = 0
+            for group in groups do for vertexIndex in group where vertexIndex > highestVertex do highestVertex = vertexIndex
+            local nodeSkinCount = 0
+            local totalSkinCount = 0
+            for currentModifier in node.modifiers where (classOf currentModifier) == Skin do
+            (
+                totalSkinCount += 1
+                local inputMesh = deadlimitInnerLineartSnapshotBelowModifier node currentModifier
+                local inputVertCount = inputMesh.numVerts
+                local skinVertCount = skinOps.GetNumberVertices currentModifier
+                if inputVertCount >= highestVertex and skinVertCount == inputVertCount do
+                (
+                    local positionTolerance = 1e-4
+                    local groupsCoincident = true
+                    for group in groups do
+                    (
+                        local sourcePosition = getVert inputMesh group[1]
+                        for itemIndex = 2 to group.count do
+                            if distance sourcePosition (getVert inputMesh group[itemIndex]) > positionTolerance then
+                                groupsCoincident = false
+                    )
+
+                    if groupsCoincident do
+                    (
+                        select node
+                        max modify mode
+                        modPanel.setCurrentObject currentModifier node:node ui:true
+                        for group in groups do
+                        (
+                            local sourceData = deadlimitInnerLineartSkinWeightData currentModifier group[1] node:node
+                            for itemIndex = 2 to group.count do
+                            (
+                                local cloneData = deadlimitInnerLineartSkinWeightData currentModifier group[itemIndex] node:node
+                                if not (deadlimitInnerLineartSkinWeightsEqual sourceData cloneData) do
+                                (
+                                    deadlimitInnerLineartApplySkinWeightData currentModifier node group[itemIndex] sourceData
+                                    changedClones += 1
+                                )
+                            )
+                            synchronizedGroups += 1
+                        )
+                        skinOps.Invalidate currentModifier 0
+                        update node
+                        for group in groups do
+                        (
+                            local sourceData = deadlimitInnerLineartSkinWeightData currentModifier group[1] node:node
+                            for itemIndex = 2 to group.count where not (deadlimitInnerLineartSkinWeightsEqual sourceData (deadlimitInnerLineartSkinWeightData currentModifier group[itemIndex] node:node)) do
+                                throw ("Skin '" + currentModifier.name + "' failed to synchronize INNER LINEART vertex " + (group[itemIndex] as string) + ".")
+                        )
+                        nodeSkinCount += 1
+                        synchronizedSkins += 1
+                    )
+                )
+                delete inputMesh
+            )
+            if nodeSkinCount == 0 and totalSkinCount > 0 then
+                throw ("No Skin above INNER LINEART on '" + node.name + "' sees the stored seam topology. Move Skin above the lineart Edit Poly and remove topology-changing modifiers between them.")
+            if nodeSkinCount > 0 do synchronizedNodes += 1
+        )
+    )
+    redrawViews()
+    #(synchronizedNodes, synchronizedSkins, synchronizedGroups, changedClones)
+)
 
 fn deadlimitVertexColorIsPrimaryDmx path =
 (
@@ -230,6 +531,7 @@ fn deadlimitVertexColorExportSidecar fixedGamma:false =
     local temporaryShapeModifiers = #()
     local temporaryGammaModifiers = #()
     local sceneWasDirty = getSaveRequired()
+    local skinSyncResult = #(0, 0, 0, 0)
 
     local savedParams = #(
         #("ASCII", FBXExporterGetParam "ASCII"),
@@ -241,6 +543,8 @@ fn deadlimitVertexColorExportSidecar fixedGamma:false =
 
     try
     (
+        skinSyncResult = deadlimitVertexColorSyncInnerLineartSkin nodes:selectedExportNodes
+
         deadlimitVertexColorSetFbxParam "ASCII" true
         deadlimitVertexColorSetFbxParam "Animation" false
         deadlimitVertexColorSetFbxParam "Cameras" false
@@ -264,8 +568,8 @@ fn deadlimitVertexColorExportSidecar fixedGamma:false =
         deadlimitVertexColorRemoveTemporaryModifiers temporaryShapeModifiers
         deadlimitVertexColorRestoreFbxParams savedParams
         select originalSelection
-        if not sceneWasDirty do setSaveRequired false autobackupRequired:false
-        #(primaryDmx, sidecarPath, fixedGamma)
+        if not sceneWasDirty and skinSyncResult[4] == 0 do setSaveRequired false autobackupRequired:false
+        #(primaryDmx, sidecarPath, fixedGamma, skinSyncResult)
     )
     catch
     (
@@ -275,7 +579,7 @@ fn deadlimitVertexColorExportSidecar fixedGamma:false =
         deadlimitVertexColorRemoveTemporaryModifiers temporaryShapeModifiers
         deadlimitVertexColorRestoreFbxParams savedParams
         select originalSelection
-        if not sceneWasDirty do setSaveRequired false autobackupRequired:false
+        if not sceneWasDirty and skinSyncResult[4] == 0 do setSaveRequired false autobackupRequired:false
         format "Vertex Color FBX failed: %\n" errorText
         throw()
     )
@@ -884,6 +1188,7 @@ fn deadlimitVertexColorBuildInnerLineart node selectedEdges sourceSegments minim
     local outputPositions = deepCopy sourceVertPositions
     local snapPairs = #()
     local markerVerts = #{}
+    local seamGroups = #()
 
     for record in vertexRecords do
     (
@@ -910,6 +1215,7 @@ fn deadlimitVertexColorBuildInnerLineart node selectedEdges sourceSegments minim
             append snapPairs #(cloneId, sourcePosition)
             markerVerts[cloneId] = true
         )
+        if cloneIds.count > 1 do append seamGroups (deepCopy cloneIds)
         record[3] = cloneIds
     )
 
@@ -965,6 +1271,9 @@ fn deadlimitVertexColorBuildInnerLineart node selectedEdges sourceSegments minim
             local extraClone = outputPositions.count
             append snapPairs #(extraClone, sourcePosition)
             markerVerts[extraClone] = true
+            local foundSourceGroup = false
+            for groupIndex = 1 to seamGroups.count where seamGroups[groupIndex][1] == sourceB do (append seamGroups[groupIndex] extraClone; foundSourceGroup = true)
+            if not foundSourceGroup do append seamGroups #(sourceB, extraClone)
             local fallbackTri = #(bA, aA, extraClone)
             append faceRecords #(fallbackTri, sourceFaceSmoothing[faceA], sourceFaceMaterials[faceA], #(true,true,true), #(#(faceA,sourceB), #(faceA,sourceA), #(faceA,sourceB)), true)
         )
@@ -1111,7 +1420,7 @@ fn deadlimitVertexColorBuildInnerLineart node selectedEdges sourceSegments minim
     polyop.setVertSelection node #{}
     polyop.setEdgeSelection node #{}
     polyop.setFaceSelection node #{}
-    #(seamFaces, seamEdges, polyop.getNumVerts node)
+    #(seamFaces, seamEdges, polyop.getNumVerts node, seamGroups)
 )
 
 
@@ -1174,6 +1483,8 @@ fn deadlimitVertexColorCreateInnerLineartFromBase useUndo:true vertexMarker:fals
     local oldVertCount = polyop.getNumVerts sourcePoly
     local oldFaceCount = polyop.getNumFaces sourcePoly
     local sourceSmoothingGroups = for faceIndex = 1 to oldFaceCount collect (polyop.getFaceSmoothGroup sourcePoly faceIndex)
+    local existingSeamGroups = deadlimitInnerLineartReadGroups node
+    local skinSnapshots = deadlimitVertexColorCaptureInnerLineartSkins node undefined oldVertCount
     local workingPoly = copy sourcePoly
     local operationResult = deadlimitVertexColorBuildInnerLineart workingPoly selectedEdges sourceSegments minimumLength oldVertCount oldFaceCount vertexMarker:vertexMarker
     for faceIndex = 1 to oldFaceCount do polyop.setFaceSmoothGroup workingPoly faceIndex sourceSmoothingGroups[faceIndex]
@@ -1193,6 +1504,8 @@ fn deadlimitVertexColorCreateInnerLineartFromBase useUndo:true vertexMarker:fals
                 polyop.setFaceSelection node.baseObject #{}
                 update node
                 select node
+                deadlimitVertexColorRestoreInnerLineartSkins node skinSnapshots operationResult[4] operationResult[3]
+                deadlimitInnerLineartWriteGroups node (deadlimitInnerLineartMergeGroups existingSeamGroups operationResult[4])
                 max modify mode
                 modPanel.setCurrentObject node.baseObject node:node ui:true
                 subObjectLevel = 2
@@ -1213,6 +1526,8 @@ fn deadlimitVertexColorCreateInnerLineartFromBase useUndo:true vertexMarker:fals
                 polyop.setFaceSelection node.baseObject #{}
                 update node
                 select node
+                deadlimitVertexColorRestoreInnerLineartSkins node skinSnapshots operationResult[4] operationResult[3]
+                deadlimitInnerLineartWriteGroups node (deadlimitInnerLineartMergeGroups existingSeamGroups operationResult[4])
                 max modify mode
                 modPanel.setCurrentObject node.baseObject node:node ui:true
                 subObjectLevel = 2
@@ -1321,6 +1636,8 @@ fn deadlimitVertexColorCreateInnerLineartFromModifier node sourceModifier useUnd
     local oldFaceCount = sourceModifier.GetNumFaces node:node
     local oldEdgeCount = sourceModifier.GetNumEdges node:node
     local sourceSmoothingGroups = for faceIndex = 1 to oldFaceCount collect (sourceModifier.GetFaceSmoothingGroups faceIndex node:node)
+    local existingSeamGroups = deadlimitInnerLineartReadGroups node
+    local skinSnapshots = deadlimitVertexColorCaptureInnerLineartSkins node sourceModifier oldVertCount
     if oldVertCount <= 0 or oldFaceCount <= 0 or oldEdgeCount <= 0 then
         throw "The active Edit Poly modifier does not expose a valid polygon mesh at this stack level."
 
@@ -1410,7 +1727,13 @@ fn deadlimitVertexColorCreateInnerLineartFromModifier node sourceModifier useUnd
     (
         undo "Create Inner Lineart" on
         (
-            try (appliedModifier = deadlimitVertexColorApplyInnerLineartModifierResult node sourceModifier workingNode oldFaceCount originalMaterial preparedSmoothingGroups)
+            try
+            (
+                appliedModifier = deadlimitVertexColorApplyInnerLineartModifierResult node sourceModifier workingNode oldFaceCount originalMaterial preparedSmoothingGroups
+                deadlimitVertexColorRestoreInnerLineartSkins node skinSnapshots operationResult[4] operationResult[3]
+                deadlimitInnerLineartWriteGroups node (deadlimitInnerLineartMergeGroups existingSeamGroups operationResult[4])
+                modPanel.setCurrentObject sourceModifier node:node ui:true
+            )
             catch
             (
                 applyError = getCurrentException()
@@ -1421,7 +1744,13 @@ fn deadlimitVertexColorCreateInnerLineartFromModifier node sourceModifier useUnd
     (
         with undo off
         (
-            try (appliedModifier = deadlimitVertexColorApplyInnerLineartModifierResult node sourceModifier workingNode oldFaceCount originalMaterial preparedSmoothingGroups)
+            try
+            (
+                appliedModifier = deadlimitVertexColorApplyInnerLineartModifierResult node sourceModifier workingNode oldFaceCount originalMaterial preparedSmoothingGroups
+                deadlimitVertexColorRestoreInnerLineartSkins node skinSnapshots operationResult[4] operationResult[3]
+                deadlimitInnerLineartWriteGroups node (deadlimitInnerLineartMergeGroups existingSeamGroups operationResult[4])
+                modPanel.setCurrentObject sourceModifier node:node ui:true
+            )
             catch
             (
                 applyError = getCurrentException()
@@ -1606,6 +1935,7 @@ rollout deadlimitVertexColorInnerLineartRollout "INNER LINEART"
 (
     checkbox vertexMarkerCheckbox "VertexColor Marker" checked:false width:120 across:2 tooltip:"Darken the participating Vertex Color corners while creating lineart topology."
     button createInnerLineartButton "Create Lineart" width:137 height:22 tooltip:"Create lineart topology inside the currently active/base Editable Poly."
+    button syncInnerLineartSkinButton "SYNC LINEART SKIN" width:170 height:22 align:#center tooltip:"Copy the current source-vertex Skin weights and DQ mask to every coincident INNER LINEART clone."
 
     on createInnerLineartButton pressed do
     (
@@ -1613,6 +1943,16 @@ rollout deadlimitVertexColorInnerLineartRollout "INNER LINEART"
         (
             local result = deadlimitVertexColorCreateInnerLineart vertexMarker:vertexMarkerCheckbox.checked
             deadlimitVertexColorFbxRollout.statusLabel.text = "Inner Lineart: " + (result[1] as string) + " edge(s), " + (result[2] as string) + " face(s)."
+        )
+        catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
+    )
+
+    on syncInnerLineartSkinButton pressed do
+    (
+        try
+        (
+            local result = deadlimitVertexColorSyncInnerLineartSkin()
+            deadlimitVertexColorFbxRollout.statusLabel.text = "Lineart Skin: " + (result[4] as string) + " clone(s) updated in " + (result[2] as string) + " Skin modifier(s)."
         )
         catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
     )
@@ -1663,8 +2003,9 @@ rollout deadlimitVertexColorFbxRollout "EXPORT VERTEX COLOR"
             statusLabel.text = "SUCCESS: sidecar ready for PREPARE" + gammaStatus
             refreshTarget()
             format "Vertex Color FBX: %\nDMX: %\n" result[2] result[1]
+            format "Inner Lineart Skin: % Skin(s), % clone(s) updated.\n" result[4][2] result[4][4]
             local gammaMessage = if result[3] then "ON: RGB ^ (1/2.2)" else "OFF: stored RGB unchanged"
-            local successMessage = "SUCCESS\n\nVertex Color FBX exported to:\n" + result[2] + "\n\nFixed Gamma: " + gammaMessage + "\n\nRun PREPARE in Deadlimit Aggregator. A failed or cancelled PREPARE keeps the FBX for retry."
+            local successMessage = "SUCCESS\n\nVertex Color FBX exported to:\n" + result[2] + "\n\nFixed Gamma: " + gammaMessage + "\nLineart Skin: " + (result[4][4] as string) + " clone(s) synchronized\n\nRun PREPARE in Deadlimit Aggregator. A failed or cancelled PREPARE keeps the FBX for retry."
             showResultMessage successMessage "VERTEX COLOR FBX READY" false
         )
         catch

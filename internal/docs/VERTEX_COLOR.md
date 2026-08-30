@@ -20,6 +20,8 @@ The helper reads Wall Worm's last export folder from `3dsMax.ini` and finds the 
 
 The FBX export is ASCII, selection-only, animation/cameras/lights disabled and triangulation enabled. Renderable Shape/Spline objects receive a temporary `Turn To Mesh` modifier before export. `FIXED GAMMA` is on by default and writes channel `0` RGB as `value^(1/2.2)` for Source 2; disable it for unchanged/Marmoset export. The helper restores temporary modifiers, previous FBX settings, Max selection, and the scene dirty state after success or failure. During PREPARE, Deadlimit Aggregator patches the CSDK-bound DMX copy and reloads and validates its color streams. An applied `_vertexcolor.fbx` remains beside the artist DMX until the complete PREPARE transaction has saved the VMDL, materials, project metadata and final log. Only then is the temporary FBX removed. Rejection, cancellation, or any later PREPARE failure leaves the FBX available for retry and diagnosis.
 
+Before export, stored Inner Lineart Skin groups on selected meshes are synchronized from each source vertex to its coincident clones. Ordinary weights, DQ masks, normalization, and supported rigid state are included. Stale topology rejects the export. A synchronization that changes clone data deliberately leaves the scene dirty so the repaired weights can be saved.
+
 The versioned helper and a short README live in `.deadlimit/maxscript-vertcolor-trans/` in the `Deadlimit` repository. Settings exposes `📂 Deadlimit Max Script` to open that folder.
 
 ## Material priority

@@ -55,3 +55,18 @@ Smoothing groups, material IDs, and edge visibility are restored for original fa
 When an Edit Poly modifier is active anywhere inside a stack, that same modifier receives the topology and stays in its original position. Modifiers above and below it, including Skin, remain in place. An active base Editable Poly is changed directly, including when other modifiers exist above it. A bare Editable Mesh is converted to Editable Poly first while retaining its physical edge selection. Conversion and topology creation use one Undo step.
 
 Border edges, zero-length edges, isolated selected edges, existing zero-width lineart edges, multiple selected objects, unsupported base types, incomplete map channels, and non-Edge sub-object modes are rejected before the source is changed. Runtime failures discard the working copy before reporting the error.
+
+## Skin-aware Inner Lineart
+
+Create Lineart records exact source-to-clone seam groups on the object. The metadata survives scene save/reload and avoids nearest-position guesses. For every Skin above the edited stack level, the command snapshots ordinary weights, DQ blend masks, normalization, and supported rigid state before changing topology. Existing vertices whose data already matches are only validated; each generated clone receives the exact source data. The topology and Skin update share the Create Lineart Undo transaction.
+
+Continue editing Skin on the same mesh. SYNC LINEART SKIN copies the current source-vertex data to every coincident clone and reports how many clones changed. EXPORT VERTEX COLOR FBX runs the same synchronization automatically for selected meshes. A synchronization that changes Skin leaves the scene dirty so the repaired weights can be saved.
+
+The safety checks are:
+
+- the active Edit Poly and each Skin above it must see the expected vertex count;
+- source and clone vertices must still coincide at the Skin input;
+- a topology-changing modifier between the active Edit Poly and Skin rejects Create Lineart before the original stack is touched;
+- stale or incompatible seam metadata rejects synchronization and FBX export.
+
+Skin exclusion lists and Skin gizmo internals are outside the current per-vertex synchronization contract. Keep the normal Skin backup workflow when those features are used.
