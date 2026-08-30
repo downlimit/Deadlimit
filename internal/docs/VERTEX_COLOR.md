@@ -22,6 +22,8 @@ The FBX export is ASCII, selection-only, animation/cameras/lights disabled and t
 
 Before export, stored Inner Lineart Skin groups on selected meshes are synchronized from each source vertex to its coincident clones. Ordinary weights, DQ masks, normalization, and supported rigid state are included. Stale topology rejects the export. A synchronization that changes clone data deliberately leaves the scene dirty so the repaired weights can be saved.
 
+Inner Lineart's optional Alpha Marker writes black to Vertex Alpha (Max map channel `-2`) on participating corners while preserving Vertex Color RGB (channel `0`). DISPLAY LINEART / DISPLAY VERTCOLOR switches selected meshes between `#alpha` and `#color` viewport display without changing stored values.
+
 The versioned helper and a short README live in `.deadlimit/maxscript-vertcolor-trans/` in the `Deadlimit` repository. Settings exposes `📂 Deadlimit Max Script` to open that folder.
 
 ## Material priority

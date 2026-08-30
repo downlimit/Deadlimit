@@ -15,6 +15,7 @@
        pivots, hierarchy, animation, naming, and exported orientation stay intact.
     4. Inner Lineart turns selected inner edges into coincident zero-area seam faces.
        The extra normals create Deadlock shader linework without a visible geometric gap.
+       Its optional marker writes black Vertex Alpha while preserving Vertex Color RGB.
     5. Skin-aware Inner Lineart assigns every generated coincident vertex the exact
        source vertex weights and keeps those pairs synchronized after later skin edits.
     6. Vertex Color FBX is a temporary sidecar for Deadlimit PREPARE. Optional fixed
@@ -142,6 +143,7 @@ global deadlimitVertexColorSelectedGeometry
 global deadlimitVertexColorSelectedBones
 global deadlimitVertexColorSetDisplay
 global deadlimitVertexColorToggleDisplay
+global deadlimitVertexColorToggleLineartDisplay
 global deadlimitVertexColorFitBoneLengths
 global deadlimitVertexColorSetSelectedBoneLength
 global deadlimitVertexColorFlipSelectedBoneX
@@ -708,9 +710,14 @@ fn deadlimitVertexColorExportSidecar fixedGamma:false =
     These functions only change display flags. Numeric channel-0 data and materials are
     untouched. ON/OFF uses a majority rule across the selected meshes: if most are on,
     force all off; otherwise force all on. This makes mixed selections deterministic.
+    The Inner Lineart display toggle keeps shaded vertex display enabled and switches the
+    source between channel 0 RGB (#color) and special channel -2 Vertex Alpha (#alpha).
+    Nitrous caches selected-object display data beyond a regular redraw. Cycling the display
+    flags, updating the node in both states, invalidating its screen rectangle, and forcing
+    a complete redraw makes the selected mesh switch immediately without selection changes.
 
     Porting invariant: configure the viewport/material preview to show the same stored
-    color attribute the exporter reads. Do not solve display mismatch by rewriting colors.
+    color/alpha attribute the workflow reads. Display switches never rewrite either channel.
 */
 fn deadlimitVertexColorSelectedGeometry =
 (
@@ -747,6 +754,31 @@ fn deadlimitVertexColorToggleDisplay =
     )
     redrawViews()
     #(nodes.count, enableDisplay, enabledCount)
+)
+
+fn deadlimitVertexColorToggleLineartDisplay =
+(
+    local nodes = deadlimitVertexColorSelectedGeometry()
+    local alphaDisplayCount = 0
+    for node in nodes where node.vertexColorType == #alpha and node.showVertexColors and node.vertexColorsShaded do alphaDisplayCount += 1
+    local showLineart = not (alphaDisplayCount > (nodes.count / 2.0))
+    local targetType = if showLineart then #alpha else #color
+
+    for node in nodes do
+    (
+        -- Selected meshes can retain the previous Nitrous display cache until selection
+        -- changes. Rebuild the safe documented display state without reference messages.
+        node.showVertexColors = false
+        node.vertexColorsShaded = false
+        update node
+        node.vertexColorType = targetType
+        node.showVertexColors = true
+        node.vertexColorsShaded = true
+        update node
+        nodeInvalRect node
+    )
+    forceCompleteRedraw()
+    #(nodes.count, showLineart, alphaDisplayCount)
 )
 
 /*
@@ -1114,8 +1146,9 @@ fn deadlimitVertexColorPastePalette =
        collapsed at the matching source corner, so UVs and vertex colors remain valid.
     6. Restore original smoothing groups, material IDs, edge visibility, and clear random
        sub-object selections. New lineart faces receive an intentional smoothing group.
-    7. Optional VertexColor Marker halves participating channel-0 values, preserving the
-       artist's color relationships and avoiding an absolute-black marker.
+    7. Optional Alpha Marker writes black to special map channel -2 for every participating
+       face corner. Existing non-marker alpha remains intact; a missing alpha channel is
+       initialized white. Channel 0 RGB vertex paint is never modified by the marker.
 
     deadlimitVertexColorBuildInnerLineart is DCC-neutral in intent. Its return contract is
     #(newSeamFaces, newSeamEdges, resultingVertexCount, sourceCloneGroups). A Blender port
@@ -1340,8 +1373,10 @@ fn deadlimitVertexColorBuildInnerLineart node selectedEdges sourceSegments minim
     )
 
     local sourceNumMaps = polyop.getNumMaps node
+    local sourceMapChannels = #(-2, -1)
+    if sourceNumMaps > 0 do for mapChannel = 0 to (sourceNumMaps - 1) do append sourceMapChannels mapChannel
     local sourceMapRecords = #()
-    if sourceNumMaps > 0 do for mapChannel = 0 to (sourceNumMaps - 1) where polyop.getMapSupport node mapChannel do
+    for mapChannel in sourceMapChannels where polyop.getMapSupport node mapChannel do
     (
         local mapVertCount = polyop.getNumMapVerts node mapChannel
         local mapFaceCount = polyop.getNumMapFaces node mapChannel
@@ -1542,9 +1577,7 @@ fn deadlimitVertexColorBuildInnerLineart node selectedEdges sourceSegments minim
 
     for snapPair in snapPairs do polyop.setVert node snapPair[1] snapPair[2]
 
-    local outputNumMaps = sourceNumMaps
-    if vertexMarker and outputNumMaps < 1 do outputNumMaps = 1
-    polyop.setNumMaps node outputNumMaps keep:false
+    polyop.setNumMaps node sourceNumMaps keep:false
     for mapRecord in sourceMapRecords do
     (
         local mapChannel = mapRecord[1]
@@ -1563,7 +1596,7 @@ fn deadlimitVertexColorBuildInnerLineart node selectedEdges sourceSegments minim
             append outputMapFaces outputMapFace
         )
 
-        if vertexMarker and mapChannel == 0 do
+        if vertexMarker and mapChannel == -2 do
         (
             for faceIndex = 1 to faceRecords.count do
             (
@@ -1571,8 +1604,7 @@ fn deadlimitVertexColorBuildInnerLineart node selectedEdges sourceSegments minim
                 local mapFace = outputMapFaces[faceIndex]
                 for cornerIndex = 1 to geomVerts.count where markerVerts[geomVerts[cornerIndex]] do
                 (
-                    local currentColor = outputMapVerts[mapFace[cornerIndex]]
-                    append outputMapVerts (currentColor * 0.5)
+                    append outputMapVerts [0,0,0]
                     mapFace[cornerIndex] = outputMapVerts.count
                 )
             )
@@ -1585,20 +1617,20 @@ fn deadlimitVertexColorBuildInnerLineart node selectedEdges sourceSegments minim
         for mapFaceIndex = 1 to outputMapFaces.count do polyop.setMapFace node mapChannel mapFaceIndex outputMapFaces[mapFaceIndex]
     )
 
-    local hasSourceVertexColor = false
-    for mapRecord in sourceMapRecords where mapRecord[1] == 0 do hasSourceVertexColor = true
-    if vertexMarker and not hasSourceVertexColor do
+    local hasSourceVertexAlpha = false
+    for mapRecord in sourceMapRecords where mapRecord[1] == -2 do hasSourceVertexAlpha = true
+    if vertexMarker and not hasSourceVertexAlpha do
     (
-        polyop.setMapSupport node 0 true
-        polyop.setNumMapVerts node 0 2 keep:false
-        polyop.setMapVert node 0 1 [1,1,1]
-        polyop.setMapVert node 0 2 [0.5,0.5,0.5]
-        polyop.setNumMapFaces node 0 faceRecords.count keep:false
+        polyop.setMapSupport node -2 true
+        polyop.setNumMapVerts node -2 2 keep:false
+        polyop.setMapVert node -2 1 [1,1,1]
+        polyop.setMapVert node -2 2 [0,0,0]
+        polyop.setNumMapFaces node -2 faceRecords.count keep:false
         for faceIndex = 1 to faceRecords.count do
         (
             local geomVerts = faceRecords[faceIndex][1]
             local mapFace = for geomVert in geomVerts collect (if markerVerts[geomVert] then 2 else 1)
-            polyop.setMapFace node 0 faceIndex mapFace
+            polyop.setMapFace node -2 faceIndex mapFace
         )
     )
 
@@ -2160,9 +2192,10 @@ rollout deadlimitVertexColorBoneToolsRollout "BONE TOOLS"
 
 rollout deadlimitVertexColorInnerLineartRollout "INNER LINEART"
 (
-    checkbox vertexMarkerCheckbox "VertexColor Marker" checked:false width:120 across:2 tooltip:"Darken the participating Vertex Color corners while creating lineart topology."
+    checkbox vertexMarkerCheckbox "Alpha Marker" checked:false width:120 across:2 tooltip:"Write black Vertex Alpha to participating lineart corners while preserving Vertex Color RGB."
     button createInnerLineartButton "Create Lineart" width:137 height:22 tooltip:"Create lineart topology inside the currently active/base Editable Poly."
-    button syncInnerLineartSkinButton "SYNC LINEART SKIN" width:170 height:22 align:#center tooltip:"Copy the current source-vertex Skin weights and DQ mask to every coincident INNER LINEART clone."
+    button displayLineartButton "DISPLAY LINEART" width:137 height:22 across:2 tooltip:"Switch selected meshes between Vertex Alpha lineart visualization and Vertex Color RGB display."
+    button syncInnerLineartSkinButton "SYNC LINEART SKIN" width:137 height:22 tooltip:"Copy the current source-vertex Skin weights and DQ mask to every coincident INNER LINEART clone."
 
     on createInnerLineartButton pressed do
     (
@@ -2170,6 +2203,18 @@ rollout deadlimitVertexColorInnerLineartRollout "INNER LINEART"
         (
             local result = deadlimitVertexColorCreateInnerLineart vertexMarker:vertexMarkerCheckbox.checked
             deadlimitVertexColorFbxRollout.statusLabel.text = "Inner Lineart: " + (result[1] as string) + " edge(s), " + (result[2] as string) + " face(s)."
+        )
+        catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
+    )
+
+    on displayLineartButton pressed do
+    (
+        try
+        (
+            local result = deadlimitVertexColorToggleLineartDisplay()
+            displayLineartButton.text = if result[2] then "DISPLAY VERTCOLOR" else "DISPLAY LINEART"
+            local displayName = if result[2] then "Lineart Alpha" else "Vertex Color RGB"
+            deadlimitVertexColorFbxRollout.statusLabel.text = "Display: " + displayName + " on " + (result[1] as string) + " object(s)."
         )
         catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
     )

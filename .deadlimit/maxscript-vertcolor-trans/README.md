@@ -43,12 +43,13 @@ INNER LINEART creates zero-width topology for normal-driven inner outlines:
 
 1. Use a bare Editable Poly, a bare Editable Mesh, or make the intended Edit Poly modifier active anywhere inside the stack.
 2. Enter Edge mode and select a connected chain of at least two non-border edges. T- and X-junctions are supported.
-3. Optionally enable VertexColor Marker.
+3. Optionally enable Alpha Marker.
 4. Press Create Lineart.
+5. Use DISPLAY LINEART / DISPLAY VERTCOLOR to switch selected meshes between Vertex Alpha visualization and their regular Vertex Color RGB.
 
 The deterministic sector builder records source vertices and face corners, partitions faces around selected vertices into sectors, creates coincident sector vertices, rebuilds original faces, and closes selected edges with zero-area polygons. It does not call 3ds Max Chamfer. A three-way junction receives one visible triangle cap. A four-way junction receives one visible quad cap. Junctions with more sectors are filled by real visible faces no larger than quads. Cap faces inherit a neighboring source smoothing group and material ID. Isolated one-edge selections are rejected.
 
-Every supported map channel is reconstructed corner-for-corner. New seam faces receive collapsed map faces at matching source corners, so their UV area is zero and existing UV seams remain unchanged. With VertexColor Marker enabled, each participating channel 0 corner receives half of its own current color. Different colors and color seams remain distinct. When channel 0 is absent, the tool creates a white channel with participating corners set to neutral gray.
+Every supported map channel, including Vertex Alpha and Vertex Illumination, is reconstructed corner-for-corner. New seam faces receive collapsed map faces at matching source corners, so their UV area is zero and existing UV seams remain unchanged. With Alpha Marker enabled, every participating Vertex Alpha corner becomes black. Existing non-marker alpha remains unchanged; a missing alpha channel receives a white background. Vertex Color RGB in channel 0 remains unchanged.
 
 Smoothing groups, material IDs, and edge visibility are restored for original faces. The generated topology is written directly into the Editable Poly where the selected edges live. The tool does not add a helper modifier.
 
