@@ -27,6 +27,7 @@ jobs:
 
           exact = {
               'Подготовить authoring-контент выбранного проекта': 'Подготовить рабочие файлы выбранного проекта',
+              'Authoring-контент уже подготовлен': 'Рабочие файлы проекта уже подготовлены',
               'Authoring-контент подготовлен.': 'Рабочие файлы проекта подготовлены.',
               'для authoring используйте': 'для работы с моделью и материалами используйте',
               'Retail source файлов скопировано': 'Файлов из игрового клиента Deadlock скопировано',
@@ -72,7 +73,6 @@ jobs:
                   path.write_text(text, encoding='utf-8')
                   changed.append(str(path))
 
-          # Tighten the permanent UI rule so this jargon does not creep back into Russian copy.
           guide = Path('internal/docs/UI_GUIDELINES.md')
           text = guide.read_text(encoding='utf-8')
           marker = '- Avoid implementation jargon in user-facing tooltips when a plain product term exists.'
@@ -88,18 +88,16 @@ jobs:
           for path in changed:
               print(' -', path)
 
-          # Audit only source string lines likely to be user-visible. Internal identifiers such as
-          # RetailDeadlockRoot are allowed; quoted copy containing the old phrases is not.
           forbidden = []
           for path in files:
               for no, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
-                  if '"' not in line:
+                  if '"' not in line or not cyrillic.search(line):
                       continue
                   low = line.lower()
-                  if 'authoring-контент' in low or 'retail deadlock' in low:
+                  if 'authoring' in low or 'retail' in low:
                       forbidden.append(f'{path}:{no}: {line.strip()}')
           if forbidden:
-              print('Remaining user-facing jargon:')
+              print('Remaining Russian user-facing pipeline jargon:')
               print('\n'.join(forbidden))
               raise SystemExit(1)
 
