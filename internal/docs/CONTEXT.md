@@ -1,14 +1,14 @@
-# Deadlimit — Context
+# Deadlimit Aggregator — Context
 
 ## What we are building
 
-Deadlimit is a Windows tool that automates the repetitive mechanical steps required to create, iterate, package, and test Deadlock character replacement mods.
+Deadlimit Aggregator is a Windows tool that automates the repetitive mechanical steps required to create, iterate, package, and test Deadlock character replacement mods.
 
 The intended user workflow is deliberately high-level:
 
 ```text
 source folder with DMX + textures
-→ create/open Deadlimit project
+→ create/open Deadlimit Aggregator project
 → prepare intermediate Source 2 authoring workspace
 → edit materials/shaders if needed
 → Release
@@ -32,7 +32,7 @@ The current manual workflow contains too many repeated low-level operations:
 - copying/deploying the result for testing;
 - repeating most of the above after every iteration.
 
-Deadlimit exists to make those operations deterministic and internal while preserving the authoring decisions that actually require an artist.
+Deadlimit Aggregator exists to make those operations deterministic and internal while preserving the authoring decisions that actually require an artist.
 
 ## Target UX
 
@@ -58,14 +58,14 @@ Technical commands, paths, ResourceCompiler invocation, VMDL preprocessing, Dead
 
 ## Authoring model
 
-Deadlimit must preserve a deliberate intermediate authoring stage.
+Deadlimit Aggregator must preserve a deliberate intermediate authoring stage.
 
 A replacement can contain both:
 
 - `REUSE` materials — existing retail Deadlock materials used by preserved hero geometry;
 - `CUSTOM` materials — project-owned materials used by new costume/skin geometry.
 
-Deadlimit may create the initial scaffold for missing custom materials and texture resources. Once an artist has edited a custom VMAT, routine prepare/release operations must never overwrite it.
+Deadlimit Aggregator may create the initial scaffold for missing custom materials and texture resources. Once an artist has edited a custom VMAT, routine prepare/release operations must never overwrite it.
 
 ## Problems we are solving
 
@@ -89,7 +89,7 @@ This must not become a global `materials/` stripping rule because valid paths su
 
 ### 2. Reduced CSDK cannot necessarily consume retail/source model data unchanged
 
-Some source blocks/resources produced from retail Deadlock are not accepted directly by the available Reduced CSDK toolchain. Deadlimit therefore needs a structural preprocessor that can remove or bypass only known-incompatible nodes while preserving valid ModelDoc/KV3 structure.
+Some source blocks/resources produced from retail Deadlock are not accepted directly by the available Reduced CSDK toolchain. Deadlimit Aggregator therefore needs a structural preprocessor that can remove or bypass only known-incompatible nodes while preserving valid ModelDoc/KV3 structure.
 
 Blind regex editing is not acceptable for nested VMDL/ModelDoc data.
 
@@ -99,13 +99,13 @@ In the current environment, the tested `game\bin_cs2\win64\resourcecompiler.exe`
 
 The tested `game\bin_tools\win64\resourcecompiler.exe` aborted during startup with a particle schema mismatch.
 
-Deadlimit must use a validated compiler adapter rather than assuming every ResourceCompiler found in the CSDK installation is equivalent.
+Deadlimit Aggregator must use a validated compiler adapter rather than assuming every ResourceCompiler found in the CSDK installation is equivalent.
 
 ### 4. Compiled models can require post-processing
 
 The tested compiled replacement model required DeadlockTools `add ag2` to restore expected AnimGraph2 and NmSkeleton references.
 
-`fix unitstatus` is conditional. In the tested build it reported that the target data was not an array, indicating that the specific defect it repairs was absent. Deadlimit should treat this as a conditional/no-op path rather than a mandatory fatal step.
+`fix unitstatus` is conditional. In the tested build it reported that the target data was not an array, indicating that the specific defect it repairs was absent. Deadlimit Aggregator should treat this as a conditional/no-op path rather than a mandatory fatal step.
 
 ### 5. Material creation must coexist with retail material reuse
 
@@ -121,15 +121,15 @@ The final release path should compile changed resources, validate the model, per
 
 ### 8. Hero extraction should not rely on hardcoded hero paths or a separate CLI install
 
-Retail resource layouts differ and can change. Deadlimit should discover the main model and dependencies from current retail resources, persist the discovered paths, and avoid converting one hero-specific workaround into a universal assumption.
+Retail resource layouts differ and can change. Deadlimit Aggregator should discover the main model and dependencies from current retail resources, persist the discovered paths, and avoid converting one hero-specific workaround into a universal assumption.
 
-The Source 2 Viewer GUI and `Source2Viewer-CLI` are separate binaries. Requiring the artist to locate the CLI would add exactly the kind of setup/mechanical step Deadlimit is intended to remove. Extraction therefore uses the ValveResourceFormat NuGet library in-process.
+The Source 2 Viewer GUI and `Source2Viewer-CLI` are separate binaries. Requiring the artist to locate the CLI would add exactly the kind of setup/mechanical step Deadlimit Aggregator is intended to remove. Extraction therefore uses the ValveResourceFormat NuGet library in-process.
 
 ## Evidence status
 
 ### Confirmed by our current pipeline
 
-- Stage 1A project persistence works locally: a real saved project restored its folder, project name, hero and Release ID after Deadlimit was closed and relaunched;
+- Stage 1A project persistence works locally: a real saved project restored its folder, project name, hero and Release ID after Deadlimit Aggregator was closed and relaunched;
 - `bin_cs2\win64\resourcecompiler.exe` compiled the tested replacement model successfully;
 - `bin_tools\win64\resourcecompiler.exe` failed in the same installation with a particles schema mismatch;
 - the tested compiled model required DeadlockTools `add ag2` to restore graph/skeleton references;
@@ -171,7 +171,7 @@ The Source 2 Viewer GUI and `Source2Viewer-CLI` are separate binaries. Requiring
 - keep deterministic logs for preprocessing, compilation, post-processing, packaging, and deployment;
 - never overwrite an existing authored custom VMAT during routine builds;
 - do not encode hero-specific fixes as universal behavior without evidence;
-- avoid user-facing prerequisites that can be embedded or discovered reliably by Deadlimit;
+- avoid user-facing prerequisites that can be embedded or discovered reliably by Deadlimit Aggregator;
 - treat external tool/version compatibility as changeable and revalidate adapters/dependencies when Deadlock, Reduced CSDK, Wall Worm, ValveResourceFormat, or DeadlockTools changes.
 
 ## Current development focus
