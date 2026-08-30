@@ -2,7 +2,7 @@ namespace Deadlimit.Core;
 
 public sealed class ToolPathSettings
 {
-    public string ProjectsRoot { get; set; } = DeadlimitPaths.DefaultWorkspaceRoot;
+    public string ProjectsRoot { get; set; } = string.Empty;
     public string CsdkRoot { get; set; } = string.Empty;
     public string DeadlockToolsRoot { get; set; } = string.Empty;
     public string RetailDeadlockRoot { get; set; } = string.Empty;
@@ -213,7 +213,7 @@ public static class ProjectStore
     private sealed class LocalSettings
     {
         public string LastProjectFolder { get; set; } = string.Empty;
-        public string ProjectsRoot { get; set; } = DeadlimitPaths.DefaultWorkspaceRoot;
+        public string ProjectsRoot { get; set; } = string.Empty;
         public string CsdkRoot { get; set; } = string.Empty;
         public string DeadlockToolsRoot { get; set; } = string.Empty;
         public string RetailDeadlockRoot { get; set; } = string.Empty;
