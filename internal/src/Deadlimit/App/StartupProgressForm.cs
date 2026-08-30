@@ -19,7 +19,7 @@ internal sealed class StartupProgressForm : Form
 
     public StartupProgressForm(Icon icon, string theme)
     {
-        Text = "Deadlimit";
+        Text = "Deadlimit Aggregator";
         Icon = icon;
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -32,7 +32,7 @@ internal sealed class StartupProgressForm : Form
 
         var heading = new Label
         {
-            Text = UiText.T("Starting Deadlimit...", "Запуск Deadlimit..."),
+            Text = UiText.T("Starting Deadlimit Aggregator...", "Запуск Deadlimit Aggregator..."),
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
             Padding = new Padding(12, 4, 12, 4),
