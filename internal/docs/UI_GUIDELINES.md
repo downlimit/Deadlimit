@@ -4,17 +4,21 @@
 
 Tooltips must be readable as compact help, not rendered as one long sentence.
 
+- All Deadlimit Manager tooltips use the shared `RichToolTip` renderer. Do not introduce separate native WinForms tooltip styling for main-window features or Settings.
+- Tooltip background is consistently white with dark text and a neutral border, independent of the active application theme.
+- Tooltip content is word-wrapped to a compact maximum width. No tooltip should expand into a screen-wide single line.
 - Split different ideas into separate paragraphs with a blank line between them.
 - Keep each paragraph short. Prefer 1-2 sentences per paragraph.
 - Put the primary action first, modifiers/alternate actions second, and warnings or side effects last.
 - When a modifier or input chord is important, write it as an emphasized token such as `**SHIFT+LMB**` instead of relying only on uppercase text.
-- Deadlimit's tooltip renderer supports `**bold**` spans. Use bold only for short keywords, shortcuts and state names, not whole sentences.
-- Avoid implementation jargon in user-facing tooltips when a plain product term exists. For example, say `Deadlock game client` / `игровой клиент Deadlock` instead of `Retail Deadlock` unless the distinction itself is being explained.
+- The shared renderer preserves explicit `**bold**` spans and also emphasizes common action/modifier tokens such as SHIFT interactions, PREPARE FOR CSDK, BUILD FOR TEST, LAUNCH CSDK, Release ID and managed-tool actions.
+- Use bold only for short keywords, shortcuts and state names, not whole sentences.
+- Avoid implementation jargon in user-facing tooltips when a plain product term exists. For example, say `Deadlock client` / `Deadlock клиент` instead of `Retail Deadlock` unless the distinction itself is being explained.
 
 Example:
 
 ```text
-Launch the Deadlock game client through Steam.
+Launch the Deadlock client through Steam.
 
 Hold **SHIFT+LMB** to copy the camera-lock command instead of launching the game.
 ```
@@ -25,7 +29,7 @@ Actions that perform validation, network checks, installs or updates must provid
 
 - The action button changes to a busy label such as `CHECKING...` / `WORKING...` while the action is running.
 - The corresponding status text changes immediately and is repainted before awaiting network or process work.
-- A completed check leaves a persistent, explicit result such as `Up to date`, `Update available`, `Installed - version unknown`, `Game client ready`, or `Network issue`.
+- A completed check leaves a persistent, explicit result such as `Up to date`, `Update available`, `Installed - version unknown`, `Client ready`, or `Network issue`.
 - Do not hide the only useful result inside a tooltip.
 
 ## Language and theme
@@ -33,5 +37,6 @@ Actions that perform validation, network checks, installs or updates must provid
 Changing language or theme must not require the user to manually relaunch Deadlimit Manager.
 
 - Theme preview may apply immediately while Settings is open.
-- After Save, the main UI is rebuilt in-process with the selected language/theme.
+- `APPLY` / `ПРИМЕНИТЬ` commits language/theme changes and rebuilds the main UI in-process.
+- Tool/workspace paths persist immediately when installed or selected and do not depend on `APPLY`.
 - Do not use `Application.Restart()` for normal language/theme changes.
