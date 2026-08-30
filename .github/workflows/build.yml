@@ -74,6 +74,22 @@ jobs:
               throw "Legacy desktop application name remains in $($check.Path): $($check.Pattern)"
             }
           }
+      - name: Root presentation smoke
+        shell: cmd
+        run: call DeadlimitManager.cmd --refresh-only
+      - name: Verify two-shortcut root presentation
+        shell: pwsh
+        run: |
+          $expected = @('Deadlimit Manager.lnk', 'Deadlimit Updater.lnk') | Sort-Object
+          $visible = Get-ChildItem -LiteralPath . -Force | Where-Object {
+            -not ($_.Attributes -band [IO.FileAttributes]::Hidden) -and
+            -not ($_.Attributes -band [IO.FileAttributes]::System)
+          } | Select-Object -ExpandProperty Name | Sort-Object
+          $difference = Compare-Object -ReferenceObject $expected -DifferenceObject $visible
+          if ($difference) {
+            $actual = $visible -join ', '
+            throw "Root presentation must expose exactly two shortcuts. Visible entries: $actual"
+          }
       - name: Audit remaining Deadlimit identifiers
         shell: pwsh
         run: |
