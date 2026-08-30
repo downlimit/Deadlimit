@@ -49,17 +49,52 @@ try {
         throw "Deadlimit Updater requires the local checkout to be on branch 'main'. Current branch: '$currentBranch'."
     }
 
-    $trackedChanges = @(& $git.Source -C $rootPath status --porcelain --untracked-files=no)
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not inspect the local Git working tree."
-    }
-    if ($trackedChanges.Count -gt 0) {
-        throw "The local checkout has tracked changes. Commit or revert them before running Deadlimit Updater."
-    }
-
     $oldHead = (& $git.Source -C $rootPath rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($oldHead)) {
         throw "Could not read the current Deadlimit revision."
+    }
+
+    Write-Host "Checking origin/main for Deadlimit updates..."
+    & $git.Source -C $rootPath fetch origin main
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not fetch origin/main."
+    }
+
+    # Local tracked work is allowed when the incoming update does not touch the
+    # same files. Do not stash/reset user work automatically: compare paths first
+    # and let Git perform the fast-forward only when those sets are disjoint.
+    $localTrackedChanges = @(& $git.Source -C $rootPath diff --no-renames --name-only HEAD --)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not inspect local tracked changes."
+    }
+    $localTrackedChanges = @($localTrackedChanges | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+
+    $incomingChanges = @(& $git.Source -C $rootPath diff --no-renames --name-only $oldHead origin/main --)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not inspect incoming origin/main changes."
+    }
+    $incomingChanges = @($incomingChanges | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+
+    if ($localTrackedChanges.Count -gt 0 -and $incomingChanges.Count -gt 0) {
+        $incomingSet = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+        foreach ($path in $incomingChanges) {
+            [void]$incomingSet.Add($path)
+        }
+
+        $overlap = @($localTrackedChanges | Where-Object { $incomingSet.Contains($_) } | Sort-Object -Unique)
+        if ($overlap.Count -gt 0) {
+            Write-Host ""
+            Write-Host "Update paused: origin/main also changes files you are editing locally:" -ForegroundColor Yellow
+            foreach ($path in $overlap) {
+                Write-Host "  $path" -ForegroundColor Yellow
+            }
+            throw "Incoming update overlaps local tracked work. No stash, reset, or local-file overwrite was performed. Reconcile only the files listed above, then run Deadlimit Updater again."
+        }
+
+        Write-Host "Local tracked work detected outside this update; preserving it:" -ForegroundColor DarkYellow
+        foreach ($path in ($localTrackedChanges | Sort-Object -Unique)) {
+            Write-Host "  $path" -ForegroundColor DarkYellow
+        }
     }
 
     # The Manager executable can otherwise stay locked while the updater rebuilds it.
@@ -67,14 +102,9 @@ try {
         Stop-Process -Force -ErrorAction SilentlyContinue
 
     Write-Host "Updating the Deadlimit repository from origin/main..."
-    & $git.Source -C $rootPath fetch origin main
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not fetch origin/main."
-    }
-
     & $git.Source -C $rootPath merge --ff-only origin/main
     if ($LASTEXITCODE -ne 0) {
-        throw "The local checkout cannot be fast-forwarded safely. Resolve local Git state before running Deadlimit Updater again."
+        throw "Git could not fast-forward while preserving local work. No stash or reset was performed; your local changes were left in place. Review the Git message above and resolve only the blocking state before running Deadlimit Updater again."
     }
 
     $newHead = (& $git.Source -C $rootPath rev-parse HEAD).Trim()
