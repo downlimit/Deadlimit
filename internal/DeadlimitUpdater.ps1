@@ -1,13 +1,21 @@
 param(
-    [Parameter(Mandatory = $true)]
-    [string]$Root
+    [switch]$ResolveRootOnly
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 try {
-    $rootPath = [IO.Path]::GetFullPath($Root).TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+    # Resolve the checkout from this tracked worker instead of accepting a path
+    # from cmd.exe. A quoted batch argument ending in '\' can reach PowerShell
+    # with a stray quote and make GetFullPath reject an otherwise valid path.
+    $rootPath = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+    $rootPath = $rootPath.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
+
+    if ($ResolveRootOnly) {
+        Write-Output $rootPath
+        exit 0
+    }
 
     $git = Get-Command git.exe -ErrorAction SilentlyContinue
     if ($null -eq $git) {

@@ -53,6 +53,8 @@ jobs:
             @{ Path = 'DeadlimitManager.cmd'; Pattern = 'DeadlimitManager.exe' },
             @{ Path = 'DeadlimitManager.cmd'; Pattern = "@('Deadlimit Manager.lnk','Deadlimit Updater.lnk')" },
             @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'internal\DeadlimitUpdater.ps1' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = '$PSScriptRoot' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'ResolveRootOnly' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'Updating the Deadlimit repository from origin/main' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'DeadlimitManager.cmd' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'status --porcelain --untracked-files=no' },
@@ -76,6 +78,7 @@ jobs:
           }
 
           $forbidden = @(
+            @{ Path = 'DeadlimitUpdater.bat'; Pattern = '-Root "%ROOT%"' },
             @{ Path = 'internal/src/Deadlimit/Deadlimit.csproj'; Pattern = '<AssemblyName>DeadlimitAggregator</AssemblyName>' },
             @{ Path = 'internal/src/Deadlimit/Deadlimit.csproj'; Pattern = '<Product>Deadlimit Aggregator</Product>' },
             @{ Path = 'internal/src/Deadlimit/Program.cs'; Pattern = 'Usage: DeadlimitAggregator.exe' },
@@ -84,8 +87,19 @@ jobs:
           )
           foreach ($check in $forbidden) {
             if (Select-String -LiteralPath $check.Path -SimpleMatch $check.Pattern -Quiet) {
-              throw "Legacy desktop application name remains in $($check.Path): $($check.Pattern)"
+              throw "Forbidden legacy/broken contract remains in $($check.Path): $($check.Pattern)"
             }
+          }
+      - name: Updater root-resolution smoke
+        shell: pwsh
+        run: |
+          $resolved = (& powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File 'internal\DeadlimitUpdater.ps1' -ResolveRootOnly | Select-Object -Last 1).Trim()
+          if ($LASTEXITCODE -ne 0) {
+            throw "Updater root-resolution smoke failed with exit code $LASTEXITCODE"
+          }
+          $expected = (Resolve-Path '.').Path.TrimEnd('\')
+          if (-not [string]::Equals($resolved, $expected, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Updater resolved '$resolved', expected '$expected'."
           }
       - name: Root presentation smoke
         shell: cmd
