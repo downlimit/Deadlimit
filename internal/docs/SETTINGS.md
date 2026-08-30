@@ -6,6 +6,8 @@ Deadlimit Manager keeps workstation-specific tool roots and UI preferences outsi
 
 The Settings window treats external tools as managed dependencies instead of plain editable path fields.
 
+The window is intentionally compact and fixed-size. It must not be wider than the default main Manager window, and the user must not be able to resize it into a layout that clips `SAVE` / `CANCEL` or breaks row spacing.
+
 ## Tool rows
 
 Rows are ordered by pipeline importance:
@@ -13,11 +15,11 @@ Rows are ordered by pipeline importance:
 ```text
 Reduced CSDK
 DeadlockTools
-Deadlock game client
+Deadlock client
 Projects folder
 ```
 
-`Deadlock game client` is the user-facing name for the installed Steam copy of Deadlock (`Project8Staging`). Internal code/settings may still use the historical `RetailDeadlockRoot` identifier so existing configuration remains compatible.
+`Deadlock client` is the user-facing name for the installed Steam copy of Deadlock (`Project8Staging`). Internal code/settings may still use the historical `RetailDeadlockRoot` identifier so existing configuration remains compatible.
 
 Each row presents the dependency name, current status, context-sensitive actions, a read-only path, an Explorer button and `BROWSE…` for selecting an existing installation/folder.
 
@@ -29,18 +31,18 @@ Relevant status values include:
 
 ```text
 Not specified
-Installed · version unknown
+Version unknown
 Up to date
 Update available
 Invalid path
 Network issue
 Checking…
 Working…
-Game client ready
+Client ready
 Folder ready
 ```
 
-When known, CSDK generation is shown directly in the status, for example `Up to date · CSDK 12`. The useful result must remain visible in the row; tooltips contain additional detail rather than being the only feedback.
+When known, CSDK generation is shown directly in the status, for example `Up to date · CSDK 12`. Managed DeadlockTools installations show the GitHub release tag, for example `Up to date · v1.1.0`. The useful result must remain visible in the row; tooltips contain additional detail rather than being the only feedback.
 
 ## Reduced CSDK
 
@@ -67,7 +69,7 @@ newer generation found    -> UPDATE…
 The button is enabled only when:
 
 - the Reduced CSDK root is valid;
-- the configured Deadlock game client root is valid;
+- the configured Deadlock client root is valid;
 - the current CSDK network source was reachable during the status check.
 
 Current setup flow:
@@ -80,34 +82,41 @@ Current setup flow:
 6. remove the downloaded `pak01_*.vpk` sets from CSDK `game\citadel` and `game\core`;
 7. re-apply the current Reduced CSDK archive over the result.
 
-The configured Deadlock game client installation is validated as a prerequisite and is never modified by this setup transaction.
+The configured Deadlock client installation is validated as a prerequisite and is never modified by this setup transaction.
 
 The Full Game Files step remains optional according to the upstream CSDK documentation; it is required for features such as `bin_server`, S2FM and Hammer rather than for every Reduced CSDK authoring task.
 
 ## DeadlockTools
 
-DeadlockTools is managed against the upstream repository:
+DeadlockTools upstream:
 
 ```text
 https://github.com/dotryen/DeadlockTools
-branch: master
 ```
 
-`INSTALL…` clones the repository into an empty selected folder and builds `DeadlockTools/DeadlockTools.csproj` in Release configuration.
+The normal user path is release-based rather than source-build-based.
 
-For Git checkouts, `CHECK` compares the local commit with the current upstream `master` commit. `UPDATE…` performs a fast-forward pull and rebuilds Release. A manually copied valid build can be used, but its freshness cannot be established automatically without Git metadata.
+`INSTALL…` downloads the latest official `DeadlockTools-windows-x64.zip` GitHub Release into an empty selected folder and records the installed release tag in machine-local dependency metadata. This avoids requiring the user to manually download the repository or have the .NET SDK merely to install the dependency.
 
-The expected executable remains:
+For a Deadlimit-managed release installation, `CHECK` compares the recorded installed tag with the latest official GitHub release. `UPDATE…` downloads and overlays the newest release and updates the marker.
+
+Existing Git checkouts remain supported. For them, `CHECK` compares the local commit with upstream `master`, and `UPDATE…` performs a fast-forward pull and Release rebuild.
+
+A manually copied build without release metadata or Git metadata can still be selected with `BROWSE…`, but its version cannot be proven. In that state the row shows `Version unknown` and the primary action remains `INSTALL…`, allowing the user to switch to a managed current release. It must not offer a `CHECK` action that cannot actually establish freshness.
+
+The executable location consumed by the existing pipeline remains compatible:
 
 ```text
 <DeadlockTools root>\DeadlockTools\bin\Release\net10.0\DeadlockTools.exe
 ```
 
-## Deadlock game client
+## Deadlock client
 
 This row means the actual installed game that the user launches through Steam. In the current Steam layout its root folder is `Project8Staging`.
 
-Deadlimit Manager does not install or update the Steam game from Settings. `BROWSE…` selects the existing game-client root and `CHECK` validates that it contains `game\citadel`.
+Deadlimit Manager does not install or update the Steam game from Settings. `BROWSE…` selects the existing client root and `CHECK` validates that it contains `game\citadel`.
+
+For Russian UI the row label is intentionally compact: `Deadlock клиент`. It must remain on one line so all tool rows keep equal vertical spacing.
 
 ## Projects folder
 
@@ -125,6 +134,17 @@ CSDK -> CSDK Fast Startup Fix
 Deadlimit Manager version
 ```
 
+Theme names are user-facing palette descriptions only:
+
+```text
+System / Системная
+Light / Светлая
+Gray / Серая
+Dark / Тёмная
+```
+
+Do not expose historical/internal wording such as `Original theme` / `Исходная` for the dark palette.
+
 The Settings window uses the same embedded application icon as the main Deadlimit Manager executable.
 
 Theme selection previews immediately while Settings is open. Cancel restores the previous theme. After Save, language/theme changes rebuild the main UI inside the existing Deadlimit Manager process, so the user does not need to relaunch or restart the program.
@@ -136,8 +156,8 @@ Tooltip copy/layout rules are defined in `UI_GUIDELINES.md`.
 `DeadlimitPaths` continues to expose the saved machine-local roots to existing pipeline actions:
 
 ```text
-EXTRACT HERO SOURCE -> Deadlock game client
+EXTRACT HERO SOURCE -> Deadlock client
 PREPARE FOR CSDK    -> Reduced CSDK content/game roots
-BUILD FOR TEST      -> Reduced CSDK + Deadlock game client + DeadlockTools
+BUILD FOR TEST      -> Reduced CSDK + Deadlock client + DeadlockTools
 LAUNCH CSDK         -> Reduced CSDK\csdkcfg.exe
 ```
