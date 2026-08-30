@@ -7,12 +7,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <AssemblyName>DeadlimitAggregator</AssemblyName>
+    <AssemblyName>DeadlimitManager</AssemblyName>
     <RootNamespace>Deadlimit</RootNamespace>
-    <AssemblyTitle>Deadlimit Aggregator</AssemblyTitle>
-    <Product>Deadlimit Aggregator</Product>
-    <Description>Deadlock modding pipeline aggregator.</Description>
-    <ApplicationIcon>..\..\assets\DeadlimitAggregator_128_v4.ico</ApplicationIcon>
+    <AssemblyTitle>Deadlimit Manager</AssemblyTitle>
+    <Product>Deadlimit Manager</Product>
+    <Description>Deadlock modding pipeline manager.</Description>
+    <ApplicationIcon>..\..\assets\DeadlimitManager_128_v4.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,7 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="..\..\assets\DeadlimitAggregator_128_v4.ico" LogicalName="DeadlimitAggregator.AppIcon.ico" />
+    <EmbeddedResource Include="..\..\assets\DeadlimitManager_128_v4.ico" LogicalName="DeadlimitManager.AppIcon.ico" />
     <EmbeddedResource Include="..\..\..\.deadlimit\maxscript-vertcolor-trans\DeadlimitPipelineScripts.ms" LogicalName="Deadlimit.MaxScript.PipelineScripts.ms" />
   </ItemGroup>
 
