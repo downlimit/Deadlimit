@@ -6,7 +6,17 @@ Deadlimit Manager keeps workstation-specific tool roots and UI preferences outsi
 
 The Settings window treats external tools as managed dependencies instead of plain editable path fields.
 
-The window is intentionally compact and fixed-size. It must not be wider than the default main Manager window, and the user must not be able to resize it into a layout that clips `SAVE` / `CANCEL` or breaks row spacing.
+The window is intentionally compact and fixed-size. It must not be wider than the default main Manager window, and the user must not be able to resize it into a layout that clips the footer or breaks row spacing.
+
+## Persistence model
+
+Tool/workspace paths and interface preferences deliberately use different persistence rules.
+
+Tool paths are operational state. A path selected through `BROWSE…`, or a root produced by a successful managed installation, is persisted immediately. The user must never need a second `SAVE` step after installing or selecting a tool.
+
+Language and theme are preference state. Settings exposes one `APPLY` / `ПРИМЕНИТЬ` button for them. The button is disabled until language or theme differs from the stored values. Closing the window without applying restores an uncommitted theme preview, while already selected/installed tool paths remain saved.
+
+There is no separate Settings `SAVE` / `CANCEL` pair.
 
 ## Tool rows
 
@@ -23,7 +33,7 @@ Projects folder
 
 Each row presents the dependency name, current status, context-sensitive actions, a read-only path, an Explorer button and `BROWSE…` for selecting an existing installation/folder.
 
-Tool paths are intentionally read-only. Paths change only through `INSTALL…` or `BROWSE…`, avoiding partially typed path states.
+Tool paths are intentionally read-only. Paths change only through managed actions or `BROWSE…`, avoiding partially typed path states.
 
 The Settings window forces a status refresh when it opens. Checks also provide visible feedback in the row: the status and action button switch to `Checking…` / `CHECKING…` before asynchronous work starts, then leave a persistent result.
 
@@ -58,6 +68,8 @@ Progress rules:
 - cancellation propagates to HTTP reads, archive extraction, VPK extraction and child processes where possible;
 - completion, failure or cancellation must always leave the dependency row in a usable state. `Working…` must never remain stuck after the operation has ended.
 
+The operation-level `CANCEL` button exists only while a managed operation is running. It is distinct from the removed Settings-level Cancel button.
+
 ## Reduced CSDK
 
 User-facing UI refers to the dependency as `Reduced CSDK`; the current generation number is version/state information rather than part of the stable dependency name. Historical/current physical distribution folder names such as `Reduced_CSDK_12` remain valid and are not renamed.
@@ -70,15 +82,15 @@ valid current install     -> CHECK
 newer generation found    -> UPDATE…
 ```
 
-`INSTALL…` asks for the exact folder that will become the Reduced CSDK root, downloads the current published Reduced CSDK archive and installs its contents there. The destination must be empty.
+`INSTALL…` asks for the exact folder that will become the Reduced CSDK root, downloads the current published Reduced CSDK archive and installs its contents there. The destination must be empty. A successful install persists the resulting root immediately.
 
 `UPDATE…` downloads the current archive and overlays distribution-owned files onto the existing CSDK root without deleting unrelated user files.
 
 `CHECK` validates `csdkcfg.exe`, reads the installed generation from a Deadlimit marker or a recognizable manual installation folder name, and checks the current CSDK generation published by Deadlock Modding Notes.
 
-### CSDK Setup
+### CSDK fine-tuning
 
-`SETUP` is deliberately separate from `INSTALL…`. It implements the optional Full Game Files procedure documented by the current CSDK installation guide.
+The user-facing action is `FINE-TUNE…` / `ДОНАСТРОЙКА…`. It is deliberately separate from `INSTALL…` because it does not install Reduced CSDK itself. It performs the optional Full Game Files procedure documented by the current CSDK installation guide.
 
 The button is enabled only when:
 
@@ -86,7 +98,7 @@ The button is enabled only when:
 - the configured Deadlock client root is valid;
 - the current CSDK network source was reachable during the status check.
 
-Current setup flow:
+Current fine-tuning flow:
 
 1. read the current depot/manifest IDs from the current CSDK guide;
 2. obtain the current Windows x64 DepotDownloader release from SteamRE/DepotDownloader;
@@ -96,7 +108,7 @@ Current setup flow:
 6. remove the downloaded `pak01_*.vpk` sets from CSDK `game\citadel` and `game\core`;
 7. re-apply the current Reduced CSDK archive over the result.
 
-The configured Deadlock client installation is validated as a prerequisite and is never modified by this setup transaction.
+The configured Deadlock client installation is validated as a prerequisite and is never modified by this operation.
 
 The Full Game Files step remains optional according to the upstream CSDK documentation; it is required for features such as `bin_server`, S2FM and Hammer rather than for every Reduced CSDK authoring task.
 
@@ -122,6 +134,8 @@ Normal managed layout:
 
 There must not be a generated `DeadlockTools\DeadlockTools\bin\Release\...` folder chain for release installs. That deeper layout remains recognized only for legacy managed installs and source/Git checkouts.
 
+A successful managed install immediately writes the actual resulting DeadlockTools root into machine-local settings. Reopening Settings must therefore point at the installed folder without requiring `BROWSE…` or `APPLY`.
+
 For a Deadlimit-managed release installation, `CHECK` compares the recorded installed tag with the latest official GitHub release. `UPDATE…` downloads and overlays the newest release and updates the marker.
 
 Existing Git checkouts remain supported. For them, `CHECK` compares the local commit with upstream `master`, and `UPDATE…` performs a fast-forward pull and Release rebuild.
@@ -134,13 +148,13 @@ Deadlimit also performs a guarded one-time migration for its own previous manage
 
 This row means the actual installed game that the user launches through Steam. In the current Steam layout its root folder is `Project8Staging`.
 
-Deadlimit Manager does not install or update the Steam game from Settings. `BROWSE…` selects the existing client root and `CHECK` validates that it contains `game\citadel`.
+Deadlimit Manager does not install or update the Steam game from Settings. `BROWSE…` selects the existing client root and `CHECK` validates that it contains `game\citadel`. A selected client path is persisted immediately.
 
 For Russian UI the row label is intentionally compact: `Deadlock клиент`. It must remain on one line so all tool rows keep equal vertical spacing.
 
 ## Projects folder
 
-Projects folder is a workspace location, not a managed external dependency. It has only local validity state plus `BROWSE…` / Explorer access; it has no install/update lifecycle.
+Projects folder is a workspace location, not a managed external dependency. It has only local validity state plus `BROWSE…` / Explorer access; it has no install/update lifecycle. A selected workspace path is persisted immediately.
 
 ## Other settings and bundled tools
 
@@ -167,7 +181,7 @@ Do not expose historical/internal wording such as `Original theme` / `Исход
 
 The Settings window uses the same embedded application icon as the main Deadlimit Manager executable.
 
-Theme selection previews immediately while Settings is open. Cancel restores the previous theme. After Save, language/theme changes rebuild the main UI inside the existing Deadlimit Manager process, so the user does not need to relaunch or restart the program.
+Theme selection previews immediately while Settings is open. `APPLY` commits language/theme changes and rebuilds the main UI inside the existing Deadlimit Manager process, so the user does not need to relaunch or restart the program. Closing the window without applying restores the previous theme preview.
 
 Tooltip copy/layout rules are defined in `UI_GUIDELINES.md`.
 
