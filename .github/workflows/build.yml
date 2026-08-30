@@ -58,6 +58,11 @@ jobs:
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'Updating the Deadlimit repository from origin/main' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'DeadlimitManager.cmd' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'status --porcelain --untracked-files=no' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = '--refresh-only' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'Updated Deadlimit:' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'log --reverse --pretty=format:' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'diff --stat $oldHead $newHead' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'Press any key to close' },
             @{ Path = 'internal/src/Deadlimit/App/WindowProgressFeature.cs'; Pattern = 'UiText.ProductName' },
             @{ Path = 'internal/src/Deadlimit/Program.cs'; Pattern = 'Usage: DeadlimitManager.exe' }
           )
@@ -79,6 +84,7 @@ jobs:
 
           $forbidden = @(
             @{ Path = 'DeadlimitUpdater.bat'; Pattern = '-Root "%ROOT%"' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'Start-Process' },
             @{ Path = 'internal/src/Deadlimit/Deadlimit.csproj'; Pattern = '<AssemblyName>DeadlimitAggregator</AssemblyName>' },
             @{ Path = 'internal/src/Deadlimit/Deadlimit.csproj'; Pattern = '<Product>Deadlimit Aggregator</Product>' },
             @{ Path = 'internal/src/Deadlimit/Program.cs'; Pattern = 'Usage: DeadlimitAggregator.exe' },
