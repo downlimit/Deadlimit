@@ -13,29 +13,34 @@ Rows are ordered by pipeline importance:
 ```text
 Reduced CSDK
 DeadlockTools
-Retail Deadlock
+Deadlock game client
 Projects folder
 ```
+
+`Deadlock game client` is the user-facing name for the installed Steam copy of Deadlock (`Project8Staging`). Internal code/settings may still use the historical `RetailDeadlockRoot` identifier so existing configuration remains compatible.
 
 Each row presents the dependency name, current status, context-sensitive actions, a read-only path, an Explorer button and `BROWSE…` for selecting an existing installation/folder.
 
 Tool paths are intentionally read-only. Paths change only through `INSTALL…` or `BROWSE…`, avoiding partially typed path states.
 
-The Settings window forces a status refresh when it opens. Relevant status values include:
+The Settings window forces a status refresh when it opens. Checks also provide visible feedback in the row: the status and action button switch to `Checking…` / `CHECKING…` before asynchronous work starts, then leave a persistent result.
+
+Relevant status values include:
 
 ```text
 Not specified
-Installed
+Installed · version unknown
 Up to date
 Update available
 Invalid path
 Network issue
 Checking…
 Working…
-Ready
+Game client ready
+Folder ready
 ```
 
-Status details are available from the status tooltip. Network freshness failure does not invalidate an otherwise valid local installation.
+When known, CSDK generation is shown directly in the status, for example `Up to date · CSDK 12`. The useful result must remain visible in the row; tooltips contain additional detail rather than being the only feedback.
 
 ## Reduced CSDK
 
@@ -62,7 +67,7 @@ newer generation found    -> UPDATE…
 The button is enabled only when:
 
 - the Reduced CSDK root is valid;
-- the configured Retail Deadlock root is valid;
+- the configured Deadlock game client root is valid;
 - the current CSDK network source was reachable during the status check.
 
 Current setup flow:
@@ -75,7 +80,7 @@ Current setup flow:
 6. remove the downloaded `pak01_*.vpk` sets from CSDK `game\citadel` and `game\core`;
 7. re-apply the current Reduced CSDK archive over the result.
 
-The configured Steam/Retail Deadlock installation is validated as a prerequisite and is never modified by this setup transaction.
+The configured Deadlock game client installation is validated as a prerequisite and is never modified by this setup transaction.
 
 The Full Game Files step remains optional according to the upstream CSDK documentation; it is required for features such as `bin_server`, S2FM and Hammer rather than for every Reduced CSDK authoring task.
 
@@ -98,9 +103,11 @@ The expected executable remains:
 <DeadlockTools root>\DeadlockTools\bin\Release\net10.0\DeadlockTools.exe
 ```
 
-## Retail Deadlock
+## Deadlock game client
 
-Deadlimit Manager does not install or update the Steam game from Settings. `BROWSE…` selects an existing `Project8Staging` root and `CHECK` validates that it contains `game\citadel`.
+This row means the actual installed game that the user launches through Steam. In the current Steam layout its root folder is `Project8Staging`.
+
+Deadlimit Manager does not install or update the Steam game from Settings. `BROWSE…` selects the existing game-client root and `CHECK` validates that it contains `game\citadel`.
 
 ## Projects folder
 
@@ -120,15 +127,17 @@ Deadlimit Manager version
 
 The Settings window uses the same embedded application icon as the main Deadlimit Manager executable.
 
+Theme selection previews immediately while Settings is open. Cancel restores the previous theme. After Save, language/theme changes rebuild the main UI inside the existing Deadlimit Manager process, so the user does not need to relaunch or restart the program.
+
+Tooltip copy/layout rules are defined in `UI_GUIDELINES.md`.
+
 ## Consumers
 
 `DeadlimitPaths` continues to expose the saved machine-local roots to existing pipeline actions:
 
 ```text
-EXTRACT HERO SOURCE -> Retail Deadlock
+EXTRACT HERO SOURCE -> Deadlock game client
 PREPARE FOR CSDK    -> Reduced CSDK content/game roots
-BUILD FOR TEST      -> Reduced CSDK + Retail Deadlock + DeadlockTools
+BUILD FOR TEST      -> Reduced CSDK + Deadlock game client + DeadlockTools
 LAUNCH CSDK         -> Reduced CSDK\csdkcfg.exe
 ```
-
-Language and theme remain restart-applied settings so already-created WinForms controls are rebuilt consistently.

@@ -33,7 +33,7 @@ internal sealed class SettingsForm : Form
         Width = 180,
     };
 
-    private readonly ToolTip _toolTip = CreateToolTip();
+    private readonly RichToolTip _toolTip = new();
     private readonly ToolchainDependencyService _toolchain = new();
     private readonly List<Button> _pathButtons = [];
     private readonly string _initialLanguage;
@@ -44,6 +44,7 @@ internal sealed class SettingsForm : Form
     private ToolchainStatus _retailDeadlockStatus = new(ToolchainStatusKind.NotSpecified);
     private ToolchainStatus _projectsStatus = new(ToolchainStatusKind.NotSpecified);
     private bool _busy;
+    private bool _themePreviewApplied;
 
     public SettingsForm()
     {
@@ -85,13 +86,35 @@ internal sealed class SettingsForm : Form
         BuildUi();
         ApplyInitialStatuses();
         UiTheme.ApplyCustomPalette(this, settings.UiTheme);
+        ReapplySemanticStatusColors();
 
+        _themeCombo.SelectedIndexChanged += (_, _) => PreviewTheme();
         Shown += async (_, _) => await RefreshAllStatusesAsync();
     }
 
-    public bool RestartRequired { get; private set; }
+    public bool RestartRequired => false;
 
-    public bool LanguageChanged => RestartRequired;
+    public bool LanguageChanged => InterfaceChanged;
+
+    public bool InterfaceChanged { get; private set; }
+
+    protected override void OnFormClosed(FormClosedEventArgs e)
+    {
+        if (DialogResult != DialogResult.OK && _themePreviewApplied)
+        {
+            RestoreThemePreview();
+        }
+        base.OnFormClosed(e);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _toolTip.Dispose();
+        }
+        base.Dispose(disposing);
+    }
 
     private void BuildUi()
     {
@@ -111,8 +134,8 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             Dock = DockStyle.Fill,
             Text = UiText.T(
-                "Manage external tools and machine-local folders. Tool status is checked when this window opens. Language and theme changes are applied after Deadlimit Manager restarts.",
-                "Управление внешними инструментами и локальными папками. Состояние инструментов проверяется при открытии окна. Смена языка и темы применяется после перезапуска Deadlimit Manager."),
+                "Tool status is checked when this window opens. Theme changes preview immediately; language and theme are applied to the main window after Save without restarting Deadlimit Manager.",
+                "Состояние инструментов проверяется при открытии окна. Тема меняется сразу для предпросмотра; после сохранения язык и тема применяются к главному окну без перезапуска Deadlimit Manager."),
             Margin = new Padding(0, 0, 0, 12),
         }, 0, 0);
 
@@ -128,7 +151,7 @@ internal sealed class SettingsForm : Form
         var toolsGrid = CreateToolsGrid();
         AddCsdkRow(toolsGrid, 0);
         AddDeadlockToolsRow(toolsGrid, 1);
-        AddRetailDeadlockRow(toolsGrid, 2);
+        AddDeadlockGameRow(toolsGrid, 2);
         AddProjectsRow(toolsGrid, 3);
         content.Controls.Add(toolsGrid);
 
@@ -170,12 +193,17 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
         };
         saveButton.Click += (_, _) => SaveSettings();
+
         _toolTip.SetToolTip(
             saveButton,
             UiText.T(
-                "Validate and save the selected folders and interface settings. Unspecified external-tool paths are allowed.",
-                "Проверить и сохранить выбранные папки и настройки интерфейса. Пути к внешним инструментам можно оставить неуказанными."));
-        _toolTip.SetToolTip(cancelButton, UiText.T("Close Settings without saving changes.", "Закрыть настройки без сохранения изменений."));
+                "Validate and save the selected folders and interface settings.\n\nUnspecified external-tool paths are allowed.",
+                "Проверить и сохранить выбранные папки и настройки интерфейса.\n\nПути к внешним инструментам можно оставить неуказанными."));
+        _toolTip.SetToolTip(
+            cancelButton,
+            UiText.T(
+                "Close Settings without saving changes.\n\nA theme preview is reverted automatically.",
+                "Закрыть настройки без сохранения изменений.\n\nПредпросмотр темы будет автоматически отменён."));
 
         footer.Controls.Add(cancelButton);
         footer.Controls.Add(saveButton);
@@ -197,11 +225,11 @@ internal sealed class SettingsForm : Form
             Margin = Padding.Empty,
             Width = 1120,
         };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 135));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 155));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 110));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 95));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 470));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 430));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 38));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 92));
         return grid;
@@ -213,7 +241,7 @@ internal sealed class SettingsForm : Form
         var browseButton = CreateBrowseButton(
             _csdkRootText,
             UiText.T("Select an existing Reduced CSDK folder", "Выберите существующую папку Reduced CSDK"),
-            RefreshCsdkStatusAsync);
+            () => RefreshCsdkStatusAsync());
 
         _csdkPrimaryButton.Click += async (_, _) => await HandleCsdkPrimaryActionAsync();
         _csdkSetupButton.Text = "SETUP";
@@ -222,18 +250,18 @@ internal sealed class SettingsForm : Form
         _toolTip.SetToolTip(
             _csdkPrimaryButton,
             UiText.T(
-                "State-dependent Reduced CSDK action. INSTALL asks for an empty destination and downloads the current distribution. UPDATE overlays the current distribution over the configured installation. CHECK validates the installation and checks the latest published CSDK generation.",
-                "Действие Reduced CSDK зависит от состояния. УСТАНОВИТЬ просит выбрать пустую папку и скачивает актуальный дистрибутив. ОБНОВИТЬ накладывает актуальный дистрибутив поверх настроенной установки. ПРОВЕРИТЬ валидирует установку и сверяет её с последним опубликованным поколением CSDK."));
+                "**INSTALL…** selects an empty destination and downloads the current Reduced CSDK distribution.\n\n**UPDATE…** overlays the current distribution onto the configured CSDK folder.\n\n**CHECK** validates the local installation and checks whether a newer CSDK generation is published.",
+                "**УСТАНОВИТЬ…** выбирает пустую папку и скачивает актуальный дистрибутив Reduced CSDK.\n\n**ОБНОВИТЬ…** накладывает актуальный дистрибутив поверх настроенной папки CSDK.\n\n**ПРОВЕРИТЬ** валидирует локальную установку и проверяет, опубликовано ли более новое поколение CSDK."));
         _toolTip.SetToolTip(
             _csdkSetupButton,
             UiText.T(
-                "Run the optional full CSDK setup from the current installation guide. Deadlimit downloads the required Deadlock depots with DepotDownloader, extracts the downloaded VPK as-is, removes the temporary pak01 VPK set, then re-applies the current Reduced CSDK files. DepotDownloader may open a console for Steam QR authentication. The configured Retail Deadlock folder is only validated and is never modified.",
-                "Выполнить дополнительную полную настройку CSDK по актуальной инструкции. Deadlimit скачивает требуемые депо Deadlock через DepotDownloader, извлекает скачанный VPK без декомпиляции, удаляет временный набор pak01 VPK и повторно накладывает актуальные файлы Reduced CSDK. DepotDownloader может открыть консоль для Steam-авторизации по QR. Указанная папка Retail Deadlock только проверяется и никогда не изменяется."));
+                "Run the optional full CSDK setup from the current installation guide.\n\nDeadlimit downloads the required Deadlock depots, extracts the downloaded VPK as-is, removes the temporary pak01 VPK set, then re-applies Reduced CSDK.\n\nDepotDownloader may open a console for Steam QR authentication.\n\nThe configured Deadlock game client folder is only validated and is **never modified**.",
+                "Выполнить дополнительную полную настройку CSDK по актуальной инструкции.\n\nDeadlimit скачивает нужные депо Deadlock, извлекает скачанный VPK без декомпиляции, удаляет временный набор pak01 VPK и повторно накладывает Reduced CSDK.\n\nDepotDownloader может открыть консоль для Steam-авторизации по QR.\n\nПапка игрового клиента Deadlock только проверяется и **никогда не изменяется**."));
         _toolTip.SetToolTip(
             browseButton,
             UiText.T(
-                "Select an existing Reduced CSDK installation that was installed manually. Deadlimit validates it and immediately checks freshness.",
-                "Выбрать существующую установку Reduced CSDK, установленную вручную. Deadlimit проверит её и сразу проверит актуальность."));
+                "Select a Reduced CSDK installation that already exists on this PC.\n\nDeadlimit validates it and immediately checks freshness.",
+                "Выбрать уже существующую на этом ПК установку Reduced CSDK.\n\nDeadlimit проверит её структуру и сразу запустит проверку актуальности."));
 
         AddToolRow(grid, row, "Reduced CSDK", _csdkStatusLabel, _csdkPrimaryButton, _csdkSetupButton, _csdkRootText, openButton, browseButton);
     }
@@ -244,49 +272,64 @@ internal sealed class SettingsForm : Form
         var browseButton = CreateBrowseButton(
             _deadlockToolsRootText,
             UiText.T("Select an existing DeadlockTools repository folder", "Выберите существующую папку репозитория DeadlockTools"),
-            RefreshDeadlockToolsStatusAsync);
+            () => RefreshDeadlockToolsStatusAsync());
 
         _deadlockToolsPrimaryButton.Click += async (_, _) => await HandleDeadlockToolsPrimaryActionAsync();
         _toolTip.SetToolTip(
             _deadlockToolsPrimaryButton,
             UiText.T(
-                "State-dependent DeadlockTools action. INSTALL clones the upstream repository into an empty folder and builds Release. UPDATE fast-forwards the Git checkout and rebuilds it. CHECK compares the local commit with the current upstream commit.",
-                "Действие DeadlockTools зависит от состояния. УСТАНОВИТЬ клонирует upstream-репозиторий в пустую папку и собирает Release. ОБНОВИТЬ выполняет fast-forward Git checkout и повторную сборку. ПРОВЕРИТЬ сравнивает локальный коммит с текущим upstream-коммитом."));
+                "**INSTALL…** clones DeadlockTools into an empty folder and builds Release.\n\n**UPDATE…** fast-forwards the Git checkout and rebuilds it.\n\n**CHECK** compares the local commit with the current upstream commit.",
+                "**УСТАНОВИТЬ…** клонирует DeadlockTools в пустую папку и собирает Release.\n\n**ОБНОВИТЬ…** обновляет Git checkout через fast-forward и пересобирает его.\n\n**ПРОВЕРИТЬ** сравнивает локальный коммит с текущим upstream-коммитом."));
         _toolTip.SetToolTip(
             browseButton,
             UiText.T(
-                "Select an existing DeadlockTools folder. A Git checkout can be freshness-checked and updated automatically; a manually copied valid build can only be validated.",
-                "Выбрать существующую папку DeadlockTools. Git checkout можно автоматически проверять на актуальность и обновлять; вручную скопированную валидную сборку можно только проверить."));
+                "Select an existing DeadlockTools folder.\n\nA Git checkout can be freshness-checked and updated automatically. A manually copied valid build can only be validated.",
+                "Выбрать существующую папку DeadlockTools.\n\nGit checkout можно автоматически проверять и обновлять. Вручную скопированную валидную сборку можно только проверить."));
 
         AddToolRow(grid, row, "DeadlockTools", _deadlockToolsStatusLabel, _deadlockToolsPrimaryButton, CreateActionSpacer(), _deadlockToolsRootText, openButton, browseButton);
     }
 
-    private void AddRetailDeadlockRow(TableLayoutPanel grid, int row)
+    private void AddDeadlockGameRow(TableLayoutPanel grid, int row)
     {
         var openButton = CreateOpenFolderButton(_retailDeadlockRootText);
         var browseButton = CreateBrowseButton(
             _retailDeadlockRootText,
-            UiText.T("Select the Steam Project8Staging folder", "Выберите папку Steam Project8Staging"),
+            UiText.T("Select the installed Deadlock game folder (Project8Staging)", "Выберите папку установленной игры Deadlock (Project8Staging)"),
             () =>
             {
-                RefreshRetailDeadlockStatus();
+                RefreshDeadlockGameStatus();
                 return Task.CompletedTask;
             });
 
         _retailDeadlockCheckButton.Text = UiText.T("CHECK", "ПРОВЕРИТЬ");
-        _retailDeadlockCheckButton.Click += (_, _) => RefreshRetailDeadlockStatus();
+        _retailDeadlockCheckButton.Click += async (_, _) =>
+        {
+            SetRetailStatus(new ToolchainStatus(ToolchainStatusKind.Checking));
+            await Task.Yield();
+            RefreshDeadlockGameStatus();
+        };
+
         _toolTip.SetToolTip(
             _retailDeadlockCheckButton,
             UiText.T(
-                "Validate the selected Retail Deadlock installation. It must contain game\\citadel. Deadlimit does not install or update the Steam game from Settings.",
-                "Проверить выбранную установку Retail Deadlock. В ней должен находиться game\\citadel. Deadlimit не устанавливает и не обновляет Steam-игру из настроек."));
+                "Validate the installed **Deadlock game client** used by Steam.\n\nDeadlimit checks that the selected Project8Staging folder contains the expected game files.\n\nDeadlimit does not install or update the Steam game from Settings.",
+                "Проверить установленный **игровой клиент Deadlock**, который запускается через Steam.\n\nDeadlimit проверит, что выбранная папка Project8Staging содержит ожидаемые игровые файлы.\n\nDeadlimit не устанавливает и не обновляет игру через Steam из окна настроек."));
         _toolTip.SetToolTip(
             browseButton,
             UiText.T(
-                "Select the existing Steam Deadlock installation folder (Project8Staging).",
-                "Выбрать существующую папку Steam-установки Deadlock (Project8Staging)."));
+                "Select the folder where the **Deadlock game client** is installed.\n\nFor a standard Steam installation this folder is named Project8Staging.",
+                "Выбрать папку, в которой установлен **игровой клиент Deadlock**.\n\nВ стандартной установке Steam эта папка называется Project8Staging."));
 
-        AddToolRow(grid, row, "Retail Deadlock", _retailDeadlockStatusLabel, _retailDeadlockCheckButton, CreateActionSpacer(), _retailDeadlockRootText, openButton, browseButton);
+        AddToolRow(
+            grid,
+            row,
+            UiText.T("Deadlock game client", "Игровой клиент Deadlock"),
+            _retailDeadlockStatusLabel,
+            _retailDeadlockCheckButton,
+            CreateActionSpacer(),
+            _retailDeadlockRootText,
+            openButton,
+            browseButton);
     }
 
     private void AddProjectsRow(TableLayoutPanel grid, int row)
@@ -300,11 +343,12 @@ internal sealed class SettingsForm : Form
                 RefreshProjectsStatus();
                 return Task.CompletedTask;
             });
+
         _toolTip.SetToolTip(
             browseButton,
             UiText.T(
-                "Select the root folder used to store Deadlimit projects. This is a workspace location and has no install/update lifecycle.",
-                "Выбрать корневую папку для проектов Deadlimit. Это рабочая папка без установки или обновления."));
+                "Select the root folder used to store Deadlimit projects.\n\nThis is a workspace folder, so it has no install or update lifecycle.",
+                "Выбрать корневую папку для проектов Deadlimit.\n\nЭто рабочая папка, поэтому у неё нет установки или обновления."));
 
         AddToolRow(grid, row, UiText.T("Projects folder", "Папка проектов"), _projectsStatusLabel, CreateActionSpacer(), CreateActionSpacer(), _projectsRootText, openButton, browseButton);
     }
@@ -367,8 +411,8 @@ internal sealed class SettingsForm : Form
         _toolTip.SetToolTip(
             openButton,
             UiText.T(
-                "Open the bundled Deadlimit Max Script folder containing DeadlimitPipelineScripts.ms and its README.",
-                "Открыть встроенную папку Deadlimit Max Script с DeadlimitPipelineScripts.ms и README."));
+                "Open the bundled Deadlimit Max Script folder.\n\nIt contains DeadlimitPipelineScripts.ms and its README.",
+                "Открыть встроенную папку Deadlimit Max Script.\n\nВ ней находятся DeadlimitPipelineScripts.ms и README."));
         grid.Controls.Add(CreatePreferenceCaption("3ds Max"), 0, row);
         grid.Controls.Add(openButton, 1, row);
     }
@@ -388,8 +432,8 @@ internal sealed class SettingsForm : Form
         _toolTip.SetToolTip(
             openButton,
             UiText.T(
-                "Open File Explorer and select the bundled CSDK cache repair CMD. Run it after a clean Reduced CSDK installation/update or whenever CSDK startup becomes slow.",
-                "Открыть Проводник и выделить встроенный CMD для восстановления кеша CSDK. Запускайте его после чистой установки/обновления Reduced CSDK или если CSDK снова долго открывается."));
+                "Open File Explorer and select the bundled CSDK cache repair CMD.\n\nRun it after a clean Reduced CSDK installation/update or whenever CSDK startup becomes slow.",
+                "Открыть Проводник и выделить встроенный CMD для восстановления кеша CSDK.\n\nЗапускайте его после чистой установки/обновления Reduced CSDK или если CSDK снова долго открывается."));
         grid.Controls.Add(CreatePreferenceCaption("CSDK"), 0, row);
         grid.Controls.Add(openButton, 1, row);
     }
@@ -402,7 +446,7 @@ internal sealed class SettingsForm : Form
         SetDeadlockToolsStatus(string.IsNullOrWhiteSpace(_deadlockToolsRootText.Text)
             ? new ToolchainStatus(ToolchainStatusKind.NotSpecified)
             : new ToolchainStatus(ToolchainStatusKind.Installed));
-        RefreshRetailDeadlockStatus();
+        RefreshDeadlockGameStatus();
         RefreshProjectsStatus();
     }
 
@@ -413,14 +457,22 @@ internal sealed class SettingsForm : Form
             return;
         }
 
-        RefreshRetailDeadlockStatus();
+        RefreshDeadlockGameStatus();
         RefreshProjectsStatus();
-        await Task.WhenAll(RefreshCsdkStatusAsync(), RefreshDeadlockToolsStatusAsync());
+        SetCsdkStatus(new ToolchainStatus(ToolchainStatusKind.Checking));
+        SetDeadlockToolsStatus(new ToolchainStatus(ToolchainStatusKind.Checking));
+        await Task.Yield();
+        await Task.WhenAll(RefreshCsdkStatusAsync(skipCheckingState: true), RefreshDeadlockToolsStatusAsync(skipCheckingState: true));
     }
 
-    private async Task RefreshCsdkStatusAsync()
+    private async Task RefreshCsdkStatusAsync(bool skipCheckingState = false)
     {
-        SetCsdkStatus(new ToolchainStatus(ToolchainStatusKind.Checking));
+        if (!skipCheckingState)
+        {
+            SetCsdkStatus(new ToolchainStatus(ToolchainStatusKind.Checking));
+            await Task.Yield();
+        }
+
         try
         {
             SetCsdkStatus(await _toolchain.CheckCsdkAsync(_csdkRootText.Text.Trim()));
@@ -431,9 +483,14 @@ internal sealed class SettingsForm : Form
         }
     }
 
-    private async Task RefreshDeadlockToolsStatusAsync()
+    private async Task RefreshDeadlockToolsStatusAsync(bool skipCheckingState = false)
     {
-        SetDeadlockToolsStatus(new ToolchainStatus(ToolchainStatusKind.Checking));
+        if (!skipCheckingState)
+        {
+            SetDeadlockToolsStatus(new ToolchainStatus(ToolchainStatusKind.Checking));
+            await Task.Yield();
+        }
+
         try
         {
             SetDeadlockToolsStatus(await _toolchain.CheckDeadlockToolsAsync(_deadlockToolsRootText.Text.Trim()));
@@ -444,31 +501,36 @@ internal sealed class SettingsForm : Form
         }
     }
 
-    private void RefreshRetailDeadlockStatus()
+    private void RefreshDeadlockGameStatus()
     {
-        _retailDeadlockStatus = _toolchain.CheckRetailDeadlock(_retailDeadlockRootText.Text.Trim());
-        ApplyStatus(_retailDeadlockStatusLabel, _retailDeadlockStatus);
-        UpdateActionAvailability();
+        SetRetailStatus(_toolchain.CheckRetailDeadlock(_retailDeadlockRootText.Text.Trim()));
     }
 
     private void RefreshProjectsStatus()
     {
         _projectsStatus = _toolchain.CheckProjectsRoot(_projectsRootText.Text.Trim());
-        ApplyStatus(_projectsStatusLabel, _projectsStatus);
+        ApplyStatus(_projectsStatusLabel, _projectsStatus, StatusContext.Projects);
         UpdateActionAvailability();
     }
 
     private void SetCsdkStatus(ToolchainStatus status)
     {
         _csdkStatus = status;
-        ApplyStatus(_csdkStatusLabel, status);
+        ApplyStatus(_csdkStatusLabel, status, StatusContext.Csdk);
         UpdateActionAvailability();
     }
 
     private void SetDeadlockToolsStatus(ToolchainStatus status)
     {
         _deadlockToolsStatus = status;
-        ApplyStatus(_deadlockToolsStatusLabel, status);
+        ApplyStatus(_deadlockToolsStatusLabel, status, StatusContext.DeadlockTools);
+        UpdateActionAvailability();
+    }
+
+    private void SetRetailStatus(ToolchainStatus status)
+    {
+        _retailDeadlockStatus = status;
+        ApplyStatus(_retailDeadlockStatusLabel, status, StatusContext.DeadlockGame);
         UpdateActionAvailability();
     }
 
@@ -476,17 +538,20 @@ internal sealed class SettingsForm : Form
     {
         _csdkPrimaryButton.Text = PrimaryActionText(_csdkStatus.Kind);
         _deadlockToolsPrimaryButton.Text = PrimaryActionText(_deadlockToolsStatus.Kind);
+        _retailDeadlockCheckButton.Text = _retailDeadlockStatus.Kind == ToolchainStatusKind.Checking
+            ? UiText.T("CHECKING…", "ПРОВЕРКА…")
+            : UiText.T("CHECK", "ПРОВЕРИТЬ");
 
         _csdkPrimaryButton.Enabled = !_busy && _csdkStatus.Kind is not ToolchainStatusKind.Checking and not ToolchainStatusKind.Working;
         _deadlockToolsPrimaryButton.Enabled = !_busy && _deadlockToolsStatus.Kind is not ToolchainStatusKind.Checking and not ToolchainStatusKind.Working;
-        _retailDeadlockCheckButton.Enabled = !_busy;
+        _retailDeadlockCheckButton.Enabled = !_busy && _retailDeadlockStatus.Kind != ToolchainStatusKind.Checking;
 
         var csdkValid = Directory.Exists(_csdkRootText.Text.Trim())
             && File.Exists(Path.Combine(_csdkRootText.Text.Trim(), "csdkcfg.exe"));
-        var retailValid = _retailDeadlockStatus.Kind == ToolchainStatusKind.Ready;
+        var gameClientValid = _retailDeadlockStatus.Kind == ToolchainStatusKind.Ready;
         _csdkSetupButton.Enabled = !_busy
             && csdkValid
-            && retailValid
+            && gameClientValid
             && _csdkStatus.NetworkAvailable
             && _csdkStatus.Kind is not ToolchainStatusKind.NetworkIssue;
 
@@ -496,12 +561,17 @@ internal sealed class SettingsForm : Form
         }
         _languageCombo.Enabled = !_busy;
         _themeCombo.Enabled = !_busy;
+
+        _csdkPrimaryButton.Refresh();
+        _deadlockToolsPrimaryButton.Refresh();
+        _retailDeadlockCheckButton.Refresh();
     }
 
     private static string PrimaryActionText(ToolchainStatusKind kind) => kind switch
     {
         ToolchainStatusKind.NotSpecified or ToolchainStatusKind.InvalidPath => UiText.T("INSTALL…", "УСТАНОВИТЬ…"),
         ToolchainStatusKind.UpdateAvailable => UiText.T("UPDATE…", "ОБНОВИТЬ…"),
+        ToolchainStatusKind.Checking => UiText.T("CHECKING…", "ПРОВЕРКА…"),
         ToolchainStatusKind.Working => UiText.T("WORKING…", "ВЫПОЛНЕНИЕ…"),
         _ => UiText.T("CHECK", "ПРОВЕРИТЬ"),
     };
@@ -644,25 +714,125 @@ internal sealed class SettingsForm : Form
         }
     }
 
-    private void ApplyStatus(Label label, ToolchainStatus status)
+    private void ApplyStatus(Label label, ToolchainStatus status, StatusContext context)
     {
-        label.Text = StatusText(status.Kind);
-        _toolTip.SetToolTip(label, string.IsNullOrWhiteSpace(status.Detail) ? label.Text : status.Detail);
+        label.Text = FormatStatus(status, context);
+        label.ForeColor = StatusColor(status.Kind);
+        if (!label.Font.Bold)
+        {
+            label.Font = new Font(label.Font, FontStyle.Bold);
+        }
+        label.Refresh();
+
+        var detail = StatusDetail(status, context);
+        _toolTip.SetToolTip(label, detail);
     }
 
-    private static string StatusText(ToolchainStatusKind kind) => kind switch
+    private static string FormatStatus(ToolchainStatus status, StatusContext context)
     {
-        ToolchainStatusKind.NotSpecified => UiText.T("Not specified", "Не указано"),
-        ToolchainStatusKind.Installed => UiText.T("Installed", "Установлено"),
-        ToolchainStatusKind.UpToDate => UiText.T("Up to date", "Актуально"),
-        ToolchainStatusKind.UpdateAvailable => UiText.T("Update available", "Есть обновление"),
-        ToolchainStatusKind.InvalidPath => UiText.T("Invalid path", "Неверный путь"),
-        ToolchainStatusKind.NetworkIssue => UiText.T("Network issue", "Ошибка сети"),
-        ToolchainStatusKind.Checking => UiText.T("Checking…", "Проверка…"),
-        ToolchainStatusKind.Working => UiText.T("Working…", "Выполнение…"),
-        ToolchainStatusKind.Ready => UiText.T("Ready", "Готово"),
-        _ => UiText.T("Unknown", "Неизвестно"),
-    };
+        return status.Kind switch
+        {
+            ToolchainStatusKind.NotSpecified => UiText.T("○ Not specified", "○ Не указано"),
+            ToolchainStatusKind.Installed when context == StatusContext.Csdk => UiText.T("● Installed · version unknown", "● Установлено · версия неизвестна"),
+            ToolchainStatusKind.Installed => UiText.T("● Installed · version unknown", "● Установлено · версия неизвестна"),
+            ToolchainStatusKind.UpToDate when context == StatusContext.Csdk && status.InstalledGeneration is int generation => $"✓ {UiText.T("Up to date", "Актуально")} · CSDK {generation}",
+            ToolchainStatusKind.UpToDate => $"✓ {UiText.T("Up to date", "Актуально")}",
+            ToolchainStatusKind.UpdateAvailable when status.AvailableGeneration is int available => $"↑ {UiText.T("Update available", "Есть обновление")} · CSDK {available}",
+            ToolchainStatusKind.UpdateAvailable => $"↑ {UiText.T("Update available", "Есть обновление")}",
+            ToolchainStatusKind.InvalidPath => $"× {UiText.T("Invalid path", "Неверный путь")}",
+            ToolchainStatusKind.NetworkIssue => $"! {UiText.T("Network issue", "Ошибка сети")}",
+            ToolchainStatusKind.Checking => $"↻ {UiText.T("Checking…", "Проверка…")}",
+            ToolchainStatusKind.Working => $"↻ {UiText.T("Working…", "Выполнение…")}",
+            ToolchainStatusKind.Ready when context == StatusContext.DeadlockGame => $"✓ {UiText.T("Game client ready", "Игровой клиент готов")}",
+            ToolchainStatusKind.Ready when context == StatusContext.Projects => $"✓ {UiText.T("Folder ready", "Папка готова")}",
+            ToolchainStatusKind.Ready => $"✓ {UiText.T("Ready", "Готово")}",
+            _ => UiText.T("? Unknown", "? Неизвестно"),
+        };
+    }
+
+    private static string StatusDetail(ToolchainStatus status, StatusContext context)
+    {
+        if (context == StatusContext.DeadlockGame)
+        {
+            return status.Kind switch
+            {
+                ToolchainStatusKind.NotSpecified => UiText.T(
+                    "No Deadlock game client folder has been selected yet.\n\nUse **BROWSE…** to select the installed Project8Staging folder.",
+                    "Папка игрового клиента Deadlock пока не указана.\n\nНажмите **ОБЗОР…** и выберите установленную папку Project8Staging."),
+                ToolchainStatusKind.Ready => UiText.T(
+                    "The selected folder is a valid **Deadlock game client** installation.\n\nDeadlimit found the expected game\\citadel structure.",
+                    "Выбранная папка является валидной установкой **игрового клиента Deadlock**.\n\nDeadlimit нашёл ожидаемую структуру game\\citadel."),
+                ToolchainStatusKind.InvalidPath => UiText.T(
+                    "The selected folder is not a valid Deadlock game client installation.\n\nChoose the Project8Staging folder that contains game\\citadel.",
+                    "Выбранная папка не является валидной установкой игрового клиента Deadlock.\n\nВыберите папку Project8Staging, внутри которой находится game\\citadel."),
+                ToolchainStatusKind.Checking => UiText.T("Checking the Deadlock game client folder…", "Проверка папки игрового клиента Deadlock…"),
+                _ => status.Detail,
+            };
+        }
+
+        if (context == StatusContext.Projects)
+        {
+            return string.IsNullOrWhiteSpace(status.Detail)
+                ? UiText.T("Workspace folder status.", "Состояние рабочей папки.")
+                : status.Detail;
+        }
+
+        return string.IsNullOrWhiteSpace(status.Detail)
+            ? FormatStatus(status, context)
+            : status.Detail;
+    }
+
+    private Color StatusColor(ToolchainStatusKind kind)
+    {
+        var theme = SelectedThemeCode();
+        var dark = theme == "dark" || (theme == "system" && Application.IsDarkModeEnabled);
+        return kind switch
+        {
+            ToolchainStatusKind.UpToDate or ToolchainStatusKind.Ready => dark ? Color.FromArgb(113, 214, 137) : Color.FromArgb(25, 125, 55),
+            ToolchainStatusKind.UpdateAvailable => dark ? Color.FromArgb(255, 194, 92) : Color.FromArgb(173, 103, 0),
+            ToolchainStatusKind.InvalidPath or ToolchainStatusKind.NetworkIssue => dark ? Color.FromArgb(255, 118, 118) : Color.FromArgb(184, 40, 40),
+            ToolchainStatusKind.Checking or ToolchainStatusKind.Working => dark ? Color.FromArgb(117, 190, 255) : Color.FromArgb(30, 105, 175),
+            _ => dark ? Color.FromArgb(180, 180, 180) : Color.FromArgb(85, 85, 85),
+        };
+    }
+
+    private void ReapplySemanticStatusColors()
+    {
+        ApplyStatus(_csdkStatusLabel, _csdkStatus, StatusContext.Csdk);
+        ApplyStatus(_deadlockToolsStatusLabel, _deadlockToolsStatus, StatusContext.DeadlockTools);
+        ApplyStatus(_retailDeadlockStatusLabel, _retailDeadlockStatus, StatusContext.DeadlockGame);
+        ApplyStatus(_projectsStatusLabel, _projectsStatus, StatusContext.Projects);
+    }
+
+    private void PreviewTheme()
+    {
+        if (!IsHandleCreated)
+        {
+            return;
+        }
+
+        var theme = SelectedThemeCode();
+        UiTheme.ConfigureApplication(theme);
+        UiTheme.ApplyCustomPalette(this, theme);
+        if (Owner is not null && !Owner.IsDisposed)
+        {
+            UiTheme.ApplyCustomPalette(Owner, theme);
+            Owner.Invalidate(true);
+        }
+        _themePreviewApplied = true;
+        ReapplySemanticStatusColors();
+        Invalidate(true);
+    }
+
+    private void RestoreThemePreview()
+    {
+        UiTheme.ConfigureApplication(_initialTheme);
+        if (Owner is not null && !Owner.IsDisposed)
+        {
+            UiTheme.ApplyCustomPalette(Owner, _initialTheme);
+            Owner.Invalidate(true);
+        }
+    }
 
     private Button CreateOpenFolderButton(TextBox textBox)
     {
@@ -683,8 +853,8 @@ internal sealed class SettingsForm : Form
         _toolTip.SetToolTip(
             button,
             UiText.T(
-                "Open the currently selected folder in File Explorer. This does not change the configured path.",
-                "Открыть выбранную папку в Проводнике. Это не изменяет настроенный путь."));
+                "Open the currently selected folder in File Explorer.\n\nThis does not change the configured path.",
+                "Открыть выбранную папку в Проводнике.\n\nЭто не изменяет настроенный путь."));
         _pathButtons.Add(button);
         return button;
     }
@@ -792,7 +962,7 @@ internal sealed class SettingsForm : Form
     private void SaveSettings()
     {
         var selectedLanguage = (_languageCombo.SelectedItem as LanguageItem)?.Code ?? "en";
-        var selectedTheme = (_themeCombo.SelectedItem as ThemeItem)?.Code ?? "system";
+        var selectedTheme = SelectedThemeCode();
         var candidate = new ToolPathSettings
         {
             ProjectsRoot = _projectsRootText.Text.Trim(),
@@ -812,9 +982,13 @@ internal sealed class SettingsForm : Form
         try
         {
             ProjectStore.SaveToolPathSettings(candidate);
-            RestartRequired = !string.Equals(_initialLanguage, selectedLanguage, StringComparison.OrdinalIgnoreCase)
+            InterfaceChanged = !string.Equals(_initialLanguage, selectedLanguage, StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(_initialTheme, selectedTheme, StringComparison.OrdinalIgnoreCase);
             DialogResult = DialogResult.OK;
+            if (InterfaceChanged)
+            {
+                UiSettingsChangeBus.NotifyChanged();
+            }
             Close();
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
@@ -863,12 +1037,12 @@ internal sealed class SettingsForm : Form
         {
             if (!Directory.Exists(candidate.RetailDeadlockRoot))
             {
-                error = UiText.T($"Retail Deadlock folder does not exist:\n{candidate.RetailDeadlockRoot}", $"Папка Retail Deadlock не существует:\n{candidate.RetailDeadlockRoot}");
+                error = UiText.T($"Deadlock game client folder does not exist:\n{candidate.RetailDeadlockRoot}", $"Папка игрового клиента Deadlock не существует:\n{candidate.RetailDeadlockRoot}");
                 return false;
             }
             if (!Directory.Exists(Path.Combine(candidate.RetailDeadlockRoot, "game", "citadel")))
             {
-                error = UiText.T($"The selected Retail Deadlock folder does not contain game\\citadel:\n{candidate.RetailDeadlockRoot}", $"В выбранной папке Retail Deadlock нет game\\citadel:\n{candidate.RetailDeadlockRoot}");
+                error = UiText.T($"The selected Deadlock game client folder does not contain game\\citadel:\n{candidate.RetailDeadlockRoot}", $"В выбранной папке игрового клиента Deadlock нет game\\citadel:\n{candidate.RetailDeadlockRoot}");
                 return false;
             }
         }
@@ -889,6 +1063,8 @@ internal sealed class SettingsForm : Form
         return false;
     }
 
+    private string SelectedThemeCode() => (_themeCombo.SelectedItem as ThemeItem)?.Code ?? "system";
+
     private static Icon LoadAppIcon()
     {
         using var stream = typeof(SettingsForm).Assembly.GetManifestResourceStream("DeadlimitManager.AppIcon.ico")
@@ -907,7 +1083,7 @@ internal sealed class SettingsForm : Form
     private static Label CreateStatusLabel() => new()
     {
         AutoSize = false,
-        Width = 125,
+        Width = 182,
         Height = 24,
         TextAlign = ContentAlignment.MiddleLeft,
         Anchor = AnchorStyles.Left,
@@ -917,7 +1093,7 @@ internal sealed class SettingsForm : Form
     private static Button CreateActionButton() => new()
     {
         AutoSize = false,
-        Width = 96,
+        Width = 102,
         Height = 26,
         Anchor = AnchorStyles.Left,
         Margin = new Padding(0, 4, 7, 4),
@@ -938,14 +1114,6 @@ internal sealed class SettingsForm : Form
         Margin = new Padding(0, 9, 12, 9),
     };
 
-    private static ToolTip CreateToolTip() => new()
-    {
-        ShowAlways = true,
-        InitialDelay = 350,
-        ReshowDelay = 100,
-        AutoPopDelay = 16000,
-    };
-
     private static string? ChooseFolder(
         string description,
         string currentPath,
@@ -964,6 +1132,14 @@ internal sealed class SettingsForm : Form
             InitialDirectory = initialDirectory,
         };
         return dialog.ShowDialog() == DialogResult.OK ? dialog.SelectedPath : null;
+    }
+
+    private enum StatusContext
+    {
+        Csdk,
+        DeadlockTools,
+        DeadlockGame,
+        Projects,
     }
 
     private sealed record LanguageItem(string Code, string Label)

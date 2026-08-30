@@ -29,10 +29,22 @@ internal static class Program
             string.Equals(argument, StartupSmokeArgument, StringComparison.OrdinalIgnoreCase));
 
         Mutex? singleInstanceMutex = null;
+        var ownsSingleInstanceMutex = false;
         if (!startupSmoke)
         {
-            singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var createdNew);
-            if (!createdNew)
+            singleInstanceMutex = new Mutex(initiallyOwned: false, SingleInstanceMutexName);
+            try
+            {
+                // A short wait also makes any legacy Application.Restart call robust:
+                // the replacement process can acquire the mutex as soon as the old UI exits.
+                ownsSingleInstanceMutex = singleInstanceMutex.WaitOne(TimeSpan.FromSeconds(2));
+            }
+            catch (AbandonedMutexException)
+            {
+                ownsSingleInstanceMutex = true;
+            }
+
+            if (!ownsSingleInstanceMutex)
             {
                 singleInstanceMutex.Dispose();
                 TryActivateExistingWindow();
@@ -48,7 +60,10 @@ internal static class Program
         {
             if (singleInstanceMutex is not null)
             {
-                singleInstanceMutex.ReleaseMutex();
+                if (ownsSingleInstanceMutex)
+                {
+                    singleInstanceMutex.ReleaseMutex();
+                }
                 singleInstanceMutex.Dispose();
             }
         }
@@ -71,8 +86,19 @@ internal static class Program
             UpdateStartup(startup, 12, UiText.T("Loading settings...", "Загрузка настроек..."));
         }
 
+        SettingsVersionFeature.Attach();
+        using var context = new DeadlimitApplicationContext(startupSmoke, startup);
+        Application.Run(context);
+        return 0;
+    }
+
+    private static MainForm CreateMainForm(StartupProgressForm? startup)
+    {
+        var settings = ProjectStore.GetToolPathSettings();
+        UiTheme.ConfigureApplication(settings.UiTheme);
+
         UpdateStartup(startup, 28, UiText.T("Building interface...", "Создание интерфейса..."));
-        using var form = new MainForm
+        var form = new MainForm
         {
             Icon = AppIcon,
             Size = MainWindowSize,
@@ -103,36 +129,133 @@ internal static class Program
         UiTheme.ApplyCustomPalette(form, settings.UiTheme);
         WindowProgressFeature.Attach(form);
         SteamStatusFeature.Attach(form, settings.UiTheme);
-        SettingsVersionFeature.Attach();
         UpdateStartup(startup, 94, UiText.T("Loading projects and finalizing...", "Загрузка проектов и завершение запуска..."));
-        form.Shown += (_, _) =>
-        {
-            form.BeginInvoke((Action)(() => form.ActiveControl = null));
-            if (startup is not null && !startup.IsDisposed)
-            {
-                startup.UpdateProgress(100, UiText.T("Ready", "Готово"));
-                startup.Close();
-            }
-        };
+        return form;
+    }
 
-        if (!startupSmoke)
+    private sealed class DeadlimitApplicationContext : ApplicationContext
+    {
+        private readonly bool _startupSmoke;
+        private StartupProgressForm? _startup;
+        private bool _reloadPending;
+        private bool _reloading;
+        private System.Windows.Forms.Timer? _smokeTimer;
+
+        public DeadlimitApplicationContext(bool startupSmoke, StartupProgressForm? startup)
         {
-            Application.Run(form);
-            return 0;
+            _startupSmoke = startupSmoke;
+            _startup = startup;
+            UiSettingsChangeBus.Changed += OnUiSettingsChanged;
+            Application.Idle += OnApplicationIdle;
+            ShowMainForm(CreateMainForm(_startup), initial: true);
         }
 
-        using var smokeTimer = new System.Windows.Forms.Timer
+        protected override void Dispose(bool disposing)
         {
-            Interval = 500,
-        };
-        smokeTimer.Tick += (_, _) =>
+            if (disposing)
+            {
+                UiSettingsChangeBus.Changed -= OnUiSettingsChanged;
+                Application.Idle -= OnApplicationIdle;
+                _smokeTimer?.Stop();
+                _smokeTimer?.Dispose();
+                _smokeTimer = null;
+            }
+            base.Dispose(disposing);
+        }
+
+        private void OnUiSettingsChanged(object? sender, EventArgs e)
         {
-            smokeTimer.Stop();
-            form.Close();
-        };
-        form.Shown += (_, _) => smokeTimer.Start();
-        Application.Run(form);
-        return 0;
+            _reloadPending = true;
+        }
+
+        private void OnApplicationIdle(object? sender, EventArgs e)
+        {
+            if (!_reloadPending || _reloading)
+            {
+                return;
+            }
+
+            // Settings owns a modal loop. Wait until it has actually closed before
+            // replacing its owner, otherwise WinForms can tear down the modal chain.
+            if (Application.OpenForms.OfType<SettingsForm>().Any())
+            {
+                return;
+            }
+
+            ReloadMainForm();
+        }
+
+        private void ReloadMainForm()
+        {
+            var previous = MainForm;
+            if (previous is null || previous.IsDisposed)
+            {
+                _reloadPending = false;
+                return;
+            }
+
+            _reloading = true;
+            _reloadPending = false;
+            try
+            {
+                var location = previous.Location;
+                var wasVisible = previous.Visible;
+
+                // Detach ApplicationContext from the old main form before closing it,
+                // so closing the form does not terminate the message loop.
+                MainForm = null;
+                previous.Hide();
+                previous.Close();
+                previous.Dispose();
+
+                var replacement = CreateMainForm(startup: null);
+                replacement.StartPosition = FormStartPosition.Manual;
+                replacement.Location = location;
+                ShowMainForm(replacement, initial: false, show: wasVisible);
+            }
+            finally
+            {
+                _reloading = false;
+            }
+        }
+
+        private void ShowMainForm(MainForm form, bool initial, bool show = true)
+        {
+            MainForm = form;
+            form.Shown += (_, _) =>
+            {
+                form.BeginInvoke((Action)(() => form.ActiveControl = null));
+                if (initial && _startup is not null && !_startup.IsDisposed)
+                {
+                    _startup.UpdateProgress(100, UiText.T("Ready", "Готово"));
+                    _startup.Close();
+                    _startup = null;
+                }
+            };
+
+            if (_startupSmoke)
+            {
+                _smokeTimer?.Dispose();
+                _smokeTimer = new System.Windows.Forms.Timer
+                {
+                    Interval = 500,
+                };
+                _smokeTimer.Tick += (_, _) =>
+                {
+                    _smokeTimer!.Stop();
+                    if (MainForm is not null && !MainForm.IsDisposed)
+                    {
+                        MainForm.Close();
+                    }
+                };
+                form.Shown += (_, _) => _smokeTimer.Start();
+            }
+
+            if (show)
+            {
+                form.Show();
+            }
+        }
     }
 
     private static void UpdateStartup(StartupProgressForm? startup, int value, string message)
