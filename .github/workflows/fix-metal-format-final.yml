@@ -1,0 +1,184 @@
+name: Format metal preset fix
+
+on:
+  push:
+    branches: [ fix/metal-vmat-preset-values ]
+    paths:
+      - '.github/workflows/fix-metal-format-final.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Normalize formatting
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('internal/src/Deadlimit/Core/CustomMaterialAuthoringService.cs')
+          text = path.read_text(encoding='utf-8')
+          old_helper = '''    private static string UpsertTextureAssignment(string text, string key, string value)
+          {
+              var useCrLf = text.Contains("\\r\\n", StringComparison.Ordinal);
+              var normalized = useCrLf ? text.Replace("\\r\\n", "\\n", StringComparison.Ordinal) : text;
+              var found = false;
+              var patched = TextureAssignmentRegex.Replace(normalized, match =>
+              {
+                  if (!string.Equals(GetTextureKey(match), key, StringComparison.OrdinalIgnoreCase))
+                  {
+                      return match.Value;
+                  }
+
+                  if (found)
+                  {
+                      return string.Empty;
+                  }
+
+                  found = true;
+                  return match.Groups["prefix"].Value + value + match.Groups["suffix"].Value;
+              });
+
+              if (!found)
+              {
+                  var closingBrace = patched.LastIndexOf('}');
+                  if (closingBrace < 0)
+                  {
+                      throw new InvalidDataException("Generated/inherited VMAT did not contain a closing Layer0 brace.");
+                  }
+
+                  patched = patched.Insert(closingBrace, $"    \\\"{key}\\\"\\t\\\"{value}\\\"\\n");
+              }
+
+              return useCrLf ? patched.Replace("\\n", "\\r\\n", StringComparison.Ordinal) : patched;
+          }
+          '''
+          new_helper = '''    private static string UpsertTextureAssignment(string text, string key, string value)
+          {
+              var useCrLf = text.Contains("\\r\\n", StringComparison.Ordinal);
+              var normalized = useCrLf ? text.Replace("\\r\\n", "\\n", StringComparison.Ordinal) : text;
+              var found = false;
+              var patched = TextureAssignmentRegex.Replace(normalized, match =>
+              {
+                  if (!string.Equals(GetTextureKey(match), key, StringComparison.OrdinalIgnoreCase))
+                  {
+                      return match.Value;
+                  }
+
+                  if (found)
+                  {
+                      return string.Empty;
+                  }
+
+                  found = true;
+                  return match.Groups["prefix"].Value + value + match.Groups["suffix"].Value;
+              });
+
+              if (!found)
+              {
+                  var closingBrace = patched.LastIndexOf('}');
+                  if (closingBrace < 0)
+                  {
+                      throw new InvalidDataException("Generated/inherited VMAT did not contain a closing Layer0 brace.");
+                  }
+
+                  patched = patched.Insert(closingBrace, $"    \\\"{key}\\\"\\t\\\"{value}\\\"\\n");
+              }
+
+              return useCrLf ? patched.Replace("\\n", "\\r\\n", StringComparison.Ordinal) : patched;
+          }
+          '''
+          # Dedent artifacts were introduced by the workflow script itself; normalize method bodies by line range.
+          start = text.index('    private static string UpsertTextureAssignment(string text, string key, string value)')
+          end = text.index('    private static bool HasStringParameter', start)
+          block = text[start:end]
+          lines = block.splitlines()
+          fixed = []
+          for i, line in enumerate(lines):
+              if i == 0:
+                  fixed.append(line)
+              else:
+                  fixed.append('    ' + line if line and not line.startswith('    ') else line)
+          # Reconstruct explicitly to avoid relying on the artifact indentation shape.
+          helper = '''    private static string UpsertTextureAssignment(string text, string key, string value)
+    {
+        var useCrLf = text.Contains("\\r\\n", StringComparison.Ordinal);
+        var normalized = useCrLf ? text.Replace("\\r\\n", "\\n", StringComparison.Ordinal) : text;
+        var found = false;
+        var patched = TextureAssignmentRegex.Replace(normalized, match =>
+        {
+            if (!string.Equals(GetTextureKey(match), key, StringComparison.OrdinalIgnoreCase))
+            {
+                return match.Value;
+            }
+
+            if (found)
+            {
+                return string.Empty;
+            }
+
+            found = true;
+            return match.Groups["prefix"].Value + value + match.Groups["suffix"].Value;
+        });
+
+        if (!found)
+        {
+            var closingBrace = patched.LastIndexOf('}');
+            if (closingBrace < 0)
+            {
+                throw new InvalidDataException("Generated/inherited VMAT did not contain a closing Layer0 brace.");
+            }
+
+            patched = patched.Insert(closingBrace, $"    \\\"{key}\\\"\\t\\\"{value}\\\"\\n");
+        }
+
+        return useCrLf ? patched.Replace("\\n", "\\r\\n", StringComparison.Ordinal) : patched;
+    }
+
+'''
+          text = text[:start] + helper + text[end:]
+
+          start = text.index('    private static string ApplyMaterialNameModifiers(')
+          end = text.index('    private static TextureReplacement ResolveTextureReplacement(', start)
+          method = '''    private static string ApplyMaterialNameModifiers(
+        string text,
+        string customReference,
+        bool vertexColorMode)
+    {
+        if (!IsMetalMaterialReference(customReference))
+        {
+            return text;
+        }
+
+        var patched = UpsertStringParameter(text, "g_flMetalness", MetalPresetValue);
+        var roughnessKey = vertexColorMode ? "TextureRoughness1" : "TextureRoughness";
+        return UpsertTextureAssignment(patched, roughnessKey, MetalPresetRoughness);
+    }
+
+'''
+          text = text[:start] + method + text[end:]
+          path.write_text(text, encoding='utf-8', newline='\n')
+          PY
+      - name: Verify
+        shell: pwsh
+        run: |
+          git diff --check
+          dotnet restore internal/src/Deadlimit/Deadlimit.csproj
+          dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+          internal/tests/metal-material-preset-smoke.ps1
+      - name: Commit formatting
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add internal/src/Deadlimit/Core/CustomMaterialAuthoringService.cs
+          git commit -m "Format metal VMAT preset helpers"
+          git push origin HEAD:fix/metal-vmat-preset-values
