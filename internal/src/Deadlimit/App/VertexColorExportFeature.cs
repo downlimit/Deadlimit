@@ -53,7 +53,7 @@ internal static class VertexColorExportFeature
                 var scriptPath = VertexColorMaxScriptService.GetBundledScriptPath();
                 Clipboard.SetText(VertexColorMaxScriptService.CreateFileInCommand(scriptPath));
 
-                System.Windows.Forms.MessageBox.Show(
+                MessageBox.Show(
                     form,
                     UiText.T(
                         "The MAXScript fileIn command is in the clipboard.\n\nPaste it into MAXScript Listener once. For each update: export the normal DMX with Wall Worm, keep the same geometry and renderable Shape/Spline objects selected, then export the Vertex Color FBX. Keep both files together in the project root. PREPARE validates the pair, consumes the FBX after complete success, and keeps it after rejection, cancellation, or a later failure. The script reads no Deadlimit Aggregator project settings and contains no path to DeadlimitAggregator.exe.",
@@ -66,7 +66,7 @@ internal static class VertexColorExportFeature
                 or UnauthorizedAccessException
                 or ArgumentException)
             {
-                System.Windows.Forms.MessageBox.Show(
+                MessageBox.Show(
                     form,
                     ex.Message,
                     UiText.T("Vertex Color helper unavailable", "Скрипт Vertex Color недоступен"),
