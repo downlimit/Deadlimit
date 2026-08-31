@@ -29,6 +29,9 @@ $vertexColorMetal = Invoke-MaterialPreset $vertexColorSource 'materials/test/arm
 if ($vertexColorMetal -notmatch '"TextureRoughness1"\s+"\[0\.501961 0\.501961 0\.501961 0\.000000\]"') {
     throw "Vertex-color metal preset did not set Roughness to 128/128/128.`n$vertexColorMetal"
 }
+if (([regex]::Matches($vertexColorMetal, 'TextureRoughness1')).Count -ne 1 -or $vertexColorMetal -match 'TextureRoughness1[^\r\n]*0\.800000') {
+    throw "Vertex-color metal preset left a duplicate/stale Roughness assignment.`n$vertexColorMetal"
+}
 if ($vertexColorMetal -notmatch '"g_flMetalness"\s+"0\.800"') {
     throw "Vertex-color metal preset did not set Metalness to 0.800.`n$vertexColorMetal"
 }
@@ -46,6 +49,9 @@ Layer0
 $standardMetal = Invoke-MaterialPreset $standardSource 'materials/test/armor_metal.vmat' $false
 if ($standardMetal -notmatch 'TextureRoughness\s+"\[0\.501961 0\.501961 0\.501961 0\.000000\]"') {
     throw "Standard metal preset did not set Roughness to 128/128/128.`n$standardMetal"
+}
+if (([regex]::Matches($standardMetal, 'TextureRoughness')).Count -ne 1 -or $standardMetal -match 'TextureRoughness[^\r\n]*0\.800000') {
+    throw "Standard metal preset left a duplicate/stale Roughness assignment.`n$standardMetal"
 }
 if ($standardMetal -notmatch 'g_flMetalness\s+"0\.800"') {
     throw "Standard metal preset did not set Metalness to 0.800.`n$standardMetal"
