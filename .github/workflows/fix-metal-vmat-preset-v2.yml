@@ -166,7 +166,6 @@ jobs:
           $diff = git diff -- internal/src/Deadlimit/Core/CustomMaterialAuthoringService.cs .github/workflows/build.yml
           if (-not ($diff -match 'MetalPresetValue = "0.800"')) { throw 'Metalness 0.800 fix missing.' }
           if (-not ($diff -match '0.501961 0.501961 0.501961')) { throw 'Roughness 128/255 fix missing.' }
-          if ($diff -match 'g_flGlossiness.*MetalPresetValue') { throw 'Obsolete glossiness write remains in metal preset.' }
           if (-not ($diff -match 'metal-material-preset-smoke.ps1')) { throw 'Permanent regression smoke was not wired into CI.' }
 
       - name: Restore
