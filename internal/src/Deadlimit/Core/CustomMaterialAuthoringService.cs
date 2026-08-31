@@ -22,6 +22,8 @@ public sealed class CustomMaterialAuthoringService
     private const string VertexColorGeneratedMarker = "// DEADLIMIT_VERTEXCOLOR_VMAT_V1";
     private const string VertexColorManagedComment = "// Deadlimit vertex-color material: mesh vertex color drives base color; project color textures are intentionally ignored.";
     private const string VertexColorTemplateMaterial = "materials/dev/vertcolor_pbr_basic.vmat";
+    private const string MetalPresetValue = "0.750";
+    private const string MetalPresetRoughnessValue = "0.250";
     private const string NeutralColor = "[0.500000 0.500000 0.500000 0.000000]";
     private const string NeutralWhite = "[1.000000 1.000000 1.000000 0.000000]";
     private const string NeutralNormal = "[0.501961 0.501961 1.000000 0.000000]";
@@ -144,6 +146,7 @@ public sealed class CustomMaterialAuthoringService
         log.AppendLine($"Custom texture source folder: {textureFolder}");
         log.AppendLine("Custom texture naming: <material>_color|diffuse|basecolor|albedo, _normal, _rough|roughness, _ao|occlusion, _metal|metalness|metallic; specialty Texture* fields may also bind by matching the material prefix plus the Texture parameter semantic name.");
         log.AppendLine("Vertex-color naming: any custom material whose name contains 'vertexcolor' (prefix, suffix, or middle; case-insensitive) is prepared from the retail vertcolor_pbr_basic material and does not consume project color textures.");
+        log.AppendLine("Metal naming: any custom material whose name contains 'metal' (prefix, suffix, or middle; case-insensitive) receives the metal preset: Metalness 0.75 and Glossiness 0.75. The modifier is independent from vertexcolor and may be combined with it.");
 
         var targetResources = AllocateStableTargetResources(
             customReferences,
@@ -319,8 +322,8 @@ public sealed class CustomMaterialAuthoringService
 
         log.AppendLine($"Custom textures auto-bound in current PREPARE: {autoBoundTextures}");
         log.AppendLine($"Existing Deadlimit-managed VMAT files updated in current PREPARE: {managedUpdates}");
-        log.AppendLine("Custom VMAT ownership policy: files carrying a DEADLIMIT_GENERATED_CUSTOM_VMAT marker remain texture-managed by Deadlimit; PREPARE may update only their Texture* source assignments and required texture-enable combo state. Non-texture Material Editor edits are preserved.");
-        log.AppendLine("Custom VMAT ownership policy: files carrying a DEADLIMIT_VERTEXCOLOR_VMAT marker are managed only for vertex-color behavior; project texture auto-binding intentionally skips them.");
+        log.AppendLine("Custom VMAT ownership policy: files carrying a DEADLIMIT_GENERATED_CUSTOM_VMAT marker remain managed by Deadlimit; PREPARE may update their Texture* source assignments, required texture-enable combo state, and explicit material-name modifiers such as metal. Other non-texture Material Editor edits are preserved.");
+        log.AppendLine("Custom VMAT ownership policy: files carrying a DEADLIMIT_VERTEXCOLOR_VMAT marker are managed for vertex-color behavior plus explicit material-name modifiers such as metal; project color-texture auto-binding intentionally skips them.");
         log.AppendLine("Custom VMAT ownership policy: generated markers and the project .deadlimit ownership registry identify texture-managed VMAT files even after Material Editor replaces the first-line marker.");
         log.AppendLine("Custom VMAT scaffold policy: inherit the current hero character material so shader, outline/NPR colors, strengths, thicknesses and other non-texture tuning survive, but never inherit unresolved hero texture-source paths.");
         log.AppendLine("Custom texture policy: the project-root PNG/TGA/JPG/TIFF set is authoritative for Deadlimit-managed texture slots on every PREPARE. Adding a matching texture binds it; removing it reverts the managed slot to its safe default/fallback. Derived texture copies absent from the project root are removed from the addon texture-source folder.");
@@ -474,6 +477,7 @@ public sealed class CustomMaterialAuthoringService
 
         body = EnsureStandardTextureAssignments(body, standardBindings);
         body = ReconcileMetalnessTextureCombo(body, HasBinding(standardBindings, "TextureMetalness"));
+        body = ApplyMaterialNameModifiers(body, customReference);
 
         return GeneratedMarker + Environment.NewLine +
                ManagedComment + Environment.NewLine +
@@ -508,6 +512,7 @@ public sealed class CustomMaterialAuthoringService
         body = EnsureVertexColorTextureAssignments(body, standardBindings);
         body = ReconcileMetalnessTextureCombo(body, HasBinding(standardBindings, "TextureMetalness"));
         body = UpsertStringParameter(body, "F_VERTEX_COLOR", "1");
+        body = ApplyMaterialNameModifiers(body, customReference);
 
         return VertexColorGeneratedMarker + Environment.NewLine +
                VertexColorManagedComment + Environment.NewLine +
@@ -545,6 +550,7 @@ public sealed class CustomMaterialAuthoringService
 
         body = EnsureStandardTextureAssignments(body, standardBindings);
         body = ReconcileMetalnessTextureCombo(body, HasBinding(standardBindings, "TextureMetalness"));
+        body = ApplyMaterialNameModifiers(body, customReference);
 
         return GeneratedMarker + Environment.NewLine +
                ManagedComment + Environment.NewLine +
@@ -587,6 +593,7 @@ public sealed class CustomMaterialAuthoringService
         body = EnsureVertexColorTextureAssignments(body, standardBindings);
         body = ReconcileMetalnessTextureCombo(body, HasBinding(standardBindings, "TextureMetalness"));
         body = UpsertStringParameter(body, "F_VERTEX_COLOR", "1");
+        body = ApplyMaterialNameModifiers(body, customReference);
 
         return VertexColorGeneratedMarker + Environment.NewLine +
                VertexColorManagedComment + Environment.NewLine +
@@ -805,6 +812,44 @@ public sealed class CustomMaterialAuthoringService
     {
         var leaf = Path.GetFileNameWithoutExtension(GetResourceLeaf(reference));
         return NormalizeMatchToken(leaf).Contains("vertexcolor", StringComparison.Ordinal);
+    }
+
+    private static bool IsMetalMaterialReference(string reference)
+    {
+        var leaf = Path.GetFileNameWithoutExtension(GetResourceLeaf(reference));
+        return NormalizeMatchToken(leaf).Contains("metal", StringComparison.Ordinal);
+    }
+
+    private static string ApplyMaterialNameModifiers(string text, string customReference)
+    {
+        if (!IsMetalMaterialReference(customReference))
+        {
+            return text;
+        }
+
+        var patched = UpsertStringParameter(text, "g_flMetalness", MetalPresetValue);
+
+        if (HasStringParameter(patched, "g_flGlossiness"))
+        {
+            return UpsertStringParameter(patched, "g_flGlossiness", MetalPresetValue);
+        }
+
+        if (HasStringParameter(patched, "g_flGlossinessScaleFactor"))
+        {
+            return UpsertStringParameter(patched, "g_flGlossinessScaleFactor", MetalPresetValue);
+        }
+
+        if (HasStringParameter(patched, "g_flRoughness"))
+        {
+            return UpsertStringParameter(patched, "g_flRoughness", MetalPresetRoughnessValue);
+        }
+
+        if (HasStringParameter(patched, "g_flRoughnessScaleFactor"))
+        {
+            return UpsertStringParameter(patched, "g_flRoughnessScaleFactor", MetalPresetRoughnessValue);
+        }
+
+        return UpsertStringParameter(patched, "g_flGlossiness", MetalPresetValue);
     }
 
     private static TextureReplacement ResolveTextureReplacement(
