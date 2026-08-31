@@ -178,6 +178,7 @@ internal static class MessageBox
     {
         text = UiText.NormalizeProductNames(text);
         caption = UiText.NormalizeProductNames(caption);
+        text = EnsureLocalizedRussianDialogText(text, caption);
 
         var effectiveButtons = buttons.Count == 0
             ? [new DeadlimitDialogButton("OK", DeadlimitDialogChoice.Ok, IsDefault: true, IsCancel: true)]
@@ -302,6 +303,60 @@ internal static class MessageBox
         return result == DeadlimitDialogChoice.None
             ? DeadlimitDialogChoice.Cancel
             : result;
+    }
+
+    private static string EnsureLocalizedRussianDialogText(string text, string caption)
+    {
+        if (!UiText.IsRussian
+            || string.IsNullOrWhiteSpace(text)
+            || LooksLikeRussianProse(text)
+            || !LooksLikeRussianProse(caption))
+        {
+            return text;
+        }
+
+        var localizedCaption = caption.Trim().TrimEnd('.', '!', '?', ':');
+        return localizedCaption.Length == 0
+            ? text
+            : localizedCaption + ".";
+    }
+
+    private static bool LooksLikeRussianProse(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var sample = value.TrimStart();
+        var newlineIndex = sample.IndexOfAny(['\r', '\n']);
+        if (newlineIndex >= 0)
+        {
+            sample = sample[..newlineIndex];
+        }
+
+        var windowsPathIndex = sample.IndexOf(":\\", StringComparison.Ordinal);
+        if (windowsPathIndex > 1)
+        {
+            sample = sample[..(windowsPathIndex - 1)];
+        }
+
+        var cyrillicLetters = 0;
+        var latinLetters = 0;
+        foreach (var character in sample)
+        {
+            if (character is >= '\u0400' and <= '\u052F')
+            {
+                cyrillicLetters++;
+            }
+            else if (character is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z'))
+            {
+                latinLetters++;
+            }
+        }
+
+        return cyrillicLetters >= 2
+            && (latinLetters == 0 || cyrillicLetters * 3 >= latinLetters);
     }
 
     private static DeadlimitDialogButton[] CreateButtons(MessageBoxButtons buttons) => buttons switch
