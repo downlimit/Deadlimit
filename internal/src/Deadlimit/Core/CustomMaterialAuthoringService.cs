@@ -22,8 +22,8 @@ public sealed class CustomMaterialAuthoringService
     private const string VertexColorGeneratedMarker = "// DEADLIMIT_VERTEXCOLOR_VMAT_V1";
     private const string VertexColorManagedComment = "// Deadlimit vertex-color material: mesh vertex color drives base color; project color textures are intentionally ignored.";
     private const string VertexColorTemplateMaterial = "materials/dev/vertcolor_pbr_basic.vmat";
-    private const string MetalPresetValue = "0.750";
-    private const string MetalPresetRoughnessValue = "0.250";
+    private const string MetalPresetValue = "0.800";
+    private const string MetalPresetRoughness = "[0.501961 0.501961 0.501961 0.000000]";
     private const string NeutralColor = "[0.500000 0.500000 0.500000 0.000000]";
     private const string NeutralWhite = "[1.000000 1.000000 1.000000 0.000000]";
     private const string NeutralNormal = "[0.501961 0.501961 1.000000 0.000000]";
@@ -146,7 +146,7 @@ public sealed class CustomMaterialAuthoringService
         log.AppendLine($"Custom texture source folder: {textureFolder}");
         log.AppendLine("Custom texture naming: <material>_color|diffuse|basecolor|albedo, _normal, _rough|roughness, _ao|occlusion, _metal|metalness|metallic; specialty Texture* fields may also bind by matching the material prefix plus the Texture parameter semantic name.");
         log.AppendLine("Vertex-color naming: any custom material whose name contains 'vertexcolor' (prefix, suffix, or middle; case-insensitive) is prepared from the retail vertcolor_pbr_basic material and does not consume project color textures.");
-        log.AppendLine("Metal naming: any custom material whose name contains 'metal' (prefix, suffix, or middle; case-insensitive) receives the metal preset: Metalness 0.75 and Glossiness 0.75. The modifier is independent from vertexcolor and may be combined with it.");
+        log.AppendLine("Metal naming: any custom material whose name contains 'metal' (prefix, suffix, or middle; case-insensitive) receives the metal preset: Metalness 0.8 and Roughness 128/255. The modifier is independent from vertexcolor and may be combined with it.");
 
         var targetResources = AllocateStableTargetResources(
             customReferences,
@@ -477,7 +477,7 @@ public sealed class CustomMaterialAuthoringService
 
         body = EnsureStandardTextureAssignments(body, standardBindings);
         body = ReconcileMetalnessTextureCombo(body, HasBinding(standardBindings, "TextureMetalness"));
-        body = ApplyMaterialNameModifiers(body, customReference);
+        body = ApplyMaterialNameModifiers(body, customReference, vertexColorMode: false);
 
         return GeneratedMarker + Environment.NewLine +
                ManagedComment + Environment.NewLine +
@@ -512,7 +512,7 @@ public sealed class CustomMaterialAuthoringService
         body = EnsureVertexColorTextureAssignments(body, standardBindings);
         body = ReconcileMetalnessTextureCombo(body, HasBinding(standardBindings, "TextureMetalness"));
         body = UpsertStringParameter(body, "F_VERTEX_COLOR", "1");
-        body = ApplyMaterialNameModifiers(body, customReference);
+        body = ApplyMaterialNameModifiers(body, customReference, vertexColorMode: true);
 
         return VertexColorGeneratedMarker + Environment.NewLine +
                VertexColorManagedComment + Environment.NewLine +
@@ -550,7 +550,7 @@ public sealed class CustomMaterialAuthoringService
 
         body = EnsureStandardTextureAssignments(body, standardBindings);
         body = ReconcileMetalnessTextureCombo(body, HasBinding(standardBindings, "TextureMetalness"));
-        body = ApplyMaterialNameModifiers(body, customReference);
+        body = ApplyMaterialNameModifiers(body, customReference, vertexColorMode: false);
 
         return GeneratedMarker + Environment.NewLine +
                ManagedComment + Environment.NewLine +
@@ -593,7 +593,7 @@ public sealed class CustomMaterialAuthoringService
         body = EnsureVertexColorTextureAssignments(body, standardBindings);
         body = ReconcileMetalnessTextureCombo(body, HasBinding(standardBindings, "TextureMetalness"));
         body = UpsertStringParameter(body, "F_VERTEX_COLOR", "1");
-        body = ApplyMaterialNameModifiers(body, customReference);
+        body = ApplyMaterialNameModifiers(body, customReference, vertexColorMode: true);
 
         return VertexColorGeneratedMarker + Environment.NewLine +
                VertexColorManagedComment + Environment.NewLine +
@@ -760,6 +760,41 @@ public sealed class CustomMaterialAuthoringService
         return patched;
     }
 
+    private static string UpsertTextureAssignment(string text, string key, string value)
+{
+    var useCrLf = text.Contains("\r\n", StringComparison.Ordinal);
+    var normalized = useCrLf ? text.Replace("\r\n", "\n", StringComparison.Ordinal) : text;
+    var found = false;
+    var patched = TextureAssignmentRegex.Replace(normalized, match =>
+    {
+        if (!string.Equals(GetTextureKey(match), key, StringComparison.OrdinalIgnoreCase))
+        {
+            return match.Value;
+        }
+
+        if (found)
+        {
+            return string.Empty;
+        }
+
+        found = true;
+        return match.Groups["prefix"].Value + value + match.Groups["suffix"].Value;
+    });
+
+    if (!found)
+    {
+        var closingBrace = patched.LastIndexOf('}');
+        if (closingBrace < 0)
+        {
+            throw new InvalidDataException("Generated/inherited VMAT did not contain a closing Layer0 brace.");
+        }
+
+        patched = patched.Insert(closingBrace, $"    \"{key}\"\t\"{value}\"\n");
+    }
+
+    return useCrLf ? patched.Replace("\n", "\r\n", StringComparison.Ordinal) : patched;
+}
+
     private static bool HasStringParameter(string text, string key) =>
         StringParameterRegex.Matches(text)
             .Any(match => string.Equals(GetStringParameterKey(match), key, StringComparison.OrdinalIgnoreCase));
@@ -820,37 +855,20 @@ public sealed class CustomMaterialAuthoringService
         return NormalizeMatchToken(leaf).Contains("metal", StringComparison.Ordinal);
     }
 
-    private static string ApplyMaterialNameModifiers(string text, string customReference)
+    private static string ApplyMaterialNameModifiers(
+    string text,
+    string customReference,
+    bool vertexColorMode)
+{
+    if (!IsMetalMaterialReference(customReference))
     {
-        if (!IsMetalMaterialReference(customReference))
-        {
-            return text;
-        }
-
-        var patched = UpsertStringParameter(text, "g_flMetalness", MetalPresetValue);
-
-        if (HasStringParameter(patched, "g_flGlossiness"))
-        {
-            return UpsertStringParameter(patched, "g_flGlossiness", MetalPresetValue);
-        }
-
-        if (HasStringParameter(patched, "g_flGlossinessScaleFactor"))
-        {
-            return UpsertStringParameter(patched, "g_flGlossinessScaleFactor", MetalPresetValue);
-        }
-
-        if (HasStringParameter(patched, "g_flRoughness"))
-        {
-            return UpsertStringParameter(patched, "g_flRoughness", MetalPresetRoughnessValue);
-        }
-
-        if (HasStringParameter(patched, "g_flRoughnessScaleFactor"))
-        {
-            return UpsertStringParameter(patched, "g_flRoughnessScaleFactor", MetalPresetRoughnessValue);
-        }
-
-        return UpsertStringParameter(patched, "g_flGlossiness", MetalPresetValue);
+        return text;
     }
+
+    var patched = UpsertStringParameter(text, "g_flMetalness", MetalPresetValue);
+    var roughnessKey = vertexColorMode ? "TextureRoughness1" : "TextureRoughness";
+    return UpsertTextureAssignment(patched, roughnessKey, MetalPresetRoughness);
+}
 
     private static TextureReplacement ResolveTextureReplacement(
         string key,
