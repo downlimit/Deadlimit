@@ -74,7 +74,7 @@ internal static class MessageBox
                 {
                     text += UiText.T(
                         $"\n\nBackup cleanup warning:\n{cleanupError}",
-                        $"\n\nНе удалось удалить backup:\n{cleanupError}");
+                        "\n\nНе удалось удалить предыдущую резервную копию.");
                 }
             }
 
