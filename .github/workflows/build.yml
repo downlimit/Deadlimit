@@ -18,6 +18,9 @@ jobs:
         run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
       - name: Build Deadlimit Manager
         run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+      - name: Metal material preset smoke
+        shell: pwsh
+        run: internal/tests/metal-material-preset-smoke.ps1
       - name: Verify Manager and updater contract
         shell: pwsh
         run: |
