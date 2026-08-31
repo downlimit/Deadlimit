@@ -150,6 +150,16 @@ global deadlimitVertexColorExportSidecar
 global deadlimitVertexColorSelectedGeometry
 global deadlimitVertexColorSelectedBones
 global deadlimitVertexColorSetDisplay
+global deadlimitVertexColorRememberDisplayNodes
+global deadlimitVertexColorRefreshDisplay
+global deadlimitVertexColorRefreshTrackedDisplay
+global deadlimitVertexColorDisplayRefreshNodes
+global deadlimitVertexColorCaptureUndoSnapshots
+global deadlimitVertexColorRestoreUndoSnapshots
+global deadlimitVertexColorRecordUndoTransaction
+global deadlimitVertexColorHandleSceneUndoRedo
+global deadlimitVertexColorUndoTransactions
+global deadlimitVertexColorRedoTransactions
 global deadlimitVertexColorToggleDisplay
 global deadlimitVertexColorToggleLineartDisplay
 global deadlimitVertexColorFitBoneLengths
@@ -176,6 +186,9 @@ global deadlimitVertexColorPasteVertex
 global deadlimitVertexColorPastePalette
 global deadlimitVertexColorResultText
 global deadlimitInnerLineartSkinProperty = "DeadlimitInnerLineartSkinGroupsV1"
+deadlimitVertexColorDisplayRefreshNodes = #()
+deadlimitVertexColorUndoTransactions = #()
+deadlimitVertexColorRedoTransactions = #()
 
 /*
     FEATURE: SKIN-AWARE INNER LINEART METADATA AND SYNCHRONIZATION
@@ -750,7 +763,165 @@ fn deadlimitVertexColorExportSidecar fixedGamma:false gammaValue:1.0 =
 
     Porting invariant: configure the viewport/material preview to show the same stored
     color/alpha attribute the workflow reads. Display switches never rewrite either channel.
+
+    Nitrous can retain stale channel-0 display data while an object remains selected. A normal
+    redraw is insufficient in that state, which makes a successful scene Undo look as if the
+    colors were not restored. RefreshDisplay preserves the requested display mode, briefly
+    disables shaded vertex display without recording Undo data, updates the node, restores the
+    flags, invalidates its viewport rectangle, and completes a redraw. No VertexPaint modifier
+    is added, so the user's modifier stack remains byte-for-byte the same.
+
+    The last meshes touched by a color command are retained as session-only node references.
+    Non-persistent #sceneUndo/#sceneRedo callbacks refresh those meshes after Max has restored
+    their map channels. Invalid/deleted nodes are ignored. Never use notifyDependents here: it
+    proved unsafe in interactive Nitrous sessions and can crash Max.
 */
+fn deadlimitVertexColorRememberDisplayNodes nodes =
+(
+    deadlimitVertexColorDisplayRefreshNodes = for node in nodes where isValidNode node collect node
+    deadlimitVertexColorDisplayRefreshNodes.count
+)
+
+fn deadlimitVertexColorRefreshDisplay nodes =
+(
+    local refreshed = 0
+    with undo off
+    (
+        with redraw off
+        (
+            for node in nodes where isValidNode node do
+            (
+                local displayType = node.vertexColorType
+                local displayEnabled = node.showVertexColors
+                local shadedEnabled = node.vertexColorsShaded
+
+                node.showVertexColors = false
+                node.vertexColorsShaded = false
+                update node
+                nodeInvalRect node
+
+                node.vertexColorType = displayType
+                node.showVertexColors = displayEnabled
+                node.vertexColorsShaded = shadedEnabled
+                update node
+                nodeInvalRect node
+                refreshed += 1
+            )
+        )
+    )
+    forceCompleteRedraw()
+    refreshed
+)
+
+fn deadlimitVertexColorRefreshTrackedDisplay =
+(
+    if deadlimitVertexColorDisplayRefreshNodes == undefined then return 0
+    deadlimitVertexColorRefreshDisplay deadlimitVertexColorDisplayRefreshNodes
+)
+
+/*
+    FEATURE: EXACT VERTEX-COLOR UNDO FOR DIRECT EDITABLE POLY WRITES
+
+    polyop map-channel writes do not create a channel RestoreObj, even inside an Undo context
+    and even when polyop receives the scene node. Max still creates the named Undo entry for
+    the accompanying node display changes, so a plain Ctrl+Z can misleadingly report success
+    while channel 0 remains filled. Keep an in-session transaction stack containing exact
+    before/after channel-0 arrays and display flags for Editable Poly targets.
+
+    #sceneUndo/#sceneRedo supplies the named Undo entry after Max finishes its own restore.
+    When that name matches the top Deadlimit transaction, restore the corresponding snapshot
+    with Undo disabled, then refresh Nitrous. This preserves the original base-object instance,
+    modifier instances/order/settings, topology, and sub-object selections. Transactions are
+    session-only because Max does not preserve its Undo queue across restart or scene reload.
+ */
+fn deadlimitVertexColorCaptureUndoSnapshots nodes =
+(
+    local snapshots = #()
+    for node in nodes where isValidNode node and (classOf node.baseObject) == Editable_Poly do
+    (
+        local editablePoly = node.baseObject
+        local mapSupported = polyop.getMapSupport editablePoly 0
+        local mapVertices = #()
+        local mapFaces = #()
+        if mapSupported do
+        (
+            local mapVertexCount = polyop.getNumMapVerts editablePoly 0
+            local mapFaceCount = polyop.getNumMapFaces editablePoly 0
+            for mapVertexIndex = 1 to mapVertexCount do append mapVertices (copy (polyop.getMapVert editablePoly 0 mapVertexIndex))
+            for mapFaceIndex = 1 to mapFaceCount do append mapFaces (deepCopy (polyop.getMapFace editablePoly 0 mapFaceIndex))
+        )
+        append snapshots #(
+            node,
+            mapSupported,
+            mapVertices,
+            mapFaces,
+            node.vertexColorType,
+            node.showVertexColors,
+            node.vertexColorsShaded
+        )
+    )
+    snapshots
+)
+
+fn deadlimitVertexColorRestoreUndoSnapshots snapshots =
+(
+    local restoredNodes = #()
+    with undo off
+    (
+        for snapshot in snapshots do
+        (
+            local node = snapshot[1]
+            if isValidNode node and (classOf node.baseObject) == Editable_Poly do
+            (
+                local editablePoly = node.baseObject
+                if snapshot[2] then
+                (
+                    polyop.setMapSupport editablePoly 0 true
+                    polyop.setNumMapVerts editablePoly 0 snapshot[3].count keep:false
+                    for mapVertexIndex = 1 to snapshot[3].count do polyop.setMapVert editablePoly 0 mapVertexIndex snapshot[3][mapVertexIndex]
+                    polyop.setNumMapFaces editablePoly 0 snapshot[4].count keep:false
+                    for mapFaceIndex = 1 to snapshot[4].count do polyop.setMapFace editablePoly 0 mapFaceIndex snapshot[4][mapFaceIndex]
+                )
+                else
+                    polyop.setMapSupport editablePoly 0 false
+
+                node.vertexColorType = snapshot[5]
+                node.showVertexColors = snapshot[6]
+                node.vertexColorsShaded = snapshot[7]
+                update node
+                append restoredNodes node
+            )
+        )
+    )
+    deadlimitVertexColorRememberDisplayNodes restoredNodes
+    deadlimitVertexColorRefreshDisplay restoredNodes
+    restoredNodes.count
+)
+
+fn deadlimitVertexColorRecordUndoTransaction undoLabel beforeSnapshots afterSnapshots =
+(
+    if beforeSnapshots.count == 0 then return false
+    append deadlimitVertexColorUndoTransactions #(undoLabel, beforeSnapshots, afterSnapshots)
+    deadlimitVertexColorRedoTransactions = #()
+    true
+)
+
+fn deadlimitVertexColorHandleSceneUndoRedo isRedo =
+(
+    local sourceTransactions = if isRedo then deadlimitVertexColorRedoTransactions else deadlimitVertexColorUndoTransactions
+    if sourceTransactions.count == 0 then return false
+
+    local transaction = sourceTransactions[sourceTransactions.count]
+    local callbackLabel = callbacks.notificationParam()
+    if callbackLabel == undefined or (callbackLabel as string) != transaction[1] then return false
+
+    local snapshots = if isRedo then transaction[3] else transaction[2]
+    deadlimitVertexColorRestoreUndoSnapshots snapshots
+    deleteItem sourceTransactions sourceTransactions.count
+    if isRedo then append deadlimitVertexColorUndoTransactions transaction else append deadlimitVertexColorRedoTransactions transaction
+    true
+)
+
 fn deadlimitVertexColorSelectedGeometry =
 (
     local nodes = for node in selection where isValidNode node and (superClassOf node) == GeometryClass collect node
@@ -767,7 +938,8 @@ fn deadlimitVertexColorSetDisplay enabled =
         node.showVertexColors = enabled
         node.vertexColorsShaded = enabled
     )
-    redrawViews()
+    deadlimitVertexColorRememberDisplayNodes nodes
+    deadlimitVertexColorRefreshDisplay nodes
     nodes.count
 )
 
@@ -784,7 +956,8 @@ fn deadlimitVertexColorToggleDisplay =
         node.showVertexColors = enableDisplay
         node.vertexColorsShaded = enableDisplay
     )
-    redrawViews()
+    deadlimitVertexColorRememberDisplayNodes nodes
+    deadlimitVertexColorRefreshDisplay nodes
     #(nodes.count, enableDisplay, enabledCount)
 )
 
@@ -798,18 +971,12 @@ fn deadlimitVertexColorToggleLineartDisplay =
 
     for node in nodes do
     (
-        -- Selected meshes can retain the previous Nitrous display cache until selection
-        -- changes. Rebuild the safe documented display state without reference messages.
-        node.showVertexColors = false
-        node.vertexColorsShaded = false
-        update node
         node.vertexColorType = targetType
         node.showVertexColors = true
         node.vertexColorsShaded = true
-        update node
-        nodeInvalRect node
     )
-    forceCompleteRedraw()
+    deadlimitVertexColorRememberDisplayNodes nodes
+    deadlimitVertexColorRefreshDisplay nodes
     #(nodes.count, showLineart, alphaDisplayCount)
 )
 
@@ -1066,8 +1233,10 @@ fn deadlimitVertexColorFillPaletteToVertex =
     local nodes = deadlimitVertexColorSelectedGeometry()
     local changed = 0
     local errors = #()
+    local undoLabel = "FillPaletteToVertex"
+    local beforeSnapshots = deadlimitVertexColorCaptureUndoSnapshots nodes
 
-    undo "FillPaletteToVertex" on
+    undo undoLabel on
     (
         for node in nodes do
         (
@@ -1084,7 +1253,10 @@ fn deadlimitVertexColorFillPaletteToVertex =
         )
     )
 
-    redrawViews()
+    deadlimitVertexColorRememberDisplayNodes nodes
+    deadlimitVertexColorRefreshDisplay nodes
+    local afterSnapshots = deadlimitVertexColorCaptureUndoSnapshots nodes
+    deadlimitVertexColorRecordUndoTransaction undoLabel beforeSnapshots afterSnapshots
     #(changed, errors)
 )
 
@@ -1129,8 +1301,11 @@ fn deadlimitVertexColorRedistribute applyVertex applyPalette applyMaterial =
     local referenceMaterial = if applyMaterial then referenceNode.material else undefined
     local changed = 0
     local errors = #()
+    local undoLabel = "Redistribute Colors"
+    local targetNodes = for nodeIndex = 2 to nodes.count collect nodes[nodeIndex]
+    local beforeSnapshots = if applyVertex then deadlimitVertexColorCaptureUndoSnapshots targetNodes else #()
 
-    undo "Redistribute Colors" on
+    undo undoLabel on
     (
         for nodeIndex = 2 to nodes.count do
         (
@@ -1150,7 +1325,15 @@ fn deadlimitVertexColorRedistribute applyVertex applyPalette applyMaterial =
         )
     )
 
-    redrawViews()
+    if applyVertex then
+    (
+        deadlimitVertexColorRememberDisplayNodes nodes
+        deadlimitVertexColorRefreshDisplay nodes
+        local afterSnapshots = deadlimitVertexColorCaptureUndoSnapshots targetNodes
+        deadlimitVertexColorRecordUndoTransaction undoLabel beforeSnapshots afterSnapshots
+    )
+    else
+        redrawViews()
     #(referenceNode.name, changed, errors)
 )
 
@@ -1174,8 +1357,10 @@ fn deadlimitVertexColorPasteVertex =
     local nodes = deadlimitVertexColorSelectedGeometry()
     local changed = 0
     local errors = #()
+    local undoLabel = "Paste Vertex"
+    local beforeSnapshots = deadlimitVertexColorCaptureUndoSnapshots nodes
 
-    undo "Paste Vertex" on
+    undo undoLabel on
     (
         for node in nodes do
         (
@@ -1192,7 +1377,10 @@ fn deadlimitVertexColorPasteVertex =
         )
     )
 
-    redrawViews()
+    deadlimitVertexColorRememberDisplayNodes nodes
+    deadlimitVertexColorRefreshDisplay nodes
+    local afterSnapshots = deadlimitVertexColorCaptureUndoSnapshots nodes
+    deadlimitVertexColorRecordUndoTransaction undoLabel beforeSnapshots afterSnapshots
     #(changed, errors)
 )
 
@@ -2419,3 +2607,9 @@ addRollout deadlimitVertexColorBoneToolsRollout deadlimitPipelineFloater rolledU
 addRollout deadlimitVertexColorToolsRollout deadlimitPipelineFloater rolledUp:false
 addRollout deadlimitVertexColorInnerLineartRollout deadlimitPipelineFloater rolledUp:false
 addRollout deadlimitVertexColorFbxRollout deadlimitPipelineFloater rolledUp:false
+
+-- Refresh only the session-local meshes last touched by a Vertex Color command. These
+-- callbacks are deliberately non-persistent so loading the .max never embeds script code.
+callbacks.removeScripts id:#DeadlimitVertexColorViewportRefresh
+callbacks.addScript #sceneUndo "try(deadlimitVertexColorHandleSceneUndoRedo false)catch()" id:#DeadlimitVertexColorViewportRefresh persistent:false
+callbacks.addScript #sceneRedo "try(deadlimitVertexColorHandleSceneUndoRedo true)catch()" id:#DeadlimitVertexColorViewportRefresh persistent:false

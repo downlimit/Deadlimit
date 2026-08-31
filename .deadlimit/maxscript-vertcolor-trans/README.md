@@ -26,8 +26,10 @@ VERTEX COLOR operates on selected geometry:
 - The Convert row contains Palette to Vertex, Vertex to Palette, and ON/OFF Vertex.
 - Palette to Vertex fills channel 0 from each selected object's wire color. On an Editable Poly base object it writes the map channel directly, preserving the exact base-object instance, vertex/edge/face selections, and every existing modifier instance, order, enabled state, and setting. It enables shaded Vertex Color display.
 - Vertex to Palette copies the first used channel 0 color to each selected object's wire color.
-- ON/OFF Vertex counts the selected meshes whose shaded Vertex Color display is enabled. When a strict majority is enabled, every selected mesh is forced OFF. Otherwise every selected mesh is forced ON.
+- ON/OFF Vertex counts the selected meshes whose shaded Vertex Color display is enabled. When a strict majority is enabled, every selected mesh is forced OFF. Otherwise every selected mesh is forced ON. The display change is forced through the Nitrous cache immediately, including while the mesh remains selected.
 - The next row contains VERT, PALETTE, MAT, and SPREAD in that order. SPREAD treats the first selected mesh as the reference and applies enabled data to every later selected mesh in one Undo step. Its VERT path uses the same non-collapsing Editable Poly write described above. PALETTE copies the wire color, and MAT assigns the reference material. All three switches are on by default; the reference mesh stays unchanged.
+
+Vertex Color write commands retain exact before/after channel-0 snapshots for affected Editable Poly meshes during the current Max session. Their Undo and Redo restore the matching map channel, invalidate the stale Nitrous Vertex Color cache, and complete a viewport redraw, so restored colors become visible without deselecting objects or adding Vertex Paint modifiers. This compensates for direct `polyop` map writes, which do not create their own channel RestoreObj. The callbacks and snapshots are not saved into the scene, and restoration does not alter the base-object instance, modifier stack, topology, sub-object selections, or unrelated RGB/Alpha channels.
 
 ## Bone display tools
 
