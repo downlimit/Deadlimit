@@ -1,45 +1,246 @@
-name: Temporary Localization Audit
+name: Temporary Localization Patch
 
 on:
   push:
     branches: [ fix/full-russian-localization-audit ]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  audit:
+  patch:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Audit user-facing strings
-        shell: pwsh
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Apply localization patch
+        shell: bash
         run: |
-          $ErrorActionPreference = 'Stop'
-          $targets = @(
-            'internal/src/Deadlimit/App',
-            'internal/src/Deadlimit/Core/ToolchainDependencyService.cs',
-            'internal/src/Deadlimit/Core/ToolchainOperationProgress.cs',
-            'internal/src/Deadlimit/Program.cs'
-          )
-          $files = foreach ($target in $targets) {
-            if (Test-Path $target -PathType Container) {
-              Get-ChildItem $target -Filter *.cs -File
-            } elseif (Test-Path $target -PathType Leaf) {
-              Get-Item $target
-            }
-          }
-          $sinkPattern = '(Text\s*=|AccessibleName\s*=|Description\s*=|SetToolTip\s*\(|MessageBox\.Show\s*\(|ToolchainStatus\s*\(|progress\?\.Report\s*\(|\.Report\s*\(|throw new (InvalidOperationException|IOException|FileNotFoundException|ArgumentException)\s*\()'
-          foreach ($file in $files) {
-            $lines = Get-Content $file.FullName
-            for ($i = 0; $i -lt $lines.Count; $i++) {
-              if ($lines[$i] -match $sinkPattern) {
-                $from = [Math]::Max(0, $i - 1)
-                $to = [Math]::Min($lines.Count - 1, $i + 6)
-                $snippet = ($lines[$from..$to] -join ' ')
-                if ($snippet -match '[A-Za-z]{3,}' -and $snippet -notmatch 'UiText\.T\s*\(' -and $snippet -notmatch 'ProgressText\s*\(') {
-                  Write-Host ('SUSPECT {0}:{1}: {2}' -f $file.FullName.Substring($env:GITHUB_WORKSPACE.Length + 1), ($i + 1), $lines[$i].Trim())
-                }
-              }
-            }
-          }
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8', newline='')
+
+          def replace_once(text, old, new, path):
+              if old not in text:
+                  raise SystemExit(f'missing replacement target in {path}: {old[:100]!r}')
+              if text.count(old) != 1:
+                  raise SystemExit(f'non-unique replacement target in {path}: {old[:100]!r}')
+              return text.replace(old, new, 1)
+
+          # One language selector for Core-side messages that can surface in the UI.
+          localized_path = 'internal/src/Deadlimit/Core/LocalizedText.cs'
+          Path(localized_path).write_text('''namespace Deadlimit.Core;\n\ninternal static class LocalizedText\n{\n    public static bool IsRussian =>\n        string.Equals(\n            ProjectStore.GetToolPathSettings().UiLanguage,\n            "ru",\n            StringComparison.OrdinalIgnoreCase);\n\n    public static string T(string english, string russian) =>\n        IsRussian ? russian : english;\n}\n''', encoding='utf-8', newline='')
+
+          # App UiText delegates locale selection to the same Core helper.
+          path = 'internal/src/Deadlimit/App/UiText.cs'
+          text = read(path)
+          text = replace_once(text,
+              '''    public static bool IsRussian =>\n        string.Equals(Language, "ru", StringComparison.OrdinalIgnoreCase);\n\n    public static string T(string english, string russian) =>\n        NormalizeProductNames(IsRussian ? russian : english);''',
+              '''    public static bool IsRussian => LocalizedText.IsRussian;\n\n    public static string T(string english, string russian) =>\n        NormalizeProductNames(LocalizedText.T(english, russian));''', path)
+          write(path, text)
+
+          # Settings: never expose raw Core status.Detail; generate localized detail from structured status data.
+          path = 'internal/src/Deadlimit/App/SettingsForm.cs'
+          text = read(path)
+          text = text.replace('Text = "📂 Deadlimit Max Script",', 'Text = UiText.T("📂 Deadlimit Max Script", "📂 MaxScript Deadlimit"),')
+          text = text.replace('Text = "📂 CSDK Fast Startup Fix",', 'Text = UiText.T("📂 CSDK Fast Startup Fix", "📂 Исправление быстрого запуска CSDK"),')
+          start = text.index('    private static string StatusDetail(ToolchainStatus status, StatusContext context)')
+          end = text.index('    private Color StatusColor(ToolchainStatusKind kind)', start)
+          status_detail = '''    private static string StatusDetail(ToolchainStatus status, StatusContext context)\n    {\n        if (context == StatusContext.DeadlockGame)\n        {\n            return status.Kind switch\n            {\n                ToolchainStatusKind.NotSpecified => UiText.T(\n                    "No Deadlock client folder has been selected yet.\\n\\nUse **BROWSE…** to select the installed Project8Staging folder.",\n                    "Папка Deadlock клиента пока не указана.\\n\\nНажмите **ОБЗОР…** и выберите установленную папку Project8Staging."),\n                ToolchainStatusKind.Ready => UiText.T(\n                    "The selected folder is a valid **Deadlock client** installation.\\n\\nDeadlimit found the expected game\\\\citadel structure.",\n                    "Выбранная папка является валидной установкой **Deadlock клиента**.\\n\\nDeadlimit нашёл ожидаемую структуру game\\\\citadel."),\n                ToolchainStatusKind.InvalidPath => UiText.T(\n                    "The selected folder is not a valid Deadlock client installation.\\n\\nChoose the Project8Staging folder that contains game\\\\citadel.",\n                    "Выбранная папка не является валидной установкой Deadlock клиента.\\n\\nВыберите папку Project8Staging, внутри которой находится game\\\\citadel."),\n                ToolchainStatusKind.Checking => UiText.T("Checking the Deadlock client folder…", "Проверка папки Deadlock клиента…"),\n                _ => FormatStatus(status, context),\n            };\n        }\n\n        if (context == StatusContext.Projects)\n        {\n            return status.Kind switch\n            {\n                ToolchainStatusKind.NotSpecified => UiText.T(\n                    "No projects folder has been selected yet.",\n                    "Папка проектов пока не указана."),\n                ToolchainStatusKind.Ready => UiText.T(\n                    "The projects workspace folder is available.",\n                    "Рабочая папка проектов доступна."),\n                ToolchainStatusKind.InvalidPath => UiText.T(\n                    "The selected projects folder does not exist.",\n                    "Выбранная папка проектов не существует."),\n                _ => FormatStatus(status, context),\n            };\n        }\n\n        if (context == StatusContext.Csdk)\n        {\n            return status.Kind switch\n            {\n                ToolchainStatusKind.NotSpecified => UiText.T(\n                    "Reduced CSDK folder is not specified.",\n                    "Папка Reduced CSDK не указана."),\n                ToolchainStatusKind.Installed when status.AvailableGeneration is int available => UiText.T(\n                    $"Reduced CSDK is valid. Latest published generation is {available}, but the local generation could not be identified.",\n                    $"Reduced CSDK установлен корректно. Последнее опубликованное поколение: {available}; локальное поколение определить не удалось."),\n                ToolchainStatusKind.Installed => UiText.T(\n                    "Reduced CSDK is installed, but its local generation could not be identified.",\n                    "Reduced CSDK установлен, но локальное поколение определить не удалось."),\n                ToolchainStatusKind.UpToDate when status.InstalledGeneration is int installed => UiText.T(\n                    $"Installed CSDK generation: {installed}.",\n                    $"Установленное поколение CSDK: {installed}."),\n                ToolchainStatusKind.UpdateAvailable when status.InstalledGeneration is int installed && status.AvailableGeneration is int available => UiText.T(\n                    $"Installed CSDK {installed}; CSDK {available} is available.",\n                    $"Установлен CSDK {installed}; доступен CSDK {available}."),\n                ToolchainStatusKind.InvalidPath => UiText.T(\n                    "csdkcfg.exe was not found in the selected Reduced CSDK folder.",\n                    "В выбранной папке Reduced CSDK не найден csdkcfg.exe."),\n                ToolchainStatusKind.NetworkIssue => UiText.T(\n                    "CSDK is installed, but freshness could not be checked because the update source is unavailable.",\n                    "CSDK установлен, но проверить актуальность не удалось: источник обновлений недоступен."),\n                ToolchainStatusKind.Checking => UiText.T("Checking Reduced CSDK…", "Проверка Reduced CSDK…"),\n                ToolchainStatusKind.Working => UiText.T("Working with Reduced CSDK…", "Выполняется операция с Reduced CSDK…"),\n                _ => FormatStatus(status, context),\n            };\n        }\n\n        if (context == StatusContext.DeadlockTools)\n        {\n            return status.Kind switch\n            {\n                ToolchainStatusKind.NotSpecified => UiText.T(\n                    "DeadlockTools folder is not specified.",\n                    "Папка DeadlockTools не указана."),\n                ToolchainStatusKind.Installed when !string.IsNullOrWhiteSpace(status.AvailableVersion) => UiText.T(\n                    $"DeadlockTools is installed, but its local version could not be identified. Latest official release: {status.AvailableVersion}.",\n                    $"DeadlockTools установлен, но локальную версию определить не удалось. Последний официальный релиз: {status.AvailableVersion}."),\n                ToolchainStatusKind.Installed => UiText.T(\n                    "DeadlockTools is installed, but its local version could not be identified.",\n                    "DeadlockTools установлен, но локальную версию определить не удалось."),\n                ToolchainStatusKind.UpToDate when !string.IsNullOrWhiteSpace(status.InstalledVersion) => UiText.T(\n                    $"Installed DeadlockTools release: {status.InstalledVersion}.",\n                    $"Установленный релиз DeadlockTools: {status.InstalledVersion}."),\n                ToolchainStatusKind.UpdateAvailable when !string.IsNullOrWhiteSpace(status.InstalledVersion) && !string.IsNullOrWhiteSpace(status.AvailableVersion) => UiText.T(\n                    $"Installed DeadlockTools {status.InstalledVersion}; {status.AvailableVersion} is available.",\n                    $"Установлен DeadlockTools {status.InstalledVersion}; доступен {status.AvailableVersion}."),\n                ToolchainStatusKind.InvalidPath => UiText.T(\n                    "DeadlockTools.exe was not found in the selected DeadlockTools folder.",\n                    "В выбранной папке DeadlockTools не найден DeadlockTools.exe."),\n                ToolchainStatusKind.NetworkIssue => UiText.T(\n                    "DeadlockTools is installed, but freshness could not be checked because GitHub is unavailable.",\n                    "DeadlockTools установлен, но проверить актуальность не удалось: GitHub недоступен."),\n                ToolchainStatusKind.Checking => UiText.T("Checking DeadlockTools…", "Проверка DeadlockTools…"),\n                ToolchainStatusKind.Working => UiText.T("Working with DeadlockTools…", "Выполняется операция с DeadlockTools…"),\n                _ => FormatStatus(status, context),\n            };\n        }\n\n        return FormatStatus(status, context);\n    }\n\n'''
+          text = text[:start] + status_detail + text[end:]
+          write(path, text)
+
+          # Toolchain progress: exception text must not bypass localization in the Settings progress row.
+          path = 'internal/src/Deadlimit/App/SettingsToolchainProgressFeature.cs'
+          text = read(path)
+          text = replace_once(text,
+              '        ui.Label.Text = update.Message;',
+              '''        ui.Label.Text = UiText.IsRussian && update.State == ToolchainOperationState.Failed\n            ? "Операция с инструментом завершилась ошибкой."\n            : update.Message;''', path)
+          write(path, text)
+
+          # Core operation collision message.
+          path = 'internal/src/Deadlimit/Core/ToolchainOperationProgress.cs'
+          text = read(path)
+          text = replace_once(text,
+              '                throw new InvalidOperationException("Another toolchain operation is already running.");',
+              '                throw new InvalidOperationException(UiTextBridge.T("Another toolchain operation is already running.", "Другая операция с инструментами уже выполняется."));', path)
+          write(path, text)
+
+          # Prepare progress is user-visible in both PREPARE and BUILD FOR TEST.
+          path = 'internal/src/Deadlimit/Core/PrepareAuthoringService.cs'
+          text = read(path)
+          prepare_pairs = [
+              ('Validating Vertex Color source pairs before changing CSDK content...', 'Проверка пар исходников Vertex Color перед изменением CSDK content...'),
+              ('Cleaning stale compiled output for this addon...', 'Очистка устаревшего compiled output этого аддона...'),
+              ('Refreshing retail authoring template in CSDK content...', 'Обновление retail-шаблона модели в CSDK content...'),
+              ('Overlaying artist DMX on matching retail render meshes...', 'Наложение пользовательских DMX на соответствующие retail render mesh...'),
+              ('Preparing addon-owned custom materials...', 'Подготовка custom-материалов аддона...'),
+              ('Applying narrow CSDK compatibility patches to retail VMDL...', 'Применение необходимых CSDK-патчей совместимости к retail VMDL...'),
+              ('Authoring content prepared. Launch CSDK to rebuild clean game output.', 'Authoring content подготовлен. Запустите CSDK для чистой пересборки game output.'),
+          ]
+          for en, ru in prepare_pairs:
+              text = text.replace(f'new PrepareAuthoringProgress("{en}")', f'new PrepareAuthoringProgress(LocalizedText.T("{en}", "{ru}"))')
+          old_warning = '''                .Select(overlay =>\n                    $"{Path.GetFileName(overlay.ArtistDmxPath)}: " +\n                    $"Vertex Color [{overlay.VertexColor.Status}] — {overlay.VertexColor.Message}")'''
+          new_warning = '''                .Select(overlay => LocalizedText.T(\n                    $"{Path.GetFileName(overlay.ArtistDmxPath)}: Vertex Color [{overlay.VertexColor.Status}] — {overlay.VertexColor.Message}",\n                    $"{Path.GetFileName(overlay.ArtistDmxPath)}: не удалось безопасно применить Vertex Color sidecar."))'''
+          text = replace_once(text, old_warning, new_warning, path)
+          write(path, text)
+
+          # BUILD FOR TEST progress strings are window-title text.
+          path = 'internal/src/Deadlimit/Core/BuildAndTestService.cs'
+          text = read(path)
+          literal_reports = [
+              ('Report(progress, 2, "Starting Build & Test...");', 'Report(progress, 2, LocalizedText.T("Starting Build & Test...", "Запуск сборки для теста..."));'),
+              ('Report(progress, 4, "Preserving previous compiled output for incremental prepare...");', 'Report(progress, 4, LocalizedText.T("Preserving previous compiled output for incremental prepare...", "Сохранение предыдущего compiled output для инкрементальной подготовки..."));'),
+              ('Report(progress, 6, "Preparing current DMX, materials and textures...");', 'Report(progress, 6, LocalizedText.T("Preparing current DMX, materials and textures...", "Подготовка текущих DMX, материалов и текстур..."));'),
+              ('Report(progress, 30, "Authoring content synchronized.");', 'Report(progress, 30, LocalizedText.T("Authoring content synchronized.", "Authoring content синхронизирован."));'),
+              ('Report(progress, 33, "Comparing prepared content with the previous successful build...");', 'Report(progress, 33, LocalizedText.T("Comparing prepared content with the previous successful build...", "Сравнение подготовленного content с предыдущей успешной сборкой..."));'),
+              ('Report(progress, 36, "Preparing clean compiled output for the first/full build...");', 'Report(progress, 36, LocalizedText.T("Preparing clean compiled output for the first/full build...", "Подготовка чистого compiled output для первой/полной сборки..."));'),
+              ('Report(progress, 79, "Verifying compiled outputs...");', 'Report(progress, 79, LocalizedText.T("Verifying compiled outputs...", "Проверка скомпилированных файлов..."));'),
+              ('Report(progress, 79, "No Source 2 compile inputs changed; reusing verified compiled output...");', 'Report(progress, 79, LocalizedText.T("No Source 2 compile inputs changed; reusing verified compiled output...", "Исходники Source 2 для компиляции не изменились; используется проверенный compiled output..."));'),
+              ('Report(progress, 83, "Restoring AnimGraph2 / NmSkeleton on the compiled character model...");', 'Report(progress, 83, LocalizedText.T("Restoring AnimGraph2 / NmSkeleton on the compiled character model...", "Восстановление AnimGraph2 / NmSkeleton в скомпилированной модели персонажа..."));'),
+              ('Report(progress, 90, "Packing VPK directly into retail Deadlock addons...");', 'Report(progress, 90, LocalizedText.T("Packing VPK directly into retail Deadlock addons...", "Упаковка VPK непосредственно в retail addons Deadlock..."));'),
+              ('Report(progress, 100, "Build & Test complete.");', 'Report(progress, 100, LocalizedText.T("Build & Test complete.", "Сборка для теста завершена."));'),
+          ]
+          for old, new in literal_reports:
+              text = replace_once(text, old, new, path)
+          text = replace_once(text,
+              '                Report(progress, 40, $"Compiling {compileTargets.Count} changed asset(s)...");',
+              '                Report(progress, 40, LocalizedText.T($"Compiling {compileTargets.Count} changed asset(s)...", $"Компиляция изменённых ресурсов: {compileTargets.Count}..."));', path)
+          text = replace_once(text,
+              '            Report(progress, beforePercent, $"Compiling Source 2 assets — batch {batchIndex + 1}/{batchCount}...");',
+              '            Report(progress, beforePercent, LocalizedText.T($"Compiling Source 2 assets — batch {batchIndex + 1}/{batchCount}...", $"Компиляция ресурсов Source 2 — пакет {batchIndex + 1}/{batchCount}..."));', path)
+          text = replace_once(text,
+              '            Report(progress, afterPercent, $"Compiled Source 2 assets — batch {batchIndex + 1}/{batchCount}.");',
+              '            Report(progress, afterPercent, LocalizedText.T($"Compiled Source 2 assets — batch {batchIndex + 1}/{batchCount}.", $"Ресурсы Source 2 скомпилированы — пакет {batchIndex + 1}/{batchCount}."));', path)
+          write(path, text)
+
+          # Progress percentage mapping must understand both language variants.
+          path = 'internal/src/Deadlimit/App/BuildFeature.cs'
+          text = read(path)
+          prefix_pairs = [
+              ('message.StartsWith("Cleaning stale", StringComparison.OrdinalIgnoreCase)', 'message.StartsWith("Cleaning stale", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Очистка устаревшего", StringComparison.OrdinalIgnoreCase)'),
+              ('message.StartsWith("Refreshing retail", StringComparison.OrdinalIgnoreCase)', 'message.StartsWith("Refreshing retail", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Обновление retail", StringComparison.OrdinalIgnoreCase)'),
+              ('message.StartsWith("Overlaying artist", StringComparison.OrdinalIgnoreCase)', 'message.StartsWith("Overlaying artist", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Наложение пользовательских", StringComparison.OrdinalIgnoreCase)'),
+              ('message.StartsWith("Preparing addon-owned", StringComparison.OrdinalIgnoreCase)', 'message.StartsWith("Preparing addon-owned", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Подготовка custom", StringComparison.OrdinalIgnoreCase)'),
+              ('message.StartsWith("Applying narrow", StringComparison.OrdinalIgnoreCase)', 'message.StartsWith("Applying narrow", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Применение необходимых", StringComparison.OrdinalIgnoreCase)'),
+              ('message.StartsWith("Project working files prepared", StringComparison.OrdinalIgnoreCase)', 'message.StartsWith("Project working files prepared", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Authoring content подготовлен", StringComparison.OrdinalIgnoreCase)'),
+          ]
+          for old, new in prefix_pairs:
+              text = text.replace(old, new)
+          text = text.replace('включить ONLINE PREPARATION и запустить CSDK', 'включить ОНЛАЙН-ПОДГОТОВКУ и запустить CSDK')
+          write(path, text)
+
+          # ONLINE UI wrapper strings.
+          path = 'internal/src/Deadlimit/App/OnlinePreparationFeature.cs'
+          text = read(path)
+          text = replace_once(text,
+              '    private static string OnlineButtonText => UiText.T("▶  ONLINE CSDK", "▶  CSDK ONLINE");',
+              '    private static string OnlineButtonText => UiText.T("▶  ONLINE CSDK", "▶  CSDK ОНЛАЙН");', path)
+          text = text.replace('"Сохраните текущий проект Deadlimit Aggregator перед включением ONLINE PREPARATION."', '"Сохраните текущий проект Deadlimit Aggregator перед включением ОНЛАЙН-ПОДГОТОВКИ."')
+          text = replace_once(text,
+              '                    _form.Text = $"Deadlimit Aggregator — ONLINE PREPARATION — {update.Message}";',
+              '                    _form.Text = $"{UiText.T("Deadlimit Manager — ONLINE PREPARATION", "Deadlimit Manager — ОНЛАЙН-ПОДГОТОВКА")} — {update.Message}";', path)
+          old = '''            UpdateToolTip(\n                csdkAlreadyRunning\n                    ? "ONLINE PREPARATION is active.\\n\\nChanged DMX and texture files are synchronized automatically. The existing CSDK instance is kept; no second instance is launched.\\n\\nShift-click again to stop online synchronization."\n                    : "ONLINE PREPARATION is active.\\n\\nChanged DMX and texture files are synchronized automatically. CSDK will launch now.\\n\\nShift-click again to stop online synchronization.");'''
+          new = '''            UpdateToolTip(\n                csdkAlreadyRunning\n                    ? UiText.T(\n                        "ONLINE PREPARATION is active.\\n\\nChanged DMX and texture files are synchronized automatically. The existing CSDK instance is kept; no second instance is launched.\\n\\nShift-click again to stop online synchronization.",\n                        "ОНЛАЙН-ПОДГОТОВКА активна.\\n\\nИзменённые DMX и текстуры синхронизируются автоматически. Уже запущенный CSDK остаётся активным; второй экземпляр не запускается.\\n\\nПовторный SHIFT+клик отключит онлайн-синхронизацию.")\n                    : UiText.T(\n                        "ONLINE PREPARATION is active.\\n\\nChanged DMX and texture files are synchronized automatically. CSDK will launch now.\\n\\nShift-click again to stop online synchronization.",\n                        "ОНЛАЙН-ПОДГОТОВКА активна.\\n\\nИзменённые DMX и текстуры синхронизируются автоматически. CSDK сейчас будет запущен.\\n\\nПовторный SHIFT+клик отключит онлайн-синхронизацию."));'''
+          text = replace_once(text, old, new, path)
+          text = replace_once(text,
+              '''            UpdateToolTip(\n                $"ONLINE PREPARATION kept its previous live-sync baseline because {actionName} did not finish a successful PREPARE transaction.\\n\\nThe last good prepared DMX remains protected.");''',
+              '''            UpdateToolTip(UiText.T(\n                $"ONLINE PREPARATION kept its previous live-sync baseline because {actionName} did not finish a successful PREPARE transaction.\\n\\nThe last good prepared DMX remains protected.",\n                $"ОНЛАЙН-ПОДГОТОВКА сохранила предыдущую базовую версию, потому что {actionName} не завершилась успешной транзакцией PREPARE.\\n\\nПоследний корректно подготовленный DMX сохранён."));''', path)
+          text = replace_once(text,
+              '''            UpdateToolTip(\n                $"ONLINE PREPARATION baseline refreshed after {actionName}.\\n\\nChanged DMX and texture files will continue to synchronize automatically. Shift-click LAUNCH CSDK to stop.");''',
+              '''            UpdateToolTip(UiText.T(\n                $"ONLINE PREPARATION baseline refreshed after {actionName}.\\n\\nChanged DMX and texture files will continue to synchronize automatically. Shift-click LAUNCH CSDK to stop.",\n                $"Базовая версия ОНЛАЙН-ПОДГОТОВКИ обновлена после {actionName}.\\n\\nИзменённые DMX и текстуры продолжат синхронизироваться автоматически. Для остановки используйте SHIFT+клик по ЗАПУСК CSDK."));''', path)
+          text = replace_once(text,
+              '''            UpdateToolTip(\n                $"ONLINE PREPARATION could not refresh its baseline after {actionName}: {ex.Message}");''',
+              '''            UpdateToolTip(UiText.T(\n                $"ONLINE PREPARATION could not refresh its baseline after {actionName}: {ex.Message}",\n                $"Не удалось обновить базовую версию ОНЛАЙН-ПОДГОТОВКИ после {actionName}."));''', path)
+          text = replace_once(text,
+              '''            var suffix = update.PrepareRequired\n                ? "\\n\\nA structural change was detected. Normal-click this button once to run full PREPARE FOR CSDK and establish a new live-sync baseline."\n                : string.Empty;''',
+              '''            var suffix = update.PrepareRequired\n                ? UiText.T(\n                    "\\n\\nA structural change was detected. Normal-click this button once to run full PREPARE FOR CSDK and establish a new live-sync baseline.",\n                    "\\n\\nОбнаружено структурное изменение. Один раз нажмите эту кнопку обычным кликом, чтобы выполнить полный PREPARE FOR CSDK и создать новую базовую версию онлайн-синхронизации.")\n                : string.Empty;''', path)
+          text = replace_once(text,
+              '''        UpdateToolTip(\n            "ONLINE PREPARATION is off.\\n\\nShift-click LAUNCH CSDK to prepare once and enable live synchronization. CSDK launches only if no CSDK process is already running.");''',
+              '''        UpdateToolTip(UiText.T(\n            "ONLINE PREPARATION is off.\\n\\nShift-click LAUNCH CSDK to prepare once and enable live synchronization. CSDK launches only if no CSDK process is already running.",\n            "ОНЛАЙН-ПОДГОТОВКА выключена.\\n\\nИспользуйте SHIFT+клик по ЗАПУСК CSDK, чтобы один раз выполнить подготовку и включить онлайн-синхронизацию. CSDK будет запущен только если другой процесс CSDK ещё не работает."));''', path)
+          write(path, text)
+
+          # ONLINE session messages are directly displayed in the launch-button tooltip.
+          path = 'internal/src/Deadlimit/Core/OnlinePreparationSession.cs'
+          text = read(path)
+          simple_pairs = [
+              ('"ONLINE PREPARATION needs prepared CSDK content first. Run PREPARE FOR CSDK once and try again."', 'LocalizedText.T("ONLINE PREPARATION needs prepared CSDK content first. Run PREPARE FOR CSDK once and try again.", "Для ОНЛАЙН-ПОДГОТОВКИ сначала нужен подготовленный CSDK content. Один раз выполните ПОДГОТОВИТЬ ДЛЯ CSDK и повторите попытку.")'),
+              ('"ONLINE PREPARATION found no root-level DMX files in the current project."', 'LocalizedText.T("ONLINE PREPARATION found no root-level DMX files in the current project.", "ОНЛАЙН-ПОДГОТОВКА не нашла DMX-файлы в корне текущего проекта.")'),
+              ('"ONLINE PREPARATION detected a new, deleted, or renamed root DMX/texture file. A normal PREPARE FOR CSDK is required to rebuild project structure and bindings."', 'LocalizedText.T("ONLINE PREPARATION detected a new, deleted, or renamed root DMX/texture file. A normal PREPARE FOR CSDK is required to rebuild project structure and bindings.", "ОНЛАЙН-ПОДГОТОВКА обнаружила новый, удалённый или переименованный DMX/файл текстуры в корне проекта. Для перестроения структуры и привязок требуется обычный ПОДГОТОВИТЬ ДЛЯ CSDK.")'),
+          ]
+          for old, new in simple_pairs:
+              text = text.replace(old, new)
+          text = text.replace(
+              '$"ONLINE PREPARATION watcher error: {e.GetException().Message}. Run a normal PREPARE FOR CSDK to re-establish the live-sync baseline."',
+              'LocalizedText.T($"ONLINE PREPARATION watcher error: {e.GetException().Message}. Run a normal PREPARE FOR CSDK to re-establish the live-sync baseline.", "Ошибка наблюдения за файлами ОНЛАЙН-ПОДГОТОВКИ. Выполните обычный ПОДГОТОВИТЬ ДЛЯ CSDK, чтобы восстановить базовую версию онлайн-синхронизации.")')
+          text = text.replace(
+              '$"ONLINE PREPARATION sync failed: {ex.Message}. Run a normal PREPARE FOR CSDK before continuing live sync."',
+              'LocalizedText.T($"ONLINE PREPARATION sync failed: {ex.Message}. Run a normal PREPARE FOR CSDK before continuing live sync.", "Ошибка онлайн-синхронизации. Перед продолжением выполните обычный ПОДГОТОВИТЬ ДЛЯ CSDK.")')
+          text = text.replace(
+              '$"ONLINE PREPARATION kept the existing prepared DMX unchanged because a full PREPARE is already required. " +\n                    $"{Path.GetFileName(sourcePath)} was not synchronized."',
+              'LocalizedText.T(\n                    $"ONLINE PREPARATION kept the existing prepared DMX unchanged because a full PREPARE is already required. {Path.GetFileName(sourcePath)} was not synchronized.",\n                    $"ОНЛАЙН-ПОДГОТОВКА сохранила текущий подготовленный DMX без изменений, потому что уже требуется полный PREPARE. {Path.GetFileName(sourcePath)} не синхронизирован.")')
+          text = text.replace(
+              '$"ONLINE PREPARATION cannot match {Path.GetFileName(sourcePath)} to a prepared artist DMX. Run a normal PREPARE FOR CSDK."',
+              'LocalizedText.T($"ONLINE PREPARATION cannot match {Path.GetFileName(sourcePath)} to a prepared artist DMX. Run a normal PREPARE FOR CSDK.", $"ОНЛАЙН-ПОДГОТОВКА не может сопоставить {Path.GetFileName(sourcePath)} с подготовленным DMX. Выполните обычный ПОДГОТОВИТЬ ДЛЯ CSDK.")')
+          text = text.replace(
+              '$"ONLINE PREPARATION kept the previous prepared DMX. Waiting for a valid Vertex Color source pair for {Path.GetFileName(artistDmx)}. " +\n                        $"Vertex Color [{staged.VertexColor.Status}]: {staged.Message}"',
+              'LocalizedText.T(\n                        $"ONLINE PREPARATION kept the previous prepared DMX. Waiting for a valid Vertex Color source pair for {Path.GetFileName(artistDmx)}. Vertex Color [{staged.VertexColor.Status}]: {staged.Message}",\n                        $"ОНЛАЙН-ПОДГОТОВКА сохранила предыдущий подготовленный DMX. Ожидается корректная пара исходников Vertex Color для {Path.GetFileName(artistDmx)}.")')
+          text = text.replace(
+              '$"ONLINE PREPARATION synchronized Vertex Color source: {Path.GetFileName(sourcePath)}. {staged.Message}"',
+              'LocalizedText.T($"ONLINE PREPARATION synchronized Vertex Color source: {Path.GetFileName(sourcePath)}. {staged.Message}", $"ОНЛАЙН-ПОДГОТОВКА синхронизировала исходник Vertex Color: {Path.GetFileName(sourcePath)}.")')
+          text = text.replace(
+              '$"ONLINE PREPARATION detected changed material references in {Path.GetFileName(sourcePath)}. A normal PREPARE FOR CSDK is required before this DMX can be synchronized safely."',
+              'LocalizedText.T($"ONLINE PREPARATION detected changed material references in {Path.GetFileName(sourcePath)}. A normal PREPARE FOR CSDK is required before this DMX can be synchronized safely.", $"ОНЛАЙН-ПОДГОТОВКА обнаружила изменённые ссылки на материалы в {Path.GetFileName(sourcePath)}. Перед безопасной синхронизацией этого DMX требуется обычный ПОДГОТОВИТЬ ДЛЯ CSDK.")')
+          text = text.replace(
+              '$"ONLINE PREPARATION has no prepared DMX target for {Path.GetFileName(sourcePath)}. Run a normal PREPARE FOR CSDK."',
+              'LocalizedText.T($"ONLINE PREPARATION has no prepared DMX target for {Path.GetFileName(sourcePath)}. Run a normal PREPARE FOR CSDK.", $"Для {Path.GetFileName(sourcePath)} нет подготовленного целевого DMX. Выполните обычный ПОДГОТОВИТЬ ДЛЯ CSDK.")')
+          text = text.replace(
+              '$"ONLINE PREPARATION detected a new DMX but kept the previous prepared copy until its Vertex Color source is safe. " +\n                        $"{Path.GetFileName(sourcePath)} — Vertex Color [{staged.VertexColor.Status}]: {staged.Message}"',
+              'LocalizedText.T(\n                        $"ONLINE PREPARATION detected a new DMX but kept the previous prepared copy until its Vertex Color source is safe. {Path.GetFileName(sourcePath)} — Vertex Color [{staged.VertexColor.Status}]: {staged.Message}",\n                        $"ОНЛАЙН-ПОДГОТОВКА обнаружила новый DMX, но сохранила предыдущую подготовленную копию до получения безопасного исходника Vertex Color: {Path.GetFileName(sourcePath)}.")')
+          text = text.replace(
+              '$"ONLINE PREPARATION synchronized DMX: {Path.GetFileName(sourcePath)}. " +\n                    $"Vertex Color [{staged.VertexColor.Status}]: {staged.Message}"',
+              'LocalizedText.T(\n                    $"ONLINE PREPARATION synchronized DMX: {Path.GetFileName(sourcePath)}. Vertex Color [{staged.VertexColor.Status}]: {staged.Message}",\n                    $"ОНЛАЙН-ПОДГОТОВКА синхронизировала DMX: {Path.GetFileName(sourcePath)}.")')
+          text = text.replace(
+              '$"ONLINE PREPARATION synchronized texture: {Path.GetFileName(sourcePath)}"',
+              'LocalizedText.T($"ONLINE PREPARATION synchronized texture: {Path.GetFileName(sourcePath)}", $"ОНЛАЙН-ПОДГОТОВКА синхронизировала текстуру: {Path.GetFileName(sourcePath)}")')
+          write(path, text)
+
+          # Permanent regression smoke: targeted high-risk UI paths plus static UI literals.
+          test_path = Path('internal/tests/ui-localization-smoke.ps1')
+          test_path.write_text(r'''$ErrorActionPreference = 'Stop'\n\nfunction Assert-Contains([string]$Path, [string]$Pattern) {\n    if (-not (Select-String -LiteralPath $Path -SimpleMatch $Pattern -Quiet)) {\n        throw "Localization contract missing in ${Path}: ${Pattern}"\n    }\n}\n\nfunction Assert-NotContains([string]$Path, [string]$Pattern) {\n    if (Select-String -LiteralPath $Path -SimpleMatch $Pattern -Quiet) {\n        throw "Unlocalized user-facing text remains in ${Path}: ${Pattern}"\n    }\n}\n\nAssert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' '"DeadlockTools установлен, но проверить актуальность не удалось: GitHub недоступен."'\nAssert-NotContains 'internal/src/Deadlimit/App/SettingsForm.cs' ': status.Detail'\nAssert-Contains 'internal/src/Deadlimit/App/SettingsToolchainProgressFeature.cs' 'update.State == ToolchainOperationState.Failed'\nAssert-Contains 'internal/src/Deadlimit/Core/PrepareAuthoringService.cs' 'LocalizedText.T("Validating Vertex Color source pairs'\nAssert-Contains 'internal/src/Deadlimit/Core/BuildAndTestService.cs' 'LocalizedText.T("Starting Build & Test...'\nAssert-Contains 'internal/src/Deadlimit/Core/OnlinePreparationSession.cs' 'ОНЛАЙН-ПОДГОТОВКА'\nAssert-Contains 'internal/src/Deadlimit/App/OnlinePreparationFeature.cs' 'ОНЛАЙН-ПОДГОТОВКА'\nAssert-NotContains 'internal/src/Deadlimit/App/SettingsForm.cs' 'Text = "📂 CSDK Fast Startup Fix"'\n\n# Static control text in App should either be localized, a technical/product token, a glyph, or data-driven.\n$allowed = @(\n    'OK', '3ds Max', 'CSDK', 'DMX', 'PNG', '📂', 'Deadlimit Aggregator'\n)\n$files = Get-ChildItem 'internal/src/Deadlimit/App' -Filter *.cs -File\nforeach ($file in $files) {\n    $lineNumber = 0\n    foreach ($line in Get-Content $file.FullName) {\n        $lineNumber++\n        if ($line -notmatch 'Text\\s*=\\s*"([^"\\r\\n]*)"') { continue }\n        $literal = $Matches[1]\n        if ($literal -notmatch '[A-Za-z]{3,}') { continue }\n        if ($allowed | Where-Object { $literal -eq $_ -or $literal.StartsWith($_ + ':') }) { continue }\n        if ($line -match 'UiText\\.T') { continue }\n        throw "Possible unlocalized static UI text at $($file.Name):${lineNumber}: $literal"\n    }\n}\n\nWrite-Host 'UI localization smoke passed.'\n'''.replace('\\n','\n'), encoding='utf-8', newline='')
+
+          # Run the regression smoke from normal CI as well.
+          path = '.github/workflows/build.yml'
+          text = read(path)
+          anchor = '''      - name: Metal material preset smoke\n        shell: pwsh\n        run: internal/tests/metal-material-preset-smoke.ps1\n'''
+          addition = anchor + '''      - name: UI localization smoke\n        shell: pwsh\n        run: internal/tests/ui-localization-smoke.ps1\n'''
+          text = replace_once(text, anchor, addition, path)
+          write(path, text)
+          PY
+      - name: Restore
+        run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
+      - name: Build
+        run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+      - name: Localization smoke
+        shell: pwsh
+        run: internal/tests/ui-localization-smoke.ps1
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add internal/src/Deadlimit .github/workflows/build.yml internal/tests/ui-localization-smoke.ps1
+          if git diff --cached --quiet; then
+            echo "No patch changes to commit"
+            exit 0
+          fi
+          git commit -m "Complete Russian UI localization coverage"
+          git push origin HEAD:fix/full-russian-localization-audit
