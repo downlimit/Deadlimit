@@ -72,7 +72,9 @@ internal static class UiTheme
             return;
         }
 
-        ApplyPalette(root, ResolvePalette(theme));
+        UiRenderingStabilityFeature.ApplyAtomically(
+            root,
+            () => ApplyPalette(root, ResolvePalette(theme)));
     }
 
     private static Palette ResolvePalette(string theme)
