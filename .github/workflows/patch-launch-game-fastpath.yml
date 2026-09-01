@@ -23,6 +23,36 @@ jobs:
       - name: Apply patch
         shell: pwsh
         run: internal/tests/_patch-launch-game-fastpath.ps1
+      - name: Fix smoke resolution-order assertion
+        shell: pwsh
+        run: |
+          $path = 'internal/tests/launch-game-fastpath-smoke.ps1'
+          $text = Get-Content -LiteralPath $path -Raw
+          $old = @'
+          $registryIndex = $header.IndexOf('Registry.CurrentUser.OpenSubKey', [StringComparison]::Ordinal)
+          $knownIndex = $header.IndexOf('FindSteamExecutableFromKnownLocations()', [StringComparison]::Ordinal)
+          $processIndex = $header.IndexOf('FindSteamExecutableFromRunningProcess()', [StringComparison]::Ordinal)
+          if ($registryIndex -lt 0 -or $knownIndex -lt 0 -or $processIndex -lt 0) {
+              throw 'Steam resolution stages were not found.'
+          }
+          if ($processIndex -lt $registryIndex) {
+              throw 'Running-process MainModule scan must remain the last-resort Steam path lookup.'
+          }
+          '@
+          $new = @'
+          $resolutionIndex = $header.IndexOf('var resolved = FindSteamExecutableFromRegistry()', [StringComparison]::Ordinal)
+          $registryIndex = $header.IndexOf('FindSteamExecutableFromRegistry()', $resolutionIndex, [StringComparison]::Ordinal)
+          $knownIndex = $header.IndexOf('FindSteamExecutableFromKnownLocations()', $resolutionIndex, [StringComparison]::Ordinal)
+          $processIndex = $header.IndexOf('FindSteamExecutableFromRunningProcess()', $resolutionIndex, [StringComparison]::Ordinal)
+          if ($resolutionIndex -lt 0 -or $registryIndex -lt 0 -or $knownIndex -lt 0 -or $processIndex -lt 0) {
+              throw 'Steam resolution stages were not found.'
+          }
+          if (-not ($registryIndex -lt $knownIndex -and $knownIndex -lt $processIndex)) {
+              throw 'Steam path lookup must prefer registry and known locations before running-process MainModule scan.'
+          }
+          '@
+          if (-not $text.Contains($old)) { throw 'Expected smoke assertion block not found.' }
+          Set-Content -LiteralPath $path -Value ($text.Replace($old, $new)) -Encoding utf8NoBOM -NoNewline
       - name: Restore
         run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
       - name: Build
