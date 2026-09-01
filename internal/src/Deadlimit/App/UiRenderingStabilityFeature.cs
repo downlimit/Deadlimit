@@ -111,7 +111,10 @@ internal static class UiRenderingStabilityFeature
 
     private static void OnControlAdded(object? sender, ControlEventArgs e)
     {
-        PrepareControlTree(e.Control);
+        if (e.Control is not null)
+        {
+            PrepareControlTree(e.Control);
+        }
     }
 
     private static bool ShouldDoubleBuffer(Control control) =>
