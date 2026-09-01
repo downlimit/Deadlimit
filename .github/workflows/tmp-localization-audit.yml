@@ -1,0 +1,45 @@
+name: Temporary Localization Audit
+
+on:
+  push:
+    branches: [ fix/full-russian-localization-audit ]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit user-facing strings
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $targets = @(
+            'internal/src/Deadlimit/App',
+            'internal/src/Deadlimit/Core/ToolchainDependencyService.cs',
+            'internal/src/Deadlimit/Core/ToolchainOperationProgress.cs',
+            'internal/src/Deadlimit/Program.cs'
+          )
+          $files = foreach ($target in $targets) {
+            if (Test-Path $target -PathType Container) {
+              Get-ChildItem $target -Filter *.cs -File
+            } elseif (Test-Path $target -PathType Leaf) {
+              Get-Item $target
+            }
+          }
+          $sinkPattern = '(Text\s*=|AccessibleName\s*=|Description\s*=|SetToolTip\s*\(|MessageBox\.Show\s*\(|ToolchainStatus\s*\(|progress\?\.Report\s*\(|\.Report\s*\(|throw new (InvalidOperationException|IOException|FileNotFoundException|ArgumentException)\s*\()'
+          foreach ($file in $files) {
+            $lines = Get-Content $file.FullName
+            for ($i = 0; $i -lt $lines.Count; $i++) {
+              if ($lines[$i] -match $sinkPattern) {
+                $from = [Math]::Max(0, $i - 1)
+                $to = [Math]::Min($lines.Count - 1, $i + 6)
+                $snippet = ($lines[$from..$to] -join ' ')
+                if ($snippet -match '[A-Za-z]{3,}' -and $snippet -notmatch 'UiText\.T\s*\(' -and $snippet -notmatch 'ProgressText\s*\(') {
+                  Write-Host ('SUSPECT {0}:{1}: {2}' -f $file.FullName.Substring($env:GITHUB_WORKSPACE.Length + 1), ($i + 1), $lines[$i].Trim())
+                }
+              }
+            }
+          }
