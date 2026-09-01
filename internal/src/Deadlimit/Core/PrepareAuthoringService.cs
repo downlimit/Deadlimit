@@ -118,7 +118,7 @@ public sealed class PrepareAuthoringService
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(new PrepareAuthoringProgress("Validating Vertex Color source pairs before changing CSDK content..."));
+            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Validating Vertex Color source pairs before changing CSDK content...", "Проверка пар исходников Vertex Color перед изменением CSDK content...")));
 
             var vertexColorSourceStates = VertexColorSourceGuard.ValidateForPrepare(
                 rootDmxFiles,
@@ -145,7 +145,7 @@ public sealed class PrepareAuthoringService
             log.AppendLine();
 
             cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(new PrepareAuthoringProgress("Cleaning stale compiled output for this addon..."));
+            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Cleaning stale compiled output for this addon...", "Очистка устаревшего compiled output этого аддона...")));
 
             var gameOutputCleaned = false;
             if (Directory.Exists(addonGameRoot))
@@ -159,7 +159,7 @@ public sealed class PrepareAuthoringService
                 : $"No stale addon runtime output existed: {addonGameRoot}");
             log.AppendLine("Deadlimit does not compile content during PREPARE FOR CSDK; CSDK12 rebuilds game output from content when launched/compiled.");
 
-            progress?.Report(new PrepareAuthoringProgress("Refreshing retail authoring template in CSDK content..."));
+            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Refreshing retail authoring template in CSDK content...", "Обновление retail-шаблона модели в CSDK content...")));
             Directory.CreateDirectory(addonContentRoot);
 
             var sourceCopy = RetailVmdlInheritance.CopyRetailModelSourceTree(manifest, addonContentRoot);
@@ -168,7 +168,7 @@ public sealed class PrepareAuthoringService
             log.AppendLine($"Destination VMDL: {sourceCopy.DestinationVmdlPath}");
 
             cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(new PrepareAuthoringProgress("Overlaying artist DMX on matching retail render meshes..."));
+            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Overlaying artist DMX on matching retail render meshes...", "Наложение пользовательских DMX на соответствующие retail render mesh...")));
 
             var replacedRenderMeshes = RetailVmdlInheritance.OverlayArtistDmx(
                 sourceCopy,
@@ -210,9 +210,9 @@ public sealed class PrepareAuthoringService
                     return vertexColorSourceStates.TryGetValue(fullPath, out var state)
                         && state.NeedsExternalSidecar;
                 })
-                .Select(overlay =>
-                    $"{Path.GetFileName(overlay.ArtistDmxPath)}: " +
-                    $"Vertex Color [{overlay.VertexColor.Status}] — {overlay.VertexColor.Message}")
+                .Select(overlay => LocalizedText.T(
+                    $"{Path.GetFileName(overlay.ArtistDmxPath)}: Vertex Color [{overlay.VertexColor.Status}] — {overlay.VertexColor.Message}",
+                    $"{Path.GetFileName(overlay.ArtistDmxPath)}: не удалось безопасно применить Vertex Color sidecar."))
                 .ToArray();
             foreach (var warning in vertexColorWarnings)
             {
@@ -267,7 +267,7 @@ public sealed class PrepareAuthoringService
                 .ToArray();
 
             cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(new PrepareAuthoringProgress("Preparing addon-owned custom materials..."));
+            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Preparing addon-owned custom materials...", "Подготовка custom-материалов аддона...")));
 
             if (regenerateCustomMaterials)
             {
@@ -339,7 +339,7 @@ public sealed class PrepareAuthoringService
             log.AppendLine($"Exact custom DMX material remaps generated: {exactCustomMaterialRemaps.Count}");
 
             cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(new PrepareAuthoringProgress("Applying narrow CSDK compatibility patches to retail VMDL..."));
+            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Applying narrow CSDK compatibility patches to retail VMDL...", "Применение необходимых CSDK-патчей совместимости к retail VMDL...")));
 
             var patchResult = RetailVmdlInheritance.PatchAuthoringVmdl(
                 sourceCopy.DestinationVmdlPath,
@@ -375,7 +375,7 @@ public sealed class PrepareAuthoringService
             log.AppendLine("RESULT: AUTHORING CONTENT PREPARED; ADDON GAME OUTPUT CLEAN");
             File.WriteAllText(logPath, log.ToString());
 
-            progress?.Report(new PrepareAuthoringProgress("Authoring content prepared. Launch CSDK to rebuild clean game output."));
+            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Authoring content prepared. Launch CSDK to rebuild clean game output.", "Authoring content подготовлен. Запустите CSDK для чистой пересборки game output.")));
 
             return new PrepareAuthoringResult(
                 addonName,

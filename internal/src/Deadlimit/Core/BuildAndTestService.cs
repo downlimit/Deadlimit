@@ -90,17 +90,17 @@ public sealed class BuildAndTestService
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Report(progress, 2, "Starting Build & Test...");
+            Report(progress, 2, LocalizedText.T("Starting Build & Test...", "Запуск сборки для теста..."));
 
             if (canIncrement && Directory.Exists(addonGameRoot))
             {
                 preservedGameBackup = addonGameRoot + $".deadlimit-backup-{Guid.NewGuid():N}";
-                Report(progress, 4, "Preserving previous compiled output for incremental prepare...");
+                Report(progress, 4, LocalizedText.T("Preserving previous compiled output for incremental prepare...", "Сохранение предыдущего compiled output для инкрементальной подготовки..."));
                 Directory.Move(addonGameRoot, preservedGameBackup);
                 log.AppendLine($"Preserved previous game output: {preservedGameBackup}");
             }
 
-            Report(progress, 6, "Preparing current DMX, materials and textures...");
+            Report(progress, 6, LocalizedText.T("Preparing current DMX, materials and textures...", "Подготовка текущих DMX, материалов и текстур..."));
             var prepareProgress = new InlineProgress<PrepareAuthoringProgress>(update =>
                 Report(progress, MapPrepareProgress(update.Message), update.Message));
 
@@ -125,12 +125,12 @@ public sealed class BuildAndTestService
                 }
             }
 
-            Report(progress, 30, "Authoring content synchronized.");
+            Report(progress, 30, LocalizedText.T("Authoring content synchronized.", "Authoring content синхронизирован."));
             log.AppendLine($"Prepare log: {prepare.LogPath}");
             log.AppendLine($"Prepared content root: {prepare.AddonContentRoot}");
 
             cancellationToken.ThrowIfCancellationRequested();
-            Report(progress, 33, "Comparing prepared content with the previous successful build...");
+            Report(progress, 33, LocalizedText.T("Comparing prepared content with the previous successful build...", "Сравнение подготовленного content с предыдущей успешной сборкой..."));
 
             var currentHashes = HashContentTree(prepare.AddonContentRoot, cancellationToken);
             var previousHashes = previousState?.ContentHashes
@@ -156,7 +156,7 @@ public sealed class BuildAndTestService
             var removedCompiledOutputs = 0;
             if (fullRebuild)
             {
-                Report(progress, 36, "Preparing clean compiled output for the first/full build...");
+                Report(progress, 36, LocalizedText.T("Preparing clean compiled output for the first/full build...", "Подготовка чистого compiled output для первой/полной сборки..."));
                 if (Directory.Exists(addonGameRoot))
                 {
                     Directory.Delete(addonGameRoot, recursive: true);
@@ -192,14 +192,14 @@ public sealed class BuildAndTestService
 
             if (compileTargets.Count > 0)
             {
-                Report(progress, 40, $"Compiling {compileTargets.Count} changed asset(s)...");
+                Report(progress, 40, LocalizedText.T($"Compiling {compileTargets.Count} changed asset(s)...", $"Компиляция изменённых ресурсов: {compileTargets.Count}..."));
                 await CompileInBatchesAsync(compileTargets, log, progress, cancellationToken);
-                Report(progress, 79, "Verifying compiled outputs...");
+                Report(progress, 79, LocalizedText.T("Verifying compiled outputs...", "Проверка скомпилированных файлов..."));
                 VerifyCompiledOutputs(prepare.AddonContentRoot, addonGameRoot, compileTargets);
             }
             else
             {
-                Report(progress, 79, "No Source 2 compile inputs changed; reusing verified compiled output...");
+                Report(progress, 79, LocalizedText.T("No Source 2 compile inputs changed; reusing verified compiled output...", "Исходники Source 2 для компиляции не изменились; используется проверенный compiled output..."));
                 log.AppendLine("No compile inputs changed and all expected direct outputs exist; ResourceCompiler skipped.");
             }
 
@@ -209,7 +209,7 @@ public sealed class BuildAndTestService
 
             if (mainModelWasCompiled)
             {
-                Report(progress, 83, "Restoring AnimGraph2 / NmSkeleton on the compiled character model...");
+                Report(progress, 83, LocalizedText.T("Restoring AnimGraph2 / NmSkeleton on the compiled character model...", "Восстановление AnimGraph2 / NmSkeleton в скомпилированной модели персонажа..."));
                 ApplyAg2(manifest, compiledMainModel, log, cancellationToken);
                 ag2Applied = true;
             }
@@ -223,7 +223,7 @@ public sealed class BuildAndTestService
             ProjectStore.Save(manifest);
 
             cancellationToken.ThrowIfCancellationRequested();
-            Report(progress, 90, "Packing VPK directly into retail Deadlock addons...");
+            Report(progress, 90, LocalizedText.T("Packing VPK directly into retail Deadlock addons...", "Упаковка VPK непосредственно в retail addons Deadlock..."));
 
             var retailAddonsRoot = Path.Combine(_paths.RetailDeadlockRoot, "game", "citadel", "addons");
             Directory.CreateDirectory(retailAddonsRoot);
@@ -236,7 +236,7 @@ public sealed class BuildAndTestService
                 ContentHashes = currentHashes,
             });
 
-            Report(progress, 100, "Build & Test complete.");
+            Report(progress, 100, LocalizedText.T("Build & Test complete.", "Сборка для теста завершена."));
             log.AppendLine();
             log.AppendLine("RESULT: BUILD & TEST SUCCESS");
             log.AppendLine($"VPK deployed: {vpkPath}");
@@ -439,7 +439,7 @@ public sealed class BuildAndTestService
             var batchIndex = offset / CompileBatchSize;
             var batch = ordered.Skip(offset).Take(CompileBatchSize).ToArray();
             var beforePercent = 40 + (int)Math.Floor(36.0 * batchIndex / Math.Max(1, batchCount));
-            Report(progress, beforePercent, $"Compiling Source 2 assets — batch {batchIndex + 1}/{batchCount}...");
+            Report(progress, beforePercent, LocalizedText.T($"Compiling Source 2 assets — batch {batchIndex + 1}/{batchCount}...", $"Компиляция ресурсов Source 2 — пакет {batchIndex + 1}/{batchCount}..."));
 
             var arguments = new List<string>(batch.Length * 2 + 1);
             foreach (var source in batch)
@@ -463,7 +463,7 @@ public sealed class BuildAndTestService
             }
 
             var afterPercent = 40 + (int)Math.Ceiling(36.0 * (batchIndex + 1) / Math.Max(1, batchCount));
-            Report(progress, afterPercent, $"Compiled Source 2 assets — batch {batchIndex + 1}/{batchCount}.");
+            Report(progress, afterPercent, LocalizedText.T($"Compiled Source 2 assets — batch {batchIndex + 1}/{batchCount}.", $"Ресурсы Source 2 скомпилированы — пакет {batchIndex + 1}/{batchCount}."));
         }
     }
 

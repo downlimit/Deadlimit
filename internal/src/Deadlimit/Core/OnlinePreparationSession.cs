@@ -107,7 +107,7 @@ internal sealed class OnlinePreparationSession : IDisposable
         if (string.IsNullOrWhiteSpace(manifest.SourceVmdl) || !File.Exists(manifest.SourceVmdl))
         {
             throw new InvalidOperationException(
-                "ONLINE PREPARATION needs prepared CSDK content first. Run PREPARE FOR CSDK once and try again.");
+                LocalizedText.T("ONLINE PREPARATION needs prepared CSDK content first. Run PREPARE FOR CSDK once and try again.", "Для ОНЛАЙН-ПОДГОТОВКИ сначала нужен подготовленный CSDK content. Один раз выполните ПОДГОТОВИТЬ ДЛЯ CSDK и повторите попытку."));
         }
 
         var sourceVmdlFullPath = SafePath.EnsureUnderRoot(
@@ -141,7 +141,7 @@ internal sealed class OnlinePreparationSession : IDisposable
         if (rootDmxFiles.Length == 0)
         {
             throw new InvalidOperationException(
-                "ONLINE PREPARATION found no root-level DMX files in the current project.");
+                LocalizedText.T("ONLINE PREPARATION found no root-level DMX files in the current project.", "ОНЛАЙН-ПОДГОТОВКА не нашла DMX-файлы в корне текущего проекта."));
         }
 
         var dmxMappings = ArtistDmxTargetResolver.Resolve(
@@ -198,7 +198,7 @@ internal sealed class OnlinePreparationSession : IDisposable
     private void OnWatcherError(object sender, ErrorEventArgs e)
     {
         MarkPrepareRequired(
-            $"ONLINE PREPARATION watcher error: {e.GetException().Message}. Run a normal PREPARE FOR CSDK to re-establish the live-sync baseline.",
+            LocalizedText.T($"ONLINE PREPARATION watcher error: {e.GetException().Message}. Run a normal PREPARE FOR CSDK to re-establish the live-sync baseline.", "Ошибка наблюдения за файлами ОНЛАЙН-ПОДГОТОВКИ. Выполните обычный ПОДГОТОВИТЬ ДЛЯ CSDK, чтобы восстановить базовую версию онлайн-синхронизации."),
             null);
     }
 
@@ -319,7 +319,7 @@ internal sealed class OnlinePreparationSession : IDisposable
             or InvalidOperationException)
         {
             MarkPrepareRequired(
-                $"ONLINE PREPARATION sync failed: {ex.Message}. Run a normal PREPARE FOR CSDK before continuing live sync.",
+                LocalizedText.T($"ONLINE PREPARATION sync failed: {ex.Message}. Run a normal PREPARE FOR CSDK before continuing live sync.", "Ошибка онлайн-синхронизации. Перед продолжением выполните обычный ПОДГОТОВИТЬ ДЛЯ CSDK."),
                 null);
 
             lock (_gate)
@@ -347,7 +347,7 @@ internal sealed class OnlinePreparationSession : IDisposable
         if (membershipChanges.Any(path => !VertexColorSidecarService.IsSidecarPath(path)))
         {
             MarkPrepareRequired(
-                "ONLINE PREPARATION detected a new, deleted, or renamed root DMX/texture file. A normal PREPARE FOR CSDK is required to rebuild project structure and bindings.",
+                LocalizedText.T("ONLINE PREPARATION detected a new, deleted, or renamed root DMX/texture file. A normal PREPARE FOR CSDK is required to rebuild project structure and bindings.", "ОНЛАЙН-ПОДГОТОВКА обнаружила новый, удалённый или переименованный DMX/файл текстуры в корне проекта. Для перестроения структуры и привязок требуется обычный ПОДГОТОВИТЬ ДЛЯ CSDK."),
                 null);
             return;
         }
@@ -397,8 +397,9 @@ internal sealed class OnlinePreparationSession : IDisposable
                 }
 
                 RaiseUpdated(
-                    $"ONLINE PREPARATION kept the existing prepared DMX unchanged because a full PREPARE is already required. " +
-                    $"{Path.GetFileName(sourcePath)} was not synchronized.",
+                    LocalizedText.T(
+                    $"ONLINE PREPARATION kept the existing prepared DMX unchanged because a full PREPARE is already required. {Path.GetFileName(sourcePath)} was not synchronized.",
+                    $"ОНЛАЙН-ПОДГОТОВКА сохранила текущий подготовленный DMX без изменений, потому что уже требуется полный PREPARE. {Path.GetFileName(sourcePath)} не синхронизирован."),
                     sourcePath,
                     prepareRequired: true);
                 continue;
@@ -410,7 +411,7 @@ internal sealed class OnlinePreparationSession : IDisposable
                 if (!File.Exists(artistDmx) || !_dmxTargets.TryGetValue(artistDmx, out var preparedDmx))
                 {
                     MarkPrepareRequired(
-                        $"ONLINE PREPARATION cannot match {Path.GetFileName(sourcePath)} to a prepared artist DMX. Run a normal PREPARE FOR CSDK.",
+                        LocalizedText.T($"ONLINE PREPARATION cannot match {Path.GetFileName(sourcePath)} to a prepared artist DMX. Run a normal PREPARE FOR CSDK.", $"ОНЛАЙН-ПОДГОТОВКА не может сопоставить {Path.GetFileName(sourcePath)} с подготовленным DMX. Выполните обычный ПОДГОТОВИТЬ ДЛЯ CSDK."),
                         sourcePath);
                     continue;
                 }
@@ -421,15 +422,16 @@ internal sealed class OnlinePreparationSession : IDisposable
                 if (!committed)
                 {
                     RaiseUpdated(
-                        $"ONLINE PREPARATION kept the previous prepared DMX. Waiting for a valid Vertex Color source pair for {Path.GetFileName(artistDmx)}. " +
-                        $"Vertex Color [{staged.VertexColor.Status}]: {staged.Message}",
+                        LocalizedText.T(
+                        $"ONLINE PREPARATION kept the previous prepared DMX. Waiting for a valid Vertex Color source pair for {Path.GetFileName(artistDmx)}. Vertex Color [{staged.VertexColor.Status}]: {staged.Message}",
+                        $"ОНЛАЙН-ПОДГОТОВКА сохранила предыдущий подготовленный DMX. Ожидается корректная пара исходников Vertex Color для {Path.GetFileName(artistDmx)}."),
                         sourcePath,
                         PrepareRequired);
                     continue;
                 }
 
                 RaiseUpdated(
-                    $"ONLINE PREPARATION synchronized Vertex Color source: {Path.GetFileName(sourcePath)}. {staged.Message}",
+                    LocalizedText.T($"ONLINE PREPARATION synchronized Vertex Color source: {Path.GetFileName(sourcePath)}. {staged.Message}", $"ОНЛАЙН-ПОДГОТОВКА синхронизировала исходник Vertex Color: {Path.GetFileName(sourcePath)}."),
                     sourcePath,
                     PrepareRequired);
                 continue;
@@ -446,7 +448,7 @@ internal sealed class OnlinePreparationSession : IDisposable
                     _sourceHashes[sourcePath] = hash;
                     _dmxMaterialReferences[sourcePath] = currentMaterialReferences;
                     MarkPrepareRequired(
-                        $"ONLINE PREPARATION detected changed material references in {Path.GetFileName(sourcePath)}. A normal PREPARE FOR CSDK is required before this DMX can be synchronized safely.",
+                        LocalizedText.T($"ONLINE PREPARATION detected changed material references in {Path.GetFileName(sourcePath)}. A normal PREPARE FOR CSDK is required before this DMX can be synchronized safely.", $"ОНЛАЙН-ПОДГОТОВКА обнаружила изменённые ссылки на материалы в {Path.GetFileName(sourcePath)}. Перед безопасной синхронизацией этого DMX требуется обычный ПОДГОТОВИТЬ ДЛЯ CSDK."),
                         sourcePath);
                     continue;
                 }
@@ -454,7 +456,7 @@ internal sealed class OnlinePreparationSession : IDisposable
                 if (!_dmxTargets.TryGetValue(sourcePath, out var dmxTarget))
                 {
                     MarkPrepareRequired(
-                        $"ONLINE PREPARATION has no prepared DMX target for {Path.GetFileName(sourcePath)}. Run a normal PREPARE FOR CSDK.",
+                        LocalizedText.T($"ONLINE PREPARATION has no prepared DMX target for {Path.GetFileName(sourcePath)}. Run a normal PREPARE FOR CSDK.", $"Для {Path.GetFileName(sourcePath)} нет подготовленного целевого DMX. Выполните обычный ПОДГОТОВИТЬ ДЛЯ CSDK."),
                         sourcePath);
                     continue;
                 }
@@ -464,16 +466,18 @@ internal sealed class OnlinePreparationSession : IDisposable
                 if (!committed)
                 {
                     RaiseUpdated(
-                        $"ONLINE PREPARATION detected a new DMX but kept the previous prepared copy until its Vertex Color source is safe. " +
-                        $"{Path.GetFileName(sourcePath)} — Vertex Color [{staged.VertexColor.Status}]: {staged.Message}",
+                        LocalizedText.T(
+                        $"ONLINE PREPARATION detected a new DMX but kept the previous prepared copy until its Vertex Color source is safe. {Path.GetFileName(sourcePath)} — Vertex Color [{staged.VertexColor.Status}]: {staged.Message}",
+                        $"ОНЛАЙН-ПОДГОТОВКА обнаружила новый DMX, но сохранила предыдущую подготовленную копию до получения безопасного исходника Vertex Color: {Path.GetFileName(sourcePath)}."),
                         sourcePath,
                         PrepareRequired);
                     continue;
                 }
 
                 RaiseUpdated(
-                    $"ONLINE PREPARATION synchronized DMX: {Path.GetFileName(sourcePath)}. " +
-                    $"Vertex Color [{staged.VertexColor.Status}]: {staged.Message}",
+                    LocalizedText.T(
+                    $"ONLINE PREPARATION synchronized DMX: {Path.GetFileName(sourcePath)}. Vertex Color [{staged.VertexColor.Status}]: {staged.Message}",
+                    $"ОНЛАЙН-ПОДГОТОВКА синхронизировала DMX: {Path.GetFileName(sourcePath)}."),
                     sourcePath,
                     PrepareRequired);
                 continue;
@@ -483,7 +487,7 @@ internal sealed class OnlinePreparationSession : IDisposable
             CopyStable(sourcePath, textureTarget);
             _sourceHashes[sourcePath] = hash;
             RaiseUpdated(
-                $"ONLINE PREPARATION synchronized texture: {Path.GetFileName(sourcePath)}",
+                LocalizedText.T($"ONLINE PREPARATION synchronized texture: {Path.GetFileName(sourcePath)}", $"ОНЛАЙН-ПОДГОТОВКА синхронизировала текстуру: {Path.GetFileName(sourcePath)}"),
                 sourcePath,
                 PrepareRequired);
         }

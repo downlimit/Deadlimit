@@ -55,7 +55,7 @@ internal static class BuildFeature
             launchCsdkButton,
             UiText.T(
                 "Launch the configured Reduced CSDK12 environment.\n\nHold SHIFT while clicking to prepare once, enable ONLINE PREPARATION and launch CSDK. Repeat SHIFT+click to stop online synchronization without launching another CSDK instance.",
-                "Запустить настроенное окружение Reduced CSDK12.\n\nУдерживайте SHIFT при клике, чтобы выполнить подготовку, включить ONLINE PREPARATION и запустить CSDK. Повторный SHIFT+клик остановит онлайн-синхронизацию без запуска ещё одного CSDK."));
+                "Запустить настроенное окружение Reduced CSDK12.\n\nУдерживайте SHIFT при клике, чтобы выполнить подготовку, включить ОНЛАЙН-ПОДГОТОВКУ и запустить CSDK. Повторный SHIFT+клик остановит онлайн-синхронизацию без запуска ещё одного CSDK."));
 
         var buildProgressBar = AddBuildProgressBar(form);
         var actionButtons = new[] { prepareButton, buildAndTestButton, launchCsdkButton };
@@ -417,27 +417,27 @@ internal static class BuildFeature
 
     private static int MapStandalonePrepareProgress(string message)
     {
-        if (message.StartsWith("Cleaning stale", StringComparison.OrdinalIgnoreCase))
+        if (message.StartsWith("Cleaning stale", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Очистка устаревшего", StringComparison.OrdinalIgnoreCase))
         {
             return 10;
         }
-        if (message.StartsWith("Refreshing retail", StringComparison.OrdinalIgnoreCase))
+        if (message.StartsWith("Refreshing retail", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Обновление retail", StringComparison.OrdinalIgnoreCase))
         {
             return 25;
         }
-        if (message.StartsWith("Overlaying artist", StringComparison.OrdinalIgnoreCase))
+        if (message.StartsWith("Overlaying artist", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Наложение пользовательских", StringComparison.OrdinalIgnoreCase))
         {
             return 45;
         }
-        if (message.StartsWith("Preparing addon-owned", StringComparison.OrdinalIgnoreCase))
+        if (message.StartsWith("Preparing addon-owned", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Подготовка custom", StringComparison.OrdinalIgnoreCase))
         {
             return 65;
         }
-        if (message.StartsWith("Applying narrow", StringComparison.OrdinalIgnoreCase))
+        if (message.StartsWith("Applying narrow", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Применение необходимых", StringComparison.OrdinalIgnoreCase))
         {
             return 85;
         }
-        if (message.StartsWith("Project working files prepared", StringComparison.OrdinalIgnoreCase))
+        if (message.StartsWith("Project working files prepared", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Authoring content подготовлен", StringComparison.OrdinalIgnoreCase))
         {
             return 100;
         }

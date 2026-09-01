@@ -5,7 +5,7 @@ namespace Deadlimit.App;
 
 internal static class OnlinePreparationFeature
 {
-    private static string OnlineButtonText => UiText.T("▶  ONLINE CSDK", "▶  CSDK ONLINE");
+    private static string OnlineButtonText => UiText.T("▶  ONLINE CSDK", "▶  CSDK ОНЛАЙН");
 
     private static OnlinePreparationSession? _session;
     private static ToolTip? _toolTip;
@@ -112,7 +112,7 @@ internal static class OnlinePreparationFeature
                 _form,
                 UiText.T(
                     "Save the current Deadlimit Aggregator project before enabling ONLINE PREPARATION.",
-                    "Сохраните текущий проект Deadlimit Aggregator перед включением ONLINE PREPARATION."),
+                    "Сохраните текущий проект Deadlimit Aggregator перед включением ОНЛАЙН-ПОДГОТОВКИ."),
                 "Deadlimit Aggregator",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
@@ -136,7 +136,7 @@ internal static class OnlinePreparationFeature
             {
                 if (_form is not null && !_form.IsDisposed)
                 {
-                    _form.Text = $"Deadlimit Aggregator — ONLINE PREPARATION — {update.Message}";
+                    _form.Text = $"{UiText.T("Deadlimit Manager — ONLINE PREPARATION", "Deadlimit Manager — ОНЛАЙН-ПОДГОТОВКА")} — {update.Message}";
                 }
             });
 
@@ -154,8 +154,12 @@ internal static class OnlinePreparationFeature
             var csdkAlreadyRunning = CsdkProcessService.IsRunning(paths);
             UpdateToolTip(
                 csdkAlreadyRunning
-                    ? "ONLINE PREPARATION is active.\n\nChanged DMX and texture files are synchronized automatically. The existing CSDK instance is kept; no second instance is launched.\n\nShift-click again to stop online synchronization."
-                    : "ONLINE PREPARATION is active.\n\nChanged DMX and texture files are synchronized automatically. CSDK will launch now.\n\nShift-click again to stop online synchronization.");
+                    ? UiText.T(
+                        "ONLINE PREPARATION is active.\n\nChanged DMX and texture files are synchronized automatically. The existing CSDK instance is kept; no second instance is launched.\n\nShift-click again to stop online synchronization.",
+                        "ОНЛАЙН-ПОДГОТОВКА активна.\n\nИзменённые DMX и текстуры синхронизируются автоматически. Уже запущенный CSDK остаётся активным; второй экземпляр не запускается.\n\nПовторный SHIFT+клик отключит онлайн-синхронизацию.")
+                    : UiText.T(
+                        "ONLINE PREPARATION is active.\n\nChanged DMX and texture files are synchronized automatically. CSDK will launch now.\n\nShift-click again to stop online synchronization.",
+                        "ОНЛАЙН-ПОДГОТОВКА активна.\n\nИзменённые DMX и текстуры синхронизируются автоматически. CSDK сейчас будет запущен.\n\nПовторный SHIFT+клик отключит онлайн-синхронизацию."));
             shouldLaunchCsdk = !csdkAlreadyRunning;
         }
         catch (Exception ex) when (ex is IOException
@@ -238,8 +242,9 @@ internal static class OnlinePreparationFeature
             && !string.Equals(beforeLog?.Token, afterLog.Token, StringComparison.Ordinal);
         if (!producedNewPrepareResult || !afterLog!.Succeeded)
         {
-            UpdateToolTip(
-                $"ONLINE PREPARATION kept its previous live-sync baseline because {actionName} did not finish a successful PREPARE transaction.\n\nThe last good prepared DMX remains protected.");
+            UpdateToolTip(UiText.T(
+                $"ONLINE PREPARATION kept its previous live-sync baseline because {actionName} did not finish a successful PREPARE transaction.\n\nThe last good prepared DMX remains protected.",
+                $"ОНЛАЙН-ПОДГОТОВКА сохранила предыдущую базовую версию, потому что {actionName} не завершилась успешной транзакцией PREPARE.\n\nПоследний корректно подготовленный DMX сохранён."));
             return;
         }
 
@@ -250,15 +255,17 @@ internal static class OnlinePreparationFeature
             {
                 _launchButton.Text = OnlineButtonText;
             }
-            UpdateToolTip(
-                $"ONLINE PREPARATION baseline refreshed after {actionName}.\n\nChanged DMX and texture files will continue to synchronize automatically. Shift-click LAUNCH CSDK to stop.");
+            UpdateToolTip(UiText.T(
+                $"ONLINE PREPARATION baseline refreshed after {actionName}.\n\nChanged DMX and texture files will continue to synchronize automatically. Shift-click LAUNCH CSDK to stop.",
+                $"Базовая версия ОНЛАЙН-ПОДГОТОВКИ обновлена после {actionName}.\n\nИзменённые DMX и текстуры продолжат синхронизироваться автоматически. Для остановки используйте SHIFT+клик по ЗАПУСК CSDK."));
         }
         catch (Exception ex) when (ex is IOException
             or UnauthorizedAccessException
             or InvalidOperationException)
         {
-            UpdateToolTip(
-                $"ONLINE PREPARATION could not refresh its baseline after {actionName}: {ex.Message}");
+            UpdateToolTip(UiText.T(
+                $"ONLINE PREPARATION could not refresh its baseline after {actionName}: {ex.Message}",
+                $"Не удалось обновить базовую версию ОНЛАЙН-ПОДГОТОВКИ после {actionName}."));
         }
     }
 
@@ -332,7 +339,9 @@ internal static class OnlinePreparationFeature
 
             _launchButton.Text = OnlineButtonText;
             var suffix = update.PrepareRequired
-                ? "\n\nA structural change was detected. Normal-click this button once to run full PREPARE FOR CSDK and establish a new live-sync baseline."
+                ? UiText.T(
+                    "\n\nA structural change was detected. Normal-click this button once to run full PREPARE FOR CSDK and establish a new live-sync baseline.",
+                    "\n\nОбнаружено структурное изменение. Один раз нажмите эту кнопку обычным кликом, чтобы выполнить полный PREPARE FOR CSDK и создать новую базовую версию онлайн-синхронизации.")
                 : string.Empty;
             UpdateToolTip(update.Message + suffix);
         }));
@@ -352,8 +361,9 @@ internal static class OnlinePreparationFeature
             _launchButton.Text = UiText.T("▶  LAUNCH CSDK", "▶  ЗАПУСК CSDK");
         }
 
-        UpdateToolTip(
-            "ONLINE PREPARATION is off.\n\nShift-click LAUNCH CSDK to prepare once and enable live synchronization. CSDK launches only if no CSDK process is already running.");
+        UpdateToolTip(UiText.T(
+            "ONLINE PREPARATION is off.\n\nShift-click LAUNCH CSDK to prepare once and enable live synchronization. CSDK launches only if no CSDK process is already running.",
+            "ОНЛАЙН-ПОДГОТОВКА выключена.\n\nИспользуйте SHIFT+клик по ЗАПУСК CSDK, чтобы один раз выполнить подготовку и включить онлайн-синхронизацию. CSDK будет запущен только если другой процесс CSDK ещё не работает."));
     }
 
     private static void Detach()

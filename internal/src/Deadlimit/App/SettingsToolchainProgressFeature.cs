@@ -148,7 +148,9 @@ internal static class SettingsToolchainProgressFeature
 
         ui.HideTimer.Stop();
         ui.Panel.Visible = true;
-        ui.Label.Text = update.Message;
+        ui.Label.Text = UiText.IsRussian && update.State == ToolchainOperationState.Failed
+            ? "Операция с инструментом завершилась ошибкой."
+            : update.Message;
         ui.CancelButton.Enabled = update.State == ToolchainOperationState.Running;
 
         if (update.State == ToolchainOperationState.Running && update.Percent is null)
