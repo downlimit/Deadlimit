@@ -15,18 +15,16 @@ internal static class SettingsToolchainProgressFeature
         }
 
         _attached = true;
-        Application.Idle += OnApplicationIdle;
         ToolchainOperationHub.Changed += OnToolchainOperationChanged;
     }
 
-    private static void OnApplicationIdle(object? sender, EventArgs e)
+    internal static void Prepare(SettingsForm form)
     {
-        foreach (var form in Application.OpenForms.OfType<SettingsForm>().ToArray())
+        ArgumentNullException.ThrowIfNull(form);
+        Attach();
+        if (!AttachedForms.ContainsKey(form))
         {
-            if (!AttachedForms.ContainsKey(form))
-            {
-                AttachToForm(form);
-            }
+            AttachToForm(form);
         }
     }
 
