@@ -1,0 +1,68 @@
+name: One-shot Vertex Color joint-shape patch
+
+on:
+  push:
+    branches:
+      - fix/vertexcolor-bone-shapes
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Ignore joint-owned mesh shapes in Vertex Color pipeline'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/vertexcolor-bone-shapes
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Patch Vertex Color mesh discovery
+        shell: pwsh
+        run: |
+          $utf8 = New-Object System.Text.UTF8Encoding($false)
+
+          $guardPath = 'internal/src/Deadlimit/Core/VertexColorSourceGuard.cs'
+          $guard = [IO.File]::ReadAllText($guardPath)
+          $guardNeedle = "        using var document = Datamodel.Datamodel.Load(dmxPath, DeferredMode.Disabled);`r`n        var requiredMeshes = 0;"
+          if (-not $guard.Contains($guardNeedle)) { throw 'Guard setup anchor not found.' }
+          $guard = $guard.Replace($guardNeedle, "        using var document = Datamodel.Datamodel.Load(dmxPath, DeferredMode.Disabled);`r`n        var requiredMeshes = 0;`r`n        var jointShapeMeshIds = DmxSkeletonShapeFilter.FindJointShapeMeshIds(document);")
+
+          $guardLoopNeedle = "        foreach (var mesh in document.AllElements.Where(element =>`r`n                     string.Equals(element.ClassName, `"DmeMesh`", StringComparison.Ordinal)))`r`n        {`r`n            // Material assignment is the authority"
+          if (-not $guard.Contains($guardLoopNeedle)) { throw 'Guard mesh-loop anchor not found.' }
+          $guardLoopReplacement = "        foreach (var mesh in document.AllElements.Where(element =>`r`n                     string.Equals(element.ClassName, `"DmeMesh`", StringComparison.Ordinal)))`r`n        {`r`n            if (DmxSkeletonShapeFilter.IsJointShape(mesh, jointShapeMeshIds))`r`n            {`r`n                continue;`r`n            }`r`n`r`n            // Material assignment is the authority"
+          $guard = $guard.Replace($guardLoopNeedle, $guardLoopReplacement)
+          [IO.File]::WriteAllText($guardPath, $guard, $utf8)
+
+          $sidecarPath = 'internal/src/Deadlimit/Core/VertexColorSidecarService.cs'
+          $sidecar = [IO.File]::ReadAllText($sidecarPath)
+          $sidecarNeedle = "    private static IReadOnlyList<MeshBinding> FindMeshBindings(Datamodel.Datamodel document)`r`n    {`r`n        var result = new List<MeshBinding>();`r`n        foreach (var mesh in document.AllElements.Where(element =>`r`n                     string.Equals(element.ClassName, `"DmeMesh`", StringComparison.Ordinal)))`r`n        {`r`n            var bindState = GetRequiredElement(mesh, `"bindState`");"
+          if (-not $sidecar.Contains($sidecarNeedle)) { throw 'Sidecar mesh-binding anchor not found.' }
+          $sidecarReplacement = "    private static IReadOnlyList<MeshBinding> FindMeshBindings(Datamodel.Datamodel document)`r`n    {`r`n        var result = new List<MeshBinding>();`r`n        var jointShapeMeshIds = DmxSkeletonShapeFilter.FindJointShapeMeshIds(document);`r`n        foreach (var mesh in document.AllElements.Where(element =>`r`n                     string.Equals(element.ClassName, `"DmeMesh`", StringComparison.Ordinal)))`r`n        {`r`n            if (DmxSkeletonShapeFilter.IsJointShape(mesh, jointShapeMeshIds))`r`n            {`r`n                continue;`r`n            }`r`n`r`n            var bindState = GetRequiredElement(mesh, `"bindState`");"
+          $sidecar = $sidecar.Replace($sidecarNeedle, $sidecarReplacement)
+          [IO.File]::WriteAllText($sidecarPath, $sidecar, $utf8)
+
+          git diff --check
+
+      - name: Restore
+        run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
+
+      - name: Build
+        run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+
+      - name: Startup smoke
+        run: dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --startup-smoke
+
+      - name: Commit patch
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add internal/src/Deadlimit/Core/VertexColorSourceGuard.cs internal/src/Deadlimit/Core/VertexColorSidecarService.cs
+          git commit -m 'Ignore joint-owned mesh shapes in Vertex Color pipeline'
+          git push origin HEAD:fix/vertexcolor-bone-shapes
