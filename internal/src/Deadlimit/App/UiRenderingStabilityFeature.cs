@@ -157,8 +157,10 @@ internal static class UiRenderingStabilityFeature
         {
             if (redrawHeld)
             {
-                // During CBT/WM_SHOWWINDOW let the native show/activation sequence perform
-                // the first paint naturally. For the Idle fallback, repaint immediately.
+                // Re-enable drawing and always invalidate the completed control tree. The
+                // CBT/WM_SHOWWINDOW path deliberately skips synchronous Update(), allowing
+                // the native show sequence to paint the final state once. The Idle fallback
+                // may still force the queued paint immediately.
                 ReleaseRedraw(form, repaint: repaintOnRelease);
             }
         }
@@ -393,13 +395,15 @@ internal static class UiRenderingStabilityFeature
             SendMessage(control.Handle, WmSetRedraw, new IntPtr(1), IntPtr.Zero);
         }
 
-        if (!repaint)
-        {
-            return;
-        }
-
+        // WM_SETREDRAW does not automatically invalidate the client area when drawing is
+        // re-enabled. Always queue one paint for the now-complete tree; otherwise Settings
+        // can remain blank until mouse movement invalidates individual child controls.
         control.Invalidate(invalidateChildren: true);
-        control.Update();
+
+        if (repaint)
+        {
+            control.Update();
+        }
     }
 
     private static IntPtr OnCbtHook(int code, IntPtr wParam, IntPtr lParam)
