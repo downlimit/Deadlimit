@@ -32,7 +32,7 @@ public static class VertexColorSourceGuard
         var text = Encoding.Latin1.GetString(raw);
         var hasVertexColorToken = text.Contains("vertexcolor", StringComparison.OrdinalIgnoreCase);
 
-        var usesVertexColorMaterial = hasVertexColorToken;
+        var usesVertexColorMaterial = false;
         var hasEmbeddedVertexColor = false;
         var embeddedMessage = string.Empty;
         if (hasVertexColorToken)
@@ -48,11 +48,12 @@ public static class VertexColorSourceGuard
                 or ArgumentException
                 or NotSupportedException)
             {
-                // Fail closed. If the DMX cannot be structurally inspected, an external
-                // sidecar must validate successfully before PREPARE can replace good content.
+                // Fail closed only when the DMX itself cannot be structurally inspected.
+                // A raw "vertexcolor" token is not enough to require a sidecar when
+                // structural inspection succeeds and no faceSet actually assigns it.
                 usesVertexColorMaterial = true;
                 hasEmbeddedVertexColor = false;
-                embeddedMessage = $"Embedded Vertex Color could not be validated: {ex.Message}";
+                embeddedMessage = $"Vertex Color material assignment could not be validated: {ex.Message}";
             }
         }
 
@@ -62,13 +63,17 @@ public static class VertexColorSourceGuard
             && File.GetLastWriteTimeUtc(sidecarPath) >= File.GetLastWriteTimeUtc(artistDmxPath);
 
         var message = !usesVertexColorMaterial
-            ? "DMX does not use a Vertex Color material; no sidecar is required."
+            ? "DMX has no faceSet assigned to a Vertex Color material; no sidecar is required."
             : hasEmbeddedVertexColor
                 ? embeddedMessage
                 : !sidecarExists
-                    ? $"Vertex Color source is incomplete: {Path.GetFileName(sidecarPath)} is missing. Export the Vertex Color FBX after the latest DMX export."
+                    ? BuildSidecarProblemMessage(
+                        embeddedMessage,
+                        $"Vertex Color source is incomplete: {Path.GetFileName(sidecarPath)} is missing. Export the Vertex Color FBX after the latest DMX export.")
                     : !sidecarCurrent
-                        ? $"Vertex Color source is incomplete: {Path.GetFileName(sidecarPath)} is older than {Path.GetFileName(artistDmxPath)}. Export the Vertex Color FBX again after the latest DMX export."
+                        ? BuildSidecarProblemMessage(
+                            embeddedMessage,
+                            $"Vertex Color source is incomplete: {Path.GetFileName(sidecarPath)} is older than {Path.GetFileName(artistDmxPath)}. Export the Vertex Color FBX again after the latest DMX export.")
                         : string.IsNullOrWhiteSpace(embeddedMessage)
                             ? "Vertex Color DMX/FBX source pair is current."
                             : $"{embeddedMessage} Falling back to the current Vertex Color FBX sidecar.";
@@ -160,6 +165,13 @@ public static class VertexColorSourceGuard
             applied.Message);
     }
 
+    private static string BuildSidecarProblemMessage(string inspectionMessage, string sidecarMessage)
+    {
+        return string.IsNullOrWhiteSpace(inspectionMessage)
+            ? sidecarMessage
+            : $"{inspectionMessage} {sidecarMessage}";
+    }
+
     private static VertexColorSidecarResult ValidatePair(
         string artistDmxPath,
         CancellationToken cancellationToken)
@@ -199,21 +211,23 @@ public static class VertexColorSourceGuard
         foreach (var mesh in document.AllElements.Where(element =>
                      string.Equals(element.ClassName, "DmeMesh", StringComparison.Ordinal)))
         {
+            // Material assignment is the authority for whether this mesh needs Vertex Color.
+            // Do not inspect vertex-state details on unrelated meshes just because the raw
+            // DMX happens to contain the word "vertexcolor" elsewhere.
+            var faceSets = mesh.GetArray<Element>("faceSets");
+            if (faceSets is null || !faceSets.Any(UsesVertexColorMaterial))
+            {
+                continue;
+            }
+
             var bindState = mesh.Get<Element>("bindState")
-                ?? throw new InvalidDataException($"DMX mesh '{mesh.Name}' has no bindState.");
+                ?? throw new InvalidDataException($"Vertex Color mesh '{mesh.Name}' has no bindState.");
             var currentState = mesh.Get<Element>("currentState")
-                ?? throw new InvalidDataException($"DMX mesh '{mesh.Name}' has no currentState.");
+                ?? throw new InvalidDataException($"Vertex Color mesh '{mesh.Name}' has no currentState.");
             if (bindState.ID != currentState.ID)
             {
                 throw new InvalidDataException(
-                    $"DMX mesh '{mesh.Name}' uses different bind/current vertex states.");
-            }
-
-            var faceSets = mesh.GetArray<Element>("faceSets")
-                ?? throw new InvalidDataException($"DMX mesh '{mesh.Name}' has no faceSets array.");
-            if (!faceSets.Any(UsesVertexColorMaterial))
-            {
-                continue;
+                    $"Vertex Color mesh '{mesh.Name}' uses different bind/current vertex states.");
             }
 
             requiredMeshes++;
@@ -228,7 +242,7 @@ public static class VertexColorSourceGuard
 
         if (requiredMeshes == 0)
         {
-            return (false, false, "DMX contains no mesh using a Vertex Color material.");
+            return (false, false, "DMX contains no faceSet assigned to a Vertex Color material.");
         }
 
         return (
