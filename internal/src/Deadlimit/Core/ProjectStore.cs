@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 namespace Deadlimit.Core;
 
 public sealed class ToolPathSettings
@@ -20,6 +22,14 @@ public static class ProjectStore
         WriteIndented = true,
         PropertyNameCaseInsensitive = true,
     };
+
+    // Library drawing and background preparation can race with an otherwise valid
+    // project.json being temporarily unavailable to readers. Keep only the last raw
+    // JSON that was successfully parsed in this process. A real JSON parse failure is
+    // never masked by this cache, so the project library can still show its red error
+    // state for genuinely broken metadata.
+    private static readonly ConcurrentDictionary<string, string> LastKnownGoodManifestJson =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public static string GetManifestPath(string projectFolder) =>
         Path.Combine(projectFolder, MetadataFolderName, ManifestFileName);
@@ -45,19 +55,22 @@ public static class ProjectStore
             }
 
             CanonicalizeProjectIdentity(manifest, projectFolder);
+            LastKnownGoodManifestJson[GetManifestCacheKey(projectFolder)] = json;
             return manifest;
         }
         catch (JsonException)
         {
+            // Invalid JSON is a real project metadata error. Do not hide it behind the
+            // last-known-good snapshot; the library's red warning is meaningful here.
             return null;
         }
         catch (IOException)
         {
-            return null;
+            return TryLoadLastKnownGood(projectFolder);
         }
         catch (UnauthorizedAccessException)
         {
-            return null;
+            return TryLoadLastKnownGood(projectFolder);
         }
         catch (Exception exception) when (exception is InvalidDataException
             or ArgumentException
@@ -84,6 +97,7 @@ public static class ProjectStore
         manifest.UpdatedUtc = DateTimeOffset.UtcNow;
         var json = JsonSerializer.Serialize(manifest, JsonOptions);
         AtomicFile.WriteAllText(Path.Combine(metadataFolder, ManifestFileName), json);
+        LastKnownGoodManifestJson[GetManifestCacheKey(manifest.ProjectFolder)] = json;
         RememberLastProject(manifest.ProjectFolder);
     }
 
@@ -137,6 +151,52 @@ public static class ProjectStore
         settings.UiLanguage = NormalizeUiLanguage(toolPaths.UiLanguage);
         settings.UiTheme = NormalizeUiTheme(toolPaths.UiTheme);
         SaveSettings(settings);
+    }
+
+    private static ProjectManifest? TryLoadLastKnownGood(string projectFolder)
+    {
+        if (!LastKnownGoodManifestJson.TryGetValue(GetManifestCacheKey(projectFolder), out var json))
+        {
+            return null;
+        }
+
+        try
+        {
+            var manifest = JsonSerializer.Deserialize<ProjectManifest>(json, JsonOptions);
+            if (manifest is null)
+            {
+                return null;
+            }
+
+            CanonicalizeProjectIdentity(manifest, projectFolder);
+            return manifest;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (Exception exception) when (exception is InvalidDataException
+            or ArgumentException
+            or NotSupportedException
+            or PathTooLongException)
+        {
+            return null;
+        }
+    }
+
+    private static string GetManifestCacheKey(string projectFolder)
+    {
+        try
+        {
+            return Path.GetFullPath(projectFolder.Trim())
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+        catch (Exception exception) when (exception is ArgumentException
+            or NotSupportedException
+            or PathTooLongException)
+        {
+            return projectFolder.Trim();
+        }
     }
 
     private static void CanonicalizeProjectIdentity(ProjectManifest manifest, string projectFolder)
