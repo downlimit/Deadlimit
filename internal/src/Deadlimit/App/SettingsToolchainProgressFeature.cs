@@ -109,6 +109,12 @@ internal static class SettingsToolchainProgressFeature
             panel.Controls.Add(cancelButton, 2, 0);
 
             root.Controls.Add(panel, 0, 2);
+
+            // The dialog itself is already themed by SettingsForm. Theme only this newly
+            // inserted subtree so opening Settings never requires a second full-form theme
+            // pass after its HWND already exists.
+            UiTheme.ApplyCustomPalette(panel, ProjectStore.GetToolPathSettings().UiTheme);
+
             var ui = new ProgressUi(panel, label, progressBar, cancelButton);
             AttachedForms[form] = ui;
             form.FormClosed += (_, _) =>
