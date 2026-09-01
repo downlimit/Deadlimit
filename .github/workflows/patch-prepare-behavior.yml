@@ -23,6 +23,20 @@ jobs:
       - name: Apply patch
         shell: pwsh
         run: internal/tests/_patch-prepare-behavior.ps1
+      - name: Fix generated smoke quoting
+        shell: pwsh
+        run: |
+          $path = 'internal/tests/prepare-behavior-smoke.ps1'
+          $lines = Get-Content -LiteralPath $path
+          $lines = $lines | ForEach-Object {
+            if ($_ -match '^\$source = .*TextureColor') {
+              '$source = "Layer0`n{`n    `"TextureColor`"`t`"[0.5 0.5 0.5 0]`"`n}`n"'
+            }
+            else {
+              $_
+            }
+          }
+          Set-Content -LiteralPath $path -Value $lines -Encoding utf8NoBOM
       - name: Restore
         run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
       - name: Build
