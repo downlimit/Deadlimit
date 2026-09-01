@@ -116,6 +116,7 @@ internal static class Program
         ExtractionProgressFeature.Attach(form);
 
         UpdateStartup(startup, 62, UiText.T("Loading project controls...", "Загрузка элементов проекта..."));
+        ProjectLibraryHotfixFeature.Attach(form);
         ProjectLibraryFeature.Attach(form);
         HeroCatalogFeature.Attach(form);
         ProjectLogsFeature.Attach(form);
