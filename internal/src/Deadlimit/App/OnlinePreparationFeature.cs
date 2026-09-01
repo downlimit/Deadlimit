@@ -87,6 +87,17 @@ internal static class OnlinePreparationFeature
         return await ToggleOnlinePreparationAsync();
     }
 
+    internal static bool StopForGameLaunch()
+    {
+        if (_session is null)
+        {
+            return false;
+        }
+
+        StopSession();
+        return true;
+    }
+
     private static async Task<bool> ToggleOnlinePreparationAsync()
     {
         if (_toggleBusy
