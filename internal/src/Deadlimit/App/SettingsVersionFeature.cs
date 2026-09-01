@@ -10,15 +10,15 @@ internal static class SettingsVersionFeature
 
     public static void Attach()
     {
-        Application.Idle += OnApplicationIdle;
+        // Kept as the startup entry point for compatibility. SettingsForm augmentation is
+        // now performed synchronously by UiRenderingStabilityFeature before WM_SHOWWINDOW
+        // is allowed to paint, so no Application.Idle mutation is required here.
     }
 
-    private static void OnApplicationIdle(object? sender, EventArgs e)
+    internal static void Prepare(SettingsForm form)
     {
-        foreach (var settingsForm in Application.OpenForms.OfType<SettingsForm>())
-        {
-            EnsureFooterEnhancements(settingsForm);
-        }
+        ArgumentNullException.ThrowIfNull(form);
+        EnsureFooterEnhancements(form);
     }
 
     private static void EnsureFooterEnhancements(SettingsForm form)
