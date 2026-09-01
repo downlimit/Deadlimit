@@ -379,7 +379,13 @@ public sealed class CustomMaterialAuthoringService
         CancellationToken cancellationToken)
     {
         var compiledResourcePaths = ToCompiledMaterialResourcePaths(templateMaterialResource)
+            .Select(NormalizeResourcePath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var compiledLeafNames = compiledResourcePaths
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var leafMatches = new List<(string VpkPath, string EntryPath)>();
 
         foreach (var vpkPath in EnumerateRetailVpks(manifest))
         {
@@ -396,32 +402,92 @@ public sealed class CustomMaterialAuthoringService
             foreach (var entry in packageEntries.SelectMany(group => group.Value))
             {
                 var entryPath = NormalizeResourcePath(entry.GetFullPath());
-                if (!compiledResourcePaths.Contains(entryPath))
+                if (compiledResourcePaths.Contains(entryPath))
                 {
-                    continue;
+                    return DecompileRetailMaterialEntry(vpkPath, entryPath, cancellationToken);
                 }
 
-                package.ReadEntry(entry, out byte[] rawData);
-                using var fileLoader = new GameFileLoader(package, package.FileName);
-                using var stream = new MemoryStream(rawData, writable: false);
-                using var resource = new Resource { FileName = entryPath };
-                resource.Read(stream);
-                using var contentFile = FileExtract.Extract(resource, fileLoader, null);
-
-                if (contentFile.Data is null || contentFile.Data.Length == 0)
+                if (compiledLeafNames.Contains(Path.GetFileName(entryPath)))
                 {
-                    throw new InvalidOperationException(
-                        $"ValveResourceFormat found retail material '{entryPath}', but decompilation produced no VMAT source data.");
+                    leafMatches.Add((vpkPath, entryPath));
                 }
-
-                return (Encoding.UTF8.GetString(contentFile.Data.ToArray()), vpkPath);
             }
+        }
+
+        var uniqueLeafPaths = leafMatches
+            .Select(match => match.EntryPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (uniqueLeafPaths.Length == 1)
+        {
+            var resolvedEntryPath = uniqueLeafPaths[0];
+            var resolved = leafMatches.First(match => string.Equals(
+                match.EntryPath,
+                resolvedEntryPath,
+                StringComparison.OrdinalIgnoreCase));
+
+            return DecompileRetailMaterialEntry(
+                resolved.VpkPath,
+                resolved.EntryPath,
+                cancellationToken);
+        }
+
+        if (uniqueLeafPaths.Length > 1)
+        {
+            throw new InvalidOperationException(
+                $"Retail material template '{templateMaterialResource}' was not found by exact resource path, " +
+                "and filename-only resolution was ambiguous. " +
+                $"Matches: {string.Join(", ", uniqueLeafPaths)}");
         }
 
         throw new InvalidOperationException(
             $"Could not find retail material template '{templateMaterialResource}' in the configured Deadlock VPKs. " +
             $"Tried: {string.Join(", ", compiledResourcePaths)}. " +
             "Run EXTRACT HERO SOURCE against the current retail build and verify the Project8Staging path in SETTINGS.");
+    }
+
+    private static (string Text, string VpkPath) DecompileRetailMaterialEntry(
+        string vpkPath,
+        string entryPath,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var package = new Package();
+        package.Read(vpkPath);
+        var packageEntries = package.Entries
+            ?? throw new InvalidOperationException($"Retail VPK contains no entries: {vpkPath}");
+
+        foreach (var entry in packageEntries.SelectMany(group => group.Value))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var candidatePath = NormalizeResourcePath(entry.GetFullPath());
+            if (!string.Equals(candidatePath, entryPath, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            package.ReadEntry(entry, out byte[] rawData);
+            using var fileLoader = new GameFileLoader(package, package.FileName);
+            using var stream = new MemoryStream(rawData, writable: false);
+            using var resource = new Resource { FileName = candidatePath };
+            resource.Read(stream);
+            using var contentFile = FileExtract.Extract(resource, fileLoader, null);
+
+            if (contentFile.Data is null || contentFile.Data.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    $"ValveResourceFormat found retail material '{candidatePath}', but decompilation produced no VMAT source data.");
+            }
+
+            return (Encoding.UTF8.GetString(contentFile.Data.ToArray()), vpkPath);
+        }
+
+        throw new InvalidOperationException(
+            $"Retail material entry '{entryPath}' disappeared from VPK '{vpkPath}' while preparing the material template.");
     }
 
     private IEnumerable<string> EnumerateRetailVpks(ProjectManifest manifest)
