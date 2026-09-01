@@ -49,6 +49,7 @@ internal static class ProjectLibraryHotfixFeature
         private readonly MainForm _form;
         private readonly ListBox? _library;
         private bool _disposed;
+        private bool _libraryRefreshHeld;
 
         public Session(MainForm form, ListBox? library)
         {
@@ -62,6 +63,8 @@ internal static class ProjectLibraryHotfixFeature
             // the library reacts to CatalogRefreshed and clears its missing-image cache.
             HeroCatalogService.CatalogRefreshed += OnHeroCatalogRefreshed;
             _form.Shown += OnShown;
+            _form.Deactivate += OnFormDeactivate;
+            _form.Activated += OnFormActivated;
             _form.Disposed += (_, _) => Dispose();
 
             // Repair the cache produced by the previous implementation once, before the
@@ -78,6 +81,10 @@ internal static class ProjectLibraryHotfixFeature
 
             _disposed = true;
             HeroCatalogService.CatalogRefreshed -= OnHeroCatalogRefreshed;
+            _form.Shown -= OnShown;
+            _form.Deactivate -= OnFormDeactivate;
+            _form.Activated -= OnFormActivated;
+            ReleaseLibraryRefresh();
         }
 
         private void OnShown(object? sender, EventArgs e)
@@ -92,6 +99,53 @@ internal static class ProjectLibraryHotfixFeature
             _library.FormattingEnabled = false;
             EnableDoubleBuffering(_library);
             DisableLegacyDragPulse(_library);
+            _library.Invalidate();
+        }
+
+        private void OnFormDeactivate(object? sender, EventArgs e)
+        {
+            HoldLibraryRefresh();
+        }
+
+        private void OnFormActivated(object? sender, EventArgs e)
+        {
+            if (!_libraryRefreshHeld || _form.IsDisposed || !_form.IsHandleCreated)
+            {
+                return;
+            }
+
+            // MainForm's Activated handler runs first and rebuilds the native ListBox.
+            // ProjectLibraryFeature's Activated handler runs after this one and restores
+            // the persisted manual order. Keep redraw suspended until the current window
+            // message finishes so the intermediate alphabetical state is never painted.
+            _form.BeginInvoke((Action)ReleaseLibraryRefresh);
+        }
+
+        private void HoldLibraryRefresh()
+        {
+            if (_libraryRefreshHeld || _library is null || _library.IsDisposed)
+            {
+                return;
+            }
+
+            _library.BeginUpdate();
+            _libraryRefreshHeld = true;
+        }
+
+        private void ReleaseLibraryRefresh()
+        {
+            if (!_libraryRefreshHeld)
+            {
+                return;
+            }
+
+            _libraryRefreshHeld = false;
+            if (_library is null || _library.IsDisposed)
+            {
+                return;
+            }
+
+            _library.EndUpdate();
             _library.Invalidate();
         }
 
