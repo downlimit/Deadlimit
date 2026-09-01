@@ -24,6 +24,9 @@ jobs:
       - name: Texture naming alias smoke
         shell: pwsh
         run: internal/tests/texture-naming-alias-smoke.ps1
+      - name: Prepare behavior smoke
+        shell: pwsh
+        run: internal/tests/prepare-behavior-smoke.ps1
       - name: UI localization smoke
         shell: pwsh
         run: internal/tests/ui-localization-smoke.ps1
