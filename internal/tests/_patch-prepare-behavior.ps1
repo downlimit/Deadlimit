@@ -13,7 +13,7 @@ function Replace-Exact([string]$Text, [string]$Old, [string]$New, [string]$Label
     $newNormalized = $New.Replace("`r`n", "`n")
     $count = ([regex]::Matches($Text, [regex]::Escape($oldNormalized))).Count
     if ($count -ne 1) {
-        throw "$Label: expected exactly one match, found $count."
+        throw "${Label}: expected exactly one match, found $count."
     }
     return $Text.Replace($oldNormalized, $newNormalized)
 }
