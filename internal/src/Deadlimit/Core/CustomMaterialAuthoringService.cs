@@ -42,11 +42,36 @@ public sealed class CustomMaterialAuthoringService
 
     private static readonly TextureSlotDefinition[] TextureSlots =
     [
-        new("TextureColor", NeutralColor, ["basecolor", "base_color", "diffuse", "albedo", "color"]),
-        new("TextureNormal", NeutralNormal, ["normal", "norm"]),
-        new("TextureRoughness", NeutralRoughness, ["roughness", "rough"]),
-        new("TextureAmbientOcclusion", NeutralWhite, ["ambientocclusion", "ambient_occlusion", "occlusion", "ao"]),
-        new("TextureMetalness", NeutralBlack, ["metalness", "metallic", "metal"]),
+        new("TextureColor", NeutralColor,
+        [
+            "basecolor", "base_color", "basecolour", "base_colour", "basecol", "base_col",
+            "diffuse", "diffusemap", "diffuse_map", "diffusemask", "diffuse_mask", "diff",
+            "albedo", "albedomap", "albedo_map", "albedomask", "albedo_mask",
+            "color", "colormap", "color_map", "colormask", "color_mask", "colour",
+            "colourmap", "colour_map", "colourmask", "colour_mask", "col"
+        ]),
+        new("TextureNormal", NeutralNormal,
+        [
+            "normal", "normalmap", "normal_map", "normalmask", "normal_mask", "normals", "norm", "nrm"
+        ]),
+        new("TextureRoughness", NeutralRoughness,
+        [
+            "roughness", "roughnessmap", "roughness_map", "roughnessmask", "roughness_mask",
+            "rough", "roughmap", "rough_map", "roughmask", "rough_mask", "rgh"
+        ]),
+        new("TextureAmbientOcclusion", NeutralWhite,
+        [
+            "ambientocclusion", "ambient_occlusion", "ambientocclusionmap", "ambient_occlusion_map",
+            "ambientocclusionmask", "ambient_occlusion_mask", "occlusion", "occlusionmap",
+            "occlusion_map", "occlusionmask", "occlusion_mask", "ao", "aomap", "ao_map",
+            "aomask", "ao_mask"
+        ]),
+        new("TextureMetalness", NeutralBlack,
+        [
+            "metalness", "metalnessmap", "metalness_map", "metalnessmask", "metalness_mask",
+            "metallic", "metallicmap", "metallic_map", "metallicmask", "metallic_mask",
+            "metal", "metalmap", "metal_map", "metalmask", "metal_mask", "mtl"
+        ]),
     ];
 
     private static readonly Regex TextureAssignmentRegex = new(
@@ -144,7 +169,7 @@ public sealed class CustomMaterialAuthoringService
         log.AppendLine($"Custom materials detected: {customReferences.Length}");
         log.AppendLine($"Custom texture sources synchronized from project root: {rootPngFiles.Length}");
         log.AppendLine($"Custom texture source folder: {textureFolder}");
-        log.AppendLine("Custom texture naming: <material>_color|diffuse|basecolor|albedo, _normal, _rough|roughness, _ao|occlusion, _metal|metalness|metallic; specialty Texture* fields may also bind by matching the material prefix plus the Texture parameter semantic name.");
+        log.AppendLine("Custom texture naming: standard PBR slots accept broad common aliases (for example BaseColor/BaseColour/Albedo/Diffuse/Color, Normal/NormalMap/NRM, Roughness/Rough/RGH, AO/AmbientOcclusion/Occlusion, Metalness/Metallic/Metal plus Map/Mask variants such as MetalnessMask). Separators _, -, space, and . are accepted. Packed ORM/RMA/MRA names are intentionally not auto-bound because channel layout is ambiguous. Specialty Texture* fields may also bind by matching the material prefix plus the Texture parameter semantic name.");
         log.AppendLine("Vertex-color naming: any custom material whose name contains 'vertexcolor' (prefix, suffix, or middle; case-insensitive) is prepared from the retail vertcolor_pbr_basic material and does not consume project color textures.");
         log.AppendLine("Metal naming: any custom material whose name contains 'metal' (prefix, suffix, or middle; case-insensitive) receives the metal preset: Metalness 0.8 and Roughness 128/255. The modifier is independent from vertexcolor and may be combined with it.");
 
@@ -1228,7 +1253,7 @@ public sealed class CustomMaterialAuthoringService
         {
             foreach (var suffix in slot.Suffixes.OrderByDescending(value => value.Length))
             {
-                foreach (var separator in new[] { "_", "-", " " })
+                foreach (var separator in new[] { "_", "-", " ", "." })
                 {
                     var tail = separator + suffix;
                     if (!stem.EndsWith(tail, StringComparison.OrdinalIgnoreCase))
@@ -1446,3 +1471,4 @@ public sealed class CustomMaterialAuthoringService
 
     private sealed record TextureReplacement(string Value, bool AutoBound, bool Sanitized);
 }
+
