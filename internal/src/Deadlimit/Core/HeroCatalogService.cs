@@ -3,13 +3,15 @@ using System.Text.RegularExpressions;
 using SteamDatabase.ValvePak;
 using ValveResourceFormat;
 using ValveResourceFormat.IO;
+using ValveResourceFormat.ResourceTypes;
 
 namespace Deadlimit.Core;
 
 public sealed record HeroCatalogEntry(
     string DisplayName,
     string LookupName,
-    string ModelResourcePath)
+    string ModelResourcePath,
+    string MinimapImageResourcePath = "")
 {
     public override string ToString() => DisplayName;
 }
@@ -48,6 +50,8 @@ public sealed class HeroCatalogService
         _paths = paths;
     }
 
+    public static event EventHandler? CatalogRefreshed;
+
     public static IReadOnlyList<HeroCatalogEntry> LoadCached()
     {
         var cachePath = GetCachePath();
@@ -80,6 +84,21 @@ public sealed class HeroCatalogService
         }
     }
 
+    public static string GetCachedIconPath(string lookupName)
+    {
+        var safeName = string.Concat(
+            lookupName.Trim().Select(character =>
+                char.IsLetterOrDigit(character) || character is '-' or '_'
+                    ? character
+                    : '_'));
+        if (safeName.Length == 0)
+        {
+            safeName = "unknown";
+        }
+
+        return Path.Combine(GetIconCacheDirectory(), safeName + ".png");
+    }
+
     public Task<IReadOnlyList<HeroCatalogEntry>> RefreshAsync(CancellationToken cancellationToken = default) =>
         Task.Run(() => Refresh(cancellationToken), cancellationToken);
 
@@ -100,13 +119,11 @@ public sealed class HeroCatalogService
         var packageEntries = package.Entries
             ?? throw new InvalidDataException($"VPK entry table was not available: {vpkPath}");
         var entries = packageEntries.SelectMany(group => group.Value).ToArray();
+        var entriesByPath = entries
+            .GroupBy(entry => NormalizeResourcePath(entry.GetFullPath()), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 
-        var heroesEntry = entries.FirstOrDefault(entry =>
-            string.Equals(
-                NormalizeResourcePath(entry.GetFullPath()),
-                HeroesResourcePath,
-                StringComparison.OrdinalIgnoreCase));
-        if (heroesEntry is null)
+        if (!entriesByPath.TryGetValue(HeroesResourcePath, out var heroesEntry))
         {
             throw new InvalidDataException($"{HeroesResourcePath} was not found in the current retail Deadlock VPK.");
         }
@@ -127,12 +144,7 @@ public sealed class HeroCatalogService
         var heroesText = Encoding.UTF8.GetString(heroesContent.Data);
 
         var localizationText = string.Empty;
-        var localizationEntry = entries.FirstOrDefault(entry =>
-            string.Equals(
-                NormalizeResourcePath(entry.GetFullPath()),
-                HeroNamesLocalizationPath,
-                StringComparison.OrdinalIgnoreCase));
-        if (localizationEntry is not null)
+        if (entriesByPath.TryGetValue(HeroNamesLocalizationPath, out var localizationEntry))
         {
             package.ReadEntry(localizationEntry, out byte[] localizationRawData);
             localizationText = Encoding.UTF8.GetString(localizationRawData);
@@ -152,6 +164,43 @@ public sealed class HeroCatalogService
                 "No player-selectable heroes with models were found in the current retail heroes.vdata.");
         }
 
+        Directory.CreateDirectory(GetIconCacheDirectory());
+        foreach (var hero in heroes)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (string.IsNullOrWhiteSpace(hero.MinimapImageResourcePath)
+                || !entriesByPath.TryGetValue(hero.MinimapImageResourcePath, out var iconEntry))
+            {
+                continue;
+            }
+
+            try
+            {
+                package.ReadEntry(iconEntry, out byte[] iconRawData);
+                using var iconStream = new MemoryStream(iconRawData, writable: false);
+                using var iconResource = new Resource { FileName = hero.MinimapImageResourcePath };
+                iconResource.Read(iconStream);
+                if (iconResource.DataBlock is not Texture texture)
+                {
+                    continue;
+                }
+
+                using var bitmap = texture.GenerateBitmap();
+                var png = TextureExtract.ToPngImage(bitmap);
+                WriteBytesAtomically(GetCachedIconPath(hero.LookupName), png);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                // The hero list remains authoritative even if one optional presentation asset
+                // cannot be decoded by the current retail/VRF combination.
+            }
+        }
+
         SaveCache(new HeroCatalogSnapshot
         {
             RefreshedUtc = DateTimeOffset.UtcNow,
@@ -159,6 +208,7 @@ public sealed class HeroCatalogService
             Heroes = [.. heroes],
         });
 
+        CatalogRefreshed?.Invoke(null, EventArgs.Empty);
         return heroes;
     }
 
@@ -219,7 +269,8 @@ public sealed class HeroCatalogService
             heroes.Add(new HeroCatalogEntry(
                 displayName.Trim(),
                 lookupName.Trim(),
-                NormalizeResourcePath(modelResourcePath)));
+                NormalizeResourcePath(modelResourcePath),
+                NormalizePanoramaTexturePath(GetStringProperty(block, "m_strMinimapImage")) ?? string.Empty));
         }
 
         return heroes;
@@ -406,6 +457,39 @@ public sealed class HeroCatalogService
     private static string NormalizeResourcePath(string value) =>
         value.Replace('\\', '/').TrimStart('/');
 
+    private static string? NormalizePanoramaTexturePath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var normalized = value.Trim();
+        const string resourcePrefix = "s2r://";
+        if (normalized.StartsWith(resourcePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized[resourcePrefix.Length..];
+        }
+
+        normalized = NormalizeResourcePath(normalized);
+        if (normalized.EndsWith(".vtex_c", StringComparison.OrdinalIgnoreCase))
+        {
+            return normalized;
+        }
+
+        if (normalized.EndsWith(".vtex", StringComparison.OrdinalIgnoreCase))
+        {
+            return normalized + "_c";
+        }
+
+        if (!Path.HasExtension(normalized))
+        {
+            return normalized + ".vtex_c";
+        }
+
+        return normalized;
+    }
+
     private static void SaveCache(HeroCatalogSnapshot snapshot)
     {
         var cachePath = GetCachePath();
@@ -413,9 +497,51 @@ public sealed class HeroCatalogService
         AtomicFile.WriteJson(cachePath, snapshot, JsonOptions);
     }
 
+    private static void WriteBytesAtomically(string path, byte[] bytes)
+    {
+        var target = Path.GetFullPath(path);
+        var folder = Path.GetDirectoryName(target)
+            ?? throw new ArgumentException("Target path has no parent folder.", nameof(path));
+        Directory.CreateDirectory(folder);
+
+        var temporary = Path.Combine(folder, $".{Path.GetFileName(target)}.tmp-{Guid.NewGuid():N}");
+        try
+        {
+            File.WriteAllBytes(temporary, bytes);
+            if (File.Exists(target))
+            {
+                File.Replace(temporary, target, destinationBackupFileName: null, ignoreMetadataErrors: true);
+            }
+            else
+            {
+                File.Move(temporary, target);
+            }
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(temporary))
+                {
+                    File.Delete(temporary);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // The published icon or the original extraction failure remains authoritative.
+            }
+        }
+    }
+
     private static string GetCachePath() =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Deadlimit",
             "hero_catalog.json");
+
+    private static string GetIconCacheDirectory() =>
+        Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "Deadlimit",
+            "hero_icons");
 }
