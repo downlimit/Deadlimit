@@ -25,6 +25,33 @@ internal static class UiRenderingStabilityFeature
         Application.Idle += OnApplicationIdle;
     }
 
+    internal static void ApplyAtomically(Control root, Action action)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        ArgumentNullException.ThrowIfNull(action);
+
+        var redrawHeld = root.IsHandleCreated && !root.IsDisposed;
+        if (redrawHeld)
+        {
+            HoldRedraw(root);
+        }
+
+        root.SuspendLayout();
+        try
+        {
+            action();
+            PrepareControlTree(root);
+        }
+        finally
+        {
+            root.ResumeLayout(performLayout: true);
+            if (redrawHeld)
+            {
+                ReleaseRedraw(root, repaint: true);
+            }
+        }
+    }
+
     private static void OnApplicationIdle(object? sender, EventArgs e)
     {
         foreach (var form in Application.OpenForms.Cast<Form>().ToArray())
