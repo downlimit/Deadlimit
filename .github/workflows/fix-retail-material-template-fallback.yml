@@ -20,85 +20,11 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - name: Apply fallback fix
-        shell: bash
+        shell: pwsh
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          p = Path('internal/src/Deadlimit/Core/PrepareAuthoringService.cs')
-          text = p.read_text(encoding='utf-8')
-
-          old = '''            var customTemplateMaterial = ChooseLikelyCharacterSurfaceMaterial(templateCandidates, manifest.Hero);
-            var resolvedMaterialSources = templateCandidates
-                .Select(remap => remap.From)
-                .ToArray();
-'''
-          new = '''            var customTemplateMaterial = ChooseLikelyCharacterSurfaceMaterial(templateCandidates, manifest.Hero);
-            if (customTemplateMaterial is null)
-            {
-                var sourceDumpRoot = SafePath.ResolveUnderRoot(
-                    manifest.ProjectFolder,
-                    manifest.SourceDumpFolderName,
-                    "Project source-dump folder");
-                var retailTemplateCandidates = DiscoverRetailTemplateMaterialCandidates(
-                    sourceCopy.SourceVmdlPath,
-                    sourceDumpRoot,
-                    log);
-                customTemplateMaterial = ChooseLikelyCharacterSurfaceMaterial(retailTemplateCandidates, manifest.Hero);
-
-                if (customTemplateMaterial is not null)
-                {
-                    log.AppendLine($"Custom material retail template inferred from original extracted retail DMX: {customTemplateMaterial}");
-                }
-            }
-
-            var resolvedMaterialSources = templateCandidates
-                .Select(remap => remap.From)
-                .ToArray();
-'''
-          if text.count(old) != 1:
-              raise SystemExit(f'Expected template selection block once, found {text.count(old)}')
-          text = text.replace(old, new, 1)
-
-          anchor = '''    private static List<VmdlMaterialRemap> DiscoverMaterialRepairs(
-'''
-          helper = '''    private static IReadOnlyList<VmdlMaterialRemap> DiscoverRetailTemplateMaterialCandidates(
-        string sourceVmdlPath,
-        string sourceDumpRoot,
-        StringBuilder log)
-    {
-        var retailDmxFiles = new List<string>();
-        foreach (var renderMesh in RetailVmdlInheritance.ReadRenderMeshes(sourceVmdlPath))
-        {
-            var sourceDmxPath = SafePath.ResolveUnderRoot(
-                sourceDumpRoot,
-                renderMesh.Filename.Replace('/', Path.DirectorySeparatorChar),
-                "Retail render-mesh source");
-
-            if (File.Exists(sourceDmxPath))
-            {
-                retailDmxFiles.Add(sourceDmxPath);
-            }
-        }
-
-        var materialReferences = DiscoverDmxMaterialReferences(retailDmxFiles);
-        log.AppendLine($"Retail template material candidates discovered from original extracted DMX: {materialReferences.Count}");
-        foreach (var reference in materialReferences)
-        {
-            log.AppendLine($"  retail template candidate {reference}");
-        }
-
-        return materialReferences
-            .Select(reference => new VmdlMaterialRemap(reference, reference))
-            .ToArray();
-    }
-
-'''
-          if text.count(anchor) != 1:
-              raise SystemExit(f'Expected helper anchor once, found {text.count(anchor)}')
-          text = text.replace(anchor, helper + anchor, 1)
-          p.write_text(text, encoding='utf-8', newline='\n')
-          PY
+          $encoded = 'CmZyb20gcGF0aGxpYiBpbXBvcnQgUGF0aAoKcCA9IFBhdGgoImludGVybmFsL3NyYy9EZWFkbGltaXQvQ29yZS9QcmVwYXJlQXV0aG9yaW5nU2VydmljZS5jcyIpCnRleHQgPSBwLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQoKb2xkID0gIiIiICAgICAgICAgICAgdmFyIGN1c3RvbVRlbXBsYXRlTWF0ZXJpYWwgPSBDaG9vc2VMaWtlbHlDaGFyYWN0ZXJTdXJmYWNlTWF0ZXJpYWwodGVtcGxhdGVDYW5kaWRhdGVzLCBtYW5pZmVzdC5IZXJvKTsKICAgICAgICAgICAgdmFyIHJlc29sdmVkTWF0ZXJpYWxTb3VyY2VzID0gdGVtcGxhdGVDYW5kaWRhdGVzCiAgICAgICAgICAgICAgICAuU2VsZWN0KHJlbWFwID0+IHJlbWFwLkZyb20pCiAgICAgICAgICAgICAgICAuVG9BcnJheSgpOwoiIiIKbmV3ID0gIiIiICAgICAgICAgICAgdmFyIGN1c3RvbVRlbXBsYXRlTWF0ZXJpYWwgPSBDaG9vc2VMaWtlbHlDaGFyYWN0ZXJTdXJmYWNlTWF0ZXJpYWwodGVtcGxhdGVDYW5kaWRhdGVzLCBtYW5pZmVzdC5IZXJvKTsKICAgICAgICAgICAgaWYgKGN1c3RvbVRlbXBsYXRlTWF0ZXJpYWwgaXMgbnVsbCkKICAgICAgICAgICAgewogICAgICAgICAgICAgICAgdmFyIHNvdXJjZUR1bXBSb290ID0gU2FmZVBhdGguUmVzb2x2ZVVuZGVyUm9vdCgKICAgICAgICAgICAgICAgICAgICBtYW5pZmVzdC5Qcm9qZWN0Rm9sZGVyLAogICAgICAgICAgICAgICAgICAgIG1hbmlmZXN0LlNvdXJjZUR1bXBGb2xkZXJOYW1lLAogICAgICAgICAgICAgICAgICAgICJQcm9qZWN0IHNvdXJjZS1kdW1wIGZvbGRlciIpOwogICAgICAgICAgICAgICAgdmFyIHJldGFpbFRlbXBsYXRlQ2FuZGlkYXRlcyA9IERpc2NvdmVyUmV0YWlsVGVtcGxhdGVNYXRlcmlhbENhbmRpZGF0ZXMoCiAgICAgICAgICAgICAgICAgICAgc291cmNlQ29weS5Tb3VyY2VWbWRsUGF0aCwKICAgICAgICAgICAgICAgICAgICBzb3VyY2VEdW1wUm9vdCwKICAgICAgICAgICAgICAgICAgICBsb2cpOwogICAgICAgICAgICAgICAgY3VzdG9tVGVtcGxhdGVNYXRlcmlhbCA9IENob29zZUxpa2VseUNoYXJhY3RlclN1cmZhY2VNYXRlcmlhbChyZXRhaWxUZW1wbGF0ZUNhbmRpZGF0ZXMsIG1hbmlmZXN0Lkhlcm8pOwoKICAgICAgICAgICAgICAgIGlmIChjdXN0b21UZW1wbGF0ZU1hdGVyaWFsIGlzIG5vdCBudWxsKQogICAgICAgICAgICAgICAgewogICAgICAgICAgICAgICAgICAgIGxvZy5BcHBlbmRMaW5lKCQiQ3VzdG9tIG1hdGVyaWFsIHJldGFpbCB0ZW1wbGF0ZSBpbmZlcnJlZCBmcm9tIG9yaWdpbmFsIGV4dHJhY3RlZCByZXRhaWwgRE1YOiB7Y3VzdG9tVGVtcGxhdGVNYXRlcmlhbH0iKTsKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfQoKICAgICAgICAgICAgdmFyIHJlc29sdmVkTWF0ZXJpYWxTb3VyY2VzID0gdGVtcGxhdGVDYW5kaWRhdGVzCiAgICAgICAgICAgICAgICAuU2VsZWN0KHJlbWFwID0+IHJlbWFwLkZyb20pCiAgICAgICAgICAgICAgICAuVG9BcnJheSgpOwoiIiIKaWYgdGV4dC5jb3VudChvbGQpICE9IDE6CiAgICByYWlzZSBTeXN0ZW1FeGl0KGYiRXhwZWN0ZWQgdGVtcGxhdGUgc2VsZWN0aW9uIGJsb2NrIG9uY2UsIGZvdW5kIHt0ZXh0LmNvdW50KG9sZCl9IikKdGV4dCA9IHRleHQucmVwbGFjZShvbGQsIG5ldywgMSkKCmFuY2hvciA9ICIiIiAgICBwcml2YXRlIHN0YXRpYyBMaXN0PFZtZGxNYXRlcmlhbFJlbWFwPiBEaXNjb3Zlck1hdGVyaWFsUmVwYWlycygKIiIiCmhlbHBlciA9ICIiIiAgICBwcml2YXRlIHN0YXRpYyBJUmVhZE9ubHlMaXN0PFZtZGxNYXRlcmlhbFJlbWFwPiBEaXNjb3ZlclJldGFpbFRlbXBsYXRlTWF0ZXJpYWxDYW5kaWRhdGVzKAogICAgICAgIHN0cmluZyBzb3VyY2VWbWRsUGF0aCwKICAgICAgICBzdHJpbmcgc291cmNlRHVtcFJvb3QsCiAgICAgICAgU3RyaW5nQnVpbGRlciBsb2cpCiAgICB7CiAgICAgICAgdmFyIHJldGFpbERteEZpbGVzID0gbmV3IExpc3Q8c3RyaW5nPigpOwogICAgICAgIGZvcmVhY2ggKHZhciByZW5kZXJNZXNoIGluIFJldGFpbFZtZGxJbmhlcml0YW5jZS5SZWFkUmVuZGVyTWVzaGVzKHNvdXJjZVZtZGxQYXRoKSkKICAgICAgICB7CiAgICAgICAgICAgIHZhciBzb3VyY2VEbXhQYXRoID0gU2FmZVBhdGguUmVzb2x2ZVVuZGVyUm9vdCgKICAgICAgICAgICAgICAgIHNvdXJjZUR1bXBSb290LAogICAgICAgICAgICAgICAgcmVuZGVyTWVzaC5GaWxlbmFtZS5SZXBsYWNlKCcvJywgUGF0aC5EaXJlY3RvcnlTZXBhcmF0b3JDaGFyKSwKICAgICAgICAgICAgICAgICJSZXRhaWwgcmVuZGVyLW1lc2ggc291cmNlIik7CgogICAgICAgICAgICBpZiAoRmlsZS5FeGlzdHMoc291cmNlRG14UGF0aCkpCiAgICAgICAgICAgIHsKICAgICAgICAgICAgICAgIHJldGFpbERteEZpbGVzLkFkZChzb3VyY2VEbXhQYXRoKTsKICAgICAgICAgICAgfQogICAgICAgIH0KCiAgICAgICAgdmFyIG1hdGVyaWFsUmVmZXJlbmNlcyA9IERpc2NvdmVyRG14TWF0ZXJpYWxSZWZlcmVuY2VzKHJldGFpbERteEZpbGVzKTsKICAgICAgICBsb2cuQXBwZW5kTGluZSgkIlJldGFpbCB0ZW1wbGF0ZSBtYXRlcmlhbCBjYW5kaWRhdGVzIGRpc2NvdmVyZWQgZnJvbSBvcmlnaW5hbCBleHRyYWN0ZWQgRE1YOiB7bWF0ZXJpYWxSZWZlcmVuY2VzLkNvdW50fSIpOwogICAgICAgIGZvcmVhY2ggKHZhciByZWZlcmVuY2UgaW4gbWF0ZXJpYWxSZWZlcmVuY2VzKQogICAgICAgIHsKICAgICAgICAgICAgbG9nLkFwcGVuZExpbmUoJCIgIHJldGFpbCB0ZW1wbGF0ZSBjYW5kaWRhdGUge3JlZmVyZW5jZX0iKTsKICAgICAgICB9CgogICAgICAgIHJldHVybiBtYXRlcmlhbFJlZmVyZW5jZXMKICAgICAgICAgICAgLlNlbGVjdChyZWZlcmVuY2UgPT4gbmV3IFZtZGxNYXRlcmlhbFJlbWFwKHJlZmVyZW5jZSwgcmVmZXJlbmNlKSkKICAgICAgICAgICAgLlRvQXJyYXkoKTsKICAgIH0KCiIiIgppZiB0ZXh0LmNvdW50KGFuY2hvcikgIT0gMToKICAgIHJhaXNlIFN5c3RlbUV4aXQoZiJFeHBlY3RlZCBoZWxwZXIgYW5jaG9yIG9uY2UsIGZvdW5kIHt0ZXh0LmNvdW50KGFuY2hvcil9IikKdGV4dCA9IHRleHQucmVwbGFjZShhbmNob3IsIGhlbHBlciArIGFuY2hvciwgMSkKcC53cml0ZV90ZXh0KHRleHQsIGVuY29kaW5nPSJ1dGYtOCIsIG5ld2xpbmU9IlxuIikK'
+          [IO.File]::WriteAllBytes('patch.py', [Convert]::FromBase64String($encoded))
+          python patch.py
       - name: Verify diff
         shell: pwsh
         run: |
