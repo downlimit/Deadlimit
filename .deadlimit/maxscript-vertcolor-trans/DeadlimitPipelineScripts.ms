@@ -164,13 +164,17 @@ global deadlimitVertexColorToggleDisplay
 global deadlimitVertexColorToggleLineartDisplay
 global deadlimitVertexColorFitBoneLengths
 global deadlimitVertexColorSetSelectedBoneLength
+global deadlimitVertexColorBoneHasRightSuffix
 global deadlimitVertexColorFlipSelectedBoneX
+global deadlimitVertexColorRestoreConvertedBoneBranches
 global deadlimitVertexColorCreateInnerLineart
 global deadlimitVertexColorBuildInnerLineart
 global deadlimitVertexColorCreateDetachedInnerLineart
+global deadlimitVertexColorCreateDetachedInnerLineartFast
 global deadlimitDetachedInnerLineartBuild
 global deadlimitDetachedInnerLineartApplySkins
 global deadlimitDetachedInnerLineartApplyExplicitNormals
+global deadlimitDetachedInnerLineartApplyExplicitNormalsFast
 global deadlimitDetachedInnerLineartUniqueName
 global deadlimitDetachedInnerLineartAddOutputVertex
 global deadlimitDetachedInnerLineartAddBoundaryVertex
@@ -997,7 +1001,14 @@ fn deadlimitVertexColorToggleLineartDisplay =
       the parent. Length planning happens before mutation so a multi-selection is stable.
     - SET applies a world-space centimeter length while compensating local X scale.
     - FLIP X normalizes negative length and rotates objectOffsetRot 180 degrees, producing
-      a convex tail while the node transform/pivot remains unchanged.
+      a convex tail while the node transform/pivot remains unchanged. Its optional suffix
+      filter accepts only selected names ending exactly in _R or _r.
+    - RESTORE converts selected accidental Editable Poly BoneGeometry copies and compatible
+      descendants back to BoneGeometry. Converted native bones have a stable 9-vertex/9-face
+      display cage; that topology plus an empty modifier stack is the safety signature. The
+      existing scene node is retained, so its handle, transform controller, hierarchy, layer,
+      animation, Skin references, name, and object offsets remain attached. Display dimensions
+      are recovered from the converted cage bounds instead of estimated from child pivots.
 
     Joint transforms, hierarchy, names, Skin bindings, animation controllers, and export
     orientation must remain unchanged in their respective representations. A Blender port may use
@@ -1082,9 +1093,20 @@ fn deadlimitVertexColorSetSelectedBoneLength centimeters =
     #(lengthPlan.count, skipped)
 )
 
-fn deadlimitVertexColorFlipSelectedBoneX =
+fn deadlimitVertexColorBoneHasRightSuffix bone =
+(
+    local boneName = bone.name as string
+    if boneName.count < 2 then return false
+    local suffix = substring boneName (boneName.count - 1) 2
+    suffix == "_R" or suffix == "_r"
+)
+
+fn deadlimitVertexColorFlipSelectedBoneX rightSuffixOnly:false =
 (
     local bones = deadlimitVertexColorSelectedBones()
+    if rightSuffixOnly do bones = for bone in bones where deadlimitVertexColorBoneHasRightSuffix bone collect bone
+    if bones.count == 0 then return 0
+
     local displayFlip = quat 180 [0,0,1]
     undo "Flip Selected Bone Display X" on
     (
@@ -1098,6 +1120,133 @@ fn deadlimitVertexColorFlipSelectedBoneX =
     )
     redrawViews()
     bones.count
+)
+
+fn deadlimitVertexColorIsConvertedBoneCandidate node =
+(
+    isValidNode node and
+    (classOf node) == Editable_Poly and
+    node.modifiers.count == 0 and
+    (polyop.getNumVerts node.baseObject) == 9 and
+    (polyop.getNumFaces node.baseObject) == 9
+)
+
+fn deadlimitVertexColorRestoreConvertedBoneBranches =
+(
+    local previousSelection = selection as array
+    if previousSelection.count == 0 then throw "Select at least one converted bone or converted skeleton root."
+
+    -- Traverse only through nodes carrying the exact converted native-bone cage. This keeps
+    -- ordinary child meshes, helpers, and modifier stacks outside the operation.
+    local pending = for selectedNode in previousSelection collect selectedNode
+    local visitedHandles = #()
+    local convertedNodes = #()
+    while pending.count > 0 do
+    (
+        local current = pending[1]
+        deleteItem pending 1
+        if isValidNode current do
+        (
+            local currentHandle = getHandleByAnim current
+            if (findItem visitedHandles currentHandle) == 0 do
+            (
+                append visitedHandles currentHandle
+                if deadlimitVertexColorIsConvertedBoneCandidate current do
+                (
+                    append convertedNodes current
+                    join pending (for child in current.children where isValidNode child collect child)
+                )
+            )
+        )
+    )
+    if convertedNodes.count == 0 then
+        throw "Selection has no compatible converted native bones (Editable Poly, 9 vertices, 9 faces, no modifiers)."
+
+    -- Snapshot every invariant before creating a donor BoneGeometry. replaceInstances swaps the
+    -- base object while retaining the original scene node and all external references to it.
+    local plans = #()
+    for node in convertedNodes do
+    (
+        local boundsMin = [1e20,1e20,1e20]
+        local boundsMax = [-1e20,-1e20,-1e20]
+        for vertexIndex = 1 to 9 do
+        (
+            local point = polyop.getVert node.baseObject vertexIndex
+            boundsMin.x = amin boundsMin.x point.x
+            boundsMin.y = amin boundsMin.y point.y
+            boundsMin.z = amin boundsMin.z point.z
+            boundsMax.x = amax boundsMax.x point.x
+            boundsMax.y = amax boundsMax.y point.y
+            boundsMax.z = amax boundsMax.z point.z
+        )
+
+        local positiveLength = abs boundsMax.x
+        local negativeLength = abs boundsMin.x
+        local restoredLength = if negativeLength > positiveLength then -negativeLength else positiveLength
+        local restoredWidth = boundsMax.y - boundsMin.y
+        local restoredHeight = boundsMax.z - boundsMin.z
+        if abs restoredLength <= 0.000001 or restoredWidth <= 0.000001 or restoredHeight <= 0.000001 then
+            throw ("Converted bone '" + node.name + "' has invalid display bounds.")
+
+        append plans #(
+            node,
+            restoredLength,
+            restoredWidth,
+            restoredHeight,
+            getHandleByAnim node,
+            copy node.transform,
+            copy node.objectOffsetPos,
+            copy node.objectOffsetRot,
+            copy node.objectOffsetScale,
+            node.parent,
+            node.transform.controller
+        )
+    )
+
+    try
+    (
+        undo "Restore Converted Skeleton Bones" on
+        (
+            for plan in plans do
+            (
+                local donor = BoneSys.createBone [0,0,0] [1,0,0] [0,0,1]
+                donor.length = plan[2]
+                donor.width = plan[3]
+                donor.height = plan[4]
+                replaceInstances plan[1] donor
+                delete donor
+                plan[1].boneEnable = true
+            )
+        )
+
+        -- Treat any changed identity/controller/transform as a failed repair and return the whole
+        -- branch through the single named Undo transaction.
+        for plan in plans do
+        (
+            local node = plan[1]
+            if (classOf node) != BoneGeometry then throw ("Failed to restore '" + node.name + "' as BoneGeometry.")
+            if (getHandleByAnim node) != plan[5] then throw ("Restore changed the node handle for '" + node.name + "'.")
+            if node.transform != plan[6] then throw ("Restore changed the transform for '" + node.name + "'.")
+            if node.objectOffsetPos != plan[7] or node.objectOffsetRot != plan[8] or node.objectOffsetScale != plan[9] then
+                throw ("Restore changed object offsets for '" + node.name + "'.")
+            if node.parent != plan[10] then throw ("Restore changed the parent for '" + node.name + "'.")
+            if node.transform.controller != plan[11] then throw ("Restore changed the transform controller for '" + node.name + "'.")
+            if abs (node.length - plan[2]) > 0.0001 or abs (node.width - plan[3]) > 0.0001 or abs (node.height - plan[4]) > 0.0001 then
+                throw ("Restore changed display dimensions for '" + node.name + "'.")
+            if not node.boneEnable then throw ("Restored bone '" + node.name + "' is disabled.")
+        )
+    )
+    catch
+    (
+        max undo
+        select previousSelection
+        redrawViews()
+        throw()
+    )
+
+    select previousSelection
+    redrawViews()
+    plans.count
 )
 
 /*
@@ -2420,15 +2569,27 @@ fn deadlimitVertexColorCreateInnerLineart useUndo:true vertexMarker:false =
 
     Rendering contract:
     - Geometry, junctions, and every map face are completed in the source orientation first.
-    - Optional polygon flip then reverses the complete generated face set in one polyop pass.
-    - Optional normal inversion runs after the flip: it adds Edit Normals, makes every normal
-      explicit, negates it, then collapses that modifier into the Editable Poly base. Copy Skin,
-      when requested, is added only after this bake and therefore remains live.
+    - The reference polygon flip reverses the complete generated face set in one native pass.
+      The alternative path writes that final winding into the completed in-memory face records.
+    - Optional normal inversion runs after the flip. The reference path bakes a temporary Edit
+      Normals modifier; the alternative path writes persistent explicit normals through a brief
+      Editable Mesh conversion. Both return a clean Editable Poly base. Copy Skin, when requested,
+      is added only after this bake and therefore remains live.
     - The detached node copies both node.transform and objectOffsetPos/Rot/Scale. Generated local
       positions are authored against source.objectTransform, so arbitrary position, rotation,
       non-uniform scale, parent transform, and object-offset transform stay spatially aligned.
       With both defaults enabled, face winding points inward while explicit normals point back
       toward the original surface, matching the Deadlock expanded-backface outline.
+
+    Performance contract:
+    - CREATE LINEART keeps the reference transaction with full Editable Poly undo recording.
+    - ALTERNATIVE FAST runs the same geometry kernel and emits the same topology/attribute data.
+      It preauthors the final polygon/map winding in memory, writes persistent vertex normals
+      directly on Editable Mesh, and suppresses per-element undo snapshots while the new node is
+      populated. Node creation remains inside one named Undo transaction, so Ctrl+Z removes the
+      complete generated object. The Mesh-to-Poly return may cyclically rotate a polygon's first
+      listed corner while preserving vertex IDs, winding, and every geometry/map corner pairing.
+    - Keep both paths available until production assets confirm the fast transaction path.
 
     Blender port: build an independent BMesh strip from the selected-edge graph, copy corner
     custom-data layers, create vertex groups from source IDs, reverse polygons, and write custom
@@ -2539,6 +2700,7 @@ fn deadlimitDetachedInnerLineartBuild sourceNode sourcePoly selectedEdges widthW
     local sourceFaceCount = polyop.getNumFaces sourcePoly
     local sourceEdgeCount = polyop.getNumEdges sourcePoly
     local sourcePositions = for vertexIndex = 1 to sourceVertCount collect (polyop.getVert sourcePoly vertexIndex)
+
     local sourceFaceVerts = #()
     local sourceFaceNormals = #()
     local sourceFaceMaterials = #()
@@ -2918,7 +3080,24 @@ fn deadlimitDetachedInnerLineartApplyExplicitNormals lineartNode =
     lineartNode.baseObject
 )
 
-fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false layerName:"lineart" flipGeometry:true invertNormals:true taperEnds:true taperExponent:2.0 copySkin:false =
+fn deadlimitDetachedInnerLineartApplyExplicitNormalsFast lineartNode =
+(
+    -- Every generated face has smoothing group 1, so each connected output vertex owns one
+    -- smooth normal. Editable Mesh can write those vertex normals directly as persistent explicit
+    -- normals (3ds Max 2015+), avoiding the temporary Edit Normals modifier and Modify-panel UI.
+    convertToMesh lineartNode
+    local vertexCount = getNumVerts lineartNode
+    if vertexCount <= 0 then throw "Generated lineart mesh has no vertices for explicit normals."
+    for vertexIndex = 1 to vertexCount do setNormal lineartNode vertexIndex (-(getNormal lineartNode vertexIndex))
+    update lineartNode
+    convertToPoly lineartNode
+    if (classOf lineartNode.baseObject) != Editable_Poly then throw "Fast explicit-normal bake could not restore Editable Poly."
+    if lineartNode.modifiers.count != 0 then throw "Fast explicit-normal bake left an unexpected modifier."
+    update lineartNode
+    lineartNode.baseObject
+)
+
+fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false layerName:"lineart" flipGeometry:true invertNormals:true taperEnds:true taperExponent:2.0 copySkin:false fastUndo:false =
 (
     if selection.count != 1 then throw "Select one source object and at least two inner edges."
     if widthMm <= 0.0 then throw "Lineart width in millimeters must be greater than zero."
@@ -2972,7 +3151,10 @@ fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false 
         local skinSnapshots = #()
         if copySkin do skinSnapshots = deadlimitVertexColorCaptureInnerLineartSkins sourceNode sourceModifier sourceVertCount
         local widthWorld = (units.decodeValue "1mm") * widthMm
-        local buildResult = deadlimitDetachedInnerLineartBuild sourceNode workingPoly selectedEdges widthWorld flipGeometry:false taperEnds:taperEnds taperExponent:taperExponent
+        -- The reference path preserves its established post-commit FlipNormals operation. The
+        -- alternative path authors the same final winding in the in-memory records after the
+        -- complete junction/strip solution exists, before any output node is populated.
+        local buildResult = deadlimitDetachedInnerLineartBuild sourceNode workingPoly selectedEdges widthWorld flipGeometry:(fastUndo and flipGeometry) taperEnds:taperEnds taperExponent:taperExponent
         with undo off try(if isValidNode workingNode do delete workingNode)catch()
         workingNode = undefined
 
@@ -2981,6 +3163,10 @@ fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false 
         undo "Create Detached Inner Lineart" on
         (
             lineartNode = mesh name:(deadlimitDetachedInnerLineartUniqueName sourceNode.name) vertices:#([0,0,0],[1,0,0],[0,1,0]) faces:#([1,2,3])
+            -- The fast path keeps node creation undoable and suppresses only the expensive
+            -- repeated snapshots made while filling this brand-new object.
+            with undo (not fastUndo)
+            (
             convertToPoly lineartNode
             local lineartPoly = lineartNode.baseObject
             polyop.deleteFaces lineartPoly #{1}
@@ -3044,7 +3230,7 @@ fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false 
             -- and call its native FlipNormals button operation once. This reverses geometry and
             -- every map face together; polyop.flipNormals is intentionally avoided because it is
             -- a no-op on this manifold Editable Poly result in 3ds Max 2025.
-            if flipGeometry do
+            if flipGeometry and not fastUndo do
             (
                 local generatedFaceCount = polyop.getNumFaces lineartPoly
                 if generatedFaceCount > 0 do
@@ -3072,12 +3258,20 @@ fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false 
                 targetLayer = LayerManager.getLayerFromName (sourceNode.layer as string)
             if targetLayer != undefined do targetLayer.addNode lineartNode
 
-            -- Bake custom normals while Edit Normals is the only modifier. Optional Skin is added
-            -- afterwards and remains editable instead of being consumed by collapseStack.
-            if invertNormals do deadlimitDetachedInnerLineartApplyExplicitNormals lineartNode
+            -- Bake custom normals into the clean base. The reference uses temporary Edit Normals;
+            -- the fast path uses persistent Editable Mesh vertex normals. Optional Skin is added
+            -- afterwards and remains editable instead of being consumed by either bake.
+            if invertNormals do
+            (
+                if fastUndo then
+                    deadlimitDetachedInnerLineartApplyExplicitNormalsFast lineartNode
+                else
+                    deadlimitDetachedInnerLineartApplyExplicitNormals lineartNode
+            )
             if copySkin do copiedSkins = deadlimitDetachedInnerLineartApplySkins lineartNode skinSnapshots buildResult[2]
             update lineartNode
             select lineartNode
+            )
         )
         redrawViews()
         #(buildResult[6], buildResult[3].count, buildResult[1].count, lineartNode.name, copiedSkins.count)
@@ -3088,6 +3282,14 @@ fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false 
         throw()
     )
 )
+fn deadlimitVertexColorCreateDetachedInnerLineartFast widthMm:1.0 customLayer:false layerName:"lineart" flipGeometry:true invertNormals:true taperEnds:true taperExponent:2.0 copySkin:false =
+(
+    local operationStartedAt = timestamp()
+    local result = deadlimitVertexColorCreateDetachedInnerLineart widthMm:widthMm customLayer:customLayer layerName:layerName flipGeometry:flipGeometry invertNormals:invertNormals taperEnds:taperEnds taperExponent:taperExponent copySkin:copySkin fastUndo:true
+    append result (timestamp() - operationStartedAt)
+    result
+)
+
 
 fn deadlimitVertexColorResultText actionName result =
 (
@@ -3173,10 +3375,12 @@ rollout deadlimitVertexColorToolsRollout "VERTEX COLOR"
 
 rollout deadlimitVertexColorBoneToolsRollout "BONE TOOLS"
 (
-    button fitBoneLengthsButton "Fit to Hierarchy" width:150 height:22 across:2 tooltip:"Fit selected BoneGeometry lengths to the average bone-child pivot distance. Selected leaf bones use half the parent-pivot distance."
-    button flipBoneXButton "Flip X" width:94 height:22 tooltip:"Flip selected BoneGeometry display meshes along local X while preserving node transforms, pivots, hierarchy, and names."
+    button fitBoneLengthsButton "Fit to Hierarchy" width:125 height:22 across:3 tooltip:"Fit selected BoneGeometry lengths to the average bone-child pivot distance. Selected leaf bones use half the parent-pivot distance."
+    button flipBoneXButton "Flip X" width:58 height:22 tooltip:"Flip selected BoneGeometry display meshes along local X while preserving node transforms, pivots, hierarchy, and names."
+    checkbox flipRightSuffixOnlyCheckbox "_R/_r" checked:false width:60 height:22 tooltip:"When enabled, Flip X affects only selected bones whose names end exactly in _R or _r."
     spinner boneLengthCmSpinner "Length (cm):" range:[0.0,100000.0,10.0] type:#float scale:0.1 fieldWidth:62 width:150 align:#left across:2 tooltip:"Visual length in centimeters."
     button setBoneLengthButton "SET" width:94 height:22 tooltip:"Set selected bones to this visual length while preserving their current X direction."
+    button restoreConvertedBonesButton "RESTORE CONVERTED BRANCH" width:244 height:22 align:#center tooltip:"Restore selected accidental 9-vertex/9-face Editable Poly bone branches to BoneGeometry. Preserves nodes, controllers, hierarchy, transforms, names, and display dimensions; one Ctrl+Z reverts the whole repair."
 
     on fitBoneLengthsButton pressed do
     (
@@ -3200,7 +3404,22 @@ rollout deadlimitVertexColorBoneToolsRollout "BONE TOOLS"
 
     on flipBoneXButton pressed do
     (
-        try (deadlimitVertexColorFbxRollout.statusLabel.text = "Flip Selected X: " + ((deadlimitVertexColorFlipSelectedBoneX()) as string) + " bone(s).")
+        try
+        (
+            local flippedCount = deadlimitVertexColorFlipSelectedBoneX rightSuffixOnly:flipRightSuffixOnlyCheckbox.checked
+            local filterText = if flipRightSuffixOnlyCheckbox.checked then " (_R/_r only)" else ""
+            deadlimitVertexColorFbxRollout.statusLabel.text = "Flip Selected X" + filterText + ": " + (flippedCount as string) + " bone(s)."
+        )
+        catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
+    )
+
+    on restoreConvertedBonesButton pressed do
+    (
+        try
+        (
+            local restoredCount = deadlimitVertexColorRestoreConvertedBoneBranches()
+            deadlimitVertexColorFbxRollout.statusLabel.text = "Restore Converted Branch: " + (restoredCount as string) + " bone(s)."
+        )
         catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
     )
 
@@ -3217,6 +3436,7 @@ rollout deadlimitVertexColorInnerLineartRollout "INNER LINEART"
     checkbox customLineartLayerCheckbox "Custom Layer" checked:false width:105 across:2 tooltip:"Place generated strips into the named layer."
     editText lineartLayerNameEdit text:"lineart" width:185 height:18 enabled:false tooltip:"Existing or new layer name for generated lineart."
     button createInnerLineartButton "CREATE LINEART" width:220 height:24 align:#center tooltip:"Build a separate lineart strip from the selected edge network."
+    button createInnerLineartFastButton "ALTERNATIVE FAST" width:220 height:24 align:#center tooltip:"Build the same evaluated lineart with preauthored winding, direct persistent normals, and compact undo recording."
 
     on createInnerLineartButton pressed do
     (
@@ -3227,6 +3447,17 @@ rollout deadlimitVertexColorInnerLineartRollout "INNER LINEART"
         )
         catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
     )
+    on createInnerLineartFastButton pressed do
+    (
+        try
+        (
+            local result = deadlimitVertexColorCreateDetachedInnerLineartFast widthMm:lineartWidthMmSpinner.value customLayer:customLineartLayerCheckbox.checked layerName:lineartLayerNameEdit.text flipGeometry:flipLineartCheckbox.checked invertNormals:invertLineartNormalsCheckbox.checked taperEnds:taperLineartCheckbox.checked taperExponent:taperExponentSpinner.value copySkin:copyLineartSkinCheckbox.checked
+            local seconds = result[6] / 1000.0
+            deadlimitVertexColorFbxRollout.statusLabel.text = "Fast lineart '" + result[4] + "': " + (result[1] as string) + " edge(s), " + (result[2] as string) + " face(s), " + (formattedPrint seconds format:".2f") + " s."
+        )
+        catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
+    )
+
 
     on customLineartLayerCheckbox changed state do
     (
