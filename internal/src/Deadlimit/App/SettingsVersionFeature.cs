@@ -10,14 +10,22 @@ internal static class SettingsVersionFeature
 
     public static void Attach()
     {
+        // Normal preparation happens before first activation in UiRenderingStabilityFeature.
+        // Keep Idle only as a defensive fallback if the native pre-show hook is unavailable.
         Application.Idle += OnApplicationIdle;
+    }
+
+    internal static void Prepare(SettingsForm form)
+    {
+        ArgumentNullException.ThrowIfNull(form);
+        EnsureFooterEnhancements(form);
     }
 
     private static void OnApplicationIdle(object? sender, EventArgs e)
     {
         foreach (var settingsForm in Application.OpenForms.OfType<SettingsForm>())
         {
-            EnsureFooterEnhancements(settingsForm);
+            Prepare(settingsForm);
         }
     }
 

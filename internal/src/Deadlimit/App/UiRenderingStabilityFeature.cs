@@ -1,27 +1,53 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Deadlimit.Core;
 
 namespace Deadlimit.App;
 
 internal static class UiRenderingStabilityFeature
 {
     private const int WmSetRedraw = 0x000B;
+    private const int WmShowWindow = 0x0018;
+    private const int WhCbt = 5;
+    private const int HcbtActivate = 5;
+    private const uint GwOwner = 4;
 
     private static readonly PropertyInfo? DoubleBufferedProperty = typeof(Control).GetProperty(
         "DoubleBuffered",
         BindingFlags.Instance | BindingFlags.NonPublic);
 
+    private static readonly MethodInfo? ReapplySemanticStatusColorsMethod = typeof(SettingsForm).GetMethod(
+        "ReapplySemanticStatusColors",
+        BindingFlags.Instance | BindingFlags.NonPublic);
+
     private static readonly ConditionalWeakTable<Control, PreparedControlMarker> PreparedControls = new();
+    private static readonly ConditionalWeakTable<SettingsForm, PreparedSettingsMarker> PreparedSettingsForms = new();
     private static readonly HashSet<Form> PreparedForms = [];
     private static readonly HashSet<Form> TrackedModalForms = [];
     private static readonly Dictionary<Control, int> RedrawHolds = [];
+    private static readonly Dictionary<Form, int> PendingModalOwnerReleases = [];
+    private static readonly Dictionary<Form, int> ReadyModalOwnerReleases = [];
+    private static readonly FirstPaintMessageFilter FirstPaintFilter = new();
+    private static readonly HookProc CbtHookCallback = OnCbtHook;
+    private static IntPtr _cbtHook;
 
     [ModuleInitializer]
     internal static void Bootstrap()
     {
-        // Register before Program.Main attaches feature-level Application.Idle handlers.
-        // This lets us suppress intermediate paints while late UI augmentations run.
+        // The CBT hook catches activation synchronously, before the new top-level window
+        // can expose its first frame. IMessageFilter remains as a second pre-paint path for
+        // queued show messages; Application.Idle is only the final fallback.
+        if (OperatingSystem.IsWindows())
+        {
+            _cbtHook = SetWindowsHookEx(
+                WhCbt,
+                CbtHookCallback,
+                IntPtr.Zero,
+                GetCurrentThreadId());
+        }
+
+        Application.AddMessageFilter(FirstPaintFilter);
         Application.Idle += OnApplicationIdle;
     }
 
@@ -64,10 +90,12 @@ internal static class UiRenderingStabilityFeature
             var firstSeen = PreparedForms.Add(form);
             if (firstSeen)
             {
-                // Non-main forms may still receive legacy Application.Idle enhancements
-                // after Show()/ShowDialog(). Keep the first idle pass atomic so the user
-                // never sees controls being inserted/reflowed one step at a time.
-                var batchFirstIdle = form is not MainForm && form.IsHandleCreated;
+                // Settings is normally fully assembled before activation. Other legacy
+                // dialogs may still receive late augmentations, so keep first-idle batching
+                // only for those forms.
+                var batchFirstIdle = form is not MainForm
+                    && form is not SettingsForm
+                    && form.IsHandleCreated;
                 if (batchFirstIdle)
                 {
                     HoldRedraw(form);
@@ -86,7 +114,60 @@ internal static class UiRenderingStabilityFeature
                 PrepareControlTree(form);
             }
 
-            TrackModalOwner(form);
+            if (form is SettingsForm settingsForm)
+            {
+                // Native-hook failure fallback. The feature methods are idempotent.
+                PrepareSettingsBeforeFirstPaint(settingsForm);
+            }
+
+            TrackModalOwner(form, allowOwnedNonModal: false);
+        }
+
+        ReleaseReadyModalOwners();
+        PromotePendingModalOwnerReleases();
+    }
+
+    private static void PrepareSettingsBeforeFirstPaint(SettingsForm form)
+    {
+        if (PreparedSettingsForms.TryGetValue(form, out _))
+        {
+            return;
+        }
+
+        try
+        {
+            // These two features historically modified Settings from Application.Idle,
+            // after the form was visible. Assemble them before activation, theme the final
+            // control tree in one pass and perform layout before the first real paint.
+            SettingsVersionFeature.Prepare(form);
+            SettingsToolchainProgressFeature.Prepare(form);
+
+            var settings = ProjectStore.GetToolPathSettings();
+            UiTheme.ApplyCustomPalette(form, settings.UiTheme);
+
+            // UiTheme intentionally resets label colors. Restore the semantic tool-status
+            // green/yellow/red colors that Settings established in its constructor.
+            try
+            {
+                ReapplySemanticStatusColorsMethod?.Invoke(form, null);
+            }
+            catch (Exception exception) when (exception is TargetInvocationException
+                or MethodAccessException
+                or ArgumentException)
+            {
+                // Presentation hardening must never prevent Settings from opening.
+            }
+
+            PrepareControlTree(form);
+            form.PerformLayout();
+            PreparedSettingsForms.Add(form, new PreparedSettingsMarker());
+        }
+        catch (Exception exception) when (exception is InvalidOperationException
+            or ArgumentException
+            or TargetInvocationException)
+        {
+            // Fall back to the already-constructed SettingsForm rather than turning a
+            // rendering optimization into an application failure.
         }
     }
 
@@ -139,10 +220,11 @@ internal static class UiRenderingStabilityFeature
         }
     }
 
-    private static void TrackModalOwner(Form form)
+    private static void TrackModalOwner(Form form, bool allowOwnedNonModal)
     {
-        if (!form.Modal
-            || form.Owner is not Form owner
+        var owner = ResolveOwner(form);
+        if ((!allowOwnedNonModal && !form.Modal)
+            || owner is null
             || owner.IsDisposed
             || !owner.IsHandleCreated
             || !TrackedModalForms.Add(form))
@@ -150,23 +232,112 @@ internal static class UiRenderingStabilityFeature
             return;
         }
 
-        // While a modal child owns the interaction, the parent has nothing useful to
-        // repaint. Keep its last fully-composed frame (header artwork + vignette + list)
-        // instead of exposing partial activation/deactivation paints behind the dialog.
+        // Start the hold before the child gets its first visible frame whenever possible.
+        // This preserves the owner's fully composed header/list frame under the dialog.
         HoldRedraw(owner);
         form.FormClosed += (_, _) =>
         {
             TrackedModalForms.Remove(form);
+            QueueModalOwnerRelease(owner);
+        };
+    }
+
+    private static Form? ResolveOwner(Form form)
+    {
+        if (form.Owner is Form managedOwner)
+        {
+            return managedOwner;
+        }
+
+        if (!OperatingSystem.IsWindows() || !form.IsHandleCreated)
+        {
+            return null;
+        }
+
+        var ownerHandle = GetWindow(form.Handle, GwOwner);
+        return ownerHandle == IntPtr.Zero
+            ? null
+            : Control.FromHandle(ownerHandle) as Form;
+    }
+
+    private static void QueueModalOwnerRelease(Form owner)
+    {
+        if (owner.IsDisposed || !owner.IsHandleCreated)
+        {
+            RedrawHolds.Remove(owner);
+            PendingModalOwnerReleases.Remove(owner);
+            ReadyModalOwnerReleases.Remove(owner);
+            return;
+        }
+
+        PendingModalOwnerReleases[owner] = PendingModalOwnerReleases.TryGetValue(owner, out var count)
+            ? count + 1
+            : 1;
+    }
+
+    private static void PromotePendingModalOwnerReleases()
+    {
+        if (PendingModalOwnerReleases.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var pair in PendingModalOwnerReleases.ToArray())
+        {
+            var owner = pair.Key;
+            var releaseCount = pair.Value;
+            PendingModalOwnerReleases.Remove(owner);
+
             if (owner.IsDisposed || !owner.IsHandleCreated)
             {
                 RedrawHolds.Remove(owner);
-                return;
+                continue;
             }
 
-            // Owner Activated handlers may rebuild/reorder/reload controls. Release on the
-            // next message turn so only their final state is ever painted.
-            owner.BeginInvoke((Action)(() => ReleaseRedraw(owner, repaint: true)));
-        };
+            ReadyModalOwnerReleases[owner] = ReadyModalOwnerReleases.TryGetValue(owner, out var readyCount)
+                ? readyCount + releaseCount
+                : releaseCount;
+
+            // Force one message turn before the release. This guarantees another Idle
+            // boundary even when the user simply closes Settings and does nothing else.
+            try
+            {
+                owner.BeginInvoke((Action)(() => { }));
+            }
+            catch (InvalidOperationException)
+            {
+                RedrawHolds.Remove(owner);
+                ReadyModalOwnerReleases.Remove(owner);
+            }
+        }
+    }
+
+    private static void ReleaseReadyModalOwners()
+    {
+        if (ReadyModalOwnerReleases.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var pair in ReadyModalOwnerReleases.ToArray())
+        {
+            var owner = pair.Key;
+            var releaseCount = pair.Value;
+            ReadyModalOwnerReleases.Remove(owner);
+
+            if (owner.IsDisposed || !owner.IsHandleCreated)
+            {
+                RedrawHolds.Remove(owner);
+                continue;
+            }
+
+            // This is the second settled Idle after FormClosed. Activated handlers and any
+            // MainForm replacement requested by interface changes have already run.
+            for (var index = 0; index < releaseCount; index++)
+            {
+                ReleaseRedraw(owner, repaint: true);
+            }
+        }
     }
 
     private static void OnTrackedFormClosed(object? sender, FormClosedEventArgs e)
@@ -179,6 +350,10 @@ internal static class UiRenderingStabilityFeature
         PreparedForms.Remove(form);
         RedrawHolds.Remove(form);
         TrackedModalForms.Remove(form);
+        if (form is SettingsForm settingsForm)
+        {
+            PreparedSettingsForms.Remove(settingsForm);
+        }
         form.FormClosed -= OnTrackedFormClosed;
     }
 
@@ -234,6 +409,29 @@ internal static class UiRenderingStabilityFeature
         control.Update();
     }
 
+    private static IntPtr OnCbtHook(int code, IntPtr wParam, IntPtr lParam)
+    {
+        if (code == HcbtActivate
+            && wParam != IntPtr.Zero
+            && Control.FromHandle(wParam) is Form form
+            && !form.IsDisposed)
+        {
+            if (form is SettingsForm settingsForm)
+            {
+                PrepareSettingsBeforeFirstPaint(settingsForm);
+                TrackModalOwner(settingsForm, allowOwnedNonModal: true);
+            }
+            else
+            {
+                TrackModalOwner(form, allowOwnedNonModal: false);
+            }
+
+            PrepareControlTree(form);
+        }
+
+        return CallNextHookEx(_cbtHook, code, wParam, lParam);
+    }
+
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     private static extern IntPtr SendMessage(
         IntPtr windowHandle,
@@ -241,7 +439,62 @@ internal static class UiRenderingStabilityFeature
         IntPtr wParam,
         IntPtr lParam);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(
+        int idHook,
+        HookProc callback,
+        IntPtr moduleHandle,
+        uint threadId);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr CallNextHookEx(
+        IntPtr hook,
+        int code,
+        IntPtr wParam,
+        IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr windowHandle, uint command);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    private sealed class FirstPaintMessageFilter : IMessageFilter
+    {
+        public bool PreFilterMessage(ref Message message)
+        {
+            if (message.Msg != WmShowWindow || message.WParam == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            if (Control.FromHandle(message.HWnd) is not Form form || form.IsDisposed)
+            {
+                return false;
+            }
+
+            if (form is SettingsForm settingsForm)
+            {
+                PrepareSettingsBeforeFirstPaint(settingsForm);
+                TrackModalOwner(settingsForm, allowOwnedNonModal: true);
+            }
+            else
+            {
+                TrackModalOwner(form, allowOwnedNonModal: false);
+            }
+
+            PrepareControlTree(form);
+            return false;
+        }
+    }
+
+    private delegate IntPtr HookProc(int code, IntPtr wParam, IntPtr lParam);
+
     private sealed class PreparedControlMarker
+    {
+    }
+
+    private sealed class PreparedSettingsMarker
     {
     }
 }
