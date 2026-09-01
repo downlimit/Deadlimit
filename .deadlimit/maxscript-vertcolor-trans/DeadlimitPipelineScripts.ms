@@ -167,6 +167,15 @@ global deadlimitVertexColorSetSelectedBoneLength
 global deadlimitVertexColorFlipSelectedBoneX
 global deadlimitVertexColorCreateInnerLineart
 global deadlimitVertexColorBuildInnerLineart
+global deadlimitVertexColorCreateDetachedInnerLineart
+global deadlimitDetachedInnerLineartBuild
+global deadlimitDetachedInnerLineartApplySkins
+global deadlimitDetachedInnerLineartApplyExplicitNormals
+global deadlimitDetachedInnerLineartUniqueName
+global deadlimitDetachedInnerLineartAddOutputVertex
+global deadlimitDetachedInnerLineartAddBoundaryVertex
+global deadlimitDetachedInnerLineartAddFaceRecord
+global deadlimitDetachedInnerLineartReverseArray
 global deadlimitInnerLineartFindFreeSmoothingGroup
 global deadlimitVertexColorSyncInnerLineartSkin
 global deadlimitVertexColorCaptureInnerLineartSkins
@@ -2378,6 +2387,687 @@ fn deadlimitVertexColorCreateInnerLineart useUndo:true vertexMarker:false =
     else
         throw "INNER LINEART requires an Editable Poly/Editable Mesh base object or an active Edit Poly modifier."
 )
+
+/*
+    FEATURE: DETACHED INNER LINEART STRIP
+
+    This is the current artist-facing Inner Lineart path. The selected source edges are read
+    from a base Editable Poly or the active Edit Poly modifier, then a separate strip object is
+    generated. Source topology, source Skin vertex IDs, modifier instances, sub-object data,
+    UVs, and vertex paint remain untouched.
+
+    Geometry contract:
+    - Width is a full world-space millimeter width centered on every selected edge.
+    - Every selected edge contributes a strip face using the two adjacent source face planes.
+    - Degree-1 endpoints optionally collapse to one geometry vertex.
+    - Weighted graph distance to the nearest endpoint controls taper. The normalized factor is
+      1-(1-t)^EXP: EXP 1 is linear/roof-shaped, EXP 2 is rounded/bridge-shaped. Closed networks
+      have no endpoints and remain at full width.
+    - Incident faces are partitioned into sectors between selected edges. Each sector owns one
+      stitched miter vertex. Degree 2 shares one cross-section edge with no cap face; degree 3
+      adds one triangle; degree 4 adds one quad; degree 5 adds one quad plus one triangle. Higher
+      valences continue with quads and at most one triangle, without center fans or n-gons.
+    - All generated faces use smoothing group 1. Face-corner map data is copied from the source
+      face/vertex reference, preserving UV seams, Vertex Color, Alpha, and Illumination.
+
+    Rigging contract:
+    - Each generated vertex records one authoritative source vertex ID.
+    - Copy Skin is artist-controlled and OFF by default. When enabled, every Skin above the
+      active authoring level is copied to the new object. Its complete bind state and bone order
+      come from the copied modifier; every generated weight/DQ/rigid state is then replaced
+      from the recorded source vertex.
+    - Copy Skin only reads the source. Source weights and topology remain unchanged.
+
+    Rendering contract:
+    - Geometry, junctions, and every map face are completed in the source orientation first.
+    - Optional polygon flip then reverses the complete generated face set in one polyop pass.
+    - Optional normal inversion runs last: it adds an Edit Normals modifier, makes every normal
+      explicit, and negates it. With both defaults enabled, face winding points inward while explicit normals
+      point back toward the original surface, matching the Deadlock expanded-backface outline.
+
+    Blender port: build an independent BMesh strip from the selected-edge graph, copy corner
+    custom-data layers, create vertex groups from source IDs, reverse polygons, and write custom
+    split normals. Keep source mesh datablocks and Armature weights immutable.
+ */
+fn deadlimitDetachedInnerLineartUniqueName sourceName =
+(
+    local prefix = "lineart_" + sourceName + "_"
+    local suffixIndex = 1
+    while suffixIndex < 10000 do
+    (
+        local suffix = if suffixIndex < 10 then "0" + (suffixIndex as string) else suffixIndex as string
+        local candidate = prefix + suffix
+        if getNodeByName candidate exact:true == undefined do return candidate
+        suffixIndex += 1
+    )
+    uniqueName prefix
+)
+
+fn deadlimitDetachedInnerLineartReverseArray values =
+(
+    for valueIndex = values.count to 1 by -1 collect values[valueIndex]
+)
+
+fn deadlimitDetachedInnerLineartAddOutputVertex outputPositions outputSourceVertices position sourceVertex =
+(
+    append outputPositions position
+    append outputSourceVertices sourceVertex
+    outputPositions.count
+)
+
+fn deadlimitDetachedInnerLineartAddBoundaryVertex outputPositions outputSourceVertices sourcePositions sourceNode adjacency taperEnds endpointVertexIds junctionItems halfWidth sourceVertex sourceFace direction factor =
+(
+    local vertexId = 0
+    local desiredPosition = sourcePositions[sourceVertex]
+    if taperEnds and adjacency[sourceVertex].count == 1 and factor <= 1e-8 then
+    (
+        vertexId = endpointVertexIds[sourceVertex]
+    )
+    else
+    (
+        local localScale = distance (sourcePositions[sourceVertex] * sourceNode.objectTransform) ((sourcePositions[sourceVertex] + direction) * sourceNode.objectTransform)
+        if localScale <= 1e-8 do localScale = 1.0
+        desiredPosition = sourcePositions[sourceVertex] + direction * (halfWidth * factor / localScale)
+    )
+
+    -- Consecutive collinear edges resolve to the same boundary point. Reuse that geometry
+    -- vertex so straight strips are manifold without a zero-area junction cap.
+    local mergeTolerance = amax 1e-7 (halfWidth * 1e-5)
+    if vertexId == 0 do for item in junctionItems[sourceVertex] while vertexId == 0 do
+        if distance outputPositions[item[1]] desiredPosition <= mergeTolerance do vertexId = item[1]
+    if vertexId == 0 do vertexId = deadlimitDetachedInnerLineartAddOutputVertex outputPositions outputSourceVertices desiredPosition sourceVertex
+    if taperEnds and adjacency[sourceVertex].count == 1 and factor <= 1e-8 do endpointVertexIds[sourceVertex] = vertexId
+
+    local alreadyRecorded = false
+    for item in junctionItems[sourceVertex] while not alreadyRecorded do alreadyRecorded = item[1] == vertexId
+    if not alreadyRecorded do append junctionItems[sourceVertex] #(vertexId, sourceFace)
+    vertexId
+)
+
+fn deadlimitDetachedInnerLineartAddFaceRecord outputPositions faceRecords rawVertexIds rawSourceRefs desiredNormal materialId flipGeometry =
+(
+    local vertexIds = #()
+    local sourceRefs = #()
+    for cornerIndex = 1 to rawVertexIds.count do
+        if vertexIds.count == 0 or rawVertexIds[cornerIndex] != vertexIds[vertexIds.count] do
+        (
+            append vertexIds rawVertexIds[cornerIndex]
+            append sourceRefs rawSourceRefs[cornerIndex]
+        )
+    if vertexIds.count > 2 and vertexIds[1] == vertexIds[vertexIds.count] do
+    (
+        deleteItem vertexIds vertexIds.count
+        deleteItem sourceRefs sourceRefs.count
+    )
+    if vertexIds.count < 3 then return false
+    local center = [0,0,0]
+    for vertexId in vertexIds do center += outputPositions[vertexId]
+    center /= vertexIds.count
+    local polygonNormal = [0,0,0]
+    for cornerIndex = 1 to vertexIds.count do
+    (
+        local nextIndex = if cornerIndex == vertexIds.count then 1 else cornerIndex + 1
+        polygonNormal += cross (outputPositions[vertexIds[cornerIndex]] - center) (outputPositions[vertexIds[nextIndex]] - center)
+    )
+    if length polygonNormal <= 1e-10 then return false
+    if dot polygonNormal desiredNormal < 0.0 do
+    (
+        vertexIds = deadlimitDetachedInnerLineartReverseArray vertexIds
+        sourceRefs = deadlimitDetachedInnerLineartReverseArray sourceRefs
+    )
+    if flipGeometry do
+    (
+        vertexIds = deadlimitDetachedInnerLineartReverseArray vertexIds
+        sourceRefs = deadlimitDetachedInnerLineartReverseArray sourceRefs
+    )
+    append faceRecords #(vertexIds, sourceRefs, materialId)
+    true
+)
+
+fn deadlimitDetachedInnerLineartBuild sourceNode sourcePoly selectedEdges widthWorld flipGeometry:true taperEnds:true taperExponent:2.0 =
+(
+    if selectedEdges.numberSet < 2 then throw "Select at least two connected inner edges."
+    if widthWorld <= 0.0 then throw "Lineart width must be greater than zero."
+    if taperExponent <= 0.0 then throw "Taper EXP must be greater than zero."
+
+    local sourceVertCount = polyop.getNumVerts sourcePoly
+    local sourceFaceCount = polyop.getNumFaces sourcePoly
+    local sourceEdgeCount = polyop.getNumEdges sourcePoly
+    local sourcePositions = for vertexIndex = 1 to sourceVertCount collect (polyop.getVert sourcePoly vertexIndex)
+    local sourceFaceVerts = #()
+    local sourceFaceNormals = #()
+    local sourceFaceMaterials = #()
+    for faceIndex = 1 to sourceFaceCount do
+    (
+        append sourceFaceVerts (polyop.getFaceVerts sourcePoly faceIndex)
+        append sourceFaceNormals (polyop.getFaceNormal sourcePoly faceIndex)
+        append sourceFaceMaterials (polyop.getFaceMatID sourcePoly faceIndex)
+    )
+
+    local sourceMapChannels = #(-2, -1)
+    local sourceNumMaps = polyop.getNumMaps sourcePoly
+    if sourceNumMaps > 0 do for mapChannel = 0 to (sourceNumMaps - 1) do append sourceMapChannels mapChannel
+    local sourceMapRecords = #()
+    for mapChannel in sourceMapChannels where polyop.getMapSupport sourcePoly mapChannel do
+    (
+        local mapVertCount = polyop.getNumMapVerts sourcePoly mapChannel
+        local mapFaceCount = polyop.getNumMapFaces sourcePoly mapChannel
+        if mapVertCount <= 0 or mapFaceCount < sourceFaceCount then throw ("Map channel " + (mapChannel as string) + " is incomplete.")
+        local mapVerts = for mapVertIndex = 1 to mapVertCount collect (polyop.getMapVert sourcePoly mapChannel mapVertIndex)
+        local mapFaces = #()
+        for faceIndex = 1 to sourceFaceCount do
+        (
+            local mapFace = polyop.getMapFace sourcePoly mapChannel faceIndex
+            if mapFace.count != sourceFaceVerts[faceIndex].count then throw ("Map channel " + (mapChannel as string) + " has a face-degree mismatch.")
+            append mapFaces mapFace
+        )
+        append sourceMapRecords #(mapChannel, mapVerts, mapFaces)
+    )
+
+    local adjacency = for vertexIndex = 1 to sourceVertCount collect #()
+    local selectedVerts = #{}
+    local edgeRecords = #()
+    for edgeIndex in selectedEdges do
+    (
+        if edgeIndex < 1 or edgeIndex > sourceEdgeCount then throw ("Selected edge is outside the active topology: " + (edgeIndex as string) + ".")
+        local edgeVerts = polyop.getEdgeVerts sourcePoly edgeIndex
+        local edgeFaces = polyop.getEdgeFaces sourcePoly edgeIndex
+        if edgeVerts == undefined or edgeFaces == undefined or edgeFaces.count != 2 then throw ("Selected edge must be shared by exactly two faces: " + (edgeIndex as string) + ".")
+        local edgeLength = distance sourcePositions[edgeVerts[1]] sourcePositions[edgeVerts[2]]
+        if edgeLength <= 1e-8 then throw ("Selected edge has zero length: " + (edgeIndex as string) + ".")
+        append adjacency[edgeVerts[1]] #(edgeVerts[2], edgeLength)
+        append adjacency[edgeVerts[2]] #(edgeVerts[1], edgeLength)
+        selectedVerts[edgeVerts[1]] = true
+        selectedVerts[edgeVerts[2]] = true
+        append edgeRecords #(edgeIndex, edgeVerts[1], edgeVerts[2], edgeFaces[1], edgeFaces[2])
+    )
+
+    local componentIds = for vertexIndex = 1 to sourceVertCount collect 0
+    local componentCount = 0
+    for startVertex in selectedVerts where componentIds[startVertex] == 0 do
+    (
+        componentCount += 1
+        local queue = #(startVertex)
+        componentIds[startVertex] = componentCount
+        local componentDegreeSum = 0
+        while queue.count > 0 do
+        (
+            local currentVertex = queue[1]
+            deleteItem queue 1
+            componentDegreeSum += adjacency[currentVertex].count
+            for neighborRecord in adjacency[currentVertex] do
+            (
+                local neighborVertex = neighborRecord[1]
+                if componentIds[neighborVertex] == 0 do
+                (
+                    componentIds[neighborVertex] = componentCount
+                    append queue neighborVertex
+                )
+            )
+        )
+        if componentDegreeSum < 4 then throw "Every selected edge component must contain at least two connected edges."
+    )
+
+    local infiniteDistance = 1e30
+    local endpointDistances = for vertexIndex = 1 to sourceVertCount collect infiniteDistance
+    local visited = #{}
+    for vertexIndex in selectedVerts where adjacency[vertexIndex].count == 1 do endpointDistances[vertexIndex] = 0.0
+    for iteration = 1 to selectedVerts.numberSet do
+    (
+        local currentVertex = 0
+        local currentDistance = infiniteDistance
+        for vertexIndex in selectedVerts where not visited[vertexIndex] and endpointDistances[vertexIndex] < currentDistance do
+        (
+            currentVertex = vertexIndex
+            currentDistance = endpointDistances[vertexIndex]
+        )
+        if currentVertex > 0 do
+        (
+            visited[currentVertex] = true
+            for neighborRecord in adjacency[currentVertex] do
+            (
+                local candidateDistance = currentDistance + neighborRecord[2]
+                if candidateDistance < endpointDistances[neighborRecord[1]] do endpointDistances[neighborRecord[1]] = candidateDistance
+            )
+        )
+    )
+    local componentMaxDistances = for componentIndex = 1 to componentCount collect 0.0
+    for vertexIndex in selectedVerts where endpointDistances[vertexIndex] < infiniteDistance do
+        componentMaxDistances[componentIds[vertexIndex]] = amax componentMaxDistances[componentIds[vertexIndex]] endpointDistances[vertexIndex]
+    local taperFactors = for vertexIndex = 1 to sourceVertCount collect 1.0
+    if taperEnds do for vertexIndex in selectedVerts do
+    (
+        local maxDistance = componentMaxDistances[componentIds[vertexIndex]]
+        if endpointDistances[vertexIndex] < infiniteDistance and maxDistance > 1e-8 then
+        (
+            local normalizedDistance = amax 0.0 (amin 1.0 (endpointDistances[vertexIndex] / maxDistance))
+            taperFactors[vertexIndex] = 1.0 - (pow (1.0 - normalizedDistance) taperExponent)
+        )
+    )
+
+    local outputPositions = #()
+    local outputSourceVertices = #()
+    local faceRecords = #()
+    local junctionItems = for vertexIndex = 1 to sourceVertCount collect #()
+    local vertexFaceOutputs = for vertexIndex = 1 to sourceVertCount collect #()
+    local boundaryOccurrences = for vertexIndex = 1 to sourceVertCount collect #()
+    local halfWidth = widthWorld * 0.5
+
+    -- First resolve the two inset directions contributed by every selected edge. Junction
+    -- topology is built later from face sectors, so a valence-N source vertex produces exactly
+    -- N center vertices regardless of triangulation around it.
+    for edgeRecord in edgeRecords do
+    (
+        local sourceA = edgeRecord[2]
+        local sourceB = edgeRecord[3]
+        local faceA = edgeRecord[4]
+        local faceB = edgeRecord[5]
+        local positionA = sourcePositions[sourceA]
+        local positionB = sourcePositions[sourceB]
+        local tangent = normalize (positionB - positionA)
+        local midpoint = (positionA + positionB) * 0.5
+
+        local faceDirections = #()
+        for faceIndex in #(faceA, faceB) do
+        (
+            local faceCenter = [0,0,0]
+            for faceVertex in sourceFaceVerts[faceIndex] do faceCenter += sourcePositions[faceVertex]
+            faceCenter /= sourceFaceVerts[faceIndex].count
+            local sideDirection = cross sourceFaceNormals[faceIndex] tangent
+            if length sideDirection <= 1e-8 then throw ("Cannot resolve strip direction on edge " + (edgeRecord[1] as string) + ".")
+            sideDirection = normalize sideDirection
+            if dot sideDirection (faceCenter - midpoint) < 0.0 do sideDirection = -sideDirection
+            append faceDirections sideDirection
+        )
+
+        local desiredNormal = sourceFaceNormals[faceA] + sourceFaceNormals[faceB]
+        if length desiredNormal <= 1e-8 then desiredNormal = sourceFaceNormals[faceA] else desiredNormal = normalize desiredNormal
+        append edgeRecord faceDirections[1]
+        append edgeRecord faceDirections[2]
+        append edgeRecord desiredNormal
+        append boundaryOccurrences[sourceA] #(faceA, faceDirections[1])
+        append boundaryOccurrences[sourceA] #(faceB, faceDirections[2])
+        append boundaryOccurrences[sourceB] #(faceA, faceDirections[1])
+        append boundaryOccurrences[sourceB] #(faceB, faceDirections[2])
+    )
+
+    local sourceObjectTM = sourceNode.objectTransform
+    local inverseSourceObjectTM = inverse sourceObjectTM
+    for sourceVertex in selectedVerts do
+    (
+        local occurrences = boundaryOccurrences[sourceVertex]
+        local selectedDegree = adjacency[sourceVertex].count
+        local factor = taperFactors[sourceVertex]
+        local centerLocal = sourcePositions[sourceVertex]
+        local centerWorld = centerLocal * sourceObjectTM
+
+        if selectedDegree == 1 then
+        (
+            if taperEnds and factor <= 1e-8 then
+            (
+                local endpointId = deadlimitDetachedInnerLineartAddOutputVertex outputPositions outputSourceVertices centerLocal sourceVertex
+                for occurrence in occurrences do append vertexFaceOutputs[sourceVertex] #(occurrence[1], endpointId)
+                append junctionItems[sourceVertex] #(endpointId, occurrences[1][1])
+            )
+            else
+            (
+                for occurrence in occurrences do
+                (
+                    local worldDirection = ((centerLocal + occurrence[2]) * sourceObjectTM) - centerWorld
+                    if length worldDirection <= 1e-8 then throw "Cannot transform a lineart boundary direction."
+                    worldDirection = normalize worldDirection
+                    local desiredLocal = (centerWorld + worldDirection * (halfWidth * factor)) * inverseSourceObjectTM
+                    local outputId = deadlimitDetachedInnerLineartAddOutputVertex outputPositions outputSourceVertices desiredLocal sourceVertex
+                    append vertexFaceOutputs[sourceVertex] #(occurrence[1], outputId)
+                    append junctionItems[sourceVertex] #(outputId, occurrence[1])
+                )
+            )
+        )
+        else
+        (
+            -- Removing selected edges from the incident face fan yields one sector between each
+            -- neighboring selected edge. Each sector becomes one miter vertex. This is the key
+            -- invariant: degree 2 -> 2 vertices/one shared edge, degree 3 -> triangle, degree 4
+            -- -> quad, degree 5 -> quad plus triangle, with no center fan or loose duplicates.
+            local incidentFaces = polyop.getFacesUsingVert sourcePoly #{sourceVertex}
+            local faceSectorIds = for faceIndex = 1 to sourceFaceCount collect 0
+            local sectorFaces = #()
+            for startFace in incidentFaces where faceSectorIds[startFace] == 0 do
+            (
+                append sectorFaces #()
+                local sectorId = sectorFaces.count
+                local faceQueue = #(startFace)
+                faceSectorIds[startFace] = sectorId
+                while faceQueue.count > 0 do
+                (
+                    local currentFace = faceQueue[1]
+                    deleteItem faceQueue 1
+                    append sectorFaces[sectorId] currentFace
+                    local currentFaceEdges = polyop.getFaceEdges sourcePoly currentFace
+                    for connectingEdge in currentFaceEdges where not selectedEdges[connectingEdge] do
+                    (
+                        local connectingVerts = polyop.getEdgeVerts sourcePoly connectingEdge
+                        if connectingVerts[1] == sourceVertex or connectingVerts[2] == sourceVertex do
+                        (
+                            local neighborFaces = polyop.getEdgeFaces sourcePoly connectingEdge
+                            for neighborFace in neighborFaces where incidentFaces[neighborFace] and faceSectorIds[neighborFace] == 0 do
+                            (
+                                faceSectorIds[neighborFace] = sectorId
+                                append faceQueue neighborFace
+                            )
+                        )
+                    )
+                )
+            )
+            if sectorFaces.count != selectedDegree then
+                throw ("Selected-edge junction at source vertex " + (sourceVertex as string) + " has " + (selectedDegree as string) + " edges but " + (sectorFaces.count as string) + " face sectors. Check for non-manifold topology.")
+
+            for sectorId = 1 to sectorFaces.count do
+            (
+                local sectorOccurrences = #()
+                for occurrence in occurrences where faceSectorIds[occurrence[1]] == sectorId do append sectorOccurrences occurrence
+                if sectorOccurrences.count != 2 then
+                    throw ("Lineart sector at source vertex " + (sourceVertex as string) + " is bounded by " + (sectorOccurrences.count as string) + " selected-edge sides; expected 2.")
+
+                local worldDirectionA = ((centerLocal + sectorOccurrences[1][2]) * sourceObjectTM) - centerWorld
+                local worldDirectionB = ((centerLocal + sectorOccurrences[2][2]) * sourceObjectTM) - centerWorld
+                if length worldDirectionA <= 1e-8 or length worldDirectionB <= 1e-8 then throw "Cannot transform a lineart sector direction."
+                worldDirectionA = normalize worldDirectionA
+                worldDirectionB = normalize worldDirectionB
+                local directionDot = dot worldDirectionA worldDirectionB
+                local denominator = 1.0 + directionDot
+                local worldOffset = [0,0,0]
+                if denominator > 1e-5 then
+                    worldOffset = (worldDirectionA + worldDirectionB) * (halfWidth * factor / denominator)
+                else
+                (
+                    local fallbackDirection = worldDirectionA + worldDirectionB
+                    if length fallbackDirection <= 1e-8 then fallbackDirection = worldDirectionA else fallbackDirection = normalize fallbackDirection
+                    worldOffset = fallbackDirection * (halfWidth * factor)
+                )
+                local desiredLocal = (centerWorld + worldOffset) * inverseSourceObjectTM
+                local outputId = deadlimitDetachedInnerLineartAddOutputVertex outputPositions outputSourceVertices desiredLocal sourceVertex
+                local representativeFace = sectorOccurrences[1][1]
+                append junctionItems[sourceVertex] #(outputId, representativeFace)
+                for occurrence in sectorOccurrences do append vertexFaceOutputs[sourceVertex] #(occurrence[1], outputId)
+            )
+        )
+    )
+
+    -- Build the strips after all sector vertices exist. Consecutive edges therefore reuse the
+    -- exact same cross-section edge instead of leaving near-coincident, unstitched geometry.
+    for edgeRecord in edgeRecords do
+    (
+        local sourceA = edgeRecord[2]
+        local sourceB = edgeRecord[3]
+        local faceA = edgeRecord[4]
+        local faceB = edgeRecord[5]
+        local aLeft = 0
+        local bLeft = 0
+        local aRight = 0
+        local bRight = 0
+        for faceOutput in vertexFaceOutputs[sourceA] do
+        (
+            if faceOutput[1] == faceA do aLeft = faceOutput[2]
+            if faceOutput[1] == faceB do aRight = faceOutput[2]
+        )
+        for faceOutput in vertexFaceOutputs[sourceB] do
+        (
+            if faceOutput[1] == faceA do bLeft = faceOutput[2]
+            if faceOutput[1] == faceB do bRight = faceOutput[2]
+        )
+        if amin #(aLeft,bLeft,aRight,bRight) <= 0 then throw "Could not resolve a stitched lineart sector vertex."
+        deadlimitDetachedInnerLineartAddFaceRecord outputPositions faceRecords #(aLeft,bLeft,bRight,aRight) #(#(faceA,sourceA),#(faceA,sourceB),#(faceB,sourceB),#(faceB,sourceA)) edgeRecord[8] sourceFaceMaterials[faceA] flipGeometry
+    )
+
+    for sourceVertex in selectedVerts where junctionItems[sourceVertex].count >= 3 do
+    (
+        local items = deepCopy junctionItems[sourceVertex]
+        local center = sourcePositions[sourceVertex]
+        local junctionNormal = [0,0,0]
+        for item in items do junctionNormal += sourceFaceNormals[item[2]]
+        if length junctionNormal <= 1e-8 then junctionNormal = [0,0,1] else junctionNormal = normalize junctionNormal
+        local basisX = outputPositions[items[1][1]] - center
+        basisX -= junctionNormal * (dot basisX junctionNormal)
+        if length basisX <= 1e-8 then basisX = if abs junctionNormal.z < 0.9 then cross junctionNormal [0,0,1] else cross junctionNormal [0,1,0]
+        basisX = normalize basisX
+        local basisY = normalize (cross junctionNormal basisX)
+        local angledItems = for item in items collect #(item, atan2 (dot (outputPositions[item[1]] - center) basisY) (dot (outputPositions[item[1]] - center) basisX))
+        for outerIndex = 1 to (angledItems.count - 1) do for innerIndex = outerIndex + 1 to angledItems.count do
+            if angledItems[innerIndex][2] < angledItems[outerIndex][2] do
+            (
+                local swapItem = angledItems[outerIndex]
+                angledItems[outerIndex] = angledItems[innerIndex]
+                angledItems[innerIndex] = swapItem
+            )
+        items = for angledItem in angledItems collect angledItem[1]
+
+        local ringVertexIds = for item in items collect item[1]
+        local ringSourceRefs = for item in items collect #(item[2], sourceVertex)
+        local cursor = 2
+        while (ringVertexIds.count - cursor + 2) > 4 do
+        (
+            deadlimitDetachedInnerLineartAddFaceRecord outputPositions faceRecords #(ringVertexIds[1],ringVertexIds[cursor],ringVertexIds[cursor+1],ringVertexIds[cursor+2]) #(ringSourceRefs[1],ringSourceRefs[cursor],ringSourceRefs[cursor+1],ringSourceRefs[cursor+2]) junctionNormal sourceFaceMaterials[ringSourceRefs[1][1]] flipGeometry
+            cursor += 2
+        )
+        local remainingCount = ringVertexIds.count - cursor + 2
+        if remainingCount == 3 then
+            deadlimitDetachedInnerLineartAddFaceRecord outputPositions faceRecords #(ringVertexIds[1],ringVertexIds[cursor],ringVertexIds[cursor+1]) #(ringSourceRefs[1],ringSourceRefs[cursor],ringSourceRefs[cursor+1]) junctionNormal sourceFaceMaterials[ringSourceRefs[1][1]] flipGeometry
+        else if remainingCount == 4 then
+            deadlimitDetachedInnerLineartAddFaceRecord outputPositions faceRecords #(ringVertexIds[1],ringVertexIds[cursor],ringVertexIds[cursor+1],ringVertexIds[cursor+2]) #(ringSourceRefs[1],ringSourceRefs[cursor],ringSourceRefs[cursor+1],ringSourceRefs[cursor+2]) junctionNormal sourceFaceMaterials[ringSourceRefs[1][1]] flipGeometry
+    )
+
+    if faceRecords.count == 0 then throw "The selected network did not produce any valid lineart faces."
+    #(outputPositions, outputSourceVertices, faceRecords, sourceMapRecords, sourceFaceVerts, selectedEdges.numberSet)
+)
+
+fn deadlimitDetachedInnerLineartApplySkins lineartNode skinSnapshots sourceVertexIds =
+(
+    local copiedSkins = #()
+    for snapshotIndex = skinSnapshots.count to 1 by -1 do
+    (
+        local sourceSkin = skinSnapshots[snapshotIndex][1]
+        local sourceVertexData = skinSnapshots[snapshotIndex][2]
+        local copiedSkin = copy sourceSkin
+        addModifier lineartNode copiedSkin
+        select lineartNode
+        max modify mode
+        modPanel.setCurrentObject copiedSkin node:lineartNode ui:true
+        update lineartNode
+        local targetVertexCount = skinOps.GetNumberVertices copiedSkin
+        if targetVertexCount != sourceVertexIds.count then throw ("Copied Skin '" + copiedSkin.name + "' sees " + (targetVertexCount as string) + " vertices; expected " + (sourceVertexIds.count as string) + ".")
+        for targetVertex = 1 to sourceVertexIds.count do
+        (
+            local sourceVertex = sourceVertexIds[targetVertex]
+            if sourceVertex < 1 or sourceVertex > sourceVertexData.count then throw "Generated lineart contains an invalid Skin source vertex."
+            deadlimitInnerLineartApplySkinWeightData copiedSkin lineartNode targetVertex sourceVertexData[sourceVertex]
+        )
+        skinOps.Invalidate copiedSkin 0
+        update lineartNode
+        append copiedSkins copiedSkin
+    )
+    copiedSkins
+)
+
+fn deadlimitDetachedInnerLineartApplyExplicitNormals lineartNode =
+(
+    local normalModifier = Edit_Normals()
+    addModifier lineartNode normalModifier
+    select lineartNode
+    max modify mode
+    modPanel.setCurrentObject normalModifier node:lineartNode ui:true
+    update lineartNode
+    local normalCount = normalModifier.GetNumNormals node:lineartNode
+    if normalCount <= 0 then throw "Edit Normals did not expose generated lineart normals."
+    local normalSelection = #{1..normalCount}
+    normalModifier.MakeExplicit selection:normalSelection node:lineartNode
+    for normalIndex = 1 to normalCount do normalModifier.SetNormal normalIndex (-(normalModifier.GetNormal normalIndex node:lineartNode)) node:lineartNode
+    update lineartNode
+    normalModifier
+)
+
+fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false layerName:"lineart" flipGeometry:true invertNormals:true taperEnds:true taperExponent:2.0 copySkin:false =
+(
+    if selection.count != 1 then throw "Select one source object and at least two inner edges."
+    if widthMm <= 0.0 then throw "Lineart width in millimeters must be greater than zero."
+    if taperExponent <= 0.0 then throw "Taper EXP must be greater than zero."
+    if customLayer and (trimRight (trimLeft layerName)).count == 0 then throw "Custom layer name cannot be empty."
+
+    local sourceNode = selection[1]
+    if not isValidNode sourceNode or (superClassOf sourceNode) != GeometryClass then throw "Select one valid geometry object."
+    if subObjectLevel != 2 then throw "Enter Edge sub-object mode and select at least two inner edges."
+    local currentStackObject = try(modPanel.getCurrentObject())catch(undefined)
+    local sourceModifier = undefined
+    local selectedEdges = #{}
+    local sourceVertCount = 0
+    local workingNode = undefined
+    local workingPoly = undefined
+
+    try
+    (
+        with undo off with redraw off
+        (
+            if currentStackObject != undefined and (classOf currentStackObject) == Edit_Poly and (modPanel.getModifierIndex sourceNode currentStackObject) != undefined then
+            (
+                sourceModifier = currentStackObject
+                selectedEdges = copy (sourceModifier.GetSelection #Edge node:sourceNode)
+                sourceVertCount = sourceModifier.GetNumVertices node:sourceNode
+                local sourceFaceCount = sourceModifier.GetNumFaces node:sourceNode
+                local sourceEdgeCount = sourceModifier.GetNumEdges node:sourceNode
+                local sourceModifierIndex = modPanel.getModifierIndex sourceNode sourceModifier
+                workingNode = copy sourceNode
+                for modifierIndex = 1 to (sourceModifierIndex - 1) do deleteModifier workingNode 1
+                collapseStack workingNode
+                if (classOf workingNode.baseObject) != Editable_Poly do convertToPoly workingNode
+                workingPoly = workingNode.baseObject
+                if polyop.getNumVerts workingPoly != sourceVertCount or polyop.getNumFaces workingPoly != sourceFaceCount or polyop.getNumEdges workingPoly != sourceEdgeCount then throw "The active Edit Poly result changed topology while it was isolated."
+            )
+            else if (classOf sourceNode.baseObject) == Editable_Poly and (sourceNode.modifiers.count == 0 or currentStackObject == sourceNode.baseObject or currentStackObject == sourceNode) then
+            (
+                selectedEdges = copy (polyop.getEdgeSelection sourceNode.baseObject)
+                sourceVertCount = polyop.getNumVerts sourceNode.baseObject
+                workingNode = copy sourceNode
+                workingNode.name = uniqueName "__DEADLIMIT_DETACHED_LINEART_WORK__"
+                while workingNode.modifiers.count > 0 do deleteModifier workingNode 1
+                if (classOf workingNode.baseObject) != Editable_Poly do convertToPoly workingNode
+                workingPoly = workingNode.baseObject
+            )
+            else
+                throw "Make the base Editable Poly or intended Edit Poly modifier active before creating detached lineart."
+        )
+
+        if selectedEdges.numberSet < 2 then throw "Select at least two connected inner edges."
+        local skinSnapshots = #()
+        if copySkin do skinSnapshots = deadlimitVertexColorCaptureInnerLineartSkins sourceNode sourceModifier sourceVertCount
+        local widthWorld = (units.decodeValue "1mm") * widthMm
+        local buildResult = deadlimitDetachedInnerLineartBuild sourceNode workingPoly selectedEdges widthWorld flipGeometry:false taperEnds:taperEnds taperExponent:taperExponent
+        with undo off try(if isValidNode workingNode do delete workingNode)catch()
+        workingNode = undefined
+
+        local lineartNode = undefined
+        local copiedSkins = #()
+        undo "Create Detached Inner Lineart" on
+        (
+            lineartNode = mesh name:(deadlimitDetachedInnerLineartUniqueName sourceNode.name) vertices:#([0,0,0],[1,0,0],[0,1,0]) faces:#([1,2,3])
+            convertToPoly lineartNode
+            local lineartPoly = lineartNode.baseObject
+            polyop.deleteFaces lineartPoly #{1}
+            local remainingDummyVertices = polyop.getNumVerts lineartPoly
+            if remainingDummyVertices > 0 do polyop.deleteVerts lineartPoly #{1..remainingDummyVertices}
+            lineartNode.transform = sourceNode.transform
+            lineartNode.material = sourceNode.material
+            lineartNode.wireColor = sourceNode.wireColor
+            for position in buildResult[1] do polyop.createVert lineartPoly position
+            for faceRecord in buildResult[3] do
+            (
+                local faceIndex = polyop.createPolygon lineartPoly faceRecord[1]
+                if faceIndex == undefined or faceIndex == 0 then throw "Could not create a detached lineart face."
+                polyop.setFaceSmoothGroup lineartPoly faceIndex 1
+                polyop.setFaceMatID lineartPoly faceIndex faceRecord[3]
+            )
+
+            local sourceFaceVerts = buildResult[5]
+            if buildResult[4].count > 0 do
+            (
+                local positiveMapCount = 0
+                for mapRecord in buildResult[4] where mapRecord[1] >= 0 do positiveMapCount = amax positiveMapCount (mapRecord[1] + 1)
+                if positiveMapCount > 0 do polyop.setNumMaps lineartPoly positiveMapCount keep:false
+                for mapRecord in buildResult[4] do
+                (
+                    local mapChannel = mapRecord[1]
+                    local totalMapVertices = 0
+                    for faceRecord in buildResult[3] do totalMapVertices += faceRecord[2].count
+                    polyop.setMapSupport lineartPoly mapChannel true
+                    polyop.setNumMapVerts lineartPoly mapChannel totalMapVertices keep:false
+                    polyop.setNumMapFaces lineartPoly mapChannel buildResult[3].count keep:false
+                    local outputMapVertex = 0
+                    for faceIndex = 1 to buildResult[3].count do
+                    (
+                        local mapFace = #()
+                        for sourceRef in buildResult[3][faceIndex][2] do
+                        (
+                            local sourceFace = sourceRef[1]
+                            local sourceVertex = sourceRef[2]
+                            local sourceCorner = findItem sourceFaceVerts[sourceFace] sourceVertex
+                            if sourceCorner == 0 then throw "Detached lineart map source corner is invalid."
+                            local sourceMapVertex = mapRecord[3][sourceFace][sourceCorner]
+                            outputMapVertex += 1
+                            polyop.setMapVert lineartPoly mapChannel outputMapVertex mapRecord[2][sourceMapVertex]
+                            append mapFace outputMapVertex
+                        )
+                        polyop.setMapFace lineartPoly mapChannel faceIndex mapFace
+                    )
+                )
+            )
+
+            -- Post-process contract: all topology and map faces exist before winding changes.
+            -- Editable Poly flips complete elements, so select the complete generated face set
+            -- and call its native FlipNormals button operation once. This reverses geometry and
+            -- every map face together; polyop.flipNormals is intentionally avoided because it is
+            -- a no-op on this manifold Editable Poly result in 3ds Max 2025.
+            if flipGeometry do
+            (
+                local generatedFaceCount = polyop.getNumFaces lineartPoly
+                if generatedFaceCount > 0 do
+                (
+                    select lineartNode
+                    max modify mode
+                    modPanel.setCurrentObject lineartPoly node:lineartNode ui:true
+                    subObjectLevel = 5
+                    lineartPoly.SetSelection #Face #{1..generatedFaceCount}
+                    lineartPoly.ButtonOp #FlipNormals
+                    lineartPoly.SetSelection #Face #{}
+                    subObjectLevel = 0
+                )
+            )
+            update lineartNode
+
+            local targetLayer = undefined
+            if customLayer then
+            (
+                local cleanLayerName = trimRight (trimLeft layerName)
+                targetLayer = LayerManager.getLayerFromName cleanLayerName
+                if targetLayer == undefined do targetLayer = LayerManager.newLayerFromName cleanLayerName
+            )
+            else
+                targetLayer = LayerManager.getLayerFromName (sourceNode.layer as string)
+            if targetLayer != undefined do targetLayer.addNode lineartNode
+
+            if copySkin do copiedSkins = deadlimitDetachedInnerLineartApplySkins lineartNode skinSnapshots buildResult[2]
+            if invertNormals do deadlimitDetachedInnerLineartApplyExplicitNormals lineartNode
+            update lineartNode
+            select lineartNode
+        )
+        redrawViews()
+        #(buildResult[6], buildResult[3].count, buildResult[1].count, lineartNode.name, copiedSkins.count)
+    )
+    catch
+    (
+        with undo off try(if isValidNode workingNode do delete workingNode)catch()
+        throw()
+    )
+)
+
 fn deadlimitVertexColorResultText actionName result =
 (
     local text = actionName + ": " + (result[1] as string) + " object(s)."
@@ -2497,41 +3187,34 @@ rollout deadlimitVertexColorBoneToolsRollout "BONE TOOLS"
 
 rollout deadlimitVertexColorInnerLineartRollout "INNER LINEART"
 (
-    checkbox vertexMarkerCheckbox "Alpha Marker" checked:false width:120 across:2 tooltip:"Write black Vertex Alpha to participating lineart corners while preserving Vertex Color RGB."
-    button createInnerLineartButton "Create Lineart" width:137 height:22 tooltip:"Create lineart topology inside the currently active/base Editable Poly."
-    button displayLineartButton "DISPLAY LINEART" width:137 height:22 across:2 tooltip:"Switch selected meshes between Vertex Alpha lineart visualization and Vertex Color RGB display."
-    button syncInnerLineartSkinButton "SYNC LINEART SKIN" width:137 height:22 tooltip:"Copy the current source-vertex Skin weights and DQ mask to every coincident INNER LINEART clone."
+    spinner lineartWidthMmSpinner "Width (mm):" range:[0.01,1000.0,1.0] type:#float scale:0.1 fieldWidth:58 width:160 across:2 tooltip:"Full world-space width of the generated strip in millimeters."
+    checkbox copyLineartSkinCheckbox "Copy Skin" checked:false width:105 tooltip:"Copy Skin modifiers and source-vertex weights to the separate lineart object."
+    checkbox flipLineartCheckbox "Flip Polygons" checked:true width:105 across:2 tooltip:"Reverse generated face winding."
+    checkbox invertLineartNormalsCheckbox "Invert Normals" checked:true width:115 tooltip:"Make generated vertex normals explicit and reverse them."
+    checkbox taperLineartCheckbox "Taper Ends" checked:true width:105 across:2 tooltip:"Collapse degree-1 lineart endpoints to a single vertex."
+    spinner taperExponentSpinner "EXP:" range:[0.1,10.0,2.0] type:#float scale:0.1 fieldWidth:50 width:115 enabled:true tooltip:"1 = linear roof; 2 = rounded bridge-like falloff."
+    checkbox customLineartLayerCheckbox "Custom Layer" checked:false width:105 across:2 tooltip:"Place generated strips into the named layer."
+    editText lineartLayerNameEdit text:"lineart" width:185 height:18 enabled:false tooltip:"Existing or new layer name for generated lineart."
+    button createInnerLineartButton "CREATE LINEART" width:220 height:24 align:#center tooltip:"Build a separate lineart strip from the selected edge network."
 
     on createInnerLineartButton pressed do
     (
         try
         (
-            local result = deadlimitVertexColorCreateInnerLineart vertexMarker:vertexMarkerCheckbox.checked
-            deadlimitVertexColorFbxRollout.statusLabel.text = "Inner Lineart: " + (result[1] as string) + " edge(s), " + (result[2] as string) + " face(s)."
+            local result = deadlimitVertexColorCreateDetachedInnerLineart widthMm:lineartWidthMmSpinner.value customLayer:customLineartLayerCheckbox.checked layerName:lineartLayerNameEdit.text flipGeometry:flipLineartCheckbox.checked invertNormals:invertLineartNormalsCheckbox.checked taperEnds:taperLineartCheckbox.checked taperExponent:taperExponentSpinner.value copySkin:copyLineartSkinCheckbox.checked
+            deadlimitVertexColorFbxRollout.statusLabel.text = "Lineart '" + result[4] + "': " + (result[1] as string) + " edge(s), " + (result[2] as string) + " face(s), " + (result[5] as string) + " Skin."
         )
         catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
     )
 
-    on displayLineartButton pressed do
+    on customLineartLayerCheckbox changed state do
     (
-        try
-        (
-            local result = deadlimitVertexColorToggleLineartDisplay()
-            displayLineartButton.text = if result[2] then "DISPLAY VERTCOLOR" else "DISPLAY LINEART"
-            local displayName = if result[2] then "Lineart Alpha" else "Vertex Color RGB"
-            deadlimitVertexColorFbxRollout.statusLabel.text = "Display: " + displayName + " on " + (result[1] as string) + " object(s)."
-        )
-        catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
+        lineartLayerNameEdit.enabled = state
     )
 
-    on syncInnerLineartSkinButton pressed do
+    on taperLineartCheckbox changed state do
     (
-        try
-        (
-            local result = deadlimitVertexColorSyncInnerLineartSkin()
-            deadlimitVertexColorFbxRollout.statusLabel.text = "Lineart Skin: " + (result[4] as string) + " clone(s) updated in " + (result[2] as string) + " Skin modifier(s)."
-        )
-        catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
+        taperExponentSpinner.enabled = state
     )
 )
 

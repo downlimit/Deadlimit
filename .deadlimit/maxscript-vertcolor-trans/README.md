@@ -41,35 +41,32 @@ BONE TOOLS operations affect selected BoneGeometry display meshes and use one Un
 
 ## Inner Lineart
 
-INNER LINEART creates zero-width topology for normal-driven inner outlines:
+INNER LINEART builds a separate bevel-like strip for Deadlock's expanded-backface outline:
 
-1. Use a bare Editable Poly, a bare Editable Mesh, or make the intended Edit Poly modifier active anywhere inside the stack.
-2. Enter Edge mode and select a connected chain of at least two non-border edges. T- and X-junctions are supported.
-3. Optionally enable Alpha Marker.
-4. Press Create Lineart.
-5. Use DISPLAY LINEART / DISPLAY VERTCOLOR to switch selected meshes between Vertex Alpha visualization and their regular Vertex Color RGB.
+1. Make the source base Editable Poly or the intended Edit Poly modifier active.
+2. Enter Edge mode and select a connected network of at least two inner edges.
+3. Set the full strip Width in millimeters.
+4. Configure taper, layer, polygon winding, normals, and optional Skin copying.
+5. Press CREATE LINEART.
 
-The deterministic sector builder records source vertices and face corners, partitions faces around selected vertices into sectors, creates coincident sector vertices, rebuilds original faces, and closes selected edges with zero-area polygons. It does not call 3ds Max Chamfer. A three-way junction receives one visible triangle cap. A four-way junction receives one visible quad cap. Junctions with more sectors are filled by real visible faces no larger than quads. Cap faces inherit a neighboring source smoothing group and material ID. Isolated one-edge selections are rejected.
+The command reads the selected-edge graph from the active authoring level and creates a new Editable Poly. Source topology, Skin vertex IDs, modifier instances, sub-object data, UVs, and vertex paint stay unchanged. Generated objects use `lineart_<source>_01`, `lineart_<source>_02`, and the next available two-digit suffix. The default destination is the source object's layer. Custom Layer enables the adjacent name field, whose default is `lineart`; the named layer is reused or created.
 
-Every supported map channel, including Vertex Alpha and Vertex Illumination, is reconstructed corner-for-corner. New seam faces receive collapsed map faces at matching source corners, so their UV area is zero and existing UV seams remain unchanged. With Alpha Marker enabled, every participating Vertex Alpha corner becomes black. Existing non-marker alpha remains unchanged; a missing alpha channel receives a white background. Vertex Color RGB in channel 0 remains unchanged.
+Width is the full world-space width centered on the source edges. The builder uses the two adjacent source face planes for each strip segment and stitches adjacent segments through face sectors around every selected vertex. A two-edge turn shares one cross-section edge. A three-edge junction adds one triangle, four edges add one quad, five edges add one quad plus one triangle, and higher valences continue with quads plus at most one triangle. No center fan or n-gon is created. Every generated face uses smoothing group 1 and the corresponding source material ID.
 
-Smoothing groups, material IDs, and edge visibility are restored for original faces. New seam faces inherit the neighboring smoothing mask when both sides match. A seam between different masks, including mixed junctions, receives the first globally unused smoothing-group bit so it remains distinct from every original surface. The generated topology is written directly into the Editable Poly where the selected edges live. The tool does not add a helper modifier.
+Taper Ends is on by default. Each open endpoint collapses to one geometry vertex. Width along an open connected component follows `1 - (1 - t)^EXP`, where `t` is normalized graph distance from the nearest endpoint. EXP `1` gives a linear roof profile; EXP `2` gives the default rounded bridge-like profile. Closed loops have no endpoints and keep full width. The EXP spinner locks while Taper Ends is off.
 
-When an Edit Poly modifier is active anywhere inside a stack, that same modifier receives the topology and stays in its original position. Modifiers above and below it, including Skin, remain in place. An active base Editable Poly is changed directly, including when other modifiers exist above it. A bare Editable Mesh is converted to Editable Poly first while retaining its physical edge selection. Conversion and topology creation use one Undo step.
+Flip Polygons and Invert Normals are on by default. The complete mesh and all map faces are generated and stitched first. Flip Polygons then performs one native Editable Poly element flip over the finished face set, including matching UV/map-face winding. Invert Normals runs last: it adds Edit Normals, makes every normal explicit, and reverses them. Together they produce inward-facing geometry whose explicit normals point back toward the original surface, matching the intended expanded-backface outline. Either operation can be disabled independently.
 
-Border edges, zero-length edges, isolated selected edges, existing zero-width lineart edges, multiple selected objects, unsupported base types, incomplete map channels, and non-Edge sub-object modes are rejected before the source is changed. Runtime failures discard the working copy before reporting the error.
+Every supported face-corner map channel is copied from the source references, including UV channels, Vertex Color, Vertex Alpha, and Vertex Illumination. Existing UV seams and painted data on the source remain untouched. Generated map faces follow their new strip and junction faces.
 
-## Skin-aware Inner Lineart
+## Optional Skin copy
 
-Create Lineart records exact source-to-clone seam groups on the object. The metadata survives scene save/reload and avoids nearest-position guesses. For every Skin above the edited stack level, the command snapshots ordinary weights, DQ blend masks, normalization, and supported rigid state before changing topology. Existing vertices whose data already matches are only validated; each generated clone receives the exact source data. The topology and Skin update share the Create Lineart Undo transaction.
+Copy Skin is off by default. The generated lineart is an independent unskinned Editable Poly unless this checkbox is enabled.
 
-Continue editing Skin on the same mesh. SYNC LINEART SKIN copies the current source-vertex data to every coincident clone and reports how many clones changed. EXPORT VERTEX COLOR FBX runs the same synchronization automatically for selected meshes. A synchronization that changes Skin leaves the scene dirty so the repaired weights can be saved.
+When enabled, every Skin modifier above the active authoring level is copied to the generated object. Each generated vertex stores one authoritative source vertex ID, then receives the source vertex's weights, DQ blend mask, normalization, and supported rigid state. Bind state and bone order come from the copied Skin modifier. The source Skin is read-only during this operation.
 
-The safety checks are:
+Creation is one Undo step. Input validation happens before the new object is committed. The command rejects multiple selected objects, fewer than two selected edges, disconnected one-edge components, border or zero-length edges, unsupported active stack levels, invalid map topology, and incompatible Skin input when Copy Skin is enabled. Temporary working geometry is discarded after success or failure.
 
-- the active Edit Poly and each Skin above it must see the expected vertex count;
-- source and clone vertices must still coincide at the Skin input;
-- a topology-changing modifier between the active Edit Poly and Skin rejects Create Lineart before the original stack is touched;
-- stale or incompatible seam metadata rejects synchronization and FBX export.
+The previous zero-width in-place implementation remains internal for scene/script compatibility. The INNER LINEART rollout uses the detached strip path described above.
 
-Skin exclusion lists and Skin gizmo internals are outside the current per-vertex synchronization contract. Keep the normal Skin backup workflow when those features are used.
+Skin exclusion lists and Skin gizmo internals remain outside the per-vertex copy contract. Keep the normal Skin backup workflow when those features are used.
