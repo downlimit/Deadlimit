@@ -1,0 +1,45 @@
+name: One-shot launch game fastpath patch
+
+on:
+  push:
+    branches:
+      - fix/launch-game-online-stop-fastpath
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Stop online mode on game launch and cache Steam path'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/launch-game-online-stop-fastpath
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Apply patch
+        shell: pwsh
+        run: internal/tests/_patch-launch-game-fastpath.ps1
+      - name: Restore
+        run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
+      - name: Build
+        run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+      - name: Launch game fastpath smoke
+        shell: pwsh
+        run: internal/tests/launch-game-fastpath-smoke.ps1
+      - name: Existing prepare behavior smoke
+        shell: pwsh
+        run: internal/tests/prepare-behavior-smoke.ps1
+      - name: Startup smoke
+        run: dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --startup-smoke
+      - name: Commit patch
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add internal/src/Deadlimit/App/OnlinePreparationFeature.cs internal/src/Deadlimit/App/ProjectHeaderFeature.cs internal/tests/launch-game-fastpath-smoke.ps1
+          git commit -m 'Stop online mode on game launch and cache Steam path'
+          git push origin HEAD:fix/launch-game-online-stop-fastpath
