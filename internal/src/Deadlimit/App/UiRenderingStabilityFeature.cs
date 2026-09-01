@@ -11,6 +11,7 @@ internal static class UiRenderingStabilityFeature
     private const int WmShowWindow = 0x0018;
     private const int WhCbt = 5;
     private const int HcbtActivate = 5;
+    private const uint GwOwner = 4;
 
     private static readonly PropertyInfo? DoubleBufferedProperty = typeof(Control).GetProperty(
         "DoubleBuffered",
@@ -26,6 +27,7 @@ internal static class UiRenderingStabilityFeature
     private static readonly HashSet<Form> TrackedModalForms = [];
     private static readonly Dictionary<Control, int> RedrawHolds = [];
     private static readonly Dictionary<Form, int> PendingModalOwnerReleases = [];
+    private static readonly Dictionary<Form, int> ReadyModalOwnerReleases = [];
     private static readonly FirstPaintMessageFilter FirstPaintFilter = new();
     private static readonly HookProc CbtHookCallback = OnCbtHook;
     private static IntPtr _cbtHook;
@@ -121,7 +123,8 @@ internal static class UiRenderingStabilityFeature
             TrackModalOwner(form, allowOwnedNonModal: false);
         }
 
-        ReleasePendingModalOwners();
+        ReleaseReadyModalOwners();
+        PromotePendingModalOwnerReleases();
     }
 
     private static void PrepareSettingsBeforeFirstPaint(SettingsForm form)
@@ -219,8 +222,9 @@ internal static class UiRenderingStabilityFeature
 
     private static void TrackModalOwner(Form form, bool allowOwnedNonModal)
     {
+        var owner = ResolveOwner(form);
         if ((!allowOwnedNonModal && !form.Modal)
-            || form.Owner is not Form owner
+            || owner is null
             || owner.IsDisposed
             || !owner.IsHandleCreated
             || !TrackedModalForms.Add(form))
@@ -238,12 +242,31 @@ internal static class UiRenderingStabilityFeature
         };
     }
 
+    private static Form? ResolveOwner(Form form)
+    {
+        if (form.Owner is Form managedOwner)
+        {
+            return managedOwner;
+        }
+
+        if (!OperatingSystem.IsWindows() || !form.IsHandleCreated)
+        {
+            return null;
+        }
+
+        var ownerHandle = GetWindow(form.Handle, GwOwner);
+        return ownerHandle == IntPtr.Zero
+            ? null
+            : Control.FromHandle(ownerHandle) as Form;
+    }
+
     private static void QueueModalOwnerRelease(Form owner)
     {
         if (owner.IsDisposed || !owner.IsHandleCreated)
         {
             RedrawHolds.Remove(owner);
             PendingModalOwnerReleases.Remove(owner);
+            ReadyModalOwnerReleases.Remove(owner);
             return;
         }
 
@@ -252,7 +275,7 @@ internal static class UiRenderingStabilityFeature
             : 1;
     }
 
-    private static void ReleasePendingModalOwners()
+    private static void PromotePendingModalOwnerReleases()
     {
         if (PendingModalOwnerReleases.Count == 0)
         {
@@ -271,9 +294,45 @@ internal static class UiRenderingStabilityFeature
                 continue;
             }
 
-            // Application.Idle runs after the activation queue is drained. MainForm's
-            // project rescan, stored library order and status refresh all finish behind the
-            // frozen owner; only the final composed state is painted once.
+            ReadyModalOwnerReleases[owner] = ReadyModalOwnerReleases.TryGetValue(owner, out var readyCount)
+                ? readyCount + releaseCount
+                : releaseCount;
+
+            // Force one message turn before the release. This guarantees another Idle
+            // boundary even when the user simply closes Settings and does nothing else.
+            try
+            {
+                owner.BeginInvoke((Action)(() => { }));
+            }
+            catch (InvalidOperationException)
+            {
+                RedrawHolds.Remove(owner);
+                ReadyModalOwnerReleases.Remove(owner);
+            }
+        }
+    }
+
+    private static void ReleaseReadyModalOwners()
+    {
+        if (ReadyModalOwnerReleases.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var pair in ReadyModalOwnerReleases.ToArray())
+        {
+            var owner = pair.Key;
+            var releaseCount = pair.Value;
+            ReadyModalOwnerReleases.Remove(owner);
+
+            if (owner.IsDisposed || !owner.IsHandleCreated)
+            {
+                RedrawHolds.Remove(owner);
+                continue;
+            }
+
+            // This is the second settled Idle after FormClosed. Activated handlers and any
+            // MainForm replacement requested by interface changes have already run.
             for (var index = 0; index < releaseCount; index++)
             {
                 ReleaseRedraw(owner, repaint: true);
@@ -393,6 +452,9 @@ internal static class UiRenderingStabilityFeature
         int code,
         IntPtr wParam,
         IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr windowHandle, uint command);
 
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
