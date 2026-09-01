@@ -244,6 +244,24 @@ public sealed class PrepareAuthoringService
                 .ToArray();
 
             var customTemplateMaterial = ChooseLikelyCharacterSurfaceMaterial(templateCandidates, manifest.Hero);
+            if (customTemplateMaterial is null)
+            {
+                var sourceDumpRoot = SafePath.ResolveUnderRoot(
+                    manifest.ProjectFolder,
+                    manifest.SourceDumpFolderName,
+                    "Project source-dump folder");
+                var retailTemplateCandidates = DiscoverRetailTemplateMaterialCandidates(
+                    sourceCopy.SourceVmdlPath,
+                    sourceDumpRoot,
+                    log);
+                customTemplateMaterial = ChooseLikelyCharacterSurfaceMaterial(retailTemplateCandidates, manifest.Hero);
+
+                if (customTemplateMaterial is not null)
+                {
+                    log.AppendLine($"Custom material retail template inferred from original extracted retail DMX: {customTemplateMaterial}");
+                }
+            }
+
             var resolvedMaterialSources = templateCandidates
                 .Select(remap => remap.From)
                 .ToArray();
@@ -615,6 +633,37 @@ public sealed class PrepareAuthoringService
 
         alias = materialPrefix + name;
         return true;
+    }
+
+    private static IReadOnlyList<VmdlMaterialRemap> DiscoverRetailTemplateMaterialCandidates(
+        string sourceVmdlPath,
+        string sourceDumpRoot,
+        StringBuilder log)
+    {
+        var retailDmxFiles = new List<string>();
+        foreach (var renderMesh in RetailVmdlInheritance.ReadRenderMeshes(sourceVmdlPath))
+        {
+            var sourceDmxPath = SafePath.ResolveUnderRoot(
+                sourceDumpRoot,
+                renderMesh.Filename.Replace('/', Path.DirectorySeparatorChar),
+                "Retail render-mesh source");
+
+            if (File.Exists(sourceDmxPath))
+            {
+                retailDmxFiles.Add(sourceDmxPath);
+            }
+        }
+
+        var materialReferences = DiscoverDmxMaterialReferences(retailDmxFiles);
+        log.AppendLine($"Retail template material candidates discovered from original extracted DMX: {materialReferences.Count}");
+        foreach (var reference in materialReferences)
+        {
+            log.AppendLine($"  retail template candidate {reference}");
+        }
+
+        return materialReferences
+            .Select(reference => new VmdlMaterialRemap(reference, reference))
+            .ToArray();
     }
 
     private static List<VmdlMaterialRemap> DiscoverMaterialRepairs(
