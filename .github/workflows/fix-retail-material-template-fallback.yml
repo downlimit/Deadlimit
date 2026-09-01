@@ -1,0 +1,126 @@
+name: Fix retail material template fallback
+
+on:
+  push:
+    branches: [ fix/retail-material-template-fallback ]
+    paths:
+      - '.github/workflows/fix-retail-material-template-fallback.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Apply fallback fix
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('internal/src/Deadlimit/Core/PrepareAuthoringService.cs')
+          text = p.read_text(encoding='utf-8')
+
+          old = '''            var customTemplateMaterial = ChooseLikelyCharacterSurfaceMaterial(templateCandidates, manifest.Hero);
+            var resolvedMaterialSources = templateCandidates
+                .Select(remap => remap.From)
+                .ToArray();
+'''
+          new = '''            var customTemplateMaterial = ChooseLikelyCharacterSurfaceMaterial(templateCandidates, manifest.Hero);
+            if (customTemplateMaterial is null)
+            {
+                var sourceDumpRoot = SafePath.ResolveUnderRoot(
+                    manifest.ProjectFolder,
+                    manifest.SourceDumpFolderName,
+                    "Project source-dump folder");
+                var retailTemplateCandidates = DiscoverRetailTemplateMaterialCandidates(
+                    sourceCopy.SourceVmdlPath,
+                    sourceDumpRoot,
+                    log);
+                customTemplateMaterial = ChooseLikelyCharacterSurfaceMaterial(retailTemplateCandidates, manifest.Hero);
+
+                if (customTemplateMaterial is not null)
+                {
+                    log.AppendLine($"Custom material retail template inferred from original extracted retail DMX: {customTemplateMaterial}");
+                }
+            }
+
+            var resolvedMaterialSources = templateCandidates
+                .Select(remap => remap.From)
+                .ToArray();
+'''
+          if text.count(old) != 1:
+              raise SystemExit(f'Expected template selection block once, found {text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          anchor = '''    private static List<VmdlMaterialRemap> DiscoverMaterialRepairs(
+'''
+          helper = '''    private static IReadOnlyList<VmdlMaterialRemap> DiscoverRetailTemplateMaterialCandidates(
+        string sourceVmdlPath,
+        string sourceDumpRoot,
+        StringBuilder log)
+    {
+        var retailDmxFiles = new List<string>();
+        foreach (var renderMesh in RetailVmdlInheritance.ReadRenderMeshes(sourceVmdlPath))
+        {
+            var sourceDmxPath = SafePath.ResolveUnderRoot(
+                sourceDumpRoot,
+                renderMesh.Filename.Replace('/', Path.DirectorySeparatorChar),
+                "Retail render-mesh source");
+
+            if (File.Exists(sourceDmxPath))
+            {
+                retailDmxFiles.Add(sourceDmxPath);
+            }
+        }
+
+        var materialReferences = DiscoverDmxMaterialReferences(retailDmxFiles);
+        log.AppendLine($"Retail template material candidates discovered from original extracted DMX: {materialReferences.Count}");
+        foreach (var reference in materialReferences)
+        {
+            log.AppendLine($"  retail template candidate {reference}");
+        }
+
+        return materialReferences
+            .Select(reference => new VmdlMaterialRemap(reference, reference))
+            .ToArray();
+    }
+
+'''
+          if text.count(anchor) != 1:
+              raise SystemExit(f'Expected helper anchor once, found {text.count(anchor)}')
+          text = text.replace(anchor, helper + anchor, 1)
+          p.write_text(text, encoding='utf-8', newline='\n')
+          PY
+      - name: Verify diff
+        shell: pwsh
+        run: |
+          git diff --check
+          $diff = git diff -- internal/src/Deadlimit/Core/PrepareAuthoringService.cs
+          if (-not ($diff -match 'DiscoverRetailTemplateMaterialCandidates')) { throw 'Retail DMX template fallback missing.' }
+          if (-not ($diff -match 'sourceCopy.SourceVmdlPath')) { throw 'Fallback does not use immutable extracted retail source.' }
+          if (-not ($diff -match 'RetailVmdlInheritance.ReadRenderMeshes')) { throw 'Fallback does not follow retail VMDL render meshes.' }
+      - name: Restore
+        run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
+      - name: Build
+        run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+      - name: Existing metal preset regression smoke
+        shell: pwsh
+        run: internal/tests/metal-material-preset-smoke.ps1
+      - name: Startup smoke
+        run: dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --startup-smoke
+      - name: Commit source fix
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add internal/src/Deadlimit/Core/PrepareAuthoringService.cs
+          git commit -m "Infer custom VMAT template from retail DMX"
+          git push origin HEAD:fix/retail-material-template-fallback
