@@ -1,0 +1,16 @@
+name: Launch game fastpath smoke
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify launch-game fastpath contract
+        shell: pwsh
+        run: internal/tests/launch-game-fastpath-smoke.ps1
