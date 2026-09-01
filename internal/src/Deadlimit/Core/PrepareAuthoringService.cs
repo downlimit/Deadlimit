@@ -64,16 +64,18 @@ public sealed class PrepareAuthoringService
         ProjectManifest manifest,
         IProgress<PrepareAuthoringProgress>? progress = null,
         CancellationToken cancellationToken = default,
-        bool regenerateCustomMaterials = false) =>
+        bool regenerateCustomMaterials = false,
+        bool backupCustomMaterials = true) =>
         Task.Run(
-            () => Prepare(manifest, progress, cancellationToken, regenerateCustomMaterials),
+            () => Prepare(manifest, progress, cancellationToken, regenerateCustomMaterials, backupCustomMaterials),
             cancellationToken);
 
     private PrepareAuthoringResult Prepare(
         ProjectManifest manifest,
         IProgress<PrepareAuthoringProgress>? progress,
         CancellationToken cancellationToken,
-        bool regenerateCustomMaterials)
+        bool regenerateCustomMaterials,
+        bool backupCustomMaterials)
     {
         ValidateEnvironment(manifest);
         cancellationToken.ThrowIfCancellationRequested();
@@ -113,6 +115,10 @@ public sealed class PrepareAuthoringService
         log.AppendLine($"CSDK content root: {addonContentRoot}");
         log.AppendLine($"CSDK game output root: {addonGameRoot}");
         log.AppendLine($"Custom material mode: {(regenerateCustomMaterials ? "clean regeneration" : "preserve artist edits and synchronize project textures")}");
+        if (regenerateCustomMaterials)
+        {
+            log.AppendLine($"Clean material backup: {(backupCustomMaterials ? "enabled" : "skipped by explicit user choice")}");
+        }
         log.AppendLine();
 
         try
@@ -269,7 +275,7 @@ public sealed class PrepareAuthoringService
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Preparing addon-owned custom materials...", "Подготовка custom-материалов аддона...")));
 
-            if (regenerateCustomMaterials)
+            if (regenerateCustomMaterials && backupCustomMaterials)
             {
                 BackupCustomMaterialsForCleanPrepare(
                     manifest,
@@ -277,6 +283,10 @@ public sealed class PrepareAuthoringService
                     addonName,
                     log,
                     cancellationToken);
+            }
+            else if (regenerateCustomMaterials)
+            {
+                log.AppendLine("Clean material backup skipped by explicit user choice.");
             }
 
             ProjectTextureBindingService.MarkLegacyManagedMaterialsForMigration(

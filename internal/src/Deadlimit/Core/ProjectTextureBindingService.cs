@@ -35,11 +35,36 @@ internal static class ProjectTextureBindingService
 
     private static readonly TextureSemanticDefinition[] KnownSemantics =
     [
-        new("color", ["base_color", "basecolor", "diffuse", "albedo", "color"]),
-        new("normal", ["normal", "norm"]),
-        new("roughness", ["roughness", "rough"]),
-        new("ao", ["ambient_occlusion", "ambientocclusion", "occlusion", "ao"]),
-        new("metalness", ["metalness", "metallic", "metal"]),
+        new("color",
+        [
+            "basecolor", "base_color", "basecolour", "base_colour", "basecol", "base_col",
+            "diffuse", "diffusemap", "diffuse_map", "diffusemask", "diffuse_mask", "diff",
+            "albedo", "albedomap", "albedo_map", "albedomask", "albedo_mask",
+            "color", "colormap", "color_map", "colormask", "color_mask", "colour",
+            "colourmap", "colour_map", "colourmask", "colour_mask", "col"
+        ]),
+        new("normal",
+        [
+            "normal", "normalmap", "normal_map", "normalmask", "normal_mask", "normals", "norm", "nrm"
+        ]),
+        new("roughness",
+        [
+            "roughness", "roughnessmap", "roughness_map", "roughnessmask", "roughness_mask",
+            "rough", "roughmap", "rough_map", "roughmask", "rough_mask", "rgh"
+        ]),
+        new("ao",
+        [
+            "ambientocclusion", "ambient_occlusion", "ambientocclusionmap", "ambient_occlusion_map",
+            "ambientocclusionmask", "ambient_occlusion_mask", "occlusion", "occlusionmap",
+            "occlusion_map", "occlusionmask", "occlusion_mask", "ao", "aomap", "ao_map",
+            "aomask", "ao_mask"
+        ]),
+        new("metalness",
+        [
+            "metalness", "metalnessmap", "metalness_map", "metalnessmask", "metalness_mask",
+            "metallic", "metallicmap", "metallic_map", "metallicmask", "metallic_mask",
+            "metal", "metalmap", "metal_map", "metalmask", "metal_mask", "mtl"
+        ]),
     ];
 
     private static readonly Regex TextureAssignmentRegex = new(
@@ -213,6 +238,7 @@ internal static class ProjectTextureBindingService
 
             var assignments = ReadAssignments(text);
             var replacements = new Dictionary<int, string>();
+            var insertions = new List<(string Key, string Value, string Semantic)>();
             var boundSemantics = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var binding in bindings)
@@ -225,8 +251,18 @@ internal static class ProjectTextureBindingService
 
                 if (compatible.Length == 0)
                 {
-                    unresolvedTextures++;
-                    log.AppendLine($"Project texture has no matching Texture* slot in {targetResource}: {binding.Key} -> {binding.Value}");
+                    var preferredKey = GetPreferredStandardTextureKey(binding.Key, vertexColorMode);
+                    if (preferredKey is null)
+                    {
+                        unresolvedTextures++;
+                        log.AppendLine($"Project texture has no safe standard Texture* slot in {targetResource}: {binding.Key} -> {binding.Value}");
+                        continue;
+                    }
+
+                    insertions.Add((preferredKey, binding.Value, binding.Key));
+                    boundSemantics.Add(binding.Key);
+                    boundTextures++;
+                    log.AppendLine($"Project texture auto-bind inserted missing slot {targetResource}: {Path.GetFileName(binding.Value)} -> {preferredKey}");
                     continue;
                 }
 
@@ -238,6 +274,10 @@ internal static class ProjectTextureBindingService
             }
 
             text = ReplaceAssignments(text, replacements);
+            foreach (var insertion in insertions)
+            {
+                text = UpsertTextureAssignment(text, insertion.Key, insertion.Value);
+            }
 
             text = ReconcileUnboundStandardTextureValues(
                 text,
@@ -290,7 +330,7 @@ internal static class ProjectTextureBindingService
         log.AppendLine($"Stale Deadlimit-managed custom VMAT files removed: {removedStaleMaterials}");
         log.AppendLine($"Derived project texture files removed after source deletion: {removedDerivedTextures}");
         log.AppendLine($"Managed custom VMAT project-texture sync: {managedMaterials} material(s), {boundTextures} texture binding(s), {sanitizedTextures} stale/mismatched inherited or derived source repair(s), {unresolvedTextures} unmatched project texture(s).");
-        log.AppendLine("Custom texture naming policy: project textures bind only when the filename material prefix exactly matches the custom material name; Deadlimit does not guess based on there being only one material or one texture.");
+        log.AppendLine("Custom texture naming policy: project textures bind only when the filename material prefix exactly matches the custom material name; a matching standard PBR texture replaces the existing compatible Texture* assignment or inserts the canonical slot when that assignment is absent. Deadlimit does not guess based on there being only one material or one texture.");
         log.AppendLine("Custom VMAT lifecycle policy: Deadlimit-owned generated VMAT files are removed when their material is no longer referenced by the current artist DMX. Artist-owned/unmanaged VMAT files are preserved.");
         log.AppendLine("Custom VMAT parameter policy: retail/template shader and non-texture parameters are inherited only when a VMAT is first created. Later PREPARE runs do not re-apply hero parameters; matching project-root texture files are the only automatic overrides.");
 
@@ -578,7 +618,7 @@ internal static class ProjectTextureBindingService
         {
             foreach (var alias in definition.Aliases.OrderByDescending(value => value.Length))
             {
-                foreach (var separator in new[] { "_", "-", " " })
+                foreach (var separator in new[] { "_", "-", " ", "." })
                 {
                     var tail = separator + alias;
                     if (!stem.EndsWith(tail, StringComparison.OrdinalIgnoreCase))
@@ -603,8 +643,8 @@ internal static class ProjectTextureBindingService
         }
 
         var separatorIndex = Math.Max(
-            stem.LastIndexOf('_'),
-            Math.Max(stem.LastIndexOf('-'), stem.LastIndexOf(' ')));
+            Math.Max(stem.LastIndexOf('_'), stem.LastIndexOf('-')),
+            Math.Max(stem.LastIndexOf(' '), stem.LastIndexOf('.')));
         if (separatorIndex <= 0 || separatorIndex >= stem.Length - 1)
         {
             return null;
@@ -706,6 +746,52 @@ internal static class ProjectTextureBindingService
             && string.Equals(projectSemantic[..^4], slotSemantic, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static string? GetPreferredStandardTextureKey(string semantic, bool vertexColorMode)
+    {
+        return semantic.ToLowerInvariant() switch
+        {
+            "color" => vertexColorMode ? null : "TextureColor",
+            "normal" => vertexColorMode ? "TextureNormal1" : "TextureNormal",
+            "roughness" => vertexColorMode ? "TextureRoughness1" : "TextureRoughness",
+            "ao" => vertexColorMode ? "TextureAmbientOcclusion1" : "TextureAmbientOcclusion",
+            "metalness" => vertexColorMode ? "TextureMetalness1" : "TextureMetalness",
+            _ => null,
+        };
+    }
+
+    private static string UpsertTextureAssignment(string text, string key, string value)
+    {
+        var found = false;
+        var patched = TextureAssignmentRegex.Replace(text, match =>
+        {
+            if (!string.Equals(GetTextureKey(match), key, StringComparison.OrdinalIgnoreCase))
+            {
+                return match.Value;
+            }
+
+            if (found)
+            {
+                return string.Empty;
+            }
+
+            found = true;
+            return match.Groups["prefix"].Value + value + match.Groups["suffix"].Value;
+        });
+
+        if (found)
+        {
+            return patched;
+        }
+
+        var closingBrace = patched.LastIndexOf('}');
+        if (closingBrace < 0)
+        {
+            return patched;
+        }
+
+        var newline = patched.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        return patched.Insert(closingBrace, $"    \"{key}\"\t\"{value}\"{newline}");
+    }
     private static int SlotRank(string key)
     {
         var raw = key.StartsWith("Texture", StringComparison.OrdinalIgnoreCase)
