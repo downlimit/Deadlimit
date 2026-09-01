@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Deadlimit.Core;
 
 namespace Deadlimit.App;
 
@@ -15,10 +14,6 @@ internal static class UiRenderingStabilityFeature
 
     private static readonly PropertyInfo? DoubleBufferedProperty = typeof(Control).GetProperty(
         "DoubleBuffered",
-        BindingFlags.Instance | BindingFlags.NonPublic);
-
-    private static readonly MethodInfo? ReapplySemanticStatusColorsMethod = typeof(SettingsForm).GetMethod(
-        "ReapplySemanticStatusColors",
         BindingFlags.Instance | BindingFlags.NonPublic);
 
     private static readonly ConditionalWeakTable<Control, PreparedControlMarker> PreparedControls = new();
@@ -36,8 +31,8 @@ internal static class UiRenderingStabilityFeature
     internal static void Bootstrap()
     {
         // The CBT hook catches activation synchronously, before the new top-level window
-        // can expose its first frame. IMessageFilter remains as a second pre-paint path for
-        // queued show messages; Application.Idle is only the final fallback.
+        // can expose its first useful frame. IMessageFilter remains a second pre-paint path;
+        // Application.Idle is only the defensive fallback.
         if (OperatingSystem.IsWindows())
         {
             _cbtHook = SetWindowsHookEx(
@@ -90,7 +85,7 @@ internal static class UiRenderingStabilityFeature
             var firstSeen = PreparedForms.Add(form);
             if (firstSeen)
             {
-                // Settings is normally fully assembled before activation. Other legacy
+                // Settings is normally fully assembled before its first paint. Other legacy
                 // dialogs may still receive late augmentations, so keep first-idle batching
                 // only for those forms.
                 var batchFirstIdle = form is not MainForm
@@ -116,8 +111,9 @@ internal static class UiRenderingStabilityFeature
 
             if (form is SettingsForm settingsForm)
             {
-                // Native-hook failure fallback. The feature methods are idempotent.
-                PrepareSettingsBeforeFirstPaint(settingsForm);
+                // Native-hook failure fallback. In the normal path this is a no-op because
+                // Settings was already prepared before its first visible paint.
+                PrepareSettings(settingsForm, repaintOnRelease: true);
             }
 
             TrackModalOwner(form, allowOwnedNonModal: false);
@@ -127,37 +123,26 @@ internal static class UiRenderingStabilityFeature
         PromotePendingModalOwnerReleases();
     }
 
-    private static void PrepareSettingsBeforeFirstPaint(SettingsForm form)
+    private static void PrepareSettings(SettingsForm form, bool repaintOnRelease)
     {
         if (PreparedSettingsForms.TryGetValue(form, out _))
         {
             return;
         }
 
+        var redrawHeld = form.IsHandleCreated && !form.IsDisposed;
+        if (redrawHeld)
+        {
+            // The base SettingsForm has already applied the selected theme in its
+            // constructor. Freeze the HWND only while the two compatibility features add
+            // their final controls/layout, so no partially assembled client area can paint.
+            HoldRedraw(form);
+        }
+
         try
         {
-            // These two features historically modified Settings from Application.Idle,
-            // after the form was visible. Assemble them before activation, theme the final
-            // control tree in one pass and perform layout before the first real paint.
             SettingsVersionFeature.Prepare(form);
             SettingsToolchainProgressFeature.Prepare(form);
-
-            var settings = ProjectStore.GetToolPathSettings();
-            UiTheme.ApplyCustomPalette(form, settings.UiTheme);
-
-            // UiTheme intentionally resets label colors. Restore the semantic tool-status
-            // green/yellow/red colors that Settings established in its constructor.
-            try
-            {
-                ReapplySemanticStatusColorsMethod?.Invoke(form, null);
-            }
-            catch (Exception exception) when (exception is TargetInvocationException
-                or MethodAccessException
-                or ArgumentException)
-            {
-                // Presentation hardening must never prevent Settings from opening.
-            }
-
             PrepareControlTree(form);
             form.PerformLayout();
             PreparedSettingsForms.Add(form, new PreparedSettingsMarker());
@@ -166,8 +151,16 @@ internal static class UiRenderingStabilityFeature
             or ArgumentException
             or TargetInvocationException)
         {
-            // Fall back to the already-constructed SettingsForm rather than turning a
-            // rendering optimization into an application failure.
+            // Rendering hardening must never prevent Settings from opening.
+        }
+        finally
+        {
+            if (redrawHeld)
+            {
+                // During CBT/WM_SHOWWINDOW let the native show/activation sequence perform
+                // the first paint naturally. For the Idle fallback, repaint immediately.
+                ReleaseRedraw(form, repaint: repaintOnRelease);
+            }
         }
     }
 
@@ -418,7 +411,7 @@ internal static class UiRenderingStabilityFeature
         {
             if (form is SettingsForm settingsForm)
             {
-                PrepareSettingsBeforeFirstPaint(settingsForm);
+                PrepareSettings(settingsForm, repaintOnRelease: false);
                 TrackModalOwner(settingsForm, allowOwnedNonModal: true);
             }
             else
@@ -475,7 +468,7 @@ internal static class UiRenderingStabilityFeature
 
             if (form is SettingsForm settingsForm)
             {
-                PrepareSettingsBeforeFirstPaint(settingsForm);
+                PrepareSettings(settingsForm, repaintOnRelease: false);
                 TrackModalOwner(settingsForm, allowOwnedNonModal: true);
             }
             else
