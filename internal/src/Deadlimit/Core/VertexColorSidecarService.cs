@@ -232,9 +232,15 @@ public static class VertexColorSidecarService
     private static IReadOnlyList<MeshBinding> FindMeshBindings(Datamodel.Datamodel document)
     {
         var result = new List<MeshBinding>();
+        var jointShapeMeshIds = DmxSkeletonShapeFilter.FindJointShapeMeshIds(document);
         foreach (var mesh in document.AllElements.Where(element =>
                      string.Equals(element.ClassName, "DmeMesh", StringComparison.Ordinal)))
         {
+            if (DmxSkeletonShapeFilter.IsJointShape(mesh, jointShapeMeshIds))
+            {
+                continue;
+            }
+
             var bindState = GetRequiredElement(mesh, "bindState");
             var currentState = GetRequiredElement(mesh, "currentState");
             if (bindState.ID != currentState.ID)
