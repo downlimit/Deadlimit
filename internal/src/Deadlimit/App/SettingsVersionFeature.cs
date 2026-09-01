@@ -126,6 +126,11 @@ internal static class SettingsVersionFeature
             fineTuneButton.Width = 112;
         }
 
+        // The base SettingsForm has already been themed in its constructor. Theme only
+        // the controls inserted by this feature instead of repainting the whole dialog a
+        // second time during native activation.
+        UiTheme.ApplyCustomPalette(footer, stored.UiTheme);
+
         void UpdateVersionLayout()
         {
             var occupiedWidth = footer.Controls
