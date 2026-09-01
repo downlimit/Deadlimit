@@ -238,5 +238,7 @@ internal static class UiRenderingStabilityFeature
         IntPtr wParam,
         IntPtr lParam);
 
-    private sealed class PreparedControlMarker;
+    private sealed class PreparedControlMarker
+    {
+    }
 }
