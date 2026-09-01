@@ -207,10 +207,16 @@ public static class VertexColorSourceGuard
     {
         using var document = Datamodel.Datamodel.Load(dmxPath, DeferredMode.Disabled);
         var requiredMeshes = 0;
+        var jointShapeMeshIds = DmxSkeletonShapeFilter.FindJointShapeMeshIds(document);
 
         foreach (var mesh in document.AllElements.Where(element =>
                      string.Equals(element.ClassName, "DmeMesh", StringComparison.Ordinal)))
         {
+            if (DmxSkeletonShapeFilter.IsJointShape(mesh, jointShapeMeshIds))
+            {
+                continue;
+            }
+
             // Material assignment is the authority for whether this mesh needs Vertex Color.
             // Do not inspect vertex-state details on unrelated meshes just because the raw
             // DMX happens to contain the word "vertexcolor" elsewhere.
