@@ -15,6 +15,7 @@ internal static class SettingsToolchainProgressFeature
         }
 
         _attached = true;
+        Application.Idle += OnApplicationIdle;
         ToolchainOperationHub.Changed += OnToolchainOperationChanged;
     }
 
@@ -25,6 +26,14 @@ internal static class SettingsToolchainProgressFeature
         if (!AttachedForms.ContainsKey(form))
         {
             AttachToForm(form);
+        }
+    }
+
+    private static void OnApplicationIdle(object? sender, EventArgs e)
+    {
+        foreach (var form in Application.OpenForms.OfType<SettingsForm>().ToArray())
+        {
+            Prepare(form);
         }
     }
 
