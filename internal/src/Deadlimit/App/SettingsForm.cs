@@ -408,7 +408,7 @@ internal sealed class SettingsForm : Form
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         var openButton = new Button
         {
-            Text = "📂 Deadlimit Max Script",
+            Text = UiText.T("📂 Deadlimit Max Script", "📂 MaxScript Deadlimit"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 4, 0, 4),
@@ -429,7 +429,7 @@ internal sealed class SettingsForm : Form
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         var openButton = new Button
         {
-            Text = "📂 CSDK Fast Startup Fix",
+            Text = UiText.T("📂 CSDK Fast Startup Fix", "📂 Исправление быстрого запуска CSDK"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 4, 0, 4),
@@ -850,20 +850,90 @@ internal sealed class SettingsForm : Form
                     "The selected folder is not a valid Deadlock client installation.\n\nChoose the Project8Staging folder that contains game\\citadel.",
                     "Выбранная папка не является валидной установкой Deadlock клиента.\n\nВыберите папку Project8Staging, внутри которой находится game\\citadel."),
                 ToolchainStatusKind.Checking => UiText.T("Checking the Deadlock client folder…", "Проверка папки Deadlock клиента…"),
-                _ => status.Detail,
+                _ => FormatStatus(status, context),
             };
         }
 
         if (context == StatusContext.Projects)
         {
-            return string.IsNullOrWhiteSpace(status.Detail)
-                ? UiText.T("Workspace folder status.", "Состояние рабочей папки.")
-                : status.Detail;
+            return status.Kind switch
+            {
+                ToolchainStatusKind.NotSpecified => UiText.T(
+                    "No projects folder has been selected yet.",
+                    "Папка проектов пока не указана."),
+                ToolchainStatusKind.Ready => UiText.T(
+                    "The projects workspace folder is available.",
+                    "Рабочая папка проектов доступна."),
+                ToolchainStatusKind.InvalidPath => UiText.T(
+                    "The selected projects folder does not exist.",
+                    "Выбранная папка проектов не существует."),
+                _ => FormatStatus(status, context),
+            };
         }
 
-        return string.IsNullOrWhiteSpace(status.Detail)
-            ? FormatStatus(status, context)
-            : status.Detail;
+        if (context == StatusContext.Csdk)
+        {
+            return status.Kind switch
+            {
+                ToolchainStatusKind.NotSpecified => UiText.T(
+                    "Reduced CSDK folder is not specified.",
+                    "Папка Reduced CSDK не указана."),
+                ToolchainStatusKind.Installed when status.AvailableGeneration is int available => UiText.T(
+                    $"Reduced CSDK is valid. Latest published generation is {available}, but the local generation could not be identified.",
+                    $"Reduced CSDK установлен корректно. Последнее опубликованное поколение: {available}; локальное поколение определить не удалось."),
+                ToolchainStatusKind.Installed => UiText.T(
+                    "Reduced CSDK is installed, but its local generation could not be identified.",
+                    "Reduced CSDK установлен, но локальное поколение определить не удалось."),
+                ToolchainStatusKind.UpToDate when status.InstalledGeneration is int installed => UiText.T(
+                    $"Installed CSDK generation: {installed}.",
+                    $"Установленное поколение CSDK: {installed}."),
+                ToolchainStatusKind.UpdateAvailable when status.InstalledGeneration is int installed && status.AvailableGeneration is int available => UiText.T(
+                    $"Installed CSDK {installed}; CSDK {available} is available.",
+                    $"Установлен CSDK {installed}; доступен CSDK {available}."),
+                ToolchainStatusKind.InvalidPath => UiText.T(
+                    "csdkcfg.exe was not found in the selected Reduced CSDK folder.",
+                    "В выбранной папке Reduced CSDK не найден csdkcfg.exe."),
+                ToolchainStatusKind.NetworkIssue => UiText.T(
+                    "CSDK is installed, but freshness could not be checked because the update source is unavailable.",
+                    "CSDK установлен, но проверить актуальность не удалось: источник обновлений недоступен."),
+                ToolchainStatusKind.Checking => UiText.T("Checking Reduced CSDK…", "Проверка Reduced CSDK…"),
+                ToolchainStatusKind.Working => UiText.T("Working with Reduced CSDK…", "Выполняется операция с Reduced CSDK…"),
+                _ => FormatStatus(status, context),
+            };
+        }
+
+        if (context == StatusContext.DeadlockTools)
+        {
+            return status.Kind switch
+            {
+                ToolchainStatusKind.NotSpecified => UiText.T(
+                    "DeadlockTools folder is not specified.",
+                    "Папка DeadlockTools не указана."),
+                ToolchainStatusKind.Installed when !string.IsNullOrWhiteSpace(status.AvailableVersion) => UiText.T(
+                    $"DeadlockTools is installed, but its local version could not be identified. Latest official release: {status.AvailableVersion}.",
+                    $"DeadlockTools установлен, но локальную версию определить не удалось. Последний официальный релиз: {status.AvailableVersion}."),
+                ToolchainStatusKind.Installed => UiText.T(
+                    "DeadlockTools is installed, but its local version could not be identified.",
+                    "DeadlockTools установлен, но локальную версию определить не удалось."),
+                ToolchainStatusKind.UpToDate when !string.IsNullOrWhiteSpace(status.InstalledVersion) => UiText.T(
+                    $"Installed DeadlockTools release: {status.InstalledVersion}.",
+                    $"Установленный релиз DeadlockTools: {status.InstalledVersion}."),
+                ToolchainStatusKind.UpdateAvailable when !string.IsNullOrWhiteSpace(status.InstalledVersion) && !string.IsNullOrWhiteSpace(status.AvailableVersion) => UiText.T(
+                    $"Installed DeadlockTools {status.InstalledVersion}; {status.AvailableVersion} is available.",
+                    $"Установлен DeadlockTools {status.InstalledVersion}; доступен {status.AvailableVersion}."),
+                ToolchainStatusKind.InvalidPath => UiText.T(
+                    "DeadlockTools.exe was not found in the selected DeadlockTools folder.",
+                    "В выбранной папке DeadlockTools не найден DeadlockTools.exe."),
+                ToolchainStatusKind.NetworkIssue => UiText.T(
+                    "DeadlockTools is installed, but freshness could not be checked because GitHub is unavailable.",
+                    "DeadlockTools установлен, но проверить актуальность не удалось: GitHub недоступен."),
+                ToolchainStatusKind.Checking => UiText.T("Checking DeadlockTools…", "Проверка DeadlockTools…"),
+                ToolchainStatusKind.Working => UiText.T("Working with DeadlockTools…", "Выполняется операция с DeadlockTools…"),
+                _ => FormatStatus(status, context),
+            };
+        }
+
+        return FormatStatus(status, context);
     }
 
     private Color StatusColor(ToolchainStatusKind kind)

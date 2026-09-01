@@ -38,7 +38,7 @@ internal static class ToolchainOperationHub
         {
             if (_activeCancellation is not null)
             {
-                throw new InvalidOperationException("Another toolchain operation is already running.");
+                throw new InvalidOperationException(UiTextBridge.T("Another toolchain operation is already running.", "Другая операция с инструментами уже выполняется."));
             }
 
             _activeCancellation = new CancellationTokenSource();

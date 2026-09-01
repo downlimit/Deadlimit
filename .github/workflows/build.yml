@@ -21,6 +21,9 @@ jobs:
       - name: Metal material preset smoke
         shell: pwsh
         run: internal/tests/metal-material-preset-smoke.ps1
+      - name: UI localization smoke
+        shell: pwsh
+        run: internal/tests/ui-localization-smoke.ps1
       - name: Verify Manager and updater contract
         shell: pwsh
         run: |

@@ -8,11 +8,10 @@ internal static class UiText
 
     public static string Language => ProjectStore.GetToolPathSettings().UiLanguage;
 
-    public static bool IsRussian =>
-        string.Equals(Language, "ru", StringComparison.OrdinalIgnoreCase);
+    public static bool IsRussian => LocalizedText.IsRussian;
 
     public static string T(string english, string russian) =>
-        NormalizeProductNames(IsRussian ? russian : english);
+        NormalizeProductNames(LocalizedText.T(english, russian));
 
     public static string NormalizeProductNames(string value) =>
         value
