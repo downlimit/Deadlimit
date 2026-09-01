@@ -2421,9 +2421,14 @@ fn deadlimitVertexColorCreateInnerLineart useUndo:true vertexMarker:false =
     Rendering contract:
     - Geometry, junctions, and every map face are completed in the source orientation first.
     - Optional polygon flip then reverses the complete generated face set in one polyop pass.
-    - Optional normal inversion runs last: it adds an Edit Normals modifier, makes every normal
-      explicit, and negates it. With both defaults enabled, face winding points inward while explicit normals
-      point back toward the original surface, matching the Deadlock expanded-backface outline.
+    - Optional normal inversion runs after the flip: it adds Edit Normals, makes every normal
+      explicit, negates it, then collapses that modifier into the Editable Poly base. Copy Skin,
+      when requested, is added only after this bake and therefore remains live.
+    - The detached node copies both node.transform and objectOffsetPos/Rot/Scale. Generated local
+      positions are authored against source.objectTransform, so arbitrary position, rotation,
+      non-uniform scale, parent transform, and object-offset transform stay spatially aligned.
+      With both defaults enabled, face winding points inward while explicit normals point back
+      toward the original surface, matching the Deadlock expanded-backface outline.
 
     Blender port: build an independent BMesh strip from the selected-edge graph, copy corner
     custom-data layers, create vertex groups from source IDs, reverse polygons, and write custom
@@ -2891,6 +2896,9 @@ fn deadlimitDetachedInnerLineartApplySkins lineartNode skinSnapshots sourceVerte
 
 fn deadlimitDetachedInnerLineartApplyExplicitNormals lineartNode =
 (
+    -- Edit Normals is a temporary authoring tool. It is collapsed before optional Skin is added,
+    -- leaving a clean Editable Poly base with baked explicit normals and no Edit Normals entry in
+    -- the artist-facing stack.
     local normalModifier = Edit_Normals()
     addModifier lineartNode normalModifier
     select lineartNode
@@ -2903,7 +2911,11 @@ fn deadlimitDetachedInnerLineartApplyExplicitNormals lineartNode =
     normalModifier.MakeExplicit selection:normalSelection node:lineartNode
     for normalIndex = 1 to normalCount do normalModifier.SetNormal normalIndex (-(normalModifier.GetNormal normalIndex node:lineartNode)) node:lineartNode
     update lineartNode
-    normalModifier
+    collapseStack lineartNode
+    if (classOf lineartNode.baseObject) != Editable_Poly do convertToPoly lineartNode
+    if lineartNode.modifiers.count != 0 then throw "Edit Normals could not be collapsed into the generated Editable Poly."
+    update lineartNode
+    lineartNode.baseObject
 )
 
 fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false layerName:"lineart" flipGeometry:true invertNormals:true taperEnds:true taperExponent:2.0 copySkin:false =
@@ -2974,7 +2986,14 @@ fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false 
             polyop.deleteFaces lineartPoly #{1}
             local remainingDummyVertices = polyop.getNumVerts lineartPoly
             if remainingDummyVertices > 0 do polyop.deleteVerts lineartPoly #{1..remainingDummyVertices}
+
+            -- Local strip positions were solved through source.objectTransform. Mirror every
+            -- transform component on the detached node so object offsets are not lost when the
+            -- source uses Reset XForm-style offsets, rotated pivots, or non-uniform object scale.
             lineartNode.transform = sourceNode.transform
+            lineartNode.objectOffsetPos = sourceNode.objectOffsetPos
+            lineartNode.objectOffsetRot = sourceNode.objectOffsetRot
+            lineartNode.objectOffsetScale = sourceNode.objectOffsetScale
             lineartNode.material = sourceNode.material
             lineartNode.wireColor = sourceNode.wireColor
             for position in buildResult[1] do polyop.createVert lineartPoly position
@@ -3053,8 +3072,10 @@ fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false 
                 targetLayer = LayerManager.getLayerFromName (sourceNode.layer as string)
             if targetLayer != undefined do targetLayer.addNode lineartNode
 
-            if copySkin do copiedSkins = deadlimitDetachedInnerLineartApplySkins lineartNode skinSnapshots buildResult[2]
+            -- Bake custom normals while Edit Normals is the only modifier. Optional Skin is added
+            -- afterwards and remains editable instead of being consumed by collapseStack.
             if invertNormals do deadlimitDetachedInnerLineartApplyExplicitNormals lineartNode
+            if copySkin do copiedSkins = deadlimitDetachedInnerLineartApplySkins lineartNode skinSnapshots buildResult[2]
             update lineartNode
             select lineartNode
         )
@@ -3190,7 +3211,7 @@ rollout deadlimitVertexColorInnerLineartRollout "INNER LINEART"
     spinner lineartWidthMmSpinner "Width (mm):" range:[0.01,1000.0,1.0] type:#float scale:0.1 fieldWidth:58 width:160 across:2 tooltip:"Full world-space width of the generated strip in millimeters."
     checkbox copyLineartSkinCheckbox "Copy Skin" checked:false width:105 tooltip:"Copy Skin modifiers and source-vertex weights to the separate lineart object."
     checkbox flipLineartCheckbox "Flip Polygons" checked:true width:105 across:2 tooltip:"Reverse generated face winding."
-    checkbox invertLineartNormalsCheckbox "Invert Normals" checked:true width:115 tooltip:"Make generated vertex normals explicit and reverse them."
+    checkbox invertLineartNormalsCheckbox "Invert Normals" checked:true width:115 tooltip:"Reverse generated vertex normals and bake them into the Editable Poly base."
     checkbox taperLineartCheckbox "Taper Ends" checked:true width:105 across:2 tooltip:"Collapse degree-1 lineart endpoints to a single vertex."
     spinner taperExponentSpinner "EXP:" range:[0.1,10.0,2.0] type:#float scale:0.1 fieldWidth:50 width:115 enabled:true tooltip:"1 = linear roof; 2 = rounded bridge-like falloff."
     checkbox customLineartLayerCheckbox "Custom Layer" checked:false width:105 across:2 tooltip:"Place generated strips into the named layer."
