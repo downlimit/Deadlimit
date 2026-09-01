@@ -21,6 +21,9 @@ jobs:
       - name: Metal material preset smoke
         shell: pwsh
         run: internal/tests/metal-material-preset-smoke.ps1
+      - name: Texture naming alias smoke
+        shell: pwsh
+        run: internal/tests/texture-naming-alias-smoke.ps1
       - name: UI localization smoke
         shell: pwsh
         run: internal/tests/ui-localization-smoke.ps1
