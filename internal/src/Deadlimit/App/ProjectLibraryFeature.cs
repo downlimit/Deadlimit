@@ -565,7 +565,7 @@ internal static class ProjectLibraryFeature
             menu.Items.Add(openItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(deleteItem);
-            menu.Opening += (_, e) =>
+            menu.Opening += (sender, e) =>
             {
                 var hasSelection = TryGetSelectedProject(out _, out _);
                 renameItem.Enabled = hasSelection;
