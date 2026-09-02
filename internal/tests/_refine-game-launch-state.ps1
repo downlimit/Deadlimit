@@ -13,7 +13,7 @@ $path = 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs'
 Replace-Exact $path @'
         launchGameButton.Click += async (_, _) =>
 '@ @'
-        ToolTip? toolTip = null;
+        ToolTip toolTip = null!;
 
         launchGameButton.Click += async (_, _) =>
 '@
