@@ -71,4 +71,6 @@ foreach ($required in @('YES, NO BACKUP', 'ДА, БЕЗ БЭКАПА', 'Deadlimi
     if (-not $buildSource.Contains($required)) { throw "Clean PREPARE UI contract missing: $required" }
 }
 
+& (Join-Path $PSScriptRoot 'hero-extraction-dependency-path-smoke.ps1')
+
 Write-Host 'Prepare behavior smoke passed.'
