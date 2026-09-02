@@ -28,6 +28,9 @@ internal static class ProjectHeaderFeature
 
     private static string? _cachedSteamExecutable;
 
+    internal static string GetHeaderImagePath(string projectFolder) =>
+        Path.Combine(ProjectStore.GetMetadataFolder(projectFolder), HeaderFileName);
+
     public static void Attach(MainForm form)
     {
         var projectGroup = FindDescendants<GroupBox>(form)
@@ -364,7 +367,7 @@ internal static class ProjectHeaderFeature
             header.Invalidate();
         }
 
-        void OpenHeaderFolder()
+        void OpenHeaderImage()
         {
             var folder = folderText.Text.Trim();
             if (!Directory.Exists(folder))
@@ -375,16 +378,14 @@ internal static class ProjectHeaderFeature
             try
             {
                 var imagePath = EnsureHeaderImage(folder, header.ClientSize);
-                var artworkFolder = Path.GetDirectoryName(imagePath);
-                if (string.IsNullOrWhiteSpace(artworkFolder) || !Directory.Exists(artworkFolder))
+                if (!File.Exists(imagePath))
                 {
                     return;
                 }
 
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName = "explorer.exe",
-                    Arguments = $"\"{artworkFolder}\"",
+                    FileName = imagePath,
                     UseShellExecute = true,
                 });
             }
@@ -398,7 +399,7 @@ internal static class ProjectHeaderFeature
                 MessageBox.Show(
                     form,
                     ex.Message,
-                    UiText.T("Could not open artwork folder", "Не удалось открыть папку обложки"),
+                    UiText.T("Could not open project cover", "Не удалось открыть обложку проекта"),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
             }
@@ -413,7 +414,7 @@ internal static class ProjectHeaderFeature
         {
             if (e.Button == MouseButtons.Left)
             {
-                OpenHeaderFolder();
+                OpenHeaderImage();
             }
         };
         folderText.TextChanged += (_, _) => RefreshHeaderImage();
@@ -451,7 +452,7 @@ internal static class ProjectHeaderFeature
             File.SetAttributes(metadataFolder, attributes | FileAttributes.Hidden);
         }
 
-        var path = Path.Combine(metadataFolder, HeaderFileName);
+        var path = GetHeaderImagePath(projectFolder);
         if (File.Exists(path))
         {
             return path;
