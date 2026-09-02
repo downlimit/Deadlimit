@@ -72,5 +72,6 @@ foreach ($required in @('YES, NO BACKUP', 'ДА, БЕЗ БЭКАПА', 'Deadlimi
 }
 
 & (Join-Path $PSScriptRoot 'hero-extraction-dependency-path-smoke.ps1')
+& (Join-Path $PSScriptRoot 'retail-external-texture-copy-smoke.ps1')
 
 Write-Host 'Prepare behavior smoke passed.'

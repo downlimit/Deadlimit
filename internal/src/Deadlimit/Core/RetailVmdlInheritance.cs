@@ -47,6 +47,21 @@ public static class RetailVmdlInheritance
         "_class\\s*=\\s*\"RenderMeshFile\"(?<body>.*?)name\\s*=\\s*\"(?<name>[^\"]+)\"(?<afterName>.*?)filename\\s*=\\s*\"(?<filename>[^\"]+)\"",
         RegexOptions.Compiled | RegexOptions.Singleline);
 
+    private static readonly Regex VmatTextureSourceRegex = new(
+        "^[ \\t]*\\\"?(?:Texture|g_t)[A-Za-z0-9_]*\\\"?[ \\t]*(?:=[ \\t]*)?\\\"(?<path>[^\\\"\\r\\n]+)\\\"",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
+
+    private static readonly HashSet<string> RetailTextureSourceExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png",
+        ".tga",
+        ".jpg",
+        ".jpeg",
+        ".tif",
+        ".tiff",
+        ".exr",
+        ".vtex",
+    };
     public static string? FindRetailVmdl(ProjectManifest manifest)
     {
         var sourceRoot = SafePath.ResolveUnderRoot(
@@ -98,6 +113,10 @@ public static class RetailVmdlInheritance
             addonContentRoot,
             resourceFolder,
             "Retail VMDL destination folder");
+        var sourceRoot = SafePath.ResolveUnderRoot(
+            manifest.ProjectFolder,
+            manifest.SourceDumpFolderName,
+            "Project source-dump folder");
 
         Directory.CreateDirectory(destinationFolder);
 
@@ -114,6 +133,11 @@ public static class RetailVmdlInheritance
             copied++;
         }
 
+        copied += CopyExternalRetailTextureDependencies(
+            sourceFolder,
+            sourceRoot,
+            addonContentRoot);
+
         var destinationVmdl = Path.Combine(destinationFolder, Path.GetFileName(sourceVmdl));
         if (!File.Exists(destinationVmdl))
         {
@@ -128,6 +152,70 @@ public static class RetailVmdlInheritance
             copied);
     }
 
+    private static int CopyExternalRetailTextureDependencies(
+        string sourceFolder,
+        string sourceRoot,
+        string addonContentRoot)
+    {
+        var copied = 0;
+        var copiedResources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var vmatPath in Directory.EnumerateFiles(sourceFolder, "*.vmat", SearchOption.AllDirectories))
+        {
+            var vmatText = File.ReadAllText(vmatPath);
+            foreach (Match match in VmatTextureSourceRegex.Matches(vmatText))
+            {
+                var resourcePath = NormalizeResourcePath(match.Groups["path"].Value);
+                if (resourcePath.Length == 0
+                    || resourcePath.Contains(':', StringComparison.Ordinal)
+                    || !RetailTextureSourceExtensions.Contains(Path.GetExtension(resourcePath)))
+                {
+                    continue;
+                }
+
+                string sourcePath;
+                try
+                {
+                    sourcePath = SafePath.ResolveUnderRoot(
+                        sourceRoot,
+                        resourcePath.Replace('/', Path.DirectorySeparatorChar),
+                        "Retail VMAT texture dependency");
+                }
+                catch (InvalidOperationException)
+                {
+                    continue;
+                }
+
+                if (!File.Exists(sourcePath) || IsPathUnderRoot(sourceFolder, sourcePath))
+                {
+                    continue;
+                }
+
+                if (!copiedResources.Add(resourcePath))
+                {
+                    continue;
+                }
+
+                var destination = SafePath.ResolveUnderRoot(
+                    addonContentRoot,
+                    resourcePath.Replace('/', Path.DirectorySeparatorChar),
+                    "Retail VMAT external texture dependency destination");
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                File.Copy(sourcePath, destination, overwrite: true);
+                copied++;
+            }
+        }
+
+        return copied;
+    }
+
+    private static bool IsPathUnderRoot(string root, string path)
+    {
+        var normalizedRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar;
+        var normalizedPath = Path.GetFullPath(path);
+        return normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
+    }
     public static IReadOnlyList<RetailRenderMeshEntry> ReadRenderMeshes(string vmdlPath)
     {
         var text = File.ReadAllText(vmdlPath);
