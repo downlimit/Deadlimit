@@ -92,26 +92,11 @@ public sealed class HeroExtractionService
             }
 
             progress?.Report(new HeroExtractionProgress("Publishing refreshed 0source..."));
-
-            DeleteDirectoryIfExists(previousFolder);
-            if (Directory.Exists(outputFolder))
-            {
-                Directory.Move(outputFolder, previousFolder);
-            }
-
-            try
-            {
-                Directory.Move(stagingFolder, outputFolder);
-            }
-            catch
-            {
-                if (!Directory.Exists(outputFolder) && Directory.Exists(previousFolder))
-                {
-                    Directory.Move(previousFolder, outputFolder);
-                }
-
-                throw;
-            }
+            PublishRefreshedSource(
+                stagingFolder,
+                outputFolder,
+                previousFolder,
+                progress);
 
             manifest.SchemaVersion = Math.Max(manifest.SchemaVersion, 2);
             manifest.RetailMainModel = candidate.ResourcePath;
@@ -399,6 +384,142 @@ public sealed class HeroExtractionService
     private static string ToWindowsPath(string resourcePath) =>
         resourcePath.Replace('/', Path.DirectorySeparatorChar);
 
+    private static void PublishRefreshedSource(
+        string stagingFolder,
+        string outputFolder,
+        string previousFolder,
+        IProgress<HeroExtractionProgress>? progress)
+    {
+        DeleteDirectoryIfExists(previousFolder);
+
+        if (!Directory.Exists(outputFolder))
+        {
+            Directory.Move(stagingFolder, outputFolder);
+            return;
+        }
+
+        try
+        {
+            Directory.Move(outputFolder, previousFolder);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            progress?.Report(new HeroExtractionProgress(
+                "The existing 0source folder is busy; refreshing its contents in place..."));
+            PublishRefreshedSourceInPlace(stagingFolder, outputFolder, previousFolder);
+            return;
+        }
+
+        try
+        {
+            Directory.Move(stagingFolder, outputFolder);
+        }
+        catch
+        {
+            if (!Directory.Exists(outputFolder) && Directory.Exists(previousFolder))
+            {
+                Directory.Move(previousFolder, outputFolder);
+            }
+
+            throw;
+        }
+    }
+
+    private static void PublishRefreshedSourceInPlace(
+        string stagingFolder,
+        string outputFolder,
+        string previousFolder)
+    {
+        CopyDirectoryFiles(outputFolder, previousFolder, "back up current 0source");
+
+        var stagedRelativeFiles = Directory.EnumerateFiles(stagingFolder, "*", SearchOption.AllDirectories)
+            .Select(path => Path.GetRelativePath(stagingFolder, path))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var existingFile in Directory.EnumerateFiles(outputFolder, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(outputFolder, existingFile);
+            if (stagedRelativeFiles.Contains(relative))
+            {
+                continue;
+            }
+
+            try
+            {
+                File.Delete(existingFile);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                throw new IOException(
+                    $"Could not remove stale extracted source file because it is in use or access is denied: {existingFile}",
+                    ex);
+            }
+        }
+
+        foreach (var stagedFile in Directory.EnumerateFiles(stagingFolder, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(stagingFolder, stagedFile);
+            var destination = SafePath.ResolveUnderRoot(
+                outputFolder,
+                relative,
+                "Refreshed extracted source file");
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+
+            try
+            {
+                File.Copy(stagedFile, destination, overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                throw new IOException(
+                    $"Could not refresh extracted source file because it is in use or access is denied: {destination}",
+                    ex);
+            }
+        }
+
+        foreach (var directory in Directory.EnumerateDirectories(outputFolder, "*", SearchOption.AllDirectories)
+                     .OrderByDescending(path => path.Length))
+        {
+            try
+            {
+                if (!Directory.EnumerateFileSystemEntries(directory).Any())
+                {
+                    Directory.Delete(directory, recursive: false);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // A process may hold an otherwise empty folder open. Empty stale folders are harmless.
+            }
+        }
+
+        DeleteDirectoryIfExists(stagingFolder);
+    }
+
+    private static void CopyDirectoryFiles(string sourceFolder, string destinationFolder, string operation)
+    {
+        Directory.CreateDirectory(destinationFolder);
+        foreach (var sourceFile in Directory.EnumerateFiles(sourceFolder, "*", SearchOption.AllDirectories))
+        {
+            var relative = Path.GetRelativePath(sourceFolder, sourceFile);
+            var destination = SafePath.ResolveUnderRoot(
+                destinationFolder,
+                relative,
+                "Source extraction backup file");
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+
+            try
+            {
+                File.Copy(sourceFile, destination, overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                throw new IOException(
+                    $"Could not {operation}; a source file is in use or access is denied: {sourceFile}",
+                    ex);
+            }
+        }
+    }
     private static void DeleteDirectoryIfExists(string path)
     {
         if (Directory.Exists(path))
