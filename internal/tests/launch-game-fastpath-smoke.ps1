@@ -22,7 +22,8 @@ $requiredHeader = @(
     'await DeadlockProcessService.CloseAsync()',
     'UiText.T("✕  CLOSE", "✕  ЗАКРЫТЬ")',
     'UiText.T("GAME IS LAUNCHING", "ИГРА ЗАПУСКАЕТСЯ")',
-    'DateTime.UtcNow.AddSeconds(15)',
+    'GameLaunchPendingTimeout = TimeSpan.FromMinutes(2)',
+    'DateTime.UtcNow + GameLaunchPendingTimeout',
     '? 1000',
     '? 250',
     ': 2000'

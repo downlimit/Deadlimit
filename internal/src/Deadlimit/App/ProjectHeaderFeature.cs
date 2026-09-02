@@ -16,6 +16,7 @@ internal static class ProjectHeaderFeature
     private const string DeadlockSteamAppId = "1422450";
     private const string DeadlockSteamUri = "steam://rungameid/" + DeadlockSteamAppId;
     private const string CameraLockCommand = "cl_lock_camera true";
+    private static readonly TimeSpan GameLaunchPendingTimeout = TimeSpan.FromMinutes(2);
 
     private static readonly Color DefaultHeaderColor = Color.FromArgb(36, 39, 43);
     private static readonly Color CsdkGradientStart = Color.FromArgb(0x58, 0x31, 0xC7);
@@ -172,7 +173,10 @@ internal static class ProjectHeaderFeature
                 return;
             }
 
-            gameLaunchPendingUntilUtc = DateTime.UtcNow.AddSeconds(15);
+            // Steam may spend noticeably longer than 15 seconds in its pre-launch phase.
+            // Keep the requested launch visually pending until the game process appears;
+            // the long timeout only recovers from a request that Steam silently dropped.
+            gameLaunchPendingUntilUtc = DateTime.UtcNow + GameLaunchPendingTimeout;
             gameButtonUsesActivePalette = true;
             gameStateTimer.Interval = 250;
             ApplyGameButtonState();
