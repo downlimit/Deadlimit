@@ -292,12 +292,15 @@ public sealed class HeroExtractionService
 
         foreach (var additionalFile in contentFile.AdditionalFiles)
         {
-            var additionalPath = additionalFile.KeepFullPath
+            var additionalFileName = NormalizeResourcePath(additionalFile.FileName);
+            var preserveTextureResourceDirectory = additionalFile is TextureContentFile
+                && additionalFileName.Contains('/');
+            var additionalPath = additionalFile.KeepFullPath || preserveTextureResourceDirectory
                 ? SafePath.ResolveUnderRoot(
                     outputRoot,
-                    ToWindowsPath(additionalFile.FileName),
+                    ToWindowsPath(additionalFileName),
                     "Additional extracted resource")
-                : Path.Combine(Path.GetDirectoryName(path)!, Path.GetFileName(additionalFile.FileName));
+                : Path.Combine(Path.GetDirectoryName(path)!, Path.GetFileName(additionalFileName));
 
             DumpContentFile(outputRoot, additionalPath, additionalFile);
         }
