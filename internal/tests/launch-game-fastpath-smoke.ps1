@@ -12,7 +12,17 @@ $requiredHeader = @(
     'private static string? _cachedSteamExecutable;',
     '_ = Task.Run(FindSteamExecutable);',
     'Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam", writable: false)',
-    'Arguments = $"-applaunch {DeadlockSteamAppId}"'
+    'Arguments = $"-applaunch {DeadlockSteamAppId}"',
+    'GameActiveGradientStart = Color.FromArgb(0x39, 0x9A, 0xED)',
+    'GameActiveGradientEnd = Color.FromArgb(0x24, 0x5E, 0xCF)',
+    'DeadlockProcessService.IsRunning()',
+    'await DeadlockProcessService.CloseAsync()',
+    'UiText.T("✕  CLOSE", "✕  ЗАКРЫТЬ")',
+    'UiText.T("GAME IS LAUNCHING", "ИГРА ЗАПУСКАЕТСЯ")',
+    'DateTime.UtcNow.AddSeconds(15)',
+    '? 1000',
+    '? 250',
+    ': 2000'
 )
 foreach ($pattern in $requiredHeader) {
     if (-not $header.Contains($pattern)) {
