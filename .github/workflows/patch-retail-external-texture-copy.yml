@@ -22,7 +22,7 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Apply patch
         shell: pwsh
-        run: internal/tests/_patch-retail-external-texture-copy.ps1
+        run: internal/tests/_patch-retail-external-texture-copy-v2.ps1
       - name: Restore
         run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
       - name: Build
