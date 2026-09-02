@@ -28,9 +28,12 @@ internal static class DeadlockProcessService
         return false;
     }
 
+    public static Task<bool> IsRunningAsync(CancellationToken cancellationToken = default) =>
+        Task.Run(IsRunning, cancellationToken);
+
     public static async Task<bool> CloseAsync(CancellationToken cancellationToken = default)
     {
-        var processes = GetRunningProcesses();
+        var processes = await Task.Run(GetRunningProcesses, cancellationToken);
         try
         {
             foreach (var process in processes)
@@ -102,13 +105,13 @@ internal static class DeadlockProcessService
         while (DateTime.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!IsRunning())
+            if (!await IsRunningAsync(cancellationToken))
             {
                 return true;
             }
             await Task.Delay(200, cancellationToken);
         }
 
-        return !IsRunning();
+        return !await IsRunningAsync(cancellationToken);
     }
 }

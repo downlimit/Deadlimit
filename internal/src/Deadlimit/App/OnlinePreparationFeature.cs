@@ -89,13 +89,31 @@ internal static class OnlinePreparationFeature
 
     internal static bool StopForGameLaunch()
     {
-        if (_session is null)
+        var session = _session;
+        if (session is null)
         {
             return false;
         }
 
-        StopSession();
+        _session = null;
+        session.Updated -= OnSessionUpdated;
+
+        if (_launchButton is not null && !_launchButton.IsDisposed)
+        {
+            _launchButton.Text = UiText.T("▶  LAUNCH CSDK", "▶  ЗАПУСК CSDK");
+        }
+
+        UpdateToolTip(UiText.T(
+            "ONLINE PREPARATION is off.\n\nShift-click LAUNCH CSDK to prepare once and enable live synchronization. CSDK launches only if no CSDK process is already running.",
+            "ОНЛАЙН-ПОДГОТОВКА выключена.\n\nИспользуйте SHIFT+клик по ЗАПУСК CSDK, чтобы один раз выполнить подготовку и включить онлайн-синхронизацию. CSDK будет запущен только если другой процесс CSDK ещё не работает."));
+
+        _ = DisposeSessionAfterGameLaunchAsync(session);
         return true;
+    }
+
+    private static async Task DisposeSessionAfterGameLaunchAsync(OnlinePreparationSession session)
+    {
+        await Task.Run(session.Dispose);
     }
 
     private static async Task<bool> ToggleOnlinePreparationAsync()

@@ -119,7 +119,9 @@ internal static class ProjectHeaderFeature
             TabStop = false,
         };
         var gameLaunchPendingUntilUtc = DateTime.MinValue;
-        var gameButtonUsesActivePalette = DeadlockProcessService.IsRunning();
+        var gameIsRunning = false;
+        var gameStateProbeActive = false;
+        var gameButtonUsesActivePalette = false;
         var gameStateTimer = new System.Windows.Forms.Timer();
 
         ToolTip toolTip = null!;
@@ -132,12 +134,13 @@ internal static class ProjectHeaderFeature
                 return;
             }
 
-            if (DeadlockProcessService.IsRunning())
+            if (gameIsRunning)
             {
                 launchGameButton.Enabled = false;
+                var closed = false;
                 try
                 {
-                    var closed = await DeadlockProcessService.CloseAsync();
+                    closed = await DeadlockProcessService.CloseAsync();
                     if (!closed)
                     {
                         MessageBox.Show(
@@ -153,25 +156,36 @@ internal static class ProjectHeaderFeature
                 finally
                 {
                     gameLaunchPendingUntilUtc = DateTime.MinValue;
+                    gameIsRunning = !closed;
                     launchGameButton.Enabled = true;
-                    RefreshGameButtonState();
+                    ApplyGameButtonState();
+                    if (!closed)
+                    {
+                        _ = RefreshGameButtonStateAsync();
+                    }
                 }
+                return;
+            }
+
+            if (DateTime.UtcNow < gameLaunchPendingUntilUtc)
+            {
                 return;
             }
 
             gameLaunchPendingUntilUtc = DateTime.UtcNow.AddSeconds(15);
             gameButtonUsesActivePalette = true;
             gameStateTimer.Interval = 250;
-            RefreshGameButtonState();
+            ApplyGameButtonState();
 
-            if (LaunchDeadlock(form))
+            if (await LaunchDeadlockAsync(form))
             {
                 OnlinePreparationFeature.StopForGameLaunch();
+                _ = RefreshGameButtonStateAsync();
             }
             else
             {
                 gameLaunchPendingUntilUtc = DateTime.MinValue;
-                RefreshGameButtonState();
+                ApplyGameButtonState();
             }
         };
 
@@ -235,28 +249,27 @@ internal static class ProjectHeaderFeature
                 $"Launch Deadlock game client through Steam.\n\nHold SHIFT while clicking to copy '{CameraLockCommand}' to the clipboard without launching the game.",
                 $"Запустить Deadlock через Steam.\n\nУдерживайте SHIFT при клике, чтобы скопировать '{CameraLockCommand}' в буфер обмена без запуска игры."));
 
-        void RefreshGameButtonState()
+        void ApplyGameButtonState()
         {
             if (launchGameButton.IsDisposed)
             {
                 return;
             }
 
-            var running = DeadlockProcessService.IsRunning();
-            var launchPending = !running && DateTime.UtcNow < gameLaunchPendingUntilUtc;
+            var launchPending = !gameIsRunning && DateTime.UtcNow < gameLaunchPendingUntilUtc;
             if (!launchPending)
             {
                 gameLaunchPendingUntilUtc = DateTime.MinValue;
             }
 
-            gameButtonUsesActivePalette = running || launchPending;
-            launchGameButton.Text = running
+            gameButtonUsesActivePalette = gameIsRunning || launchPending;
+            launchGameButton.Text = gameIsRunning
                 ? UiText.T("✕  CLOSE", "✕  ЗАКРЫТЬ")
                 : launchPending
                     ? UiText.T("GAME IS LAUNCHING", "ИГРА ЗАПУСКАЕТСЯ")
                     : UiText.T("▶  LAUNCH GAME", "▶  ЗАПУСК ИГРЫ");
 
-            gameStateTimer.Interval = running
+            gameStateTimer.Interval = gameIsRunning
                 ? 1000
                 : launchPending
                     ? 250
@@ -264,7 +277,7 @@ internal static class ProjectHeaderFeature
 
             toolTip.SetToolTip(
                 launchGameButton,
-                running
+                gameIsRunning
                     ? UiText.T(
                         "Deadlock is running. Click to close the game.\n\nHold SHIFT while clicking to copy the camera-lock command instead.",
                         "Deadlock запущен. Нажмите, чтобы закрыть игру.\n\nУдерживайте SHIFT при клике, чтобы вместо этого скопировать команду блокировки камеры.")
@@ -279,7 +292,38 @@ internal static class ProjectHeaderFeature
             launchGameButton.Invalidate();
         }
 
-        gameStateTimer.Tick += (_, _) => RefreshGameButtonState();
+        async Task RefreshGameButtonStateAsync()
+        {
+            if (gameStateProbeActive || launchGameButton.IsDisposed)
+            {
+                return;
+            }
+
+            gameStateProbeActive = true;
+            try
+            {
+                var running = await DeadlockProcessService.IsRunningAsync();
+                if (launchGameButton.IsDisposed)
+                {
+                    return;
+                }
+
+                gameIsRunning = running;
+                ApplyGameButtonState();
+            }
+            catch (Exception ex) when (ex is InvalidOperationException
+                or System.ComponentModel.Win32Exception
+                or NotSupportedException)
+            {
+                // Process observation is best-effort. Retain the last known visual state.
+            }
+            finally
+            {
+                gameStateProbeActive = false;
+            }
+        }
+
+        gameStateTimer.Tick += (_, _) => _ = RefreshGameButtonStateAsync();
         form.FormClosed += (_, _) =>
         {
             gameStateTimer.Stop();
@@ -381,8 +425,9 @@ internal static class ProjectHeaderFeature
                 () => gameButtonUsesActivePalette
                     ? (GameActiveGradientStart, GameActiveGradientEnd)
                     : (GameGradientStart, GameGradientEnd));
-            RefreshGameButtonState();
+            ApplyGameButtonState();
             gameStateTimer.Start();
+            _ = RefreshGameButtonStateAsync();
         };
 
         PositionControls();
@@ -596,9 +641,9 @@ internal static class ProjectHeaderFeature
         }
     }
 
-    private static bool LaunchDeadlock(MainForm form)
+    private static async Task<bool> LaunchDeadlockAsync(MainForm form)
     {
-        if (TryLaunchDeadlockThroughSteamExecutable())
+        if (await Task.Run(TryLaunchDeadlockThroughSteamExecutable))
         {
             return true;
         }

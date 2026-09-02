@@ -6,16 +6,19 @@ $header = Get-Content -LiteralPath $headerPath -Raw
 $online = Get-Content -LiteralPath $onlinePath -Raw
 
 $requiredHeader = @(
-    'if (LaunchDeadlock(form))',
+    'if (await LaunchDeadlockAsync(form))',
     'OnlinePreparationFeature.StopForGameLaunch();',
-    'private static bool LaunchDeadlock(MainForm form)',
+    'private static async Task<bool> LaunchDeadlockAsync(MainForm form)',
     'private static string? _cachedSteamExecutable;',
     '_ = Task.Run(FindSteamExecutable);',
     'Registry.CurrentUser.OpenSubKey(@"Software\Valve\Steam", writable: false)',
     'Arguments = $"-applaunch {DeadlockSteamAppId}"',
     'GameActiveGradientStart = Color.FromArgb(0x39, 0x9A, 0xED)',
     'GameActiveGradientEnd = Color.FromArgb(0x24, 0x5E, 0xCF)',
-    'DeadlockProcessService.IsRunning()',
+    'await DeadlockProcessService.IsRunningAsync()',
+    'gameStateProbeActive',
+    'ApplyGameButtonState();',
+    'Task.Run(TryLaunchDeadlockThroughSteamExecutable)',
     'await DeadlockProcessService.CloseAsync()',
     'UiText.T("✕  CLOSE", "✕  ЗАКРЫТЬ")',
     'UiText.T("GAME IS LAUNCHING", "ИГРА ЗАПУСКАЕТСЯ")',
@@ -29,15 +32,34 @@ foreach ($pattern in $requiredHeader) {
         throw "Missing launch-game fastpath contract: $pattern"
     }
 }
+if ($header.Contains('DeadlockProcessService.IsRunning()')) {
+    throw 'ProjectHeaderFeature must not enumerate Deadlock processes on the UI thread.'
+}
 
 $requiredOnline = @(
     'internal static bool StopForGameLaunch()',
-    'StopSession();',
+    '_session = null;',
+    'DisposeSessionAfterGameLaunchAsync(session)',
+    'await Task.Run(session.Dispose);',
     'return true;'
 )
 foreach ($pattern in $requiredOnline) {
     if (-not $online.Contains($pattern)) {
         throw "Missing online-stop contract: $pattern"
+    }
+}
+
+$processServicePath = 'internal/src/Deadlimit/App/DeadlockProcessService.cs'
+$processService = Get-Content -LiteralPath $processServicePath -Raw
+$requiredProcessService = @(
+    'public static Task<bool> IsRunningAsync',
+    'Task.Run(IsRunning, cancellationToken)',
+    'await Task.Run(GetRunningProcesses, cancellationToken)',
+    'await IsRunningAsync(cancellationToken)'
+)
+foreach ($pattern in $requiredProcessService) {
+    if (-not $processService.Contains($pattern)) {
+        throw "Missing asynchronous process-state contract: $pattern"
     }
 }
 
