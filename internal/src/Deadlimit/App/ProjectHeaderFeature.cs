@@ -22,6 +22,8 @@ internal static class ProjectHeaderFeature
     private static readonly Color CsdkGradientEnd = Color.FromArgb(0x9E, 0x1D, 0xC3);
     private static readonly Color GameGradientStart = Color.FromArgb(0x4C, 0xC7, 0x31);
     private static readonly Color GameGradientEnd = Color.FromArgb(0x13, 0xA5, 0x44);
+    private static readonly Color GameActiveGradientStart = Color.FromArgb(0x39, 0x9A, 0xED);
+    private static readonly Color GameActiveGradientEnd = Color.FromArgb(0x24, 0x5E, 0xCF);
 
     private static string? _cachedSteamExecutable;
 
@@ -116,7 +118,13 @@ internal static class ProjectHeaderFeature
             Margin = Padding.Empty,
             TabStop = false,
         };
-        launchGameButton.Click += (_, _) =>
+        var gameLaunchPendingUntilUtc = DateTime.MinValue;
+        var gameButtonUsesActivePalette = DeadlockProcessService.IsRunning();
+        var gameStateTimer = new System.Windows.Forms.Timer();
+
+        ToolTip toolTip = null!;
+
+        launchGameButton.Click += async (_, _) =>
         {
             if ((Control.ModifierKeys & Keys.Shift) == Keys.Shift)
             {
@@ -124,9 +132,46 @@ internal static class ProjectHeaderFeature
                 return;
             }
 
+            if (DeadlockProcessService.IsRunning())
+            {
+                launchGameButton.Enabled = false;
+                try
+                {
+                    var closed = await DeadlockProcessService.CloseAsync();
+                    if (!closed)
+                    {
+                        MessageBox.Show(
+                            form,
+                            UiText.T(
+                                "Deadlock did not close within the expected time.",
+                                "Deadlock не закрылся за ожидаемое время."),
+                            UiText.T("Could not close Deadlock", "Не удалось закрыть Deadlock"),
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning);
+                    }
+                }
+                finally
+                {
+                    gameLaunchPendingUntilUtc = DateTime.MinValue;
+                    launchGameButton.Enabled = true;
+                    RefreshGameButtonState();
+                }
+                return;
+            }
+
+            gameLaunchPendingUntilUtc = DateTime.UtcNow.AddSeconds(15);
+            gameButtonUsesActivePalette = true;
+            gameStateTimer.Interval = 250;
+            RefreshGameButtonState();
+
             if (LaunchDeadlock(form))
             {
                 OnlinePreparationFeature.StopForGameLaunch();
+            }
+            else
+            {
+                gameLaunchPendingUntilUtc = DateTime.MinValue;
+                RefreshGameButtonState();
             }
         };
 
@@ -162,7 +207,7 @@ internal static class ProjectHeaderFeature
         prepareOverlay.BringToFront();
         buildOverlay.BringToFront();
 
-        var toolTip = new ToolTip
+        toolTip = new ToolTip
         {
             ShowAlways = true,
             InitialDelay = 350,
@@ -189,6 +234,57 @@ internal static class ProjectHeaderFeature
             UiText.T(
                 $"Launch Deadlock game client through Steam.\n\nHold SHIFT while clicking to copy '{CameraLockCommand}' to the clipboard without launching the game.",
                 $"Запустить Deadlock через Steam.\n\nУдерживайте SHIFT при клике, чтобы скопировать '{CameraLockCommand}' в буфер обмена без запуска игры."));
+
+        void RefreshGameButtonState()
+        {
+            if (launchGameButton.IsDisposed)
+            {
+                return;
+            }
+
+            var running = DeadlockProcessService.IsRunning();
+            var launchPending = !running && DateTime.UtcNow < gameLaunchPendingUntilUtc;
+            if (!launchPending)
+            {
+                gameLaunchPendingUntilUtc = DateTime.MinValue;
+            }
+
+            gameButtonUsesActivePalette = running || launchPending;
+            launchGameButton.Text = running
+                ? UiText.T("✕  CLOSE", "✕  ЗАКРЫТЬ")
+                : launchPending
+                    ? UiText.T("GAME IS LAUNCHING", "ИГРА ЗАПУСКАЕТСЯ")
+                    : UiText.T("▶  LAUNCH GAME", "▶  ЗАПУСК ИГРЫ");
+
+            gameStateTimer.Interval = running
+                ? 1000
+                : launchPending
+                    ? 250
+                    : 2000;
+
+            toolTip.SetToolTip(
+                launchGameButton,
+                running
+                    ? UiText.T(
+                        "Deadlock is running. Click to close the game.\n\nHold SHIFT while clicking to copy the camera-lock command instead.",
+                        "Deadlock запущен. Нажмите, чтобы закрыть игру.\n\nУдерживайте SHIFT при клике, чтобы вместо этого скопировать команду блокировки камеры.")
+                    : launchPending
+                        ? UiText.T(
+                            "The launch request was sent to Steam. Deadlimit is waiting for the Deadlock process to appear.",
+                            "Запрос на запуск отправлен Steam. Deadlimit ждёт появления процесса Deadlock.")
+                        : UiText.T(
+                            $"Launch Deadlock game client through Steam.\n\nHold SHIFT while clicking to copy '{CameraLockCommand}' to the clipboard without launching the game.",
+                            $"Запустить Deadlock через Steam.\n\nУдерживайте SHIFT при клике, чтобы скопировать '{CameraLockCommand}' в буфер обмена без запуска игры."));
+
+            launchGameButton.Invalidate();
+        }
+
+        gameStateTimer.Tick += (_, _) => RefreshGameButtonState();
+        form.FormClosed += (_, _) =>
+        {
+            gameStateTimer.Stop();
+            gameStateTimer.Dispose();
+        };
 
         void PositionControls()
         {
@@ -280,7 +376,13 @@ internal static class ProjectHeaderFeature
             PositionControls();
             RefreshHeaderImage();
             ConfigureGradientButton(launchCsdkButton, CsdkGradientStart, CsdkGradientEnd);
-            ConfigureGradientButton(launchGameButton, GameGradientStart, GameGradientEnd);
+            ConfigureGradientButton(
+                launchGameButton,
+                () => gameButtonUsesActivePalette
+                    ? (GameActiveGradientStart, GameActiveGradientEnd)
+                    : (GameGradientStart, GameGradientEnd));
+            RefreshGameButtonState();
+            gameStateTimer.Start();
         };
 
         PositionControls();
@@ -368,24 +470,29 @@ internal static class ProjectHeaderFeature
         graphics.FillRectangle(brush, header.ClientRectangle);
     }
 
-    private static void ConfigureGradientButton(Button button, Color gradientStart, Color gradientEnd)
+    private static void ConfigureGradientButton(Button button, Color gradientStart, Color gradientEnd) =>
+        ConfigureGradientButton(button, () => (gradientStart, gradientEnd));
+
+    private static void ConfigureGradientButton(
+        Button button,
+        Func<(Color Start, Color End)> gradientProvider)
     {
         var hovered = false;
         var pressed = false;
+        var initialGradient = gradientProvider();
 
         button.UseVisualStyleBackColor = false;
         button.FlatStyle = FlatStyle.Flat;
         button.FlatAppearance.BorderSize = 0;
         button.ForeColor = Color.White;
-        button.BackColor = gradientStart;
+        button.BackColor = initialGradient.Start;
         button.TabStop = false;
 
         button.Paint += (_, e) =>
         {
             button.FlatAppearance.BorderSize = 0;
 
-            var start = gradientStart;
-            var end = gradientEnd;
+            var (start, end) = gradientProvider();
             if (hovered)
             {
                 start = IncreaseSaturationAndValue(start, saturationFactor: 1.05, valueFactor: 1.10);
