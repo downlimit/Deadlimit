@@ -45,16 +45,16 @@ internal static class MessageBox
                 caption,
                 [
                     new DeadlimitDialogButton(
-                        UiText.T("YES", "ДА"),
-                        DeadlimitDialogChoice.Yes,
-                        IsDefault: true),
+                        UiText.T("NO", "НЕТ"),
+                        DeadlimitDialogChoice.No,
+                        IsCancel: true),
                     new DeadlimitDialogButton(
                         UiText.T("YES, NO BACKUP", "ДА, БЕЗ БЭКАПА"),
                         DeadlimitDialogChoice.YesWithoutBackup),
                     new DeadlimitDialogButton(
-                        UiText.T("NO", "НЕТ"),
-                        DeadlimitDialogChoice.No,
-                        IsCancel: true),
+                        UiText.T("YES", "ДА"),
+                        DeadlimitDialogChoice.Yes,
+                        IsDefault: true),
                 ]);
 
             _removeHeroExtractionBackupAfterSuccess =
