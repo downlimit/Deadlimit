@@ -1,0 +1,42 @@
+name: One-shot project cover patch
+
+on:
+  push:
+    branches:
+      - ui/open-project-cover
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Open project cover image directly'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/open-project-cover
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Apply patch
+        shell: pwsh
+        run: internal/tests/_patch-open-project-cover.ps1
+      - name: Restore
+        run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
+      - name: Build
+        run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+      - name: UI localization smoke
+        shell: pwsh
+        run: internal/tests/ui-localization-smoke.ps1
+      - name: Startup smoke
+        run: dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --startup-smoke
+      - name: Commit patch
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add internal/src/Deadlimit/App/ProjectHeaderFeature.cs internal/src/Deadlimit/App/ProjectLibraryFeature.cs internal/tests/ui-localization-smoke.ps1
+          git commit -m 'Open project cover image directly'
+          git push origin HEAD:ui/open-project-cover
