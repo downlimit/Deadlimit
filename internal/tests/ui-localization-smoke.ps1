@@ -20,6 +20,10 @@ Assert-Contains 'internal/src/Deadlimit/Core/BuildAndTestService.cs' 'LocalizedT
 Assert-Contains 'internal/src/Deadlimit/Core/OnlinePreparationSession.cs' 'ОНЛАЙН-ПОДГОТОВКА'
 Assert-Contains 'internal/src/Deadlimit/App/OnlinePreparationFeature.cs' 'ОНЛАЙН-ПОДГОТОВКА'
 Assert-NotContains 'internal/src/Deadlimit/App/SettingsForm.cs' 'Text = "📂 CSDK Fast Startup Fix"'
+Assert-Contains 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs' 'UiText.T("Could not open project cover", "Не удалось открыть обложку проекта")'
+Assert-Contains 'internal/src/Deadlimit/App/ProjectLibraryFeature.cs' 'UiText.T("Open Project Cover", "Открыть обложку проекта")'
+Assert-Contains 'internal/src/Deadlimit/App/ProjectLibraryFeature.cs' 'ProjectHeaderFeature.GetHeaderImagePath(folder)'
+Assert-NotContains 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs' 'OpenHeaderFolder()'
 
 # Static control text in App should either be localized, a technical/product token, a glyph, or data-driven.
 $allowed = @(

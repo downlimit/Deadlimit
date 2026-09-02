@@ -555,14 +555,17 @@ internal static class ProjectLibraryFeature
             var menu = new ContextMenuStrip();
             var renameItem = new ToolStripMenuItem(UiText.T("Rename", "Переименовать"));
             var openItem = new ToolStripMenuItem(UiText.T("Open in File Explorer", "Открыть в проводнике"));
+            var openCoverItem = new ToolStripMenuItem(UiText.T("Open Project Cover", "Открыть обложку проекта"));
             var deleteItem = new ToolStripMenuItem(UiText.T("Delete...", "Удалить..."));
 
             renameItem.Click += (_, _) => RenameSelectedProject();
             openItem.Click += (_, _) => OpenSelectedProjectFolder();
+            openCoverItem.Click += (_, _) => OpenSelectedProjectCover();
             deleteItem.Click += (_, _) => DeleteSelectedProject();
 
             menu.Items.Add(renameItem);
             menu.Items.Add(openItem);
+            menu.Items.Add(openCoverItem);
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add(deleteItem);
             menu.Opening += (sender, e) =>
@@ -570,6 +573,7 @@ internal static class ProjectLibraryFeature
                 var hasSelection = TryGetSelectedProject(out _, out _);
                 renameItem.Enabled = hasSelection;
                 openItem.Enabled = hasSelection;
+                openCoverItem.Enabled = hasSelection && HasSelectedProjectCover();
                 deleteItem.Enabled = hasSelection;
                 if (!hasSelection)
                 {
@@ -607,6 +611,49 @@ internal static class ProjectLibraryFeature
 
             folder = Path.Combine(projectsRoot, projectName);
             return Directory.Exists(folder);
+        }
+
+        private bool HasSelectedProjectCover()
+        {
+            return TryGetSelectedProject(out _, out var folder)
+                && File.Exists(ProjectHeaderFeature.GetHeaderImagePath(folder));
+        }
+
+        private void OpenSelectedProjectCover()
+        {
+            if (!TryGetSelectedProject(out _, out var folder))
+            {
+                return;
+            }
+
+            var imagePath = ProjectHeaderFeature.GetHeaderImagePath(folder);
+            if (!File.Exists(imagePath))
+            {
+                return;
+            }
+
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = imagePath,
+                    UseShellExecute = true,
+                });
+            }
+            catch (Exception ex) when (ex is IOException
+                or UnauthorizedAccessException
+                or ArgumentException
+                or System.ComponentModel.Win32Exception
+                or InvalidOperationException
+                or System.Runtime.InteropServices.ExternalException)
+            {
+                MessageBox.Show(
+                    _form,
+                    ex.Message,
+                    UiText.T("Could not open project cover", "Не удалось открыть обложку проекта"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
         }
 
         private void OpenSelectedProjectFolder()
