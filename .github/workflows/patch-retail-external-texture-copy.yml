@@ -1,0 +1,42 @@
+name: One-shot retail external texture copy patch
+
+on:
+  push:
+    branches:
+      - fix/prepare-retail-external-textures
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'Copy external retail texture dependencies during PREPARE'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/prepare-retail-external-textures
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Apply patch
+        shell: pwsh
+        run: internal/tests/_patch-retail-external-texture-copy.ps1
+      - name: Restore
+        run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
+      - name: Build
+        run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+      - name: Retail external texture dependency smoke
+        shell: pwsh
+        run: internal/tests/retail-external-texture-copy-smoke.ps1
+      - name: Startup smoke
+        run: dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --startup-smoke
+      - name: Commit patch
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add internal/src/Deadlimit/Core/RetailVmdlInheritance.cs internal/tests/retail-external-texture-copy-smoke.ps1
+          git commit -m 'Copy external retail texture dependencies during PREPARE'
+          git push origin HEAD:fix/prepare-retail-external-textures
