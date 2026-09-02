@@ -23,6 +23,56 @@ jobs:
       - name: Apply patch
         shell: pwsh
         run: internal/tests/_patch-game-launch-state.ps1
+      - name: Refine pending launch state
+        shell: pwsh
+        run: |
+          $path = 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs'
+          $text = Get-Content -LiteralPath $path -Raw
+
+          $text = $text.Replace(
+            "        launchGameButton.Click += async (_, _) =>",
+            "        ToolTip? toolTip = null;`n`n        launchGameButton.Click += async (_, _) =>")
+
+          $text = $text.Replace(
+            "        var toolTip = new ToolTip",
+            "        toolTip = new ToolTip")
+
+          $text = $text.Replace(
+            @'
+            gameLaunchPendingUntilUtc = DateTime.UtcNow.AddSeconds(15);
+            gameButtonUsesActivePalette = true;
+            gameStateTimer.Interval = 250;
+            launchGameButton.Invalidate();
+'@,
+            @'
+            gameLaunchPendingUntilUtc = DateTime.UtcNow.AddSeconds(15);
+            gameButtonUsesActivePalette = true;
+            gameStateTimer.Interval = 250;
+            RefreshGameButtonState();
+'@)
+
+          $text = $text.Replace(
+            @'
+            launchGameButton.Text = running
+                ? UiText.T("✕  CLOSE", "✕  ЗАКРЫТЬ")
+                : UiText.T("▶  LAUNCH GAME", "▶  ЗАПУСК ИГРЫ");
+'@,
+            @'
+            launchGameButton.Text = running
+                ? UiText.T("✕  CLOSE", "✕  ЗАКРЫТЬ")
+                : launchPending
+                    ? UiText.T("GAME IS LAUNCHING", "ИГРА ЗАПУСКАЕТСЯ")
+                    : UiText.T("▶  LAUNCH GAME", "▶  ЗАПУСК ИГРЫ");
+'@)
+
+          Set-Content -LiteralPath $path -Value $text -Encoding utf8NoBOM -NoNewline
+
+          $smokePath = 'internal/tests/launch-game-fastpath-smoke.ps1'
+          $smoke = Get-Content -LiteralPath $smokePath -Raw
+          $smoke = $smoke.Replace(
+            "    'UiText.T(\"✕  CLOSE\", \"✕  ЗАКРЫТЬ\")',",
+            "    'UiText.T(\"✕  CLOSE\", \"✕  ЗАКРЫТЬ\")',`n    'UiText.T(\"GAME IS LAUNCHING\", \"ИГРА ЗАПУСКАЕТСЯ\")',")
+          Set-Content -LiteralPath $smokePath -Value $smoke -Encoding utf8NoBOM -NoNewline
       - name: Restore
         run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
       - name: Build
