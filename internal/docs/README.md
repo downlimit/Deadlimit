@@ -37,6 +37,8 @@ Export DMX / save textures
 - `RUNNING_GAME.md` — live-confirmed VPK file-lock behavior when Deadlock is running and the resulting close-before-deploy contract.
 - `ARCHITECTURE.md` — environment roots, architecture, pipeline structure, and confirmed technical facts.
 - `ROADMAP.md` — implementation stages and acceptance criteria.
+- `OPEN_SOURCE_PLAN.md` — live readiness plan, provenance audit, public-release gates, and implementation status for opening the repository to outside users and contributors.
+- `NETWORK_TRUST_AUDIT.md` — current download sources, executable trust boundaries, existing controls, and required public-release hardening.
 
 When there is a conflict, current experimental evidence takes priority over assumptions recorded in older documentation. External tool compatibility should be revalidated when Deadlock, Reduced CSDK, DeadlockTools, Wall Worm, or ValveResourceFormat changes.
 
