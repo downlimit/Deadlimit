@@ -103,7 +103,7 @@ separate instructions without knowing the maintainer's workstation layout.
 
 - [x] Keep the current Git updater as the developer channel and label it accordingly in the public README.
 - [x] Create a single-file `Install-Deadlimit.cmd` bootstrap for users without Git; it fetches and verifies the release updater asset before execution.
-- [~] Build a self-contained `win-x64` portable ZIP in the private rehearsal workflow; public publication remains gated.
+- [x] Build and install-smoke a self-contained `win-x64` portable ZIP in the private rehearsal workflow; public publication remains gated.
 - [x] Generate a SHA-256 checksum alongside every rehearsal ZIP and require it during install/update.
 - [x] Install portable builds under `%LocalAppData%\Programs\Deadlimit` by default.
 - [x] Keep existing user settings under `%LocalAppData%\Deadlimit` and artist projects outside the replaceable application directory.
@@ -119,13 +119,13 @@ while a contributor can clone and work on `main` without mixing the two channels
 ## Phase 4 — CI, security, and repository policy
 
 - [~] Keep existing Windows `build` and `smoke` jobs on pull requests; mark them required when public branch protection becomes available.
-- [ ] Add CodeQL for C#.
+- [!] Add CodeQL for C# when the repository is public or private GitHub Advanced Security is available; do not add a knowingly unavailable required check.
 - [x] Add Dependabot for NuGet and GitHub Actions.
-- [ ] Add dependency review and license-policy checks.
+- [~] Add dependency review and license-policy checks. Exact package license evidence and release-manifest verification pass; GitHub dependency review waits for public availability or GitHub Advanced Security.
 - [x] Add repository-owned DCO enforcement for every pull-request commit.
 - [x] Add release-package smoke tests, manifest/license checks, and checksum verification.
 - [x] Set current workflows to read-only repository contents permissions.
-- [ ] Confirm fork pull requests never receive publication secrets.
+- [x] Confirm fork pull requests never receive publication secrets: PR workflows use read-only contents permissions, reference no secrets, and no `pull_request_target` workflow exists; release publication is tag-only.
 - [ ] After the repository becomes public, protect `main`:
   - require pull requests;
   - require `build` and `smoke`;
@@ -158,14 +158,18 @@ Validated locally on Windows 11 on 2026-09-04:
 - [x] `git diff --check`.
 - [x] GitHub pull-request workflows on PR #95 initial head `89f491e`: `build`, `dco`, and `smoke` passed.
 - [x] GitHub pull-request workflows on portable-channel PR #99 head `7553955`: `build`, `dco`, and `smoke` passed; merged as `94dac0e`.
+- [x] GitHub pull-request workflows on portability PR #101: `build`, `dco`, and `smoke` passed; merged as `a8f8077`.
+- [x] GitHub pull-request workflows on actions-update PR #102 passed with current official action majors; merged as `3b339dc`.
+- [x] Private rehearsal run `33922258940`: self-contained package build, isolated install/startup smoke, and private artifact upload passed.
+- [x] Downloaded rehearsal artifact audit: ZIP/updater checksums match, all 362 manifest entries verify, 363 ZIP entries contain zero detected prohibited game/authoring assets, and dependency license evidence is present.
 
 ## Phase 5 — Private release rehearsal and public launch
 
-- [ ] Build `0.1.0-beta.1` in the private repository.
+- [x] Build `0.1.0-beta.1` in the private repository and record exact artifact evidence in `RELEASE_REHEARSAL_0.1.0-beta.1.md`.
 - [ ] Test installation on a clean Windows 11 environment without maintainer paths.
 - [ ] Test Stable update from the previous rehearsal build.
 - [ ] Re-run provenance, secret, and packaged-file audits.
-- [ ] Produce a final go/no-go report for the owner.
+- [~] Produce a final go/no-go report for the owner. The current rehearsal report is NO-GO until the listed compatibility, trust, clean-machine, and final-audit gates are resolved.
 - [!] Receive explicit owner approval to change visibility.
 - [ ] Change `PRIVATE` to `PUBLIC`.
 - [ ] Apply branch protection immediately after visibility changes.
@@ -206,6 +210,8 @@ the project gains enough users to justify certificate cost and maintenance.
 - Confirmed the repository remains private with zero tags and zero GitHub Releases after the merge.
 - Replaced maintainer-specific runtime defaults with application-root derivation and explicit Settings-based Steam discovery, and retired the obsolete `DeadlimitAggregator*` launchers.
 - Documented the unsigned-beta SmartScreen warning and checksum-verification rule in both public guides.
+- Updated official GitHub Actions to their current Node 24-based majors, then passed private rehearsal run `33922258940` without the prior Node 20 warning.
+- Recorded the private `0.1.0-beta.1` ZIP/updater hashes, full manifest verification, packaged-content audit, and remaining public-release no-go items.
 
 ### 2026-09-04
 

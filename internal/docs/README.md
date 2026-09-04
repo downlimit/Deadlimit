@@ -39,6 +39,7 @@ Export DMX / save textures
 - `ROADMAP.md` — implementation stages and acceptance criteria.
 - `OPEN_SOURCE_PLAN.md` — live readiness plan, provenance audit, public-release gates, and implementation status for opening the repository to outside users and contributors.
 - `NETWORK_TRUST_AUDIT.md` — current download sources, executable trust boundaries, existing controls, and required public-release hardening.
+- `RELEASE_REHEARSAL_0.1.0-beta.1.md` — private package evidence, exact hashes, and the current public-release no-go items.
 
 When there is a conflict, current experimental evidence takes priority over assumptions recorded in older documentation. External tool compatibility should be revalidated when Deadlock, Reduced CSDK, DeadlockTools, Wall Worm, or ValveResourceFormat changes.
 
