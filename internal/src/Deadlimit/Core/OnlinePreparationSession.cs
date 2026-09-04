@@ -218,36 +218,21 @@ internal sealed class OnlinePreparationSession : IDisposable
             }
 
             _pendingPaths.Add(fullPath);
-            UpdateVertexColorDebounceState(fullPath);
-            var debounceMilliseconds = _dmxAwaitingVertexColorSidecar.Count == 0
-                ? DebounceMilliseconds
-                : VertexColorPairDebounceMilliseconds;
-            _debounceTimer.Change(debounceMilliseconds, Timeout.Infinite);
+            ResetVertexColorPairWaitForChangedSource(fullPath);
+            _debounceTimer.Change(
+                _dmxAwaitingVertexColorSidecar.Count == 0
+                    ? DebounceMilliseconds
+                    : VertexColorPairDebounceMilliseconds - DebounceMilliseconds,
+                Timeout.Infinite);
         }
     }
 
-    private void UpdateVertexColorDebounceState(string fullPath)
+    private void ResetVertexColorPairWaitForChangedSource(string fullPath)
     {
         var extension = Path.GetExtension(fullPath);
         if (extension.Equals(".dmx", StringComparison.OrdinalIgnoreCase))
         {
-            if (!File.Exists(fullPath))
-            {
-                _dmxAwaitingVertexColorSidecar.Remove(fullPath);
-                return;
-            }
-
-            var sidecarPath = VertexColorSidecarService.GetSidecarPath(fullPath);
-            if (File.Exists(sidecarPath)
-                && File.GetLastWriteTimeUtc(sidecarPath) < File.GetLastWriteTimeUtc(fullPath))
-            {
-                _dmxAwaitingVertexColorSidecar.Add(fullPath);
-            }
-            else
-            {
-                _dmxAwaitingVertexColorSidecar.Remove(fullPath);
-            }
-
+            _dmxAwaitingVertexColorSidecar.Remove(fullPath);
             return;
         }
 
@@ -262,6 +247,11 @@ internal sealed class OnlinePreparationSession : IDisposable
 
     private void QueueProcessPending()
     {
+        if (TryScheduleVertexColorPairWait())
+        {
+            return;
+        }
+
         lock (_gate)
         {
             if (_disposed)
@@ -281,6 +271,68 @@ internal sealed class OnlinePreparationSession : IDisposable
 
         _ = Task.Run(ProcessPendingLoop);
     }
+
+    private bool TryScheduleVertexColorPairWait()
+    {
+        string[] candidates;
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return false;
+            }
+
+            candidates = _pendingPaths
+                .Where(path => Path.GetExtension(path).Equals(".dmx", StringComparison.OrdinalIgnoreCase))
+                .Where(path => !_dmxAwaitingVertexColorSidecar.Contains(path))
+                .Where(File.Exists)
+                .ToArray();
+        }
+
+        var needsPairWait = new List<string>();
+        foreach (var path in candidates)
+        {
+            try
+            {
+                if (ShouldWaitForVertexColorPair(VertexColorSourceGuard.Inspect(path)))
+                {
+                    needsPairWait.Add(path);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // The base debounce can still land on an exporter-held file. Give that
+                // revision one bounded pair-wait window before the stable-read path retries.
+                needsPairWait.Add(path);
+            }
+        }
+
+        if (needsPairWait.Count == 0)
+        {
+            return false;
+        }
+
+        lock (_gate)
+        {
+            if (_disposed)
+            {
+                return false;
+            }
+
+            foreach (var path in needsPairWait.Where(_pendingPaths.Contains))
+            {
+                _dmxAwaitingVertexColorSidecar.Add(path);
+            }
+
+            _debounceTimer.Change(
+                VertexColorPairDebounceMilliseconds - DebounceMilliseconds,
+                Timeout.Infinite);
+            return true;
+        }
+    }
+
+    private static bool ShouldWaitForVertexColorPair(VertexColorSourceState state) =>
+        state.NeedsExternalSidecar && (!state.SidecarExists || !state.SidecarCurrent);
 
     private void ProcessPendingLoop()
     {
