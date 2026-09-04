@@ -168,7 +168,7 @@ Validated locally on Windows 11 on 2026-09-04:
 - [x] Build `0.1.0-beta.1` in the private repository and record exact artifact evidence in `RELEASE_REHEARSAL_0.1.0-beta.1.md`.
 - [ ] Test installation on a clean Windows 11 environment without maintainer paths.
 - [x] Test installed updater activation from the previous real rehearsal ZIP to the current real rehearsal ZIP, preservation under `.previous`, and rollback. Automatic GitHub Releases selection remains publication-gated.
-- [ ] Re-run provenance, secret, and packaged-file audits.
+- [x] Re-run provenance, secret, and packaged-file audits: 822 commits produced zero prohibited asset-path hits and zero high-confidence credential-signature hits; the private portable ZIP passed the manifest and packaged-content audit recorded in the rehearsal report.
 - [~] Produce a final go/no-go report for the owner. The current rehearsal report is NO-GO until the listed compatibility, trust, clean-machine, and final-audit gates are resolved.
 - [!] Receive explicit owner approval to change visibility.
 - [ ] Change `PRIVATE` to `PUBLIC`.
@@ -214,6 +214,7 @@ the project gains enough users to justify certificate cost and maintenance.
 - Recorded the private `0.1.0-beta.1` ZIP/updater hashes, full manifest verification, packaged-content audit, and remaining public-release no-go items.
 - Captured the exact 2026-09-05 local compatibility snapshot without recording account identifiers or user content.
 - Passed a real rehearsal-to-rehearsal portable update and installed-entry rollback using the two independently checksummed ZIPs.
+- Re-scanned all 822 reachable commits without printing candidate values: zero prohibited game/authoring asset paths and zero high-confidence credential-signature hits.
 
 ### 2026-09-04
 
