@@ -39,9 +39,9 @@ request whenever scope, evidence, risk, or completion status changes.
 - [x] Inspect Valve integration: the repository contains compatibility code and resource-schema names; retail resources are read/decompiled from the user's local installation at runtime and are not tracked.
 - [x] Verify the two direct NuGet dependencies: KeyValues2 0.8.0 and ValveResourceFormat 20.0.6980 are MIT-licensed.
 - [x] Inventory and verify every transitive NuGet dependency and required notice. The portable packager includes each exact nuspec, package-provided notice, resolved metadata, and full standard text for SPDX-only MIT/BSD packages.
-- [x] Scan the full Git history for secrets, personal files, and prohibited game assets without printing secret values. The 812-commit scan found zero prohibited asset paths and zero configured high-confidence or generic credential signatures.
+- [x] Scan the full Git history for secrets, personal files, and prohibited game assets without printing secret values. The final 822-commit scan found zero prohibited asset paths and zero configured high-confidence credential signatures.
 - [x] Audit all network download/install paths and record their owners, checksums, and trust boundaries in `NETWORK_TRUST_AUDIT.md`.
-- [!] Review the opt-in CSDK setup path that automates DepotDownloader and local VPK extraction. Deadlimit must not bundle Valve/CSDK content, imply Valve authorization, or bypass access controls.
+- [x] Review the opt-in CSDK setup path that automates DepotDownloader and local VPK extraction. Portable releases disable unverified CSDK/DepotDownloader/DeadlockTools automation at UI and service layers; existing tools remain selectable. The Developer channel retains explicit opt-in access.
 - [x] Add a CI policy that rejects prohibited game archives, extracted game-tree paths, compiled retail resources, third-party executables/archives, and unexpected files larger than 2 MiB.
 
 Phase acceptance: a written audit has no unresolved red finding; every yellow
@@ -49,9 +49,8 @@ finding has an explicit mitigation or owner-accepted limitation.
 
 Current result: **accepted with documented yellow findings**. The repository and
 history contain no detected prohibited content. Mutable, unauthenticated
-toolchain downloads remain blocked from the first portable release until the
-mitigations in `NETWORK_TRUST_AUDIT.md` are implemented or those installers are
-disabled.
+toolchain automation is disabled in portable releases and remains available only
+as an explicit Developer-channel operation.
 
 ## Phase 1 — Licensing and community contract
 
@@ -215,6 +214,8 @@ the project gains enough users to justify certificate cost and maintenance.
 - Captured the exact 2026-09-05 local compatibility snapshot without recording account identifiers or user content.
 - Passed a real rehearsal-to-rehearsal portable update and installed-entry rollback using the two independently checksummed ZIPs.
 - Re-scanned all 822 reachable commits without printing candidate values: zero prohibited game/authoring asset paths and zero high-confidence credential-signature hits.
+- Disabled unverified CSDK, DepotDownloader, and DeadlockTools install/update automation in packaged portable releases at both UI and service layers; retained manual path selection and the opt-in Developer channel.
+- Rebuilt a real self-contained portable package and passed both packaged release-policy and startup smokes, plus the manifest/checksum lifecycle test.
 
 ### 2026-09-04
 

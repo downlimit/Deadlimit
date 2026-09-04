@@ -9,6 +9,7 @@ namespace Deadlimit;
 internal static class Program
 {
     private const string StartupSmokeArgument = "--startup-smoke";
+    private const string ReleasePolicySmokeArgument = "--release-policy-smoke";
     private const string WriteVertexColorScriptArgument = "--write-vertex-color-script";
     private const string SingleInstanceMutexName = @"Local\Deadlimit.Gui.SingleInstance.v1";
     private const int SwRestore = 9;
@@ -23,6 +24,12 @@ internal static class Program
             && string.Equals(args[0], WriteVertexColorScriptArgument, StringComparison.OrdinalIgnoreCase))
         {
             return WriteVertexColorScript(args);
+        }
+
+        if (args.Any(argument =>
+                string.Equals(argument, ReleasePolicySmokeArgument, StringComparison.OrdinalIgnoreCase)))
+        {
+            return RunReleasePolicySmoke();
         }
 
         var startupSmoke = args.Any(argument =>
@@ -66,6 +73,25 @@ internal static class Program
                 }
                 singleInstanceMutex.Dispose();
             }
+        }
+    }
+
+    private static int RunReleasePolicySmoke()
+    {
+        var isPortable = ReleaseChannelPolicy.IsPortableRelease;
+        if (ReleaseChannelPolicy.AllowsUnverifiedToolchainAutomation == isPortable)
+        {
+            return 2;
+        }
+
+        try
+        {
+            ReleaseChannelPolicy.RequireUnverifiedToolchainAutomation();
+            return isPortable ? 3 : 0;
+        }
+        catch (InvalidOperationException) when (isPortable)
+        {
+            return 0;
         }
     }
 
