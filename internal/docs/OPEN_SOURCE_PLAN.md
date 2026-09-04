@@ -156,6 +156,7 @@ Validated locally on Windows 11 on 2026-09-04:
 - [x] Local self-contained `0.1.0-beta.1` rehearsal: 362 files, full license metadata/text payload, checksum verification, temporary install, and portable executable startup smoke.
 - [x] `git diff --check`.
 - [x] GitHub pull-request workflows on PR #95 initial head `89f491e`: `build`, `dco`, and `smoke` passed.
+- [x] GitHub pull-request workflows on portable-channel PR #99 head `7553955`: `build`, `dco`, and `smoke` passed; merged as `94dac0e`.
 
 ## Phase 5 — Private release rehearsal and public launch
 
@@ -197,6 +198,11 @@ documentation must explain this accurately; code signing can be reconsidered if
 the project gains enough users to justify certificate cost and maintenance.
 
 ## Change log
+
+### 2026-09-05
+
+- Merged private PR #99 with the portable packager, checksum-verified installer/updater, rollback path, security tests, release workflows, and updated documentation.
+- Confirmed the repository remains private with zero tags and zero GitHub Releases after the merge.
 
 ### 2026-09-04
 
