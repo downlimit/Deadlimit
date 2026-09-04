@@ -14,6 +14,8 @@ internal static class OnlinePreparationFeature
     private static Button? _launchButton;
     private static MainForm? _form;
     private static bool _toggleBusy;
+    private static bool _autoPrepareBusy;
+    private static bool _autoPrepareRequested;
 
     public static void Attach(MainForm form)
     {
@@ -96,6 +98,7 @@ internal static class OnlinePreparationFeature
         }
 
         _session = null;
+        _autoPrepareRequested = false;
         session.Updated -= OnSessionUpdated;
 
         if (_launchButton is not null && !_launchButton.IsDisposed)
@@ -361,7 +364,11 @@ internal static class OnlinePreparationFeature
 
         form.BeginInvoke((Action)(() =>
         {
-            if (_launchButton is null || _launchButton.IsDisposed || _session is null)
+            var session = _session;
+            if (_launchButton is null
+                || _launchButton.IsDisposed
+                || session is null
+                || !ReferenceEquals(sender, session))
             {
                 return;
             }
@@ -369,15 +376,164 @@ internal static class OnlinePreparationFeature
             _launchButton.Text = OnlineButtonText;
             var suffix = update.PrepareRequired
                 ? UiText.T(
-                    "\n\nA structural change was detected. Normal-click this button once to run full PREPARE FOR CSDK and establish a new live-sync baseline.",
-                    "\n\nОбнаружено структурное изменение. Один раз нажмите эту кнопку обычным кликом, чтобы выполнить полный PREPARE FOR CSDK и создать новую базовую версию онлайн-синхронизации.")
+                    "\n\nA structural change was detected. ONLINE PREPARATION is rebuilding the full PREPARE baseline automatically.",
+                    "\n\nОбнаружено структурное изменение. ОНЛАЙН-ПОДГОТОВКА автоматически перестраивает полную базовую версию PREPARE.")
                 : string.Empty;
             UpdateToolTip(update.Message + suffix);
+
+            if (update.PrepareRequired)
+            {
+                _autoPrepareRequested = true;
+                if (!_autoPrepareBusy)
+                {
+                    _ = RefreshBaselineAutomaticallyAsync(session);
+                }
+            }
         }));
+    }
+
+    private static async Task RefreshBaselineAutomaticallyAsync(OnlinePreparationSession requestedSession)
+    {
+        if (_autoPrepareBusy
+            || _session is null
+            || !ReferenceEquals(_session, requestedSession)
+            || _form is null
+            || _form.IsDisposed)
+        {
+            return;
+        }
+
+        _autoPrepareBusy = true;
+        _toggleBusy = true;
+        var form = _form;
+        var originalTitle = form.Text;
+        var buttons = FindActionButtons().ToArray();
+        var enabledStates = buttons.ToDictionary(button => button, button => button.Enabled);
+
+        try
+        {
+            foreach (var button in buttons)
+            {
+                button.Enabled = false;
+            }
+
+            while (_autoPrepareRequested)
+            {
+                _autoPrepareRequested = false;
+                var activeSession = _session;
+                if (activeSession is null || form.IsDisposed)
+                {
+                    return;
+                }
+
+                var manifest = ProjectStore.TryLoadLastProject()
+                    ?? throw new InvalidOperationException(
+                        "ONLINE PREPARATION could not reload the project for automatic PREPARE.");
+                var paths = new DeadlimitPaths();
+                var sourceSnapshot = CaptureOnlineSourceSnapshot(manifest.ProjectFolder);
+                var progress = new Progress<PrepareAuthoringProgress>(update =>
+                {
+                    if (!form.IsDisposed && ReferenceEquals(_session, activeSession))
+                    {
+                        form.Text = $"{UiText.T("Deadlimit Manager — ONLINE PREPARATION", "Deadlimit Manager — ОНЛАЙН-ПОДГОТОВКА")} — {update.Message}";
+                    }
+                });
+
+                UpdateToolTip(UiText.T(
+                    "ONLINE PREPARATION detected a structural project change and is running PREPARE FOR CSDK automatically. CSDK remains open and will receive the refreshed authoring content.",
+                    "ОНЛАЙН-ПОДГОТОВКА обнаружила структурное изменение проекта и автоматически выполняет ПОДГОТОВИТЬ ДЛЯ CSDK. CSDK остаётся открытым и получит обновлённый authoring content."));
+
+                await new PrepareAuthoringService(paths).PrepareAsync(manifest, progress);
+
+                if (form.IsDisposed
+                    || _session is null
+                    || !ReferenceEquals(_session, activeSession))
+                {
+                    return;
+                }
+
+                var refreshedManifest = ProjectStore.TryLoadLastProject()
+                    ?? throw new InvalidOperationException(
+                        "ONLINE PREPARATION could not reload the project after automatic PREPARE.");
+                StartOrReplaceSession(refreshedManifest, paths);
+                if (!string.Equals(
+                        sourceSnapshot,
+                        CaptureOnlineSourceSnapshot(refreshedManifest.ProjectFolder),
+                        StringComparison.Ordinal))
+                {
+                    _autoPrepareRequested = true;
+                }
+                if (_launchButton is not null && !_launchButton.IsDisposed)
+                {
+                    _launchButton.Text = OnlineButtonText;
+                }
+
+                UpdateToolTip(UiText.T(
+                    "ONLINE PREPARATION refreshed the full PREPARE baseline automatically. Changed DMX and texture files continue to synchronize without another click.",
+                    "ОНЛАЙН-ПОДГОТОВКА автоматически обновила полную базовую версию PREPARE. Изменённые DMX и текстуры продолжают синхронизироваться без дополнительного клика."));
+            }
+        }
+        catch (Exception ex) when (ex is IOException
+            or UnauthorizedAccessException
+            or InvalidOperationException)
+        {
+            UpdateToolTip(UiText.T(
+                $"ONLINE PREPARATION could not refresh the full PREPARE baseline automatically: {ex.Message}. The last good prepared content was kept; run PREPARE FOR CSDK manually to recover.",
+                $"ОНЛАЙН-ПОДГОТОВКА не смогла автоматически обновить полную базовую версию PREPARE: {ex.Message}. Последний корректный подготовленный content сохранён; для восстановления выполните ПОДГОТОВИТЬ ДЛЯ CSDK вручную."));
+        }
+        finally
+        {
+            if (!form.IsDisposed)
+            {
+                form.Text = originalTitle;
+            }
+
+            foreach (var pair in enabledStates)
+            {
+                if (!pair.Key.IsDisposed)
+                {
+                    pair.Key.Enabled = pair.Value;
+                }
+            }
+
+            _autoPrepareBusy = false;
+            _toggleBusy = false;
+
+            if (_autoPrepareRequested
+                && _session is { } session
+                && !form.IsDisposed)
+            {
+                _ = RefreshBaselineAutomaticallyAsync(session);
+            }
+        }
+    }
+
+    private static string CaptureOnlineSourceSnapshot(string projectFolder)
+    {
+        return string.Join(
+            '\n',
+            Directory.EnumerateFiles(projectFolder, "*", SearchOption.TopDirectoryOnly)
+                .Where(path =>
+                {
+                    var extension = Path.GetExtension(path);
+                    return extension.Equals(".dmx", StringComparison.OrdinalIgnoreCase)
+                        || extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
+                        || extension.Equals(".tga", StringComparison.OrdinalIgnoreCase)
+                        || extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+                        || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+                        || extension.Equals(".tif", StringComparison.OrdinalIgnoreCase)
+                        || extension.Equals(".tiff", StringComparison.OrdinalIgnoreCase)
+                        || (extension.Equals(".fbx", StringComparison.OrdinalIgnoreCase)
+                            && VertexColorSidecarService.IsSidecarPath(path));
+                })
+                .Select(path => new FileInfo(path))
+                .OrderBy(info => info.FullName, StringComparer.OrdinalIgnoreCase)
+                .Select(info => $"{info.FullName}|{info.Length}|{info.LastWriteTimeUtc.Ticks}"));
     }
 
     private static void StopSession()
     {
+        _autoPrepareRequested = false;
         if (_session is not null)
         {
             _session.Updated -= OnSessionUpdated;

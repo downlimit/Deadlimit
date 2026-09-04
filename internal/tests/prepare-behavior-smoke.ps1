@@ -71,6 +71,54 @@ foreach ($required in @('YES, NO BACKUP', 'ДА, БЕЗ БЭКАПА', 'Deadlimi
     if (-not $buildSource.Contains($required)) { throw "Clean PREPARE UI contract missing: $required" }
 }
 
+# ONLINE CSDK must recover structural root changes without requiring another click.
+$onlineSource = Get-Content -LiteralPath 'internal/src/Deadlimit/App/OnlinePreparationFeature.cs' -Raw
+foreach ($required in @(
+    'RefreshBaselineAutomaticallyAsync(session)',
+    'await new PrepareAuthoringService(paths).PrepareAsync(manifest, progress);',
+    'ReferenceEquals(_session, activeSession)',
+    'CaptureOnlineSourceSnapshot(manifest.ProjectFolder)',
+    '_autoPrepareRequested = true;',
+    '_autoPrepareRequested = false;'
+)) {
+    if (-not $onlineSource.Contains($required)) { throw "ONLINE automatic PREPARE contract missing: $required" }
+}
+$manualRecoveryText = 'Normal-click this button once to run full PREPARE FOR CSDK'
+if ($onlineSource.Contains($manualRecoveryText)) {
+    throw 'ONLINE structural changes must not require an extra PREPARE click.'
+}
+
+# The long DMX/FBX pair debounce belongs only to a mesh whose assigned faceSet
+# material contains "vertexcolor" and still needs a current external sidecar.
+$onlineSessionType = $assembly.GetType('Deadlimit.Core.OnlinePreparationSession', $true)
+$shouldWaitForPair = $onlineSessionType.GetMethod('ShouldWaitForVertexColorPair', $nonPublicStatic)
+$vertexStateType = $assembly.GetType('Deadlimit.Core.VertexColorSourceState', $true)
+if ($null -eq $shouldWaitForPair -or $null -eq $vertexStateType) {
+    throw 'ONLINE Vertex Color pair-wait policy was not found.'
+}
+function New-VertexState(
+    [bool]$usesMaterial,
+    [bool]$embedded,
+    [bool]$sidecarExists,
+    [bool]$sidecarCurrent
+) {
+    return [Activator]::CreateInstance(
+        $vertexStateType,
+        [object[]]@($usesMaterial, $embedded, 'source.fbx', $sidecarExists, $sidecarCurrent, 'test'))
+}
+if ([bool]$shouldWaitForPair.Invoke($null, @((New-VertexState $false $false $true $false)))) {
+    throw 'A stale sidecar must not delay DMX that has no faceSet material containing vertexcolor.'
+}
+if (-not [bool]$shouldWaitForPair.Invoke($null, @((New-VertexState $true $false $false $false)))) {
+    throw 'A Vertex Color material without a sidecar must receive the bounded pair wait.'
+}
+if ([bool]$shouldWaitForPair.Invoke($null, @((New-VertexState $true $true $false $false)))) {
+    throw 'Embedded Vertex Color must not wait for an external sidecar.'
+}
+if ([bool]$shouldWaitForPair.Invoke($null, @((New-VertexState $true $false $true $true)))) {
+    throw 'A current Vertex Color source pair must not receive the long debounce.'
+}
+
 & (Join-Path $PSScriptRoot 'hero-extraction-dependency-path-smoke.ps1')
 & (Join-Path $PSScriptRoot 'hero-extraction-publish-smoke.ps1')
 & (Join-Path $PSScriptRoot 'retail-external-texture-copy-smoke.ps1')
