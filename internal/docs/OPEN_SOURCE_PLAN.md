@@ -138,7 +138,7 @@ cannot access release credentials.
 
 ## Current validation evidence
 
-Validated locally on Windows 11 on 2026-09-04:
+Validated locally on Windows 11 and in private CI through 2026-09-05:
 
 - [x] `dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore` — 0 warnings, 0 errors.
 - [x] `internal/tests/open-source-content-policy-smoke.ps1` — 144 repository files accepted.
@@ -161,6 +161,8 @@ Validated locally on Windows 11 on 2026-09-04:
 - [x] GitHub pull-request workflows on actions-update PR #102 passed with current official action majors; merged as `3b339dc`.
 - [x] Private rehearsal run `33922258940`: self-contained package build, isolated install/startup smoke, and private artifact upload passed.
 - [x] Downloaded rehearsal artifact audit: ZIP/updater checksums match, all 362 manifest entries verify, 363 ZIP entries contain zero detected prohibited game/authoring assets, and dependency license evidence is present.
+- [x] Portable-policy PR #107 passed `build`, `dco`, and `smoke`; merged as `89ae79b`.
+- [x] Private rehearsal run `33925867426` from `89ae79b`: packaged release-policy/startup smokes passed, and the downloaded ZIP again verified all 362 manifest items with zero prohibited or undeclared entries.
 
 ## Phase 5 — Private release rehearsal and public launch
 
@@ -168,7 +170,7 @@ Validated locally on Windows 11 on 2026-09-04:
 - [ ] Test installation on a clean Windows 11 environment without maintainer paths.
 - [x] Test installed updater activation from the previous real rehearsal ZIP to the current real rehearsal ZIP, preservation under `.previous`, and rollback. Automatic GitHub Releases selection remains publication-gated.
 - [x] Re-run provenance, secret, and packaged-file audits: 822 commits produced zero prohibited asset-path hits and zero high-confidence credential-signature hits; the private portable ZIP passed the manifest and packaged-content audit recorded in the rehearsal report.
-- [~] Produce a final go/no-go report for the owner. The current rehearsal report is NO-GO until the listed compatibility, trust, clean-machine, and final-audit gates are resolved.
+- [~] Produce a final go/no-go report for the owner. The current rehearsal report is NO-GO until the clean-machine, GitHub Releases selection, release-time compatibility refresh, and explicit owner gates are resolved.
 - [!] Receive explicit owner approval to change visibility.
 - [ ] Change `PRIVATE` to `PUBLIC`.
 - [ ] Apply branch protection immediately after visibility changes.
@@ -176,12 +178,14 @@ Validated locally on Windows 11 on 2026-09-04:
 
 ## Known risk register
 
-### Yellow — CSDK setup automation
+### Yellow (mitigated for portable) — CSDK setup automation
 
-Deadlimit currently reads a third-party CSDK guide, uses DepotDownloader, and
-extracts the user's locally downloaded VPK data. Public source and releases must
-carry no Valve content. The action must be opt-in, identify third-party sources,
-and stop on authentication/access failure.
+The opt-in Developer channel can read a third-party CSDK guide, use
+DepotDownloader, and extract the user's locally downloaded VPK data. Portable
+releases disable this automation until upstream archives have pinned trusted
+checksums. Source and release archives carry no Valve content; Developer-channel
+operations identify third-party sources and stop on authentication/access
+failure.
 
 ### Yellow — runtime decompilation of local retail resources
 
@@ -216,6 +220,7 @@ the project gains enough users to justify certificate cost and maintenance.
 - Re-scanned all 822 reachable commits without printing candidate values: zero prohibited game/authoring asset paths and zero high-confidence credential-signature hits.
 - Disabled unverified CSDK, DepotDownloader, and DeadlockTools install/update automation in packaged portable releases at both UI and service layers; retained manual path selection and the opt-in Developer channel.
 - Rebuilt a real self-contained portable package and passed both packaged release-policy and startup smokes, plus the manifest/checksum lifecycle test.
+- Passed private rehearsal run `33925867426` from merged commit `89ae79b`; the downloaded 82,726,499-byte ZIP matched its checksum and all 362 manifest items, with zero prohibited or undeclared entries.
 
 ### 2026-09-04
 
