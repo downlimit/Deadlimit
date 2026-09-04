@@ -13,6 +13,7 @@ implementation; it does not endorse or grant rights to any external content.
 | Flow | Source selected by Deadlimit | Destination / execution | Current integrity evidence | Required public-release mitigation |
 | --- | --- | --- | --- | --- |
 | Developer repository updater | `https://github.com/downlimit/Deadlimit.git`, branch `main` | Fast-forward of a developer Git checkout, then local build | HTTPS plus Git object integrity; no signed release boundary | Label this as the Developer channel. Build the user updater on immutable GitHub Releases with a published SHA-256. |
+| Portable bootstrap and updater | GitHub Releases API for `downlimit/Deadlimit`; exact updater, ZIP, and `.sha256` asset names | Verified updater runs from a temporary folder; verified ZIP replaces `%LocalAppData%\Programs\Deadlimit` transactionally | HTTPS, source-host allowlist, SHA-256 before execution/extraction, contained ZIP extraction, file manifest, previous-version rollback | Keep release publication owner-only, verify the private rehearsal artifact, and publish all checksum assets together with the version tag. |
 | Reduced CSDK discovery and archive | `https://deadlockmodding.pages.dev/modding-tools/`, a discovered `csdk-N` page, then a Google Drive download | ZIP contents copied into the user-selected CSDK root | HTTPS, HTML-response rejection, contained ZIP extraction, and expected `csdkcfg.exe` presence; no authenticated checksum | Keep the action explicit and interactive. Show the source/generation before download, compute and record SHA-256 and source URL, and verify against an allowlisted release manifest when one is available. Never ship the archive. |
 | Depot manifests | Parsed from the selected community CSDK page; optional relative `DepotDownloaderManifests.zip` fallback | Parsed IDs are passed to DepotDownloader; fallback ZIP is applied to the selected CSDK root | HTTPS and contained ZIP extraction; page contents are mutable and no checksum is verified | Restrict redirects/hosts, record all app/depot/manifest IDs, hash the fallback archive, and include them in diagnostics before execution. |
 | DepotDownloader | GitHub API latest release for `SteamRE/DepotDownloader`, asset `DepotDownloader-windows-x64.zip` | Cached under `%LocalAppData%\Deadlimit\tools\DepotDownloader`, then run interactively for Steam authentication/download | HTTPS, exact asset-name selection, contained ZIP extraction, and expected executable presence; no version pin or checksum | Pin a reviewed version and SHA-256 in each Deadlimit release. Display that an external executable will run and preserve authentication inside its own visible console. |
@@ -26,6 +27,9 @@ implementation; it does not endorse or grant rights to any external content.
   lexical traversal outside the declared extraction root.
 - Temporary download folders are removed on completion or failure when possible.
 - Downloads returning an HTML content type are rejected before extraction.
+- The portable installer verifies the updater script before execution and the
+  ZIP before extraction; a malformed checksum, traversal entry, missing Manager,
+  or missing release metadata stops before the current install is replaced.
 - CSDK setup validates the selected retail installation but writes full-game
   depot output into the separate user-selected CSDK root.
 - DepotDownloader runs visibly when Steam authentication may be required.
@@ -57,7 +61,8 @@ to the produced portable ZIP.
 ## Release gate
 
 The first public source-code switch may proceed with these integrations clearly
-documented as opt-in external operations. The first public portable release is
-blocked until immutable versions/checksums are implemented for every executable
-Deadlimit downloads and runs, or the corresponding automatic installer is
-disabled in that release.
+documented as opt-in external operations. The Deadlimit portable package itself
+now has versioned release/tag inputs and checksums. The first public portable
+release remains blocked until versions/checksums are implemented for the CSDK,
+DepotDownloader, and DeadlockTools executables Deadlimit downloads and runs, or
+the corresponding automatic installers are disabled in that release.

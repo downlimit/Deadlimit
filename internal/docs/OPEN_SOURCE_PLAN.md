@@ -38,7 +38,7 @@ request whenever scope, evidence, risk, or completion status changes.
 - [x] Inspect Wall Worm integration: it reads the export-history INI value and invokes the Autodesk FBX exporter; no Wall Worm source or binary was found.
 - [x] Inspect Valve integration: the repository contains compatibility code and resource-schema names; retail resources are read/decompiled from the user's local installation at runtime and are not tracked.
 - [x] Verify the two direct NuGet dependencies: KeyValues2 0.8.0 and ValveResourceFormat 20.0.6980 are MIT-licensed.
-- [~] Inventory and verify every transitive NuGet dependency and required notice. The resolved graph and declared licenses are recorded; exact release license payloads still need generation and verification.
+- [x] Inventory and verify every transitive NuGet dependency and required notice. The portable packager includes each exact nuspec, package-provided notice, resolved metadata, and full standard text for SPDX-only MIT/BSD packages.
 - [x] Scan the full Git history for secrets, personal files, and prohibited game assets without printing secret values. The 812-commit scan found zero prohibited asset paths and zero configured high-confidence or generic credential signatures.
 - [x] Audit all network download/install paths and record their owners, checksums, and trust boundaries in `NETWORK_TRUST_AUDIT.md`.
 - [!] Review the opt-in CSDK setup path that automates DepotDownloader and local VPK extraction. Deadlimit must not bundle Valve/CSDK content, imply Valve authorization, or bypass access controls.
@@ -101,16 +101,16 @@ separate instructions without knowing the maintainer's workstation layout.
 
 ## Phase 3 — Delivery and updater split
 
-- [ ] Keep the current Git updater as the developer channel and label it accordingly.
-- [ ] Create a small `Install-Deadlimit.cmd` bootstrap for users without Git.
-- [ ] Publish a self-contained `win-x64` portable ZIP.
-- [ ] Publish a SHA-256 checksum alongside every ZIP.
-- [ ] Install portable builds under `%LocalAppData%\Programs\Deadlimit` by default.
-- [ ] Keep user settings and projects outside the replaceable application directory.
-- [ ] Implement a stable updater backed by GitHub Releases rather than `origin/main`.
-- [ ] Make release updates transactional and preserve a recoverable previous version.
+- [x] Keep the current Git updater as the developer channel and label it accordingly in the public README.
+- [x] Create a single-file `Install-Deadlimit.cmd` bootstrap for users without Git; it fetches and verifies the release updater asset before execution.
+- [~] Build a self-contained `win-x64` portable ZIP in the private rehearsal workflow; public publication remains gated.
+- [x] Generate a SHA-256 checksum alongside every rehearsal ZIP and require it during install/update.
+- [x] Install portable builds under `%LocalAppData%\Programs\Deadlimit` by default.
+- [x] Keep existing user settings under `%LocalAppData%\Deadlimit` and artist projects outside the replaceable application directory.
+- [x] Implement a stable updater backed by GitHub Releases rather than `origin/main`, with a single-file bootstrap and a local installed updater entry point.
+- [x] Make release updates transactional, restore the current install after a failed activation, and preserve one recoverable previous version.
 - [ ] Keep an explicit Developer/main channel for contributors.
-- [ ] Test first install, no-op update, successful update, interrupted update, and rollback.
+- [x] Test first install, no-op update, successful update, bad-checksum/traversal/broken-package preservation, and rollback with isolated synthetic packages.
 - [ ] Document the expected Windows SmartScreen warning for unsigned early releases.
 
 Phase acceptance: a non-Git user can install and update with one bootstrap,
@@ -123,7 +123,7 @@ while a contributor can clone and work on `main` without mixing the two channels
 - [x] Add Dependabot for NuGet and GitHub Actions.
 - [ ] Add dependency review and license-policy checks.
 - [x] Add repository-owned DCO enforcement for every pull-request commit.
-- [ ] Add release-package smoke tests and checksum verification.
+- [x] Add release-package smoke tests, manifest/license checks, and checksum verification.
 - [x] Set current workflows to read-only repository contents permissions.
 - [ ] Confirm fork pull requests never receive publication secrets.
 - [ ] After the repository becomes public, protect `main`:
@@ -152,6 +152,8 @@ Validated locally on Windows 11 on 2026-09-04:
 - [x] Manager `--startup-smoke`.
 - [x] Updater root-resolution contract.
 - [x] Root launcher refresh and two-shortcut presentation contract.
+- [x] Portable updater lifecycle, checksum rejection, traversal rejection, rollback, and single-file bootstrap parse/trust contracts.
+- [x] Local self-contained `0.1.0-beta.1` rehearsal: 362 files, full license metadata/text payload, checksum verification, temporary install, and portable executable startup smoke.
 - [x] `git diff --check`.
 - [x] GitHub pull-request workflows on PR #95 initial head `89f491e`: `build`, `dco`, and `smoke` passed.
 
@@ -212,4 +214,6 @@ the project gains enough users to justify certificate cost and maintenance.
 - Added public development formatting/ignore rules, Dependabot, read-only workflow permissions, and a repository-owned DCO check.
 - Passed the complete locally available CI/smoke set and recorded the evidence.
 - Published private PR #95; its initial `build`, `dco`, and `smoke` checks all passed.
+- Began the portable release channel: self-contained packager, SHA-256 and file manifest, GitHub-Releases updater, transactional rollback, synthetic lifecycle smoke, and a private rehearsal workflow.
+- Added the single-file bootstrap, updater-asset checksum, static bootstrap trust test, and tag-gated GitHub release workflow. No tag or public release was created.
 - Kept repository visibility private pending the final explicit approval gate.

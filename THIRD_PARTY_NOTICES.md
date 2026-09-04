@@ -9,7 +9,7 @@ components.
 | --- | ---: | --- |
 | KeyValues2 | 0.8.0 | MIT |
 | ValveResourceFormat | 20.0.6980 | MIT |
-| Blake3 | 3.0.2 | BSD-2-Clause; bundled native BLAKE3 is CC0-1.0 or Apache-2.0 |
+| Blake3 | 3.0.2 | BSD-2-Clause |
 | K4os.Compression.LZ4 | 1.3.8 | MIT |
 | SharpGLTF.Core, SharpGLTF.Runtime, SharpGLTF.Toolkit | 1.0.6 | MIT |
 | SkiaSharp and SkiaSharp.NativeAssets packages | 4.151.1 | MIT; package notices may include native-component terms |
@@ -22,9 +22,10 @@ components.
 | Vortice.SpirvCross | 1.5.4 | MIT |
 | ZstdSharp.Port | 0.8.8 | MIT |
 
-Release packaging must carry the exact license and notice files resolved with
-the shipped package versions. The release audit remains incomplete until that
-payload is generated and verified.
+Release packaging carries the exact package nuspec, package-provided notices,
+and the full standard license text for resolved SPDX expressions. It also keeps
+the resolved version, copyright, project URL, and repository URL with every
+package entry.
 
 ## External tools and content
 
