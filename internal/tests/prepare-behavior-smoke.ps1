@@ -119,6 +119,53 @@ if ([bool]$shouldWaitForPair.Invoke($null, @((New-VertexState $true $false $true
     throw 'A current Vertex Color source pair must not receive the long debounce.'
 }
 
+# Wall Worm may omit jointList or mix real DmeJoint bones and ordinary DmeDag
+# render nodes inside it. Only a mesh attached to a real joint is a skeleton helper.
+$datamodelAssembly = [Reflection.Assembly]::LoadFrom((Join-Path (Split-Path $assemblyPath) 'Datamodel.NET.dll'))
+$documentType = $datamodelAssembly.GetType('Datamodel.Datamodel', $true)
+$elementType = $datamodelAssembly.GetType('Datamodel.Element', $true)
+$elementArrayType = $datamodelAssembly.GetType('Datamodel.ElementArray', $true)
+$elementConstructor = $elementType.GetConstructors() |
+    Where-Object { $_.GetParameters().Count -eq 4 } |
+    Select-Object -First 1
+$skeletonFilterType = $assembly.GetType('Deadlimit.Core.DmxSkeletonShapeFilter', $true)
+$findJointShapes = $skeletonFilterType.GetMethod(
+    'FindJointShapeMeshIds',
+    [Reflection.BindingFlags]::Public -bor [Reflection.BindingFlags]::Static)
+if ($null -eq $findJointShapes) { throw 'DmxSkeletonShapeFilter.FindJointShapeMeshIds was not found.' }
+function New-TestDmxElement($owner, [string]$name, [string]$className) {
+    return $elementConstructor.Invoke([object[]]@($owner, $name, $null, $className))
+}
+
+$noSkeletonDocument = [Activator]::CreateInstance($documentType, [object[]]@('model', 22))
+$noSkeletonModel = New-TestDmxElement $noSkeletonDocument 'model_without_skin_bones' 'DmeModel'
+$noSkeletonDocument.Root = $noSkeletonModel
+$noSkeletonShapes = $findJointShapes.Invoke($null, @($noSkeletonDocument))
+if ($noSkeletonShapes.Count -ne 0) {
+    throw 'A DmeModel without jointList must produce an empty skeleton-helper set.'
+}
+
+$mixedDocument = [Activator]::CreateInstance($documentType, [object[]]@('model', 22))
+$mixedModel = New-TestDmxElement $mixedDocument 'mixed_model' 'DmeModel'
+$joint = New-TestDmxElement $mixedDocument 'bone' 'DmeJoint'
+$jointShape = New-TestDmxElement $mixedDocument 'bone_mesh' 'DmeMesh'
+$renderDag = New-TestDmxElement $mixedDocument 'render' 'DmeDag'
+$renderMesh = New-TestDmxElement $mixedDocument 'render_mesh' 'DmeMesh'
+$joint['shape'] = $jointShape
+$renderDag['shape'] = $renderMesh
+$mixedJointList = [Activator]::CreateInstance($elementArrayType)
+$mixedJointList.Add($joint)
+$mixedJointList.Add($renderDag)
+$mixedModel['jointList'] = $mixedJointList
+$mixedDocument.Root = $mixedModel
+$mixedShapes = $findJointShapes.Invoke($null, @($mixedDocument))
+if (-not $mixedShapes.Contains($jointShape.ID.ToString())) {
+    throw 'A DmeMesh attached to a real DmeJoint must remain a skeleton helper.'
+}
+if ($mixedShapes.Contains($renderMesh.ID.ToString())) {
+    throw 'A DmeDag render mesh listed in jointList must remain eligible for Vertex Color transfer.'
+}
+
 & (Join-Path $PSScriptRoot 'hero-extraction-dependency-path-smoke.ps1')
 & (Join-Path $PSScriptRoot 'hero-extraction-publish-smoke.ps1')
 & (Join-Path $PSScriptRoot 'retail-external-texture-copy-smoke.ps1')

@@ -12,6 +12,13 @@ internal static class DmxSkeletonShapeFilter
         foreach (var model in document.AllElements.Where(element =>
                      string.Equals(element.ClassName, "DmeModel", StringComparison.Ordinal)))
         {
+            // A render-mesh DMX may contain a DmeModel root without a skeleton.
+            // Datamodel.NET throws for a missing attribute, so check before reading it.
+            if (!model.ContainsKey("jointList"))
+            {
+                continue;
+            }
+
             var joints = model.GetArray<Element>("jointList");
             if (joints is null)
             {
@@ -20,7 +27,12 @@ internal static class DmxSkeletonShapeFilter
 
             foreach (var joint in joints)
             {
-                if (!joint.ContainsKey("shape"))
+                // Wall Worm may include ordinary render DmeDag nodes in jointList
+                // when a Skin modifier is present. Only real DmeJoint nodes are
+                // skeleton helpers; excluding every listed node hides render meshes
+                // from Vertex Color detection and transfer.
+                if (!string.Equals(joint.ClassName, "DmeJoint", StringComparison.Ordinal)
+                    || !joint.ContainsKey("shape"))
                 {
                     continue;
                 }
