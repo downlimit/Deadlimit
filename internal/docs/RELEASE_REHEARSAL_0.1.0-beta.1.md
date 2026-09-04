@@ -28,6 +28,10 @@ GitHub Release and did not change repository visibility.
   FBX, MAX, VPK, compiled Source 2, or extracted retail/game-tree entries.
 - The ZIP contains the project license, third-party notices, and 57 files under
   the dependency license evidence tree.
+- The final private history pass scanned all 822 reachable commits and found
+  zero prohibited game/authoring asset paths and zero configured
+  high-confidence credential signatures. Candidate values were suppressed from
+  audit output.
 
 ## Artifact evidence
 
@@ -56,7 +60,6 @@ release must be rebuilt from its final tag and will have different hashes.
 - Resolve the unauthenticated mutable CSDK, DepotDownloader, and DeadlockTools
   download paths by pinning reviewed versions/checksums or disabling their
   automatic installers in the public portable build.
-- Complete the final source/history secret and provenance rescan.
 - Receive explicit owner approval for public visibility and the first release.
 
 Until these items are resolved or explicitly accepted at the documented owner
