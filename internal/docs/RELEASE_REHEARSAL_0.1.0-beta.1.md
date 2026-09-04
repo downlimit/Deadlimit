@@ -20,6 +20,10 @@ GitHub Release and did not change repository visibility.
 - Published updater SHA-256 matches the downloaded updater.
 - All 362 entries declared by `release-manifest.json` match their byte counts
   and SHA-256 values.
+- The installed updater activated the first real rehearsal package
+  (`3A09D89A...E0DD3E5D9`), upgraded it transactionally to the second package
+  (`1F3560DE...C24EE912`), preserved the first package under `.previous`, and
+  restored it successfully through the installed rollback entry point.
 - The ZIP contains 363 entries, including the manifest, with zero detected DMX,
   FBX, MAX, VPK, compiled Source 2, or extracted retail/game-tree entries.
 - The ZIP contains the project license, third-party notices, and 57 files under
@@ -43,8 +47,9 @@ release must be rebuilt from its final tag and will have different hashes.
 ## Remaining no-go items
 
 - Run a clean Windows 11 user-machine test outside the GitHub-hosted runner.
-- Test an update from a previous real rehearsal installation; synthetic
-  install/update/rollback tests already pass.
+- Exercise automatic GitHub Releases channel selection after a private or
+  public release exists; direct package activation, update, and rollback are
+  already verified with two real rehearsal ZIPs.
 - Refresh the exact compatibility snapshot at release time; current local
   versions, binary fingerprints, and Deadlock depot manifests are recorded in
   `COMPATIBILITY.md`.
