@@ -13,7 +13,7 @@ jobs:
   smoke:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify launch-game fastpath contract
         shell: pwsh
         run: internal/tests/launch-game-fastpath-smoke.ps1

@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Open-source content policy
         shell: pwsh
         run: internal/tests/open-source-content-policy-smoke.ps1
@@ -26,7 +26,7 @@ jobs:
       - name: Portable bootstrap smoke
         shell: pwsh
         run: internal/tests/portable-bootstrap-smoke.ps1
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
       - name: Restore
@@ -175,7 +175,7 @@ jobs:
             throw "git grep failed with exit code $grepExit"
           }
       - name: Upload identifier audit
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deadlimit-identifier-audit
           path: deadlimit-identifier-audit.txt
