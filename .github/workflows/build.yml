@@ -172,7 +172,7 @@ jobs:
             throw "git grep failed with exit code $grepExit"
           }
       - name: Upload identifier audit
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: deadlimit-identifier-audit
           path: deadlimit-identifier-audit.txt
