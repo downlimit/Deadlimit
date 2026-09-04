@@ -8,7 +8,7 @@ apply only to the snapshots recorded below and in each release note.
 | Component | Baseline | Status | Evidence limitation |
 | --- | --- | --- | --- |
 | Operating system | Windows 11 x64 | Supported and tested | Windows 10 is currently untested. |
-| .NET | .NET 10 SDK | Required for clone-based development/launch | A self-contained runtime is planned for portable releases. |
+| .NET | .NET 10 SDK | Required for clone-based development/launch | Portable `win-x64` rehearsal builds include a self-contained runtime. |
 | Autodesk 3ds Max | 2025 | Supported and tested | Other Max versions are untested. |
 | Wall Worm | Major version 7, current build used on 2026-09-04 | Provisionally supported | The exact plugin build must be captured before the first release. |
 | Reduced CSDK | Generation 12, current archive used on 2026-09-04 | Provisionally supported | The current installer discovers a mutable community archive; immutable version/hash capture is a release gate. |
