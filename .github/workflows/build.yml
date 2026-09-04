@@ -17,6 +17,9 @@ jobs:
       - name: Open-source content policy
         shell: pwsh
         run: internal/tests/open-source-content-policy-smoke.ps1
+      - name: Portable path defaults
+        shell: pwsh
+        run: internal/tests/portable-path-defaults-smoke.ps1
       - name: Portable updater transaction smoke
         shell: pwsh
         run: internal/tests/portable-release-smoke.ps1

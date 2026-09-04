@@ -1,48 +1,51 @@
-# Deadlimit Aggregator — Architecture
+# Deadlimit Manager — Architecture
 
 ## Environment roots
+
+Deadlimit does not require a fixed workstation layout. The paths below are
+examples; the user selects the actual locations in **Settings**.
 
 Deadlock modding workspace:
 
 ```text
-C:\WorkProjects\Deadlock\
+<workspace>\
 ```
 
 Reduced CSDK12:
 
 ```text
-C:\WorkProjects\Deadlock\Reduced_CSDK_12\
+<workspace>\Reduced_CSDK_12\
 ```
 
 DeadlockTools:
 
 ```text
-C:\WorkProjects\Deadlock\DeadlockTools\
+<workspace>\DeadlockTools\
 ```
 
 Retail Deadlock:
 
 ```text
-D:\Program Files (x86)\Steam\steamapps\common\Project8Staging\
+<SteamLibrary>\steamapps\common\Project8Staging\
 ```
 
 Deadlimit local repository:
 
 ```text
-C:\WorkProjects\Deadlock\Deadlimit\
+<workspace>\Deadlimit\
 ```
 
 Always distinguish:
 
 ```text
 Retail:
-D:\Program Files (x86)\Steam\steamapps\common\Project8Staging\
+<SteamLibrary>\steamapps\common\Project8Staging\
 
 CSDK source:
-C:\WorkProjects\Deadlock\Reduced_CSDK_12\content\
+<CSDKRoot>\content\
 
 CSDK compiled output:
-C:\WorkProjects\Deadlock\Reduced_CSDK_12\game\
+<CSDKRoot>\game\
 ```
 
 ## Proposed implementation
@@ -117,7 +120,7 @@ These are implementation evidence, not universal assumptions beyond their stated
 For the current CSDK12 installation, this compiler successfully compiled the tested replacement model from the command line:
 
 ```text
-C:\WorkProjects\Deadlock\Reduced_CSDK_12\game\bin_cs2\win64\resourcecompiler.exe
+<CSDKRoot>\game\bin_cs2\win64\resourcecompiler.exe
 ```
 
 with `-i <source.vmdl> -nop4`.

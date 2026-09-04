@@ -98,6 +98,7 @@ PREPARE, включит онлайн-синхронизацию и открое�
 dotnet restore internal/src/Deadlimit/Deadlimit.csproj
 dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
 internal/tests/open-source-content-policy-smoke.ps1
+internal/tests/portable-path-defaults-smoke.ps1
 internal/tests/prepare-behavior-smoke.ps1
 ```
 
@@ -111,6 +112,12 @@ GitHub Release assets с проверкой SHA-256, устанавливает 
 `%LocalAppData%\Programs\Deadlimit` и создаёт ярлыки Manager/Update. Команда
 `Update Deadlimit.cmd -Rollback` меняет местами текущую и предыдущую проверенные
 установки.
+
+Ранние portable beta-сборки планируются без цифровой подписи, поэтому Windows
+SmartScreen может показать предупреждение о неизвестном издателе. Продолжайте
+только для установщика или ZIP из официального GitHub Release
+`downlimit/Deadlimit` при совпадении опубликованной SHA-256. При несовпадении
+контрольной суммы не запускайте файл и сообщите об этом.
 
 Исходный код распространяется по [MIT License](LICENSE). Условия поддержки — в
 [SUPPORT.md](SUPPORT.md), приватная отправка уязвимостей — в

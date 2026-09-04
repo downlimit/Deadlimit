@@ -1,4 +1,4 @@
-# Deadlimit Aggregator — Decisions
+# Deadlimit Manager — Decisions
 
 This file records decisions that should remain stable unless new evidence justifies changing them.
 
@@ -87,7 +87,7 @@ The Source 2 Viewer GUI remains useful as a manual inspection/reference tool, bu
 The current known-good direct compiler from the earlier headless experiment is:
 
 ```text
-C:\WorkProjects\Deadlock\Reduced_CSDK_12\game\bin_cs2\win64\resourcecompiler.exe
+<CSDKRoot>\game\bin_cs2\win64\resourcecompiler.exe
 ```
 
 The `game\bin_tools\win64` compiler must not be substituted automatically because it failed in the current environment with a schema mismatch.
@@ -146,15 +146,18 @@ The local repository root is intentionally presented as a minimal user-facing fo
 The visible normal entry points are:
 
 ```text
-Deadlimit Aggregator
-Deadlimit Aggregator Updater
+Deadlimit Manager
+Deadlimit Updater
 ```
 
 Implementation, documentation, icons, and source code live under the hidden `internal` directory. Git metadata and technical launchers are also hidden locally.
 
 The repository itself remains complete; hiding files in Explorer is only a local presentation choice.
 
-Legacy `Deadlimit.cmd`, `DeadlimitLauncher.vbs`, old shortcut names, and the untracked `DEADLIMIT_LocalUpdater.bat` may remain only as migration/compatibility details. New user-facing launch and shortcut surfaces must use the Deadlimit Aggregator name.
+`Deadlimit.cmd` remains as a neutral compatibility shim for older local
+shortcuts. The obsolete `DeadlimitAggregator*` entry points were retired before
+the first public release. New user-facing launch and shortcut surfaces use the
+Deadlimit Manager name.
 
 ## Documentation continuity
 
