@@ -5,6 +5,13 @@ planned `0.1.0-beta.1` public beta. Dates use `YYYY-MM-DD`.
 
 ## Unreleased
 
+### Changed
+
+- Runtime tool defaults now derive from the current clone/portable location and
+  Steam discovery instead of maintainer-workstation drive paths.
+- Obsolete `DeadlimitAggregator*` compatibility entry points were retired;
+  `Deadlimit.cmd` remains as the neutral legacy shim.
+
 ### Added
 
 - MIT licensing and DCO-based contribution policy.

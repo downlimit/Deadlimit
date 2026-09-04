@@ -97,6 +97,7 @@ committed to this repository or attached to its issues.
 dotnet restore internal/src/Deadlimit/Deadlimit.csproj
 dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
 internal/tests/open-source-content-policy-smoke.ps1
+internal/tests/portable-path-defaults-smoke.ps1
 internal/tests/prepare-behavior-smoke.ps1
 ```
 
@@ -114,6 +115,12 @@ GitHub Release assets, installs under `%LocalAppData%\Programs\Deadlimit`, and
 creates Manager/Update shortcuts. `Update Deadlimit.cmd -Rollback` swaps the
 current and previous verified installations. These channels stay separate so a
 normal user update never depends on a mutable source checkout.
+
+Early portable beta executables are expected to be unsigned, so Windows
+SmartScreen may display an unknown-publisher warning. Continue only when the
+installer or ZIP came from the official `downlimit/Deadlimit` GitHub Release
+and its published SHA-256 checksum matches. Report any checksum mismatch and do
+not run the downloaded file.
 
 ## License, support, and independence
 

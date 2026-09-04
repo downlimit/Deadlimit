@@ -2,7 +2,7 @@
 
 Status: **IN PROGRESS — repository remains private**
 
-Last updated: 2026-09-04
+Last updated: 2026-09-05
 
 This is the live implementation plan for preparing `github.com/downlimit/Deadlimit`
 for public use and outside contributions. Update this document in the same pull
@@ -78,8 +78,8 @@ understand their rights, obligations, validation steps, and review path from roo
 - [x] Document the contributor/developer setup using .NET SDK 10.
 - [~] Add `COMPATIBILITY.md` with the current baseline; exact Wall Worm, CSDK, Deadlock manifest, DeadlockTools, and Shade versions still require release-time capture.
 - [x] Add `CHANGELOG.md` and adopt semantic versioning starting at `0.1.0-beta.1`.
-- [ ] Move or retire obsolete `DeadlimitAggregator*` entry points after compatibility review.
-- [ ] Remove mandatory assumptions about `C:\WorkProjects\Deadlock\Deadlimit` from public installation paths.
+- [x] Retire obsolete `DeadlimitAggregator*` entry points after compatibility review; keep only the neutral `Deadlimit.cmd` shim for older local shortcuts.
+- [x] Remove maintainer-workstation path defaults from runtime code and public installation paths; derive clone/portable roots and keep Steam discovery explicit in Settings.
 - [x] Expand `.gitignore`, `.gitattributes`, and `.editorconfig` for public development without renormalizing unrelated source files in this change.
 - [x] Clearly separate current focus, experimental Shade, and unsupported/planned Blender and platforms.
 
@@ -109,9 +109,9 @@ separate instructions without knowing the maintainer's workstation layout.
 - [x] Keep existing user settings under `%LocalAppData%\Deadlimit` and artist projects outside the replaceable application directory.
 - [x] Implement a stable updater backed by GitHub Releases rather than `origin/main`, with a single-file bootstrap and a local installed updater entry point.
 - [x] Make release updates transactional, restore the current install after a failed activation, and preserve one recoverable previous version.
-- [ ] Keep an explicit Developer/main channel for contributors.
+- [x] Keep an explicit Developer/main channel for contributors.
 - [x] Test first install, no-op update, successful update, bad-checksum/traversal/broken-package preservation, and rollback with isolated synthetic packages.
-- [ ] Document the expected Windows SmartScreen warning for unsigned early releases.
+- [x] Document the expected Windows SmartScreen warning for unsigned early releases in both public guides.
 
 Phase acceptance: a non-Git user can install and update with one bootstrap,
 while a contributor can clone and work on `main` without mixing the two channels.
@@ -153,6 +153,7 @@ Validated locally on Windows 11 on 2026-09-04:
 - [x] Updater root-resolution contract.
 - [x] Root launcher refresh and two-shortcut presentation contract.
 - [x] Portable updater lifecycle, checksum rejection, traversal rejection, rollback, and single-file bootstrap parse/trust contracts.
+- [x] Portable path-default and retired-entry-point contract.
 - [x] Local self-contained `0.1.0-beta.1` rehearsal: 362 files, full license metadata/text payload, checksum verification, temporary install, and portable executable startup smoke.
 - [x] `git diff --check`.
 - [x] GitHub pull-request workflows on PR #95 initial head `89f491e`: `build`, `dco`, and `smoke` passed.
@@ -203,6 +204,8 @@ the project gains enough users to justify certificate cost and maintenance.
 
 - Merged private PR #99 with the portable packager, checksum-verified installer/updater, rollback path, security tests, release workflows, and updated documentation.
 - Confirmed the repository remains private with zero tags and zero GitHub Releases after the merge.
+- Replaced maintainer-specific runtime defaults with application-root derivation and explicit Settings-based Steam discovery, and retired the obsolete `DeadlimitAggregator*` launchers.
+- Documented the unsigned-beta SmartScreen warning and checksum-verification rule in both public guides.
 
 ### 2026-09-04
 

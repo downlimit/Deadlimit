@@ -1,4 +1,4 @@
-# Deadlimit Aggregator — Hero extraction
+# Deadlimit Manager — Hero extraction
 
 ## Purpose
 
@@ -55,10 +55,12 @@ saved Deadlimit Aggregator project
 → persist discovered retail paths/version/timestamp/count
 ```
 
-The locator prioritizes:
+Deadlimit uses the configured Deadlock location. The **Find** action in Settings
+can discover Steam library locations through the registry,
+`libraryfolders.vdf`, and common fixed-drive layouts. A typical candidate is:
 
 ```text
-D:\Program Files (x86)\Steam\steamapps\common\Project8Staging\game\citadel\pak01_dir.vpk
+<SteamLibrary>\steamapps\common\Project8Staging\game\citadel\pak01_dir.vpk
 ```
 
 and then scans other `*_dir.vpk` archives under the current retail `game` tree.

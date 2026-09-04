@@ -6,11 +6,11 @@ public sealed record ToolProbe(string Name, string Path, bool Exists, string? Ve
 
 public sealed class DeadlimitPaths
 {
-    public const string DefaultWorkspaceRoot = @"C:\WorkProjects\Deadlock";
-    public const string DefaultDeadlimitRoot = @"C:\WorkProjects\Deadlock\Deadlimit";
-    public const string DefaultCsdkRoot = @"C:\WorkProjects\Deadlock\Reduced_CSDK_12";
-    public const string DefaultDeadlockToolsRoot = @"C:\WorkProjects\Deadlock\DeadlockTools";
-    public const string DefaultRetailDeadlockRoot = @"D:\Program Files (x86)\Steam\steamapps\common\Project8Staging";
+    public static string DefaultDeadlimitRoot { get; } = ResolveDeadlimitRoot();
+    public static string DefaultWorkspaceRoot { get; } = ResolveWorkspaceRoot(DefaultDeadlimitRoot);
+    public static string DefaultCsdkRoot { get; } = Path.Combine(DefaultWorkspaceRoot, "Reduced_CSDK_12");
+    public static string DefaultDeadlockToolsRoot { get; } = Path.Combine(DefaultWorkspaceRoot, "DeadlockTools");
+    public const string DefaultRetailDeadlockRoot = "";
 
     public DeadlimitPaths()
         : this(ProjectStore.GetToolPathSettings())
@@ -49,16 +49,22 @@ public sealed class DeadlimitPaths
 
     private static string UseConfiguredOrDefault(string configured, string fallback)
     {
-        if (string.IsNullOrWhiteSpace(configured))
+        var candidate = string.IsNullOrWhiteSpace(configured) ? fallback : configured;
+        if (string.IsNullOrWhiteSpace(candidate))
         {
-            return fallback;
+            return string.Empty;
         }
 
-        return Path.GetFullPath(configured.Trim());
+        return Path.GetFullPath(candidate.Trim());
     }
 
     private static string ResolveDeadlockToolsExecutable(string root)
     {
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            return string.Empty;
+        }
+
         var managedRelease = Path.Combine(root, "DeadlockTools.exe");
         if (File.Exists(managedRelease))
         {
@@ -66,6 +72,66 @@ public sealed class DeadlimitPaths
         }
 
         return Path.Combine(root, "DeadlockTools", "bin", "Release", "net10.0", "DeadlockTools.exe");
+    }
+
+    private static string ResolveDeadlimitRoot()
+    {
+        foreach (var seed in new[] { Environment.CurrentDirectory, AppContext.BaseDirectory })
+        {
+            var root = FindRepositoryRoot(seed);
+            if (root is not null)
+            {
+                return root;
+            }
+        }
+
+        return Path.GetFullPath(AppContext.BaseDirectory)
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+    }
+
+    private static string ResolveWorkspaceRoot(string deadlimitRoot)
+    {
+        var parent = Directory.GetParent(deadlimitRoot)?.FullName;
+        if (!string.IsNullOrWhiteSpace(parent))
+        {
+            return parent;
+        }
+
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        return string.IsNullOrWhiteSpace(userProfile) ? deadlimitRoot : userProfile;
+    }
+
+    private static string? FindRepositoryRoot(string seed)
+    {
+        if (string.IsNullOrWhiteSpace(seed))
+        {
+            return null;
+        }
+
+        DirectoryInfo? current;
+        try
+        {
+            current = new DirectoryInfo(Path.GetFullPath(seed));
+        }
+        catch (Exception exception) when (exception is ArgumentException
+                                           or NotSupportedException
+                                           or PathTooLongException)
+        {
+            return null;
+        }
+
+        while (current is not null)
+        {
+            if (File.Exists(Path.Combine(current.FullName, "DeadlimitManager.cmd"))
+                || File.Exists(Path.Combine(current.FullName, "internal", "src", "Deadlimit", "Deadlimit.csproj")))
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        return null;
     }
 
     private static ToolProbe Probe(string name, string path)
