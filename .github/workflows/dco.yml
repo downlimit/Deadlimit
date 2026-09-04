@@ -1,0 +1,48 @@
+name: DCO
+
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  dco:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Verify Signed-off-by trailers
+        shell: pwsh
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $commits = @(git rev-list "$env:BASE_SHA..$env:HEAD_SHA")
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Could not enumerate pull-request commits.'
+          }
+
+          $unsigned = [System.Collections.Generic.List[string]]::new()
+          foreach ($commit in $commits) {
+            $body = git show --no-patch --format=%B $commit
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not read commit $commit."
+            }
+
+            if (($body -join "`n") -notmatch '(?m)^Signed-off-by:\s+.+\s+<[^>]+>\s*$') {
+              $subject = (git show --no-patch --format=%s $commit) -join ' '
+              $unsigned.Add("$($commit.Substring(0, 12)) $subject")
+            }
+          }
+
+          if ($unsigned.Count -gt 0) {
+            $unsigned | ForEach-Object { Write-Error "Missing DCO sign-off: $_" }
+            throw 'Every pull-request commit must include a Signed-off-by trailer. See CONTRIBUTING.md.'
+          }
+
+          Write-Host "DCO sign-off verified for $($commits.Count) commit(s)."

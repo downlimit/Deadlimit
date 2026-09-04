@@ -1,0 +1,31 @@
+name: Feature request
+description: Propose a focused improvement to Deadlimit
+title: "[Feature]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Workflow problem
+      description: Which manual step or failure mode should Deadlimit address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: External tools and compatibility
+      description: List relevant versions and any new download, executable, or content dependency.
+  - type: checkboxes
+    id: scope_check
+    attributes:
+      label: Scope confirmation
+      options:
+        - label: This proposal does not require Deadlimit to redistribute retail game content or unlicensed third-party files.
+          required: true

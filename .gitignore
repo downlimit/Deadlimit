@@ -15,3 +15,11 @@
 # .NET build output.
 **/bin/
 **/obj/
+
+# IDE and local test output.
+.vs/
+*.suo
+*.user
+TestResults/
+artifacts/
+*.log

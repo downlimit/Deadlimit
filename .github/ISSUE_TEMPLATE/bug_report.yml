@@ -1,0 +1,50 @@
+name: Bug report
+description: Report a reproducible problem in Deadlimit
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues first. Do not upload game content, extracted resources, personal projects, credentials, or third-party licensed files.
+  - type: input
+    id: version
+    attributes:
+      label: Deadlimit version
+      description: Release tag or commit hash.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Windows, Deadlock, Reduced CSDK, 3ds Max, Wall Worm, and other relevant exact versions.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Use an original minimal fixture and redact local/private information.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and text logs
+      description: Paste text logs after removing user names, Steam identifiers, tokens, local paths, and proprietary content.
+    validations:
+      required: true
+  - type: checkboxes
+    id: content_check
+    attributes:
+      label: Content confirmation
+      options:
+        - label: I have not attached retail game content, extracted resources, personal projects, credentials, or third-party licensed files.
+          required: true
