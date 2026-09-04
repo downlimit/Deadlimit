@@ -45,8 +45,9 @@ release must be rebuilt from its final tag and will have different hashes.
 - Run a clean Windows 11 user-machine test outside the GitHub-hosted runner.
 - Test an update from a previous real rehearsal installation; synthetic
   install/update/rollback tests already pass.
-- Capture exact Wall Worm, Reduced CSDK, Deadlock depot/manifest,
-  DeadlockTools, and experimental Shade versions.
+- Refresh the exact compatibility snapshot at release time; current local
+  versions, binary fingerprints, and Deadlock depot manifests are recorded in
+  `COMPATIBILITY.md`.
 - Resolve the unauthenticated mutable CSDK, DepotDownloader, and DeadlockTools
   download paths by pinning reviewed versions/checksums or disabling their
   automatic installers in the public portable build.

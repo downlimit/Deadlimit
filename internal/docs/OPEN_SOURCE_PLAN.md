@@ -76,7 +76,7 @@ understand their rights, obligations, validation steps, and review path from roo
 - [x] Add `README.ru.md` as the secondary Russian guide.
 - [x] Document a five-minute clone-based quick start and label the portable user path as pending.
 - [x] Document the contributor/developer setup using .NET SDK 10.
-- [~] Add `COMPATIBILITY.md` with the current baseline; exact Wall Worm, CSDK, Deadlock manifest, DeadlockTools, and Shade versions still require release-time capture.
+- [x] Add `COMPATIBILITY.md` with the exact audited workstation snapshot: Windows/Max/Painter versions, Wall Worm build, CSDK binary fingerprints, Deadlock build/depot manifests, DeadlockTools release/commit/fingerprint, and Shade research status. Upstream archive authentication remains a separate trust gate.
 - [x] Add `CHANGELOG.md` and adopt semantic versioning starting at `0.1.0-beta.1`.
 - [x] Retire obsolete `DeadlimitAggregator*` entry points after compatibility review; keep only the neutral `Deadlimit.cmd` shim for older local shortcuts.
 - [x] Remove maintainer-workstation path defaults from runtime code and public installation paths; derive clone/portable roots and keep Steam discovery explicit in Settings.
@@ -212,6 +212,7 @@ the project gains enough users to justify certificate cost and maintenance.
 - Documented the unsigned-beta SmartScreen warning and checksum-verification rule in both public guides.
 - Updated official GitHub Actions to their current Node 24-based majors, then passed private rehearsal run `33922258940` without the prior Node 20 warning.
 - Recorded the private `0.1.0-beta.1` ZIP/updater hashes, full manifest verification, packaged-content audit, and remaining public-release no-go items.
+- Captured the exact 2026-09-05 local compatibility snapshot without recording account identifiers or user content.
 
 ### 2026-09-04
 
