@@ -1,0 +1,72 @@
+name: Publish portable release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Resolve and validate version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          if ($tag -notmatch '^v(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$') {
+            throw "Release tag is not supported: $tag"
+          }
+          "version=$($Matches.version)" >> $env:GITHUB_OUTPUT
+          "prerelease=$($Matches.version.Contains('-').ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - name: Restore
+        run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
+      - name: Repository content policy
+        shell: pwsh
+        run: internal/tests/open-source-content-policy-smoke.ps1
+      - name: Portable updater and bootstrap smoke
+        shell: pwsh
+        run: |
+          internal/tests/portable-bootstrap-smoke.ps1
+          internal/tests/portable-release-smoke.ps1
+      - name: Build portable package
+        shell: pwsh
+        run: internal/release/New-DeadlimitPortable.ps1 -Version '${{ steps.version.outputs.version }}'
+      - name: Install packaged artifact smoke
+        shell: pwsh
+        run: |
+          internal/tests/portable-release-smoke.ps1 `
+            -PackagePath artifacts/portable/Deadlimit-win-x64.zip `
+            -ChecksumPath artifacts/portable/Deadlimit-win-x64.zip.sha256
+      - name: Publish GitHub release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $arguments = @(
+            'release', 'create', '${{ github.ref_name }}',
+            'artifacts/portable/Deadlimit-win-x64.zip',
+            'artifacts/portable/Deadlimit-win-x64.zip.sha256',
+            'artifacts/portable/DeadlimitPortableUpdater.ps1',
+            'artifacts/portable/DeadlimitPortableUpdater.ps1.sha256',
+            'Install-Deadlimit.cmd',
+            '--verify-tag',
+            '--generate-notes',
+            '--title', 'Deadlimit ${{ steps.version.outputs.version }}'
+          )
+          if ('${{ steps.version.outputs.prerelease }}' -eq 'true') {
+            $arguments += '--prerelease'
+          }
+          & gh @arguments
+          if ($LASTEXITCODE -ne 0) {
+            throw "GitHub release publication failed with exit code $LASTEXITCODE."
+          }

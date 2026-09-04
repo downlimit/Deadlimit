@@ -12,6 +12,7 @@
     <AssemblyTitle>Deadlimit Manager</AssemblyTitle>
     <Product>Deadlimit Manager</Product>
     <Description>Deadlock modding pipeline manager.</Description>
+    <Version>0.1.0-beta.1</Version>
     <ApplicationIcon>..\..\assets\DeadlimitManager_128_v4.ico</ApplicationIcon>
   </PropertyGroup>
 

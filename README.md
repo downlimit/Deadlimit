@@ -108,9 +108,12 @@ sign-off.
 
 `Deadlimit Updater` is currently the developer/Git channel: it fetches
 `origin/main`, preserves unrelated local work when it can fast-forward safely,
-and rebuilds the Manager. The planned public user channel will use immutable
-portable GitHub Releases and checksums. These channels stay separate so a normal
-user update never depends on a mutable source checkout.
+and rebuilds the Manager. The portable user channel is implemented but has not
+been published: its single `Install-Deadlimit.cmd` downloads checksum-verified
+GitHub Release assets, installs under `%LocalAppData%\Programs\Deadlimit`, and
+creates Manager/Update shortcuts. `Update Deadlimit.cmd -Rollback` swaps the
+current and previous verified installations. These channels stay separate so a
+normal user update never depends on a mutable source checkout.
 
 ## License, support, and independence
 

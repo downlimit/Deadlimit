@@ -105,9 +105,12 @@ internal/tests/prepare-behavior-smoke.ps1
 [CONTRIBUTING.md](CONTRIBUTING.md). Английская документация является основной;
 эта русская версия помогает пользователям пройти тот же рабочий путь.
 
-Текущий `Deadlimit Updater` — Git-канал для разработчиков. Запланированный
-пользовательский updater будет получать неизменяемые portable-релизы GitHub и
-проверять контрольные суммы.
+Текущий `Deadlimit Updater` — Git-канал для разработчиков. Portable-канал уже
+реализован, но пока не опубликован: один `Install-Deadlimit.cmd` загружает
+GitHub Release assets с проверкой SHA-256, устанавливает программу в
+`%LocalAppData%\Programs\Deadlimit` и создаёт ярлыки Manager/Update. Команда
+`Update Deadlimit.cmd -Rollback` меняет местами текущую и предыдущую проверенные
+установки.
 
 Исходный код распространяется по [MIT License](LICENSE). Условия поддержки — в
 [SUPPORT.md](SUPPORT.md), приватная отправка уязвимостей — в
