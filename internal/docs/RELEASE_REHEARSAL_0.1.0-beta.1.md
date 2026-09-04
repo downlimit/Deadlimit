@@ -3,8 +3,8 @@
 Status: **PACKAGE MECHANICS PASS — PUBLIC RELEASE NO-GO**
 
 - Rehearsal date: 2026-09-05
-- Source commit: `3b339dcf02ee3552033a7e52af01eac2e031d08c`
-- Private workflow run: [Portable release rehearsal 33922258940](https://github.com/downlimit/Deadlimit/actions/runs/33922258940)
+- Source commit: `89ae79be7ee53014b44b8b2156b16a19c2c0ac25`
+- Private workflow run: [Portable release rehearsal 33925867426](https://github.com/downlimit/Deadlimit/actions/runs/33925867426)
 
 This report records a private artifact rehearsal. It created no Git tag or
 GitHub Release and did not change repository visibility.
@@ -14,7 +14,9 @@ GitHub Release and did not change repository visibility.
 - GitHub-hosted Windows runner checkout, .NET 10 restore, and transaction smoke.
 - Self-contained `win-x64` publish and portable ZIP creation.
 - Installation of the produced ZIP into an isolated temporary location.
-- Packaged `DeadlimitManager.exe --startup-smoke` through the portable test.
+- Packaged `DeadlimitManager.exe --release-policy-smoke` verified that
+  untrusted external-tool automation is blocked, then `--startup-smoke`
+  verified normal portable startup.
 - Private artifact upload through the current Node 24-based official actions.
 - Published ZIP SHA-256 matches the downloaded artifact.
 - Published updater SHA-256 matches the downloaded updater.
@@ -38,9 +40,9 @@ GitHub Release and did not change repository visibility.
 | Item | Value |
 | --- | --- |
 | ZIP | `Deadlimit-win-x64.zip` |
-| ZIP bytes | `82,724,527` |
-| ZIP SHA-256 | `1F3560DE9645E44DEEBEACF2F02E4186F2603F88A5AD8019457EBBD2C24EE912` |
-| Uncompressed bytes | `233,068,024` |
+| ZIP bytes | `82,726,499` |
+| ZIP SHA-256 | `A6AED23230648CDAE5A59BAF05FAD2768723E14ADA5B49506142ECB9607FF45A` |
+| Uncompressed bytes | `233,073,093` |
 | Updater SHA-256 | `E9EE312B2A65EBD99D1AD22A1C98283F6D80782C11FE38982BD6FF89A86CA9D9` |
 | Package version | `0.1.0-beta.1` |
 | Runtime | `win-x64`, self-contained |
