@@ -7,6 +7,8 @@ planned `0.1.0-beta.1` public beta. Dates use `YYYY-MM-DD`.
 
 ### Changed
 
+- GitHub workflows now use the current Node 24-based major versions of the
+  official checkout, .NET setup, and artifact upload actions.
 - Runtime tool defaults now derive from the current clone/portable location and
   Steam discovery instead of maintainer-workstation drive paths.
 - Obsolete `DeadlimitAggregator*` compatibility entry points were retired;
