@@ -153,7 +153,7 @@ Validated locally on Windows 11 on 2026-09-04:
 - [x] Updater root-resolution contract.
 - [x] Root launcher refresh and two-shortcut presentation contract.
 - [x] `git diff --check`.
-- [ ] GitHub pull-request workflows on the published branch head.
+- [x] GitHub pull-request workflows on PR #95 initial head `89f491e`: `build`, `dco`, and `smoke` passed.
 
 ## Phase 5 — Private release rehearsal and public launch
 
@@ -210,5 +210,6 @@ the project gains enough users to justify certificate cost and maintenance.
 - Added a CI content policy for retail resources, extracted paths, executables, archives, and unexpected large files.
 - Replaced the root landing page, added the Russian guide, documented the actual ONLINE CSDK recovery contract, and added compatibility/changelog files.
 - Added public development formatting/ignore rules, Dependabot, read-only workflow permissions, and a repository-owned DCO check.
-- Passed the complete locally available CI/smoke set and recorded the evidence; remote pull-request checks remain pending.
+- Passed the complete locally available CI/smoke set and recorded the evidence.
+- Published private PR #95; its initial `build`, `dco`, and `smoke` checks all passed.
 - Kept repository visibility private pending the final explicit approval gate.
