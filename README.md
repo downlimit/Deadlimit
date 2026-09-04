@@ -57,6 +57,11 @@ license and terms.
 3. Open **Settings** and configure your retail Deadlock, Reduced CSDK, and other
    tool locations. Automatic dependency actions download third-party files into
    local tool folders; review the displayed source before using them.
+
+   Portable releases accept existing tool locations through **Browse**. Their
+   automatic CSDK, DepotDownloader, and DeadlockTools install/update actions
+   remain disabled until those upstream archives have release-pinned trusted
+   checksums. The clone-based Developer channel retains the opt-in automation.
 4. Create or open a Deadlimit project whose root contains the artist DMX files
    and matching texture sources.
 5. Run **PREPARE FOR CSDK** once, then launch CSDK for ModelDoc and material work.

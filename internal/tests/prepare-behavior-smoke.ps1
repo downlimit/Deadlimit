@@ -4,6 +4,43 @@ $assemblyPath = Resolve-Path 'internal/src/Deadlimit/bin/Release/net10.0-windows
 $assembly = [Reflection.Assembly]::LoadFrom($assemblyPath)
 $nonPublicStatic = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Static
 
+# Portable releases are identified by package-owned release metadata. Their
+# unverified external tool installers must stay behind the service-layer guard.
+$releasePolicyType = $assembly.GetType('Deadlimit.Core.ReleaseChannelPolicy', $true)
+$isPortableRoot = $releasePolicyType.GetMethod('IsPortableReleaseRoot', $nonPublicStatic)
+if ($null -eq $isPortableRoot) { throw 'ReleaseChannelPolicy.IsPortableReleaseRoot was not found.' }
+$policyRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-release-policy-$([Guid]::NewGuid().ToString('N'))"
+try {
+    [IO.Directory]::CreateDirectory($policyRoot) | Out-Null
+    if ([bool]$isPortableRoot.Invoke($null, [object[]]@([string]$policyRoot))) {
+        throw 'A developer directory without release.json was classified as portable.'
+    }
+    [IO.File]::WriteAllText((Join-Path $policyRoot 'release.json'), '{}')
+    if (-not [bool]$isPortableRoot.Invoke($null, [object[]]@([string]$policyRoot))) {
+        throw 'A packaged directory with release.json was not classified as portable.'
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $policyRoot) {
+        Remove-Item -LiteralPath $policyRoot -Recurse -Force
+    }
+}
+
+$toolchainSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ToolchainDependencyService.cs' -Raw
+$guardCount = ([regex]::Matches($toolchainSource, 'ReleaseChannelPolicy\.RequireUnverifiedToolchainAutomation\(\);')).Count
+if ($guardCount -ne 5) {
+    throw "Expected five service-layer external-tool automation guards; found $guardCount."
+}
+$settingsSource = Get-Content -LiteralPath 'internal/src/Deadlimit/App/SettingsForm.cs' -Raw
+foreach ($required in @(
+    'ReleaseChannelPolicy.AllowsUnverifiedToolchainAutomation',
+    '&& _allowUnverifiedToolchainAutomation',
+    'PortableToolchainNotice()')) {
+    if (-not $settingsSource.Contains($required, [StringComparison]::Ordinal)) {
+        throw "Portable Settings safety contract is missing: $required"
+    }
+}
+
 # Russian and English ONLINE text must both activate the pulse feature.
 $pulseType = $assembly.GetType('Deadlimit.App.OnlineCsdkPulseFeature', $true)
 $isOnline = $pulseType.GetMethod('IsOnlineText', $nonPublicStatic)

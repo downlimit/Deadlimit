@@ -1,6 +1,6 @@
 # Network and External-Execution Trust Audit
 
-Status: **AUDITED — hardening required before the first public release**
+Status: **AUDITED — unverified automation disabled in portable releases**
 
 Last reviewed: 2026-09-04
 
@@ -30,6 +30,10 @@ implementation; it does not endorse or grant rights to any external content.
 - The portable installer verifies the updater script before execution and the
   ZIP before extraction; a malformed checksum, traversal entry, missing Manager,
   or missing release metadata stops before the current install is replaced.
+- Portable builds detect their package-owned `release.json` and disable CSDK,
+  DepotDownloader, and DeadlockTools install/update execution in both Settings
+  and the underlying service. Existing installations can still be selected and
+  validated. Clone-based Developer builds retain the opt-in automation.
 - CSDK setup validates the selected retail installation but writes full-game
   depot output into the separate user-selected CSDK root.
 - DepotDownloader runs visibly when Steam authentication may be required.
@@ -61,8 +65,7 @@ to the produced portable ZIP.
 ## Release gate
 
 The first public source-code switch may proceed with these integrations clearly
-documented as opt-in external operations. The Deadlimit portable package itself
-now has versioned release/tag inputs and checksums. The first public portable
-release remains blocked until versions/checksums are implemented for the CSDK,
-DepotDownloader, and DeadlockTools executables Deadlimit downloads and runs, or
-the corresponding automatic installers are disabled in that release.
+documented as opt-in Developer-channel operations. The Deadlimit portable
+package has versioned release/tag inputs and checksums and disables the
+unverified automatic installers. Re-enabling any of these actions in a portable
+release requires pinned reviewed versions and expected upstream archive hashes.

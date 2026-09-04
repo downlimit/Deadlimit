@@ -17,6 +17,19 @@ function Assert-True([bool]$Condition, [string]$Message) {
     }
 }
 
+function Invoke-ExecutableSmoke([string]$Executable, [string]$Argument, [string]$WorkingDirectory) {
+    $process = Start-Process `
+        -FilePath $Executable `
+        -ArgumentList $Argument `
+        -WorkingDirectory $WorkingDirectory `
+        -PassThru
+    if (-not $process.WaitForExit(30000)) {
+        $process.Kill($true)
+        throw "Packaged executable timed out: $Argument"
+    }
+    Assert-True ($process.ExitCode -eq 0) "Packaged executable smoke failed with exit code $($process.ExitCode): $Argument"
+}
+
 function New-SyntheticPackage([string]$Name, [string]$Version, [string]$Payload, [switch]$MissingManager) {
     $source = Join-Path $testRoot "$Name-source"
     $archive = Join-Path $testRoot "$Name.zip"
@@ -152,6 +165,9 @@ try {
         Assert-True (Test-Path -LiteralPath (Join-Path $realInstall 'DeadlimitManager.exe')) 'Real portable package has no Manager executable after install.'
         Assert-True (Test-Path -LiteralPath (Join-Path $realInstall 'release-manifest.json')) 'Real portable package has no release manifest.'
         Assert-True (Test-Path -LiteralPath (Join-Path $realInstall 'licenses') -PathType Container) 'Real portable package has no license payload.'
+        $realManager = Join-Path $realInstall 'DeadlimitManager.exe'
+        Invoke-ExecutableSmoke $realManager '--release-policy-smoke' $realInstall
+        Invoke-ExecutableSmoke $realManager '--startup-smoke' $realInstall
     }
 
     Write-Host 'Portable release install, no-op, checksum/traversal/broken-package rejection, update, and rollback smoke passed.'

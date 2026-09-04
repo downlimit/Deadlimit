@@ -231,6 +231,7 @@ public sealed class ToolchainDependencyService
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        ReleaseChannelPolicy.RequireUnverifiedToolchainAutomation();
         using var operation = ToolchainOperationHub.Begin(
             ToolchainOperationTarget.Csdk,
             cancellationToken,
@@ -273,6 +274,7 @@ public sealed class ToolchainDependencyService
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        ReleaseChannelPolicy.RequireUnverifiedToolchainAutomation();
         using var operation = ToolchainOperationHub.Begin(
             ToolchainOperationTarget.Csdk,
             cancellationToken,
@@ -317,6 +319,7 @@ public sealed class ToolchainDependencyService
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        ReleaseChannelPolicy.RequireUnverifiedToolchainAutomation();
         using var operation = ToolchainOperationHub.Begin(
             ToolchainOperationTarget.DeadlockTools,
             cancellationToken,
@@ -365,6 +368,7 @@ public sealed class ToolchainDependencyService
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        ReleaseChannelPolicy.RequireUnverifiedToolchainAutomation();
         using var operation = ToolchainOperationHub.Begin(
             ToolchainOperationTarget.DeadlockTools,
             cancellationToken,
@@ -432,6 +436,7 @@ public sealed class ToolchainDependencyService
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        ReleaseChannelPolicy.RequireUnverifiedToolchainAutomation();
         using var operation = ToolchainOperationHub.Begin(
             ToolchainOperationTarget.Csdk,
             cancellationToken,

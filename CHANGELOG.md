@@ -25,8 +25,11 @@ planned `0.1.0-beta.1` public beta. Dates use `YYYY-MM-DD`.
 
 ### Security
 
-- Full 812-commit history scan found no configured secret signatures or
-  prohibited historical asset paths on 2026-09-04.
+- Portable releases disable automatic CSDK, DepotDownloader, and DeadlockTools
+  installation/update until upstream archives have release-pinned trusted
+  checksums; users can select existing installations in Settings.
+- Final 822-commit history scan found no configured high-confidence secret
+  signatures or prohibited historical asset paths on 2026-09-05.
 
 ## 0.1.0-beta.1
 

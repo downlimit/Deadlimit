@@ -57,9 +57,6 @@ release must be rebuilt from its final tag and will have different hashes.
 - Refresh the exact compatibility snapshot at release time; current local
   versions, binary fingerprints, and Deadlock depot manifests are recorded in
   `COMPATIBILITY.md`.
-- Resolve the unauthenticated mutable CSDK, DepotDownloader, and DeadlockTools
-  download paths by pinning reviewed versions/checksums or disabling their
-  automatic installers in the public portable build.
 - Receive explicit owner approval for public visibility and the first release.
 
 Until these items are resolved or explicitly accepted at the documented owner

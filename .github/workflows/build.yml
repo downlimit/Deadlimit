@@ -180,4 +180,6 @@ jobs:
           name: deadlimit-identifier-audit
           path: deadlimit-identifier-audit.txt
       - name: Startup smoke
-        run: dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --startup-smoke
+        run: |
+          dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --release-policy-smoke
+          dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --startup-smoke
