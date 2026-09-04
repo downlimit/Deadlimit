@@ -167,7 +167,7 @@ Validated locally on Windows 11 on 2026-09-04:
 
 - [x] Build `0.1.0-beta.1` in the private repository and record exact artifact evidence in `RELEASE_REHEARSAL_0.1.0-beta.1.md`.
 - [ ] Test installation on a clean Windows 11 environment without maintainer paths.
-- [ ] Test Stable update from the previous rehearsal build.
+- [x] Test installed updater activation from the previous real rehearsal ZIP to the current real rehearsal ZIP, preservation under `.previous`, and rollback. Automatic GitHub Releases selection remains publication-gated.
 - [ ] Re-run provenance, secret, and packaged-file audits.
 - [~] Produce a final go/no-go report for the owner. The current rehearsal report is NO-GO until the listed compatibility, trust, clean-machine, and final-audit gates are resolved.
 - [!] Receive explicit owner approval to change visibility.
@@ -213,6 +213,7 @@ the project gains enough users to justify certificate cost and maintenance.
 - Updated official GitHub Actions to their current Node 24-based majors, then passed private rehearsal run `33922258940` without the prior Node 20 warning.
 - Recorded the private `0.1.0-beta.1` ZIP/updater hashes, full manifest verification, packaged-content audit, and remaining public-release no-go items.
 - Captured the exact 2026-09-05 local compatibility snapshot without recording account identifiers or user content.
+- Passed a real rehearsal-to-rehearsal portable update and installed-entry rollback using the two independently checksummed ZIPs.
 
 ### 2026-09-04
 
