@@ -19,6 +19,8 @@ internal sealed class SettingsForm : Form
     private readonly Button _deadlockToolsPrimaryButton = CreateActionButton();
     private readonly Button _retailDeadlockCheckButton = CreateActionButton();
     private readonly Button _retailDeadlockFindButton = CreateUtilityActionButton("\uE721");
+    private readonly Button _applyButton = new() { AutoSize = true };
+    private readonly Button _closeCancelButton = new() { AutoSize = true, DialogResult = DialogResult.Cancel };
 
     private readonly ComboBox _languageCombo = new()
     {
@@ -38,6 +40,10 @@ internal sealed class SettingsForm : Form
     private readonly ToolchainDependencyService _toolchain = new();
     private readonly bool _allowUnverifiedToolchainAutomation = ReleaseChannelPolicy.AllowsUnverifiedToolchainAutomation;
     private readonly List<Button> _pathButtons = [];
+    private readonly string _initialProjectsRoot;
+    private readonly string _initialCsdkRoot;
+    private readonly string _initialDeadlockToolsRoot;
+    private readonly string _initialRetailDeadlockRoot;
     private readonly string _initialLanguage;
     private readonly string _initialTheme;
 
@@ -51,6 +57,10 @@ internal sealed class SettingsForm : Form
     public SettingsForm()
     {
         var settings = ProjectStore.GetToolPathSettings();
+        _initialProjectsRoot = settings.ProjectsRoot.Trim();
+        _initialCsdkRoot = settings.CsdkRoot.Trim();
+        _initialDeadlockToolsRoot = settings.DeadlockToolsRoot.Trim();
+        _initialRetailDeadlockRoot = settings.RetailDeadlockRoot.Trim();
         _initialLanguage = settings.UiLanguage;
         _initialTheme = settings.UiTheme;
 
@@ -89,7 +99,17 @@ internal sealed class SettingsForm : Form
         UiTheme.ApplyCustomPalette(this, settings.UiTheme);
         ReapplySemanticStatusColors();
 
-        _themeCombo.SelectedIndexChanged += (_, _) => PreviewTheme();
+        _languageCombo.SelectedIndexChanged += (_, _) => UpdateSettingsActionState();
+        _themeCombo.SelectedIndexChanged += (_, _) =>
+        {
+            PreviewTheme();
+            UpdateSettingsActionState();
+        };
+        _projectsRootText.TextChanged += (_, _) => UpdateSettingsActionState();
+        _csdkRootText.TextChanged += (_, _) => UpdateSettingsActionState();
+        _deadlockToolsRootText.TextChanged += (_, _) => UpdateSettingsActionState();
+        _retailDeadlockRootText.TextChanged += (_, _) => UpdateSettingsActionState();
+        UpdateSettingsActionState();
         Shown += async (_, _) => await RefreshAllStatusesAsync();
     }
 
@@ -135,8 +155,8 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             Dock = DockStyle.Fill,
             Text = UiText.T(
-                "Tool status is checked when this window opens. Theme changes preview immediately; Save applies language and theme without restarting Deadlimit Manager.",
-                "Состояние инструментов проверяется при открытии окна. Тема меняется сразу; после сохранения язык и тема применяются без перезапуска Deadlimit Manager."),
+                "Tool status is checked when this window opens. Theme changes preview immediately; Apply commits changed settings without restarting Deadlimit Manager.",
+                "Состояние инструментов проверяется при открытии окна. Тема меняется сразу; кнопка «Применить» фиксирует изменённые настройки без перезапуска Deadlimit Manager."),
             Margin = new Padding(0, 0, 0, 10),
         }, 0, 0);
 
@@ -182,38 +202,57 @@ internal sealed class SettingsForm : Form
             Margin = new Padding(0, 10, 0, 0),
         };
 
-        var cancelButton = new Button
-        {
-            Text = UiText.T("CANCEL", "ОТМЕНА"),
-            AutoSize = true,
-            DialogResult = DialogResult.Cancel,
-        };
-        var saveButton = new Button
-        {
-            Text = UiText.T("SAVE", "СОХРАНИТЬ"),
-            AutoSize = true,
-        };
-        saveButton.Click += (_, _) => SaveSettings();
+        _closeCancelButton.Text = UiText.T("CLOSE", "ЗАКРЫТЬ");
+        _applyButton.Text = UiText.T("APPLY", "ПРИМЕНИТЬ");
+        _applyButton.Click += (_, _) => ApplySettings();
 
         _toolTip.SetToolTip(
-            saveButton,
+            _applyButton,
             UiText.T(
-                "Validate and save the selected folders and interface settings.\n\nUnspecified external-tool paths are allowed.",
-                "Проверить и сохранить выбранные папки и настройки интерфейса.\n\nПути к внешним инструментам можно оставить неуказанными."));
-        _toolTip.SetToolTip(
-            cancelButton,
-            UiText.T(
-                "Close Settings without saving changes.\n\nA theme preview is reverted automatically.",
-                "Закрыть настройки без сохранения изменений.\n\nПредпросмотр темы будет автоматически отменён."));
+                "Validate and apply the changed folders and interface settings.\n\nUnspecified external-tool paths are allowed.",
+                "Проверить и применить изменённые папки и настройки интерфейса.\n\nПути к внешним инструментам можно оставить неуказанными."));
 
-        footer.Controls.Add(cancelButton);
-        footer.Controls.Add(saveButton);
+        footer.Controls.Add(_closeCancelButton);
+        footer.Controls.Add(_applyButton);
         root.Controls.Add(footer, 0, 2);
 
-        AcceptButton = saveButton;
-        CancelButton = cancelButton;
+        AcceptButton = _applyButton;
+        CancelButton = _closeCancelButton;
         Controls.Add(root);
     }
+
+    private bool HasPendingSettingsChanges()
+    {
+        var selectedLanguage = (_languageCombo.SelectedItem as LanguageItem)?.Code ?? "en";
+        var selectedTheme = SelectedThemeCode();
+        return !SettingEquals(_initialProjectsRoot, _projectsRootText.Text)
+            || !SettingEquals(_initialCsdkRoot, _csdkRootText.Text)
+            || !SettingEquals(_initialDeadlockToolsRoot, _deadlockToolsRootText.Text)
+            || !SettingEquals(_initialRetailDeadlockRoot, _retailDeadlockRootText.Text)
+            || !string.Equals(_initialLanguage, selectedLanguage, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(_initialTheme, selectedTheme, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void UpdateSettingsActionState()
+    {
+        var hasPendingChanges = HasPendingSettingsChanges();
+        _applyButton.Enabled = hasPendingChanges && !_busy;
+        _closeCancelButton.Text = hasPendingChanges
+            ? UiText.T("CANCEL", "ОТМЕНА")
+            : UiText.T("CLOSE", "ЗАКРЫТЬ");
+        _toolTip.SetToolTip(
+            _closeCancelButton,
+            hasPendingChanges
+                ? UiText.T(
+                    "Discard pending Settings changes and close the window.\n\nA theme preview is reverted automatically.",
+                    "Отменить несохранённые изменения настроек и закрыть окно.\n\nПредпросмотр темы будет автоматически отменён.")
+                : UiText.T(
+                    "Close Settings. There are no pending changes.",
+                    "Закрыть настройки. Несохранённых изменений нет."));
+    }
+
+    private static bool SettingEquals(string initialValue, string currentValue) =>
+        string.Equals(initialValue.Trim(), currentValue.Trim(), StringComparison.OrdinalIgnoreCase);
 
     private static TableLayoutPanel CreateToolsGrid()
     {
@@ -621,6 +660,7 @@ internal sealed class SettingsForm : Form
             && gameClientValid
             && _csdkStatus.NetworkAvailable
             && _csdkStatus.Kind is not ToolchainStatusKind.NetworkIssue;
+        UpdateSettingsActionState();
 
         foreach (var button in _pathButtons)
         {
@@ -1150,7 +1190,7 @@ internal sealed class SettingsForm : Form
         }
     }
 
-    private void SaveSettings()
+    private void ApplySettings()
     {
         var selectedLanguage = (_languageCombo.SelectedItem as LanguageItem)?.Code ?? "en";
         var selectedTheme = SelectedThemeCode();
