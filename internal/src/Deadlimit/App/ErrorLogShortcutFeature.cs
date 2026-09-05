@@ -46,10 +46,8 @@ internal static class ErrorLogShortcutFeature
         return title.Contains("error", StringComparison.OrdinalIgnoreCase)
             || title.Contains("failed", StringComparison.OrdinalIgnoreCase)
             || title.Contains("could not", StringComparison.OrdinalIgnoreCase)
-            || title.Contains("unavailable", StringComparison.OrdinalIgnoreCase)
             || title.Contains("ошибка", StringComparison.OrdinalIgnoreCase)
-            || title.Contains("не удалось", StringComparison.OrdinalIgnoreCase)
-            || title.Contains("недоступ", StringComparison.OrdinalIgnoreCase);
+            || title.Contains("не удалось", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool TryAttach(Form dialog)
