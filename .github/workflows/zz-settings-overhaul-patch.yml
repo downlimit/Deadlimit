@@ -1,0 +1,45 @@
+name: Settings overhaul patch
+
+on:
+  push:
+    branches:
+      - fix/settings-check-cancel-relocation
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Apply patch
+        shell: pwsh
+        run: python internal/dev/apply-settings-overhaul.py
+      - name: Restore
+        shell: pwsh
+        run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
+      - name: Build
+        shell: pwsh
+        run: dotnet build internal/src/Deadlimit/Deadlimit.csproj -c Release --no-restore --nologo
+      - name: UI smoke
+        shell: pwsh
+        run: ./internal/tests/ui-localization-smoke.ps1
+      - name: Startup smoke
+        shell: pwsh
+        run: ./internal/src/Deadlimit/bin/Release/net10.0-windows/DeadlimitManager.exe --startup-smoke
+      - name: Commit patch
+        shell: pwsh
+        run: |
+          git config user.name "Oleg Knyazev"
+          git config user.email "down.limit@gmail.com"
+          git add internal/src/Deadlimit/App/SettingsForm.cs internal/src/Deadlimit/App/SettingsVersionFeature.cs internal/src/Deadlimit/App/DeadlimitRelocationService.cs internal/src/Deadlimit/Core/ToolchainDependencyService.cs internal/src/Deadlimit/Deadlimit.csproj internal/tests/ui-localization-smoke.ps1
+          if (git diff --cached --quiet) { throw 'Patch produced no source changes.' }
+          git commit -m "Improve Settings checks, layout, versioning and relocation" -m "Signed-off-by: Oleg Knyazev <down.limit@gmail.com>"
+          git push origin HEAD:fix/settings-check-cancel-relocation
