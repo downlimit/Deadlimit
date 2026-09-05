@@ -194,14 +194,18 @@ internal sealed class SettingsForm : Form
         content.Controls.Add(preferencesGrid);
         root.Controls.Add(content, 0, 1);
 
-        var footer = new FlowLayoutPanel
+        var footer = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             AutoSize = true,
-            FlowDirection = FlowDirection.RightToLeft,
-            WrapContents = false,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 3,
+            RowCount = 1,
             Margin = new Padding(0, 10, 0, 0),
         };
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
         _closeCancelButton.Text = UiText.T("CLOSE", "ЗАКРЫТЬ");
         _applyButton.Text = UiText.T("APPLY", "ПРИМЕНИТЬ");
@@ -213,8 +217,10 @@ internal sealed class SettingsForm : Form
                 "Validate and apply the changed folders and interface settings.\n\nUnspecified external-tool paths are allowed.",
                 "Проверить и применить изменённые папки и настройки интерфейса.\n\nПути к внешним инструментам можно оставить неуказанными."));
 
-        footer.Controls.Add(_closeCancelButton);
-        footer.Controls.Add(_applyButton);
+        _applyButton.Margin = new Padding(0, 0, 8, 0);
+        _closeCancelButton.Margin = Padding.Empty;
+        footer.Controls.Add(_applyButton, 1, 0);
+        footer.Controls.Add(_closeCancelButton, 2, 0);
         root.Controls.Add(footer, 0, 2);
 
         AcceptButton = _applyButton;
@@ -254,6 +260,60 @@ internal sealed class SettingsForm : Form
 
     private static bool SettingEquals(string initialValue, string currentValue) =>
         string.Equals(initialValue.Trim(), currentValue.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    internal static int RunFooterLayoutSmoke()
+    {
+        using var form = new SettingsForm();
+        form.CreateControl();
+        form.PerformLayout();
+
+        var cases = new[]
+        {
+            (Apply: "APPLY", Close: "CLOSE"),
+            (Apply: "APPLY", Close: "CANCEL"),
+            (Apply: "ПРИМЕНИТЬ", Close: "ЗАКРЫТЬ"),
+            (Apply: "ПРИМЕНИТЬ", Close: "ОТМЕНА"),
+        };
+
+        foreach (var item in cases)
+        {
+            form._applyButton.Text = item.Apply;
+            form._closeCancelButton.Text = item.Close;
+            form.PerformLayout();
+
+            if (!form.ControlFitsClient(form._applyButton) || !form.ControlFitsClient(form._closeCancelButton))
+            {
+                Console.Error.WriteLine($"Settings footer overflow: '{item.Apply}' / '{item.Close}'.");
+                return 1;
+            }
+
+            if (!ButtonTextFits(form._applyButton) || !ButtonTextFits(form._closeCancelButton))
+            {
+                Console.Error.WriteLine($"Settings footer text clipping: '{item.Apply}' / '{item.Close}'.");
+                return 2;
+            }
+        }
+
+        return 0;
+    }
+
+    private bool ControlFitsClient(Control control)
+    {
+        var point = control.Location;
+        for (var parent = control.Parent; parent is not null && parent != this; parent = parent.Parent)
+        {
+            point.Offset(parent.Location);
+        }
+
+        return ClientRectangle.Contains(new Rectangle(point, control.Size));
+    }
+
+    private static bool ButtonTextFits(Button button)
+    {
+        var measured = TextRenderer.MeasureText(button.Text, button.Font);
+        return measured.Width + 12 <= button.ClientSize.Width;
+    }
+
 
     private static TableLayoutPanel CreateToolsGrid()
     {
