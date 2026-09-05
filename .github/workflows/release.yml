@@ -33,15 +33,13 @@ jobs:
       - name: Repository content policy
         shell: pwsh
         run: internal/tests/open-source-content-policy-smoke.ps1
-      - name: Portable updater and bootstrap smoke
+      - name: Portable updater transaction smoke
         shell: pwsh
-        run: |
-          internal/tests/portable-bootstrap-smoke.ps1
-          internal/tests/portable-release-smoke.ps1
+        run: internal/tests/portable-release-smoke.ps1
       - name: Build portable package
         shell: pwsh
         run: internal/release/New-DeadlimitPortable.ps1 -Version '${{ steps.version.outputs.version }}'
-      - name: Install packaged artifact smoke
+      - name: Extracted portable artifact smoke
         shell: pwsh
         run: |
           internal/tests/portable-release-smoke.ps1 `
@@ -56,9 +54,6 @@ jobs:
             'release', 'create', '${{ github.ref_name }}',
             'artifacts/portable/Deadlimit-win-x64.zip',
             'artifacts/portable/Deadlimit-win-x64.zip.sha256',
-            'artifacts/portable/DeadlimitPortableUpdater.ps1',
-            'artifacts/portable/DeadlimitPortableUpdater.ps1.sha256',
-            'Install-Deadlimit.cmd',
             '--verify-tag',
             '--generate-notes',
             '--title', 'Deadlimit ${{ steps.version.outputs.version }}'

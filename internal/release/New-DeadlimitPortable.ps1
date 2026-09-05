@@ -216,8 +216,6 @@ $projectPath = Join-Path $repoRoot 'internal\src\Deadlimit\Deadlimit.csproj'
 $packageRoot = Join-Path $outputRoot 'Deadlimit-win-x64'
 $archivePath = Join-Path $outputRoot 'Deadlimit-win-x64.zip'
 $checksumPath = "$archivePath.sha256"
-$updaterAssetPath = Join-Path $outputRoot 'DeadlimitPortableUpdater.ps1'
-$updaterChecksumPath = "$updaterAssetPath.sha256"
 
 & dotnet publish $projectPath `
     --configuration Release `
@@ -251,7 +249,6 @@ $portableInternal = Join-Path $packageRoot 'internal'
 [IO.Directory]::CreateDirectory($portableInternal) | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot 'internal\DeadlimitPortableUpdater.ps1') -Destination $portableInternal
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Update Deadlimit.cmd') -Destination $packageRoot
-Copy-Item -LiteralPath (Join-Path $repoRoot 'internal\DeadlimitPortableUpdater.ps1') -Destination $updaterAssetPath
 
 Copy-NuGetLicensePayload $projectPath (Join-Path $packageRoot 'licenses')
 
@@ -299,10 +296,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Utf8NoBom $checksumPath "$archiveHash  Deadlimit-win-x64.zip`n"
-$updaterHash = (Get-FileHash -LiteralPath $updaterAssetPath -Algorithm SHA256).Hash.ToLowerInvariant()
-Write-Utf8NoBom $updaterChecksumPath "$updaterHash  DeadlimitPortableUpdater.ps1`n"
 
 Write-Host "Portable package: $archivePath"
 Write-Host "SHA-256: $archiveHash"
-Write-Host "Updater SHA-256: $updaterHash"
 Write-Host "Files: $($manifestEntries.Count)"

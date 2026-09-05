@@ -23,9 +23,6 @@ jobs:
       - name: Portable updater transaction smoke
         shell: pwsh
         run: internal/tests/portable-release-smoke.ps1
-      - name: Portable bootstrap smoke
-        shell: pwsh
-        run: internal/tests/portable-bootstrap-smoke.ps1
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'

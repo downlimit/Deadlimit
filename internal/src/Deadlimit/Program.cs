@@ -84,6 +84,16 @@ internal static class Program
             return 2;
         }
 
+        var expectedPortableDataRoot = Path.Combine(AppContext.BaseDirectory, "UserData");
+        var usesPortableDataRoot = string.Equals(
+            UserDataPaths.Root,
+            expectedPortableDataRoot,
+            StringComparison.OrdinalIgnoreCase);
+        if (usesPortableDataRoot != isPortable)
+        {
+            return 4;
+        }
+
         try
         {
             ReleaseChannelPolicy.RequireUnverifiedToolchainAutomation();

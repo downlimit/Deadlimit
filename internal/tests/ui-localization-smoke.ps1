@@ -24,6 +24,9 @@ Assert-Contains 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs' 'UiText.T("
 Assert-Contains 'internal/src/Deadlimit/App/ProjectLibraryFeature.cs' 'UiText.T("Open Project Cover", "Открыть обложку проекта")'
 Assert-Contains 'internal/src/Deadlimit/App/ProjectLibraryFeature.cs' 'ProjectHeaderFeature.GetHeaderImagePath(folder)'
 Assert-NotContains 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs' 'OpenHeaderFolder()'
+Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'UiText.T("UPDATE DEADLIMIT", "ОБНОВИТЬ DEADLIMIT")'
+Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'ReleaseChannelPolicy.IsPortableRelease'
+Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'DeadlimitUpdater.bat'
 
 # Static control text in App should either be localized, a technical/product token, a glyph, or data-driven.
 $allowed = @(

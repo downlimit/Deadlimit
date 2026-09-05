@@ -8,7 +8,7 @@ authoring, resource compilation, VPK packaging, and local game deployment. The
 project is hobby software maintained on a best-effort basis and may need updates
 whenever Deadlock or an external tool changes.
 
-> Public-readiness work is in progress. The portable installer and stable
+> Public-readiness work is in progress. The portable ZIP and stable
 > release updater described in the roadmap are not published yet. Current users
 > run Deadlimit from a Git clone and need the .NET 10 SDK.
 
@@ -110,20 +110,40 @@ The full Windows CI contract is in [`.github/workflows/build.yml`](.github/workf
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the fork/PR workflow and required DCO
 sign-off.
 
+## Portable user release
+
+After the first public release, an artist downloads `Deadlimit-win-x64.zip`
+and its `.sha256` file from the official GitHub Release, verifies the checksum,
+extracts the ZIP into a permanent writable folder, and runs
+`DeadlimitManager.exe`. Running directly from the opened ZIP is unsupported.
+
+The release is self-contained: Git and the .NET SDK are unnecessary. Deadlimit
+creates no Start-menu/Desktop shortcuts and registers no Windows installer or
+uninstaller. Portable settings and caches stay under `UserData` inside the
+extracted folder. Artist projects remain wherever the user chooses to keep them.
+
+`Update Deadlimit.cmd` downloads the latest published ZIP, verifies SHA-256,
+updates the program files in place, preserves `UserData`, and keeps the previous
+program payload under `Backup`. `Update Deadlimit.cmd -Rollback` swaps the
+current and backup program payloads while leaving user data in place. Deleting
+the extracted Deadlimit folder removes the application, its settings, cache,
+and rollback payload.
+
+The Settings window exposes the same `UPDATE DEADLIMIT` action in both release
+channels. A portable build opens its in-folder updater; a Git checkout opens the
+repository updater.
+
 ## Updating the current clone
 
 `Deadlimit Updater` is currently the developer/Git channel: it fetches
 `origin/main`, preserves unrelated local work when it can fast-forward safely,
 and rebuilds the Manager. The portable user channel is implemented but has not
-been published: its single `Install-Deadlimit.cmd` downloads checksum-verified
-GitHub Release assets, installs under `%LocalAppData%\Programs\Deadlimit`, and
-creates Manager/Update shortcuts. `Update Deadlimit.cmd -Rollback` swaps the
-current and previous verified installations. These channels stay separate so a
-normal user update never depends on a mutable source checkout.
+been published. These channels stay separate so a normal user update never
+depends on a mutable source checkout.
 
 Early portable beta executables are expected to be unsigned, so Windows
 SmartScreen may display an unknown-publisher warning. Continue only when the
-installer or ZIP came from the official `downlimit/Deadlimit` GitHub Release
+ZIP came from the official `downlimit/Deadlimit` GitHub Release
 and its published SHA-256 checksum matches. Report any checksum mismatch and do
 not run the downloaded file.
 

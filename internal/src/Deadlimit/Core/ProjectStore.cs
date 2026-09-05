@@ -264,11 +264,7 @@ public static class ProjectStore
         return normalized is "light" or "gray" or "dark" ? normalized : "system";
     }
 
-    private static string GetSettingsPath() =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Deadlimit",
-            "settings.json");
+    private static string GetSettingsPath() => UserDataPaths.Combine("settings.json");
 
     private sealed class LocalSettings
     {
