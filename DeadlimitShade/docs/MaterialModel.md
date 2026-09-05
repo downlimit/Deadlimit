@@ -444,3 +444,67 @@ shader identity, permutation/layout, gate state, numeric controls, and two-draw
 stability evidence are absent. GLSL files remain unchanged. A future task needs
 an approved offline host carrying the accepted PS payload before any NPR values
 are read.
+
+# Disposable Retail-Shader Overlay
+
+Issue #143 rechecked the retail reference before creating any host overlay. The
+Steam manifest reports app `1422450`, buildid `24882156`. Reading
+`shaders/vfx/pbr_vulkan_60_ps.vcs` from the retail Vulkan VPK returned
+9,230,833 bytes with SHA-256
+`eceff13193baccd5310db90ac9b3dd36928d941753c98494e349fa9e29826930`.
+The accepted reference is unchanged.
+
+The complete retail Vulkan VPK pair available for an overlay is
+`shaders_vulkan_dir.vpk` plus `shaders_vulkan_000.vpk`. Neither installed game
+tree was modified, and no overlay was created: the portable capture prerequisite
+failed before a disposable host could be launched.
+
+# Runtime Shader Identity Proof
+
+The official RenderDoc v1.46 x64 portable ZIP was downloaded from
+`renderdoc.org` and unpacked outside the repository and installed game trees.
+`qrenderdoc.exe` and `renderdoccmd.exe` report version `v1.46`.
+
+The portable build's `renderdoccmd vulkanlayer --explain` reports that its
+Vulkan layer is unregistered and requires both `renderdoc.json` files to be
+registered at system level with administrator permissions. Issue #143 requires
+stopping if portable capture needs a system installation or admin change. No
+registration was attempted.
+
+Consequently there is no actual runtime draw, no Vulkan renderer confirmation,
+and no runtime proof of the retail PS payload, static combo 24, dynamic combo
+0, or descriptor layout. The CSDK tools executable was not launched. No retail
+process was started, attached, injected, hooked, or instrumented.
+
+# Captured NPR Runtime Values
+
+No values were captured. The portable Vulkan-layer blocker occurs before an
+eligible runtime draw exists, so `_Globals_`, `PerViewConstantBufferCitadel_t`,
+and `PerViewLightingConstantBufferGpu_t` were not read.
+
+The all-zero VCS metadata defaults remain declaration evidence only. They are
+not raw runtime observations.
+
+# Stability Across Draws
+
+The two-draw stability check was not attempted. There are no stable,
+frame-dependent, tool-overridden, or averaged values to classify.
+
+# CSDK/Offline Provenance
+
+The intended process would have been a disposable Reduced CSDK12 tools host
+with the complete retail Vulkan VPK pair placed ahead of CSDK shader content.
+That mechanism was not constructed or launched because the portable RenderDoc
+layer cannot capture Vulkan without the prohibited system-level registration.
+
+No CSDK runtime evidence exists for this issue. Any future capture that proves
+the exact retail PS on an offline CSDK draw must be classified as **Confirmed by
+CSDK/offline runtime using retail shader payload** until retail runtime
+equivalence is separately established.
+
+# First GLSL Slice Decision
+
+The direct-diffuse slice remains **not implementation-ready**. The exact retail
+PS has only static-file verification; runtime identity, combo/layout, gate
+state, numeric controls, and two-draw stability evidence are unavailable. GLSL
+files remain unchanged.
