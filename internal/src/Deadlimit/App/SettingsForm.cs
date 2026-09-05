@@ -156,7 +156,6 @@ internal sealed class SettingsForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-
         var content = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -336,7 +335,6 @@ internal sealed class SettingsForm : Form
         var metadataSeparator = version.IndexOf('+');
         return metadataSeparator >= 0 ? version[..metadataSeparator] : version;
     }
-
 
     private static TableLayoutPanel CreateToolsGrid()
     {
@@ -549,10 +547,11 @@ internal sealed class SettingsForm : Form
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         var openButton = new Button
         {
-            Text = UiText.T("Open scripts section", "Открыть раздел скриптов"),
+            Text = UiText.T("📂 Open section", "📂 Открыть раздел"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 4, 0, 4),
+            Font = new Font("Segoe UI Emoji", 9F, FontStyle.Regular, GraphicsUnit.Point),
         };
         openButton.Click += (_, _) => OpenScriptsFolder();
         _toolTip.SetToolTip(
@@ -672,6 +671,7 @@ internal sealed class SettingsForm : Form
             UiText.T("Reduced CSDK check cancelled.", "Проверка Reduced CSDK отменена.")));
         return true;
     }
+
     private async Task RefreshDeadlockToolsStatusAsync(bool skipCheckingState = false)
     {
         _deadlockToolsCheckCancellation?.Cancel();
@@ -733,6 +733,7 @@ internal sealed class SettingsForm : Form
             UiText.T("DeadlockTools check cancelled.", "Проверка DeadlockTools отменена.")));
         return true;
     }
+
     private void RefreshDeadlockGameStatus()
     {
         SetRetailStatus(_toolchain.CheckRetailDeadlock(_retailDeadlockRootText.Text.Trim()));
@@ -859,24 +860,24 @@ internal sealed class SettingsForm : Form
     private static string CsdkPrimaryActionText(ToolchainStatusKind kind, bool allowAutomation) => !allowAutomation
         ? UiText.T("CHECK", "ПРОВЕРИТЬ")
         : kind switch
-    {
-        ToolchainStatusKind.NotSpecified or ToolchainStatusKind.InvalidPath => UiText.T("INSTALL…", "УСТАНОВИТЬ…"),
-        ToolchainStatusKind.UpdateAvailable => UiText.T("UPDATE…", "ОБНОВИТЬ…"),
-        ToolchainStatusKind.Checking => UiText.T("CHECKING…", "ПРОВЕРКА…"),
-        ToolchainStatusKind.Working => UiText.T("WORKING…", "ВЫПОЛНЕНИЕ…"),
-        _ => UiText.T("CHECK", "ПРОВЕРИТЬ"),
-    };
+        {
+            ToolchainStatusKind.NotSpecified or ToolchainStatusKind.InvalidPath => UiText.T("INSTALL…", "УСТАНОВИТЬ…"),
+            ToolchainStatusKind.UpdateAvailable => UiText.T("UPDATE…", "ОБНОВИТЬ…"),
+            ToolchainStatusKind.Checking => UiText.T("CHECKING…", "ПРОВЕРКА…"),
+            ToolchainStatusKind.Working => UiText.T("WORKING…", "ВЫПОЛНЕНИЕ…"),
+            _ => UiText.T("CHECK", "ПРОВЕРИТЬ"),
+        };
 
     private static string DeadlockToolsPrimaryActionText(ToolchainStatusKind kind, bool allowAutomation) => !allowAutomation
         ? UiText.T("CHECK", "ПРОВЕРИТЬ")
         : kind switch
-    {
-        ToolchainStatusKind.NotSpecified or ToolchainStatusKind.InvalidPath or ToolchainStatusKind.Installed => UiText.T("INSTALL…", "УСТАНОВИТЬ…"),
-        ToolchainStatusKind.UpdateAvailable => UiText.T("UPDATE…", "ОБНОВИТЬ…"),
-        ToolchainStatusKind.Checking => UiText.T("CHECKING…", "ПРОВЕРКА…"),
-        ToolchainStatusKind.Working => UiText.T("WORKING…", "ВЫПОЛНЕНИЕ…"),
-        _ => UiText.T("CHECK", "ПРОВЕРИТЬ"),
-    };
+        {
+            ToolchainStatusKind.NotSpecified or ToolchainStatusKind.InvalidPath or ToolchainStatusKind.Installed => UiText.T("INSTALL…", "УСТАНОВИТЬ…"),
+            ToolchainStatusKind.UpdateAvailable => UiText.T("UPDATE…", "ОБНОВИТЬ…"),
+            ToolchainStatusKind.Checking => UiText.T("CHECKING…", "ПРОВЕРКА…"),
+            ToolchainStatusKind.Working => UiText.T("WORKING…", "ВЫПОЛНЕНИЕ…"),
+            _ => UiText.T("CHECK", "ПРОВЕРИТЬ"),
+        };
 
     private async Task HandleCsdkPrimaryActionAsync()
     {
