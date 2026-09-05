@@ -1,6 +1,6 @@
 # Deadlimit Open-Source Readiness Plan
 
-Status: **PUBLIC SOURCE — FIRST BINARY RELEASE IN PROGRESS**
+Status: **PUBLIC SOURCE — FIRST BETA RELEASE PUBLISHED**
 
 Last updated: 2026-09-05
 
@@ -165,28 +165,27 @@ Validated locally on Windows 11 and in private CI through 2026-09-05:
 - [x] Private rehearsal run `33925867426` from `89ae79b`: packaged release-policy/startup smokes passed, and the downloaded ZIP again verified all 362 manifest items with zero prohibited or undeclared entries.
 - [x] Pure-portable PR #109 passed `build`, `dco`, and `smoke`; merged as `8845f54`. Private rehearsal run `33961628049` then passed extraction, startup, manifest, in-folder updater, `UserData` preservation, and private artifact upload. The downloaded 82,728,285-byte ZIP independently matched SHA-256 `9A26C432...E09DBD3A` and all 362 manifest items.
 
-## Phase 5 — Private release rehearsal and public launch
+## Phase 5 — Release rehearsal and public launch
 
 - [x] Build `0.1.0-beta.1` in the private repository and record exact artifact evidence in `RELEASE_REHEARSAL_0.1.0-beta.1.md`.
-- [ ] Test installation on a clean Windows 11 environment without maintainer paths.
-- [x] Test updater activation between synthetic packages, preservation of local `UserData`, local `Backup`, failed-update recovery, and rollback. The real pure-portable ZIP passed extraction/startup and same-package updater checks; an old-to-new real ZIP transition and automatic GitHub Releases selection remain publication-gated.
+- [~] Test installation on a clean Windows 11 environment without maintainer paths. The owner chose live testing by an external artist instead of provisioning a large disposable VM before beta publication.
+- [x] Test updater activation between synthetic packages, preservation of local `UserData`, local `Backup`, failed-update recovery, and rollback. The published workflow also passed extraction, startup, manifest, and same-package updater checks on the final tagged ZIP.
 - [x] Re-run provenance, secret, and packaged-file audits: 822 commits produced zero prohibited asset-path hits and zero high-confidence credential-signature hits; the private portable ZIP passed the manifest and packaged-content audit recorded in the rehearsal report.
-- [~] Produce a final go/no-go report for the owner. The current rehearsal report is NO-GO until the clean-machine, GitHub Releases selection, release-time compatibility refresh, and explicit owner gates are resolved.
+- [x] Accept the first public beta under the documented unsigned/community-tooling limitations after local, PR, main, and tagged-package checks passed. Clean-machine usability remains a live beta-feedback item.
 - [x] Receive explicit owner approval to change visibility.
 - [x] Change `PRIVATE` to `PUBLIC`.
 - [x] Apply branch protection immediately after visibility changes.
-- [~] Publish `v0.1.0-beta.1`; issue seeding can follow real user feedback.
+- [x] Publish `v0.1.0-beta.1`; issue seeding can follow real user feedback.
 
 ## Known risk register
 
-### Yellow (mitigated for portable) — CSDK setup automation
+### Yellow — CSDK setup automation
 
-The opt-in Developer channel can read a third-party CSDK guide, use
-DepotDownloader, and extract the user's locally downloaded VPK data. Portable
-releases disable this automation until upstream archives have pinned trusted
-checksums. Source and release archives carry no Valve content; Developer-channel
-operations identify third-party sources and stop on authentication/access
-failure.
+Deadlimit can read a third-party CSDK guide, use DepotDownloader, and extract
+the user's locally downloaded VPK data after an explicit action. Git, installed,
+and manually extracted copies expose the same behavior. Source and release
+archives carry no Valve content; these operations identify third-party sources
+and stop on authentication/access failure.
 
 ### Yellow — runtime decompilation of local retail resources
 
@@ -210,6 +209,7 @@ the project gains enough users to justify certificate cost and maintenance.
 
 ### 2026-09-05
 
+- Published `v0.1.0-beta.1` after PR #111 and both post-merge workflows passed. The release contains one installer, one self-contained ZIP, and their SHA-256 files; the tagged-package workflow passed in 1m40s.
 - Changed repository visibility to public with protected `main`, then restored the agreed single-file installer. Installer, manual portable extraction, and Git now share one application UI and `Update Deadlimit.cmd` entry; the release ZIP is built once.
 - Merged private PR #99 with the portable packager, checksum-verified installer/updater, rollback path, security tests, release workflows, and updated documentation.
 - Confirmed the repository remains private with zero tags and zero GitHub Releases after the merge.
