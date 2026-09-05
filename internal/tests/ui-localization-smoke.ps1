@@ -33,6 +33,7 @@ Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'SettingsVersionFea
 Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'UiText.T("Version", "Версия")'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'UiText.T("UPDATE…", "ОБНОВИТЬ…")'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'LatestReleaseApiUrl'
+Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'Deadlimit-release.json'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'ReleaseChannelPolicy.IsPortableRelease'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'Path.Combine(updateRoot, "Update Deadlimit.cmd")'
 Assert-NotContains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'UiText.T("UPDATE DEADLIMIT", "ОБНОВИТЬ DEADLIMIT")'

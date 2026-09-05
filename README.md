@@ -105,24 +105,23 @@ The full Windows CI contract is in [`.github/workflows/build.yml`](.github/workf
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the fork/PR workflow and required DCO
 sign-off.
 
-## Install or run portable
+## Install for artists
 
-The easiest path for an artist is to download `Install-Deadlimit.cmd` from the
-official GitHub Release and run it. The installer downloads and verifies the
-same release ZIP used by the portable channel, installs it under
+Download the single permanent
+[`Install-Deadlimit.cmd`](https://github.com/downlimit/Deadlimit/releases/download/latest-main/Install-Deadlimit.cmd)
+file and run it. The installer always downloads the newest successful build of
+`main`, verifies it, installs Deadlimit under
 `%LocalAppData%\Programs\Deadlimit`, creates Manager/Updater shortcuts on the
-Desktop and in the Start menu, and launches `DeadlimitManager.exe`.
+Desktop and in the Start menu, and launches `DeadlimitManager.exe`. Git and the
+.NET SDK are unnecessary.
 
-For a portable copy, download `Deadlimit-win-x64.zip` and its `.sha256` file,
-verify the checksum, extract the ZIP into a permanent writable folder, and run
-`DeadlimitManager.exe`. Running directly from the opened ZIP is unsupported.
+Every accepted merge to `main` is built and published to this same rolling
+channel automatically after CI succeeds. The ZIP and checksum visible in that
+release are transport files used by the installer/updater; manual ZIP setup is
+not a separate supported user workflow. Settings and caches stay under
+`UserData`; artist projects remain wherever the user chooses to keep them.
 
-Both installation methods use the same self-contained application payload; Git
-and the .NET SDK are unnecessary. The manual portable path creates no shortcuts
-or Windows installer state. Settings and caches stay under `UserData` beside the
-application. Artist projects remain wherever the user chooses to keep them.
-
-`Update Deadlimit.cmd` downloads the latest published ZIP, verifies SHA-256,
+`Update Deadlimit.cmd` downloads the latest successful `main` package, verifies SHA-256,
 updates the program files in place, preserves `UserData`, and keeps the previous
 program payload under `Backup`. `Update Deadlimit.cmd -Rollback` swaps the
 current and backup program payloads while leaving user data in place. Deleting
@@ -132,18 +131,18 @@ and rollback payload.
 The first row in Settings shows the installed Deadlimit Manager version and its
 update status. Its contextual `CHECK` / `UPDATE...` button uses the shared
 `Update Deadlimit.cmd` entry point: it updates a Git checkout from `main`, or
-downloads the latest verified release ZIP for installed/portable copies. The
+downloads the latest verified package for artist installations. The
 application UI and release payload are shared.
 
 ## Updating the current clone
 
 Inside a Git checkout, the shared updater fetches `origin/main`, preserves
 unrelated local work when it can fast-forward safely, and rebuilds the Manager.
-Installed and portable copies consume immutable GitHub Release ZIPs instead.
+Artist installations consume the verified rolling `latest-main` package.
 
-Early portable beta executables are expected to be unsigned, so Windows
+Early Deadlimit executables are expected to be unsigned, so Windows
 SmartScreen may display an unknown-publisher warning. Continue only when the
-ZIP came from the official `downlimit/Deadlimit` GitHub Release
+installer came from the official `downlimit/Deadlimit` rolling GitHub Release
 and its published SHA-256 checksum matches. Report any checksum mismatch and do
 not run the downloaded file.
 

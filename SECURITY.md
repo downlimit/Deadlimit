@@ -2,8 +2,8 @@
 
 ## Supported versions
 
-Security fixes are provided on a best-effort basis for the latest published
-Deadlimit beta. Unreleased branches and older portable builds are unsupported.
+Security fixes are provided on a best-effort basis for the current
+`latest-main` artist build. Older builds and unmerged branches are unsupported.
 
 ## Reporting a vulnerability
 

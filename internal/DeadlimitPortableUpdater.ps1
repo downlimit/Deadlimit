@@ -5,7 +5,7 @@ param(
     [string]$InstallRoot,
     [string]$PackagePath,
     [string]$ChecksumPath,
-    [string]$ReleaseApiUrl = 'https://api.github.com/repos/downlimit/Deadlimit/releases?per_page=20'
+    [string]$ReleaseApiUrl = 'https://api.github.com/repos/downlimit/Deadlimit/releases/tags/latest-main'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -274,7 +274,7 @@ try {
         exit 0
     }
 
-    Write-Host 'Checking the latest published Deadlimit portable release...'
+    Write-Host 'Checking the latest successful Deadlimit build...'
     $package = Get-ReleasePackage $workRoot
     $packageHash = Assert-PackageChecksum $package.Archive $package.Checksum
 

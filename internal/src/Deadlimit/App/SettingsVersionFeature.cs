@@ -11,7 +11,8 @@ internal static class SettingsVersionFeature
     private const string VersionStatusName = "DeadlimitManagerVersionStatus";
     private const string VersionValueName = "DeadlimitManagerVersionValue";
     private const string UpdateButtonName = "DeadlimitUpdateButton";
-    private const string LatestReleaseApiUrl = "https://api.github.com/repos/downlimit/Deadlimit/releases?per_page=20";
+    private const string LatestReleaseApiUrl = "https://api.github.com/repos/downlimit/Deadlimit/releases/tags/latest-main";
+    private const string LatestReleaseMetadataAssetName = "Deadlimit-release.json";
     private const string MainCommitApiUrl = "https://api.github.com/repos/downlimit/Deadlimit/commits/main";
 
     private static readonly HttpClient VersionHttpClient = CreateVersionHttpClient();
@@ -258,12 +259,12 @@ internal static class SettingsVersionFeature
         if (ReleaseChannelPolicy.IsPortableRelease)
         {
             var current = NormalizeReleaseTag(GetDisplayVersion());
-            var latest = NormalizeReleaseTag(await GetLatestReleaseTagAsync().ConfigureAwait(false));
+            var latest = NormalizeReleaseTag(await GetLatestReleaseVersionAsync().ConfigureAwait(false));
             var display = $"{UiText.T("Version", "Версия")} {current}";
             return string.Equals(current, latest, StringComparison.OrdinalIgnoreCase)
                 ? ManagerVersionState.UpToDate(
                     display,
-                    UiText.T($"Deadlimit Manager {current} is the latest published release.", $"Deadlimit Manager {current} — последний опубликованный релиз."))
+                    UiText.T($"Deadlimit Manager {current} is the latest successful build.", $"Deadlimit Manager {current} — последняя успешная сборка."))
                 : ManagerVersionState.UpdateAvailable(
                     display,
                     UiText.T($"Deadlimit Manager {current} is installed; {latest} is available.", $"Установлен Deadlimit Manager {current}; доступна версия {latest}."));
@@ -282,33 +283,51 @@ internal static class SettingsVersionFeature
                 UiText.T("A newer origin/main revision is available.", "Доступна более новая версия origin/main."));
     }
 
-    private static async Task<string> GetLatestReleaseTagAsync()
+    private static async Task<string> GetLatestReleaseVersionAsync()
     {
         using var response = await VersionHttpClient.GetAsync(LatestReleaseApiUrl).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
         using var document = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
-        if (document.RootElement.ValueKind != JsonValueKind.Array)
+        if (document.RootElement.ValueKind != JsonValueKind.Object
+            || !document.RootElement.TryGetProperty("assets", out var assets)
+            || assets.ValueKind != JsonValueKind.Array)
         {
             throw new InvalidOperationException("The Deadlimit release response is malformed.");
         }
 
-        foreach (var release in document.RootElement.EnumerateArray())
+        string? metadataUrl = null;
+        foreach (var asset in assets.EnumerateArray())
         {
-            var isDraft = release.TryGetProperty("draft", out var draft) && draft.GetBoolean();
-            if (isDraft || !release.TryGetProperty("tag_name", out var tag))
+            if (!asset.TryGetProperty("name", out var name)
+                || !string.Equals(name.GetString(), LatestReleaseMetadataAssetName, StringComparison.Ordinal)
+                || !asset.TryGetProperty("browser_download_url", out var downloadUrl))
             {
                 continue;
             }
 
-            var value = tag.GetString();
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                return value;
-            }
+            metadataUrl = downloadUrl.GetString();
+            break;
         }
 
-        throw new InvalidOperationException("No published Deadlimit release is available.");
+        if (!Uri.TryCreate(metadataUrl, UriKind.Absolute, out var metadataUri)
+            || metadataUri.Scheme != Uri.UriSchemeHttps
+            || !string.Equals(metadataUri.Host, "github.com", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("The latest Deadlimit build has no trusted metadata asset.");
+        }
+
+        using var metadataResponse = await VersionHttpClient.GetAsync(metadataUri).ConfigureAwait(false);
+        metadataResponse.EnsureSuccessStatusCode();
+        await using var metadataStream = await metadataResponse.Content.ReadAsStreamAsync().ConfigureAwait(false);
+        using var metadata = await JsonDocument.ParseAsync(metadataStream).ConfigureAwait(false);
+        if (!metadata.RootElement.TryGetProperty("version", out var version)
+            || string.IsNullOrWhiteSpace(version.GetString()))
+        {
+            throw new InvalidOperationException("The latest Deadlimit build metadata has no version.");
+        }
+
+        return version.GetString()!;
     }
 
     private static async Task<string> GetMainCommitShaAsync()

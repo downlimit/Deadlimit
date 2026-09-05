@@ -23,7 +23,7 @@ if ($errors.Count -gt 0) {
 }
 
 foreach ($required in @(
-    'https://api.github.com/repos/downlimit/Deadlimit/releases?per_page=20',
+    'https://api.github.com/repos/downlimit/Deadlimit/releases/tags/latest-main',
     'Deadlimit-win-x64.zip',
     'Deadlimit-win-x64.zip.sha256',
     'internal/DeadlimitPortableUpdater.ps1',
@@ -45,6 +45,23 @@ foreach ($required in @(
     '-InstallRoot "%DEADLIMIT_ROOT%"'
 )) {
     Assert-Contains $entry $required 'Unified updater'
+}
+
+$worker = Get-Content -LiteralPath 'internal/DeadlimitPortableUpdater.ps1' -Raw
+Assert-Contains $worker 'https://api.github.com/repos/downlimit/Deadlimit/releases/tags/latest-main' 'Installed updater'
+
+$packager = Get-Content -LiteralPath 'internal/release/New-DeadlimitPortable.ps1' -Raw
+Assert-Contains $packager "Join-Path `$outputRoot 'Deadlimit-release.json'" 'Artist package metadata'
+
+$workflow = Get-Content -LiteralPath '.github/workflows/build.yml' -Raw
+foreach ($required in @(
+    'Publish latest artist build',
+    "github.event_name == 'push' && github.ref == 'refs/heads/main'",
+    "`$tag = 'latest-main'",
+    "`$metadataAsset = 'artifacts/portable/Deadlimit-release.json'",
+    'gh release upload $tag $metadataAsset'
+)) {
+    Assert-Contains $workflow $required 'Continuous artist delivery'
 }
 
 Write-Host 'Single installer, package, and unified updater entry contract passed.'

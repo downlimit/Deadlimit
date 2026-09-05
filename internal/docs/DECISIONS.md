@@ -159,6 +159,19 @@ shortcuts. The obsolete `DeadlimitAggregator*` entry points were retired before
 the first public release. New user-facing launch and shortcut surfaces use the
 Deadlimit Manager name.
 
+## Continuous artist delivery
+
+Developers use the repository, forks, and pull requests. Artists use one
+permanent `Install-Deadlimit.cmd` download and the updater exposed by Deadlimit
+Manager. After an accepted change is merged, the successful `main` workflow
+automatically replaces the single `latest-main` package. Routine delivery does
+not require a manually chosen public version, a second code copy, or a separate
+portable product.
+
+The ZIP, checksum, and release metadata in `latest-main` are internal transport
+artifacts for verified installation and rollback. They are built from the same
+commit and do not define an additional user-facing edition of Deadlimit.
+
 ## Documentation continuity
 
 Project knowledge must not depend on one chat remaining available.
