@@ -19,9 +19,20 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Apply patch
+      - name: Fix patch runner escaping and apply
         shell: pwsh
-        run: python internal/dev/apply-settings-overhaul.py
+        run: |
+          @'
+          from pathlib import Path
+          p = Path('internal/dev/apply-settings-overhaul.py')
+          t = p.read_text(encoding='utf-8')
+          t = t.replace(
+              'new, count = re.subn(pattern, replacement, text, count=1, flags=flags)',
+              'new, count = re.subn(pattern, lambda _match: replacement, text, count=1, flags=flags)')
+          t = t.replace("footer_replacement = textwrap.dedent(r'''\\\\\n", "footer_replacement = textwrap.dedent(r'''\n")
+          p.write_text(t, encoding='utf-8')
+          '@ | python -
+          python internal/dev/apply-settings-overhaul.py
       - name: Restore
         shell: pwsh
         run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
