@@ -1,4 +1,4 @@
-# Deadlimit Aggregator — running Deadlock and retail VPK replacement
+# Deadlimit Manager — running Deadlock and retail VPK replacement
 
 ## 2026-08-23 — live-confirmed file-lock behavior
 
@@ -12,7 +12,7 @@ The process cannot access the file
 because it is being used by another process.
 ```
 
-The failure happened while Deadlimit Aggregator tried to inspect/replace the currently deployed VPK slot. This is direct pipeline evidence that the running retail client holds the loaded VPK with a Windows file lock strong enough to block Deadlimit Aggregator's update transaction.
+The failure happened while Deadlimit Manager tried to inspect/replace the currently deployed VPK slot. This is direct pipeline evidence that the running retail client holds the loaded VPK with a Windows file lock strong enough to block Deadlimit Manager's update transaction.
 
 ### Conclusion
 
@@ -20,9 +20,9 @@ For the current retail VPK model-replacement workflow, changing/reselecting the 
 
 Therefore the previous hot-reload hypothesis is rejected for **replacement of the same retail `pak##_dir.vpk` file while Deadlock is running**.
 
-This does not claim that every Source 2 resource is incapable of hot reload through other development/tool paths. It only records the behavior proven for Deadlimit Aggregator's retail addons VPK deployment path.
+This does not claim that every Source 2 resource is incapable of hot reload through other development/tool paths. It only records the behavior proven for Deadlimit Manager's retail addons VPK deployment path.
 
-### Deadlimit Aggregator behavior
+### Deadlimit Manager behavior
 
 `BUILD & TEST` now checks whether the Deadlock client process is running before VPK ownership inspection or deployment.
 
@@ -31,7 +31,7 @@ If Deadlock is running:
 ```text
 BUILD & TEST click
 → explain that the loaded VPK is locked
-→ ask once whether Deadlimit Aggregator may close Deadlock automatically
+→ ask once whether Deadlimit Manager may close Deadlock automatically
 → No  = cancel without touching the build/deploy transaction
 → Yes = request normal window close
 → wait briefly
@@ -46,10 +46,10 @@ The build button tooltip also states that a running client must be closed becaus
 
 ### Defensive error handling
 
-`VpkSlotOwnershipService` now converts a raw Windows `IOException` during VPK hashing into a specific Deadlimit Aggregator error explaining that the retail VPK is locked and that Deadlock or another VPK viewer must be closed.
+`VpkSlotOwnershipService` now converts a raw Windows `IOException` during VPK hashing into a specific Deadlimit Manager error explaining that the retail VPK is locked and that Deadlock or another VPK viewer must be closed.
 
 This remains useful if some other process locks the archive or if Deadlock is launched during the build after the initial running-process check.
 
 ### External context
 
-Current Deadlock modding guidance (rechecked 2026-08-23) still installs replacement archives directly as `game/citadel/addons/pak##_dir.vpk`. Current Source/Valve VPK behavior is also consistent with archives being held open by a running game process. The decisive evidence for Deadlimit Aggregator, however, is the live Windows lock observed in this project rather than external assumptions.
+Current Deadlock modding guidance (rechecked 2026-08-23) still installs replacement archives directly as `game/citadel/addons/pak##_dir.vpk`. Current Source/Valve VPK behavior is also consistent with archives being held open by a running game process. The decisive evidence for Deadlimit Manager, however, is the live Windows lock observed in this project rather than external assumptions.

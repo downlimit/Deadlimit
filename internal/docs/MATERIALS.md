@@ -1,10 +1,10 @@
-# Deadlimit Aggregator — Material routing and compatibility repairs
+# Deadlimit Manager — Material routing and compatibility repairs
 
 This file records material-routing behavior that affects authoring correctness. Keep project-specific evidence scoped until a generic rule is supported by a mechanism rather than by a hero name.
 
 ## Material ownership model
 
-Deadlimit Aggregator distinguishes two intended material roles:
+Deadlimit Manager distinguishes two intended material roles:
 
 - `REUSE` — the prepared model continues to reference an existing retail material;
 - `CUSTOM` — the addon owns an editable VMAT and its texture sources.
@@ -90,7 +90,7 @@ These values must not be conflated. A Multi/Sub-Object material may expose sever
 
 ## Generic automatic eye repair rule
 
-Deadlimit Aggregator does not hardcode `Ivy` or a fixed retail material path.
+Deadlimit Manager does not hardcode `Ivy` or a fixed retail material path.
 
 The automatic repair is allowed only when:
 
@@ -149,7 +149,7 @@ The accepted rule is now:
 - if another inherited `Texture*` effect/mask source is absent, replace that source path with `materials/default/default_black_mask.tga` so the inherited numeric effect configuration cannot illuminate the full custom surface;
 - preserve non-path `Texture*` vector/scalar values instead of converting them into textures.
 
-The current material version is not hardcoded as Ivy `v3` or `v1`: Deadlimit Aggregator inherits whichever unique current retail surface material the hero/DMX pipeline resolves.
+The current material version is not hardcoded as Ivy `v3` or `v1`: Deadlimit Manager inherits whichever unique current retail surface material the hero/DMX pipeline resolves.
 
 Detailed filename binding rules are in `TEXTURES.md`.
 

@@ -18,7 +18,7 @@ upstream pull requests are encouraged.
 ## Development environment
 
 The currently tested developer environment is Windows 11 x64 with the .NET 10
-SDK. Features that integrate with 3ds Max, Wall Worm, Deadlock, or Reduced CSDK
+SDK. Features that integrate with MAXScript host, Wall Worm, Deadlock, or Reduced CSDK
 also require your own properly installed copies of those external tools.
 
 ```powershell

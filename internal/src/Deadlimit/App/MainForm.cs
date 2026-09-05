@@ -33,7 +33,7 @@ public sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "Deadlimit Aggregator";
+        Text = "Deadlimit Manager";
         StartPosition = FormStartPosition.CenterScreen;
         Width = 980;
         Height = 660;
@@ -620,7 +620,7 @@ public sealed class MainForm : Form
                 UiText.T(
                     $"Hero source refreshed successfully.\n\nMain model: {result.MainModelResourcePath}\nFiles: {result.ExtractedFileCount}\nOutput: {result.OutputFolder}",
                     $"Исходники героя успешно обновлены.\n\nОсновная модель: {result.MainModelResourcePath}\nФайлов: {result.ExtractedFileCount}\nПапка: {result.OutputFolder}"),
-                "Deadlimit Aggregator",
+                "Deadlimit Manager",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
@@ -725,7 +725,7 @@ public sealed class MainForm : Form
 
     private void ShowValidation(string message)
     {
-        MessageBox.Show(this, message, "Deadlimit Aggregator", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        MessageBox.Show(this, message, "Deadlimit Manager", MessageBoxButtons.OK, MessageBoxIcon.Warning);
     }
 
     private void SetStatus(string message)

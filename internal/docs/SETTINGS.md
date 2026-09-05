@@ -163,7 +163,7 @@ The following controls remain in Settings:
 ```text
 Interface language
 Interface theme
-3ds Max -> Deadlimit Max Script
+MAXScript host -> Deadlimit Scripts
 CSDK -> CSDK Fast Startup Fix
 Deadlimit Manager version
 ```

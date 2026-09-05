@@ -168,7 +168,7 @@ internal sealed class SettingsForm : Form
         preferencesGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         AddLanguageRow(preferencesGrid, 0);
         AddThemeRow(preferencesGrid, 1);
-        AddMaxScriptFolderRow(preferencesGrid, 2);
+        AddScriptsFolderRow(preferencesGrid, 2);
         AddCsdkCacheToolRow(preferencesGrid, 3);
         content.Controls.Add(preferencesGrid);
         root.Controls.Add(content, 0, 1);
@@ -408,24 +408,24 @@ internal sealed class SettingsForm : Form
         grid.Controls.Add(_themeCombo, 1, row);
     }
 
-    private void AddMaxScriptFolderRow(TableLayoutPanel grid, int row)
+    private void AddScriptsFolderRow(TableLayoutPanel grid, int row)
     {
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         var openButton = new Button
         {
-            Text = UiText.T("📂 Deadlimit Max Script", "📂 MaxScript Deadlimit"),
+            Text = "📂 Deadlimit Scripts",
             AutoSize = true,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 4, 0, 4),
             Font = new Font("Segoe UI Emoji", 9F, FontStyle.Regular, GraphicsUnit.Point),
         };
-        openButton.Click += (_, _) => OpenMaxScriptFolder();
+        openButton.Click += (_, _) => OpenScriptsFolder();
         _toolTip.SetToolTip(
             openButton,
             UiText.T(
-                "Open the bundled Deadlimit Max Script folder.\n\nIt contains DeadlimitPipelineScripts.ms and its README.",
-                "Открыть встроенную папку Deadlimit Max Script.\n\nВ ней находятся DeadlimitPipelineScripts.ms и README."));
-        grid.Controls.Add(CreatePreferenceCaption("3ds Max"), 0, row);
+                "Open the bundled Deadlimit Scripts folder.\n\nIt contains DeadlimitPipelineScripts.ms and its README.",
+                "Открыть встроенную папку Deadlimit Scripts.\n\nВ ней находятся DeadlimitPipelineScripts.ms и README."));
+        grid.Controls.Add(CreatePreferenceCaption(UiText.T("Scripts", "Скрипты")), 0, row);
         grid.Controls.Add(openButton, 1, row);
     }
 
@@ -1086,15 +1086,15 @@ internal sealed class SettingsForm : Form
         return button;
     }
 
-    private void OpenMaxScriptFolder()
+    private void OpenScriptsFolder()
     {
         try
         {
-            OpenConfiguredFolder(VertexColorMaxScriptService.GetBundledScriptFolder());
+            OpenConfiguredFolder(DeadlimitScriptsService.GetBundledScriptFolder());
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            MessageBox.Show(this, exception.Message, UiText.T("MaxScript folder unavailable", "Папка MaxScript недоступна"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, exception.Message, UiText.T("Deadlimit Scripts folder unavailable", "Папка Deadlimit Scripts недоступна"), MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

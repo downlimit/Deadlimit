@@ -45,7 +45,7 @@ public sealed class RetailModLoadingService
         if (!searchPathsMatch.Success)
         {
             throw new InvalidOperationException(
-                "Deadlimit Aggregator could not safely locate the SearchPaths block in retail gameinfo.gi. " +
+                "Deadlimit Manager could not safely locate the SearchPaths block in retail gameinfo.gi. " +
                 "The file was not modified. Verify Deadlock files through Steam if gameinfo.gi is malformed.");
         }
 
@@ -59,7 +59,7 @@ public sealed class RetailModLoadingService
         if (!citadelMatch.Success)
         {
             throw new InvalidOperationException(
-                "Deadlimit Aggregator found SearchPaths in retail gameinfo.gi, but could not find the normal 'Game citadel' entry. " +
+                "Deadlimit Manager found SearchPaths in retail gameinfo.gi, but could not find the normal 'Game citadel' entry. " +
                 "The file was not modified because the current layout is not safely recognized.");
         }
 
@@ -76,7 +76,7 @@ public sealed class RetailModLoadingService
             || !AddonsGamePathRegex.IsMatch(validationMatch.Groups["body"].Value))
         {
             throw new InvalidOperationException(
-                "Deadlimit Aggregator prepared a gameinfo.gi patch, but validation did not detect the required 'Game citadel/addons' entry. " +
+                "Deadlimit Manager prepared a gameinfo.gi patch, but validation did not detect the required 'Game citadel/addons' entry. " +
                 "The retail file was not modified.");
         }
 

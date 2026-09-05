@@ -12,7 +12,7 @@ Do not upload game content, extracted resources, personal projects, credentials,
 or licensed third-party files. Create an original minimal fixture when a file is
 needed to reproduce a problem.
 
-Deadlock, Reduced CSDK, Wall Worm, 3ds Max, Substance 3D Painter, and related
+Deadlock, Reduced CSDK, Wall Worm, MAXScript host, Substance 3D Painter, and related
 formats can change independently. A break caused by an upstream update may take
 time to investigate and may remain unsupported until a compatible release is
 available.
