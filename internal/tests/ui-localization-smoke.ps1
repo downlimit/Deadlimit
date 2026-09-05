@@ -29,9 +29,13 @@ Assert-Contains 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs' 'UiText.T("
 Assert-Contains 'internal/src/Deadlimit/App/ProjectLibraryFeature.cs' 'UiText.T("Open Project Cover", "Открыть обложку проекта")'
 Assert-Contains 'internal/src/Deadlimit/App/ProjectLibraryFeature.cs' 'ProjectHeaderFeature.GetHeaderImagePath(folder)'
 Assert-NotContains 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs' 'OpenHeaderFolder()'
-Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'UiText.T("UPDATE DEADLIMIT", "ОБНОВИТЬ DEADLIMIT")'
+Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'SettingsVersionFeature.AddManagerRow(toolsGrid, 0)'
+Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'UiText.T("Version", "Версия")'
+Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'UiText.T("UPDATE…", "ОБНОВИТЬ…")'
+Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'LatestReleaseApiUrl'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'ReleaseChannelPolicy.IsPortableRelease'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'Path.Combine(updateRoot, "Update Deadlimit.cmd")'
+Assert-NotContains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'UiText.T("UPDATE DEADLIMIT", "ОБНОВИТЬ DEADLIMIT")'
 
 # Static control text in App should either be localized, a technical/product token, a glyph, or data-driven.
 $allowed = @(

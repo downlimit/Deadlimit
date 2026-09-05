@@ -170,10 +170,11 @@ internal sealed class SettingsForm : Form
         };
 
         var toolsGrid = CreateToolsGrid();
-        AddDeadlockGameRow(toolsGrid, 0);
-        AddCsdkRow(toolsGrid, 1);
-        AddDeadlockToolsRow(toolsGrid, 2);
-        AddProjectsRow(toolsGrid, 3);
+        SettingsVersionFeature.AddManagerRow(toolsGrid, 0);
+        AddDeadlockGameRow(toolsGrid, 1);
+        AddCsdkRow(toolsGrid, 2);
+        AddDeadlockToolsRow(toolsGrid, 3);
+        AddProjectsRow(toolsGrid, 4);
         content.Controls.Add(toolsGrid);
 
         var preferencesGrid = new TableLayoutPanel
@@ -261,13 +262,13 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 7,
-            RowCount = 4,
+            RowCount = 5,
             Margin = Padding.Empty,
             Width = 910,
         };
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 145));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 400));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 388));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 32));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));

@@ -7,6 +7,8 @@ planned `0.1.0-beta.1` public beta. Dates use `YYYY-MM-DD`.
 
 ### Changed
 
+- Settings now shows Deadlimit Manager as the first tool row, including the
+  current version, update status, and a contextual check/update action.
 - Portable releases now run directly from an extracted folder, keep settings
   and caches under their local `UserData`, update in place, preserve the prior
   program payload under local `Backup`, and create no automatic shortcuts or

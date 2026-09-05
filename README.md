@@ -129,10 +129,11 @@ current and backup program payloads while leaving user data in place. Deleting
 the extracted Deadlimit folder removes the application, its settings, cache,
 and rollback payload.
 
-The Settings window exposes the same `UPDATE DEADLIMIT` action everywhere.
-`Update Deadlimit.cmd` is the shared entry point: it updates a Git checkout from
-`main`, or downloads the latest verified release ZIP for installed/portable
-copies. The application UI and release payload are shared.
+The first row in Settings shows the installed Deadlimit Manager version and its
+update status. Its contextual `CHECK` / `UPDATE...` button uses the shared
+`Update Deadlimit.cmd` entry point: it updates a Git checkout from `main`, or
+downloads the latest verified release ZIP for installed/portable copies. The
+application UI and release payload are shared.
 
 ## Updating the current clone
 

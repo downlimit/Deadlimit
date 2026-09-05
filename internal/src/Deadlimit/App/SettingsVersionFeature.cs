@@ -1,14 +1,21 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Deadlimit.Core;
 
 namespace Deadlimit.App;
 
 internal static class SettingsVersionFeature
 {
-    private const string VersionValueName = "DeadlimitAggregatorVersionValue";
-    private const string ApplyButtonName = "DeadlimitSettingsApplyButton";
+    private const string VersionStatusName = "DeadlimitManagerVersionStatus";
+    private const string VersionValueName = "DeadlimitManagerVersionValue";
     private const string UpdateButtonName = "DeadlimitUpdateButton";
+    private const string LatestReleaseApiUrl = "https://api.github.com/repos/downlimit/Deadlimit/releases?per_page=20";
+    private const string MainCommitApiUrl = "https://api.github.com/repos/downlimit/Deadlimit/commits/main";
+
+    private static readonly HttpClient VersionHttpClient = CreateVersionHttpClient();
+    private static readonly ConditionalWeakTable<SettingsForm, object> PreparedForms = new();
 
     public static void Attach()
     {
@@ -20,7 +27,59 @@ internal static class SettingsVersionFeature
     internal static void Prepare(SettingsForm form)
     {
         ArgumentNullException.ThrowIfNull(form);
-        EnsureFooterEnhancements(form);
+        EnsureManagerStatus(form);
+    }
+
+    internal static void AddManagerRow(TableLayoutPanel grid, int row)
+    {
+        ArgumentNullException.ThrowIfNull(grid);
+
+        var status = new Label
+        {
+            Name = VersionStatusName,
+            Text = UiText.T("↻ Checking…", "↻ Проверка…"),
+            AutoSize = false,
+            Width = 137,
+            Height = 24,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 4, 6, 4),
+        };
+        var version = new TextBox
+        {
+            Name = VersionValueName,
+            Text = $"{UiText.T("Version", "Версия")} {GetDisplayVersion()}",
+            ReadOnly = true,
+            TabStop = false,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right,
+            Margin = new Padding(0, 4, 6, 4),
+        };
+        var action = new Button
+        {
+            Name = UpdateButtonName,
+            Text = UiText.T("CHECKING…", "ПРОВЕРКА…"),
+            AutoSize = false,
+            Width = 94,
+            Height = 26,
+            Enabled = false,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 3, 5, 3),
+        };
+
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        grid.Controls.Add(new Label
+        {
+            Text = "Deadlimit Manager:",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 8, 10, 8),
+        }, 0, row);
+        grid.Controls.Add(status, 1, row);
+        grid.Controls.Add(version, 2, row);
+        grid.Controls.Add(CreateSpacer(), 3, row);
+        grid.Controls.Add(CreateSpacer(), 4, row);
+        grid.Controls.Add(action, 5, row);
+        grid.Controls.Add(CreateSpacer(), 6, row);
     }
 
     private static void OnApplicationIdle(object? sender, EventArgs e)
@@ -31,42 +90,27 @@ internal static class SettingsVersionFeature
         }
     }
 
-    private static void EnsureFooterEnhancements(SettingsForm form)
+    private static void EnsureManagerStatus(SettingsForm form)
     {
-        if (FindDescendants<Label>(form).Any(label =>
-                string.Equals(label.Name, VersionValueName, StringComparison.Ordinal)))
-        {
-            return;
-        }
-
-        var footer = FindDescendants<FlowLayoutPanel>(form)
-            .FirstOrDefault(panel =>
-                panel.Controls.OfType<Button>().Any(IsSaveButton)
-                && panel.Controls.OfType<Button>().Any(IsCancelButton));
-        if (footer is null)
-        {
-            return;
-        }
-
-        var oldSaveButton = footer.Controls.OfType<Button>().FirstOrDefault(IsSaveButton);
-        var oldCancelButton = footer.Controls.OfType<Button>().FirstOrDefault(IsCancelButton);
-        if (oldSaveButton is null || oldCancelButton is null)
+        if (PreparedForms.TryGetValue(form, out _))
         {
             return;
         }
 
         var toolGrid = FindDescendants<TableLayoutPanel>(form)
-            .FirstOrDefault(panel => panel.ColumnCount == 7 && panel.RowCount >= 4);
+            .FirstOrDefault(panel => panel.ColumnCount == 7 && panel.RowCount >= 5);
         if (toolGrid is null)
         {
             return;
         }
 
-        var csdkPath = toolGrid.GetControlFromPosition(4, 0) as TextBox;
-        var deadlockToolsPath = toolGrid.GetControlFromPosition(4, 1) as TextBox;
-        var deadlockClientPath = toolGrid.GetControlFromPosition(4, 2) as TextBox;
-        var projectsPath = toolGrid.GetControlFromPosition(4, 3) as TextBox;
-        if (csdkPath is null || deadlockToolsPath is null || deadlockClientPath is null || projectsPath is null)
+        var versionStatus = FindDescendants<Label>(toolGrid).FirstOrDefault(label =>
+            string.Equals(label.Name, VersionStatusName, StringComparison.Ordinal));
+        var versionValue = FindDescendants<TextBox>(toolGrid).FirstOrDefault(textBox =>
+            string.Equals(textBox.Name, VersionValueName, StringComparison.Ordinal));
+        var updateButton = FindDescendants<Button>(toolGrid).FirstOrDefault(button =>
+            string.Equals(button.Name, UpdateButtonName, StringComparison.Ordinal));
+        if (versionStatus is null || versionValue is null || updateButton is null)
         {
             return;
         }
@@ -75,96 +119,16 @@ internal static class SettingsVersionFeature
         var languageCombo = comboBoxes.FirstOrDefault(combo =>
             combo.Items.Cast<object>().Any(item => string.Equals(item.ToString(), "English", StringComparison.Ordinal))
             && combo.Items.Cast<object>().Any(item => string.Equals(item.ToString(), "Русский", StringComparison.Ordinal)));
-        var themeCombo = comboBoxes.FirstOrDefault(combo => !ReferenceEquals(combo, languageCombo));
-        if (languageCombo is null || themeCombo is null)
+        if (languageCombo is null)
         {
             return;
         }
 
-        var stored = ProjectStore.GetToolPathSettings();
-        var initialLanguage = stored.UiLanguage;
-        var initialTheme = stored.UiTheme;
-
-        var applyButton = new Button
+        var themeCombo = comboBoxes.FirstOrDefault(combo => !ReferenceEquals(combo, languageCombo));
+        if (themeCombo is null)
         {
-            Name = ApplyButtonName,
-            Text = UiText.T("APPLY", "ПРИМЕНИТЬ"),
-            AutoSize = true,
-            Enabled = false,
-        };
-
-        footer.Controls.Remove(oldCancelButton);
-        footer.Controls.Remove(oldSaveButton);
-        oldCancelButton.Dispose();
-        oldSaveButton.Dispose();
-        var updateButton = new Button
-        {
-            Name = UpdateButtonName,
-            Text = UiText.T("UPDATE DEADLIMIT", "ОБНОВИТЬ DEADLIMIT"),
-            AutoSize = true,
-        };
-        updateButton.Click += (_, _) => LaunchUpdater(form);
-        footer.Controls.Add(updateButton);
-        footer.Controls.Add(applyButton);
-        form.AcceptButton = applyButton;
-        form.CancelButton = null;
-
-        var versionLabel = new Label
-        {
-            Name = VersionValueName,
-            Text = $"{UiText.T("Version", "Версия")} {GetDisplayVersion()}",
-            AutoSize = false,
-            Height = applyButton.GetPreferredSize(Size.Empty).Height,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Margin = new Padding(0, 0, 12, 0),
-        };
-        footer.Controls.Add(versionLabel);
-
-        if (toolGrid.ColumnStyles.Count >= 5)
-        {
-            toolGrid.ColumnStyles[3].SizeType = SizeType.Absolute;
-            toolGrid.ColumnStyles[3].Width = 118;
-            toolGrid.ColumnStyles[4].SizeType = SizeType.Absolute;
-            toolGrid.ColumnStyles[4].Width = 262;
+            return;
         }
-
-        var fineTuneButton = toolGrid.GetControlFromPosition(3, 0) as Button;
-        if (fineTuneButton is not null)
-        {
-            fineTuneButton.Text = UiText.T("FINE-TUNE…", "ДОНАСТРОЙКА…");
-            fineTuneButton.AutoSize = false;
-            fineTuneButton.Width = 112;
-        }
-
-        // The base SettingsForm has already been themed in its constructor. Theme only
-        // the controls inserted by this feature instead of repainting the whole dialog a
-        // second time during native activation.
-        UiTheme.ApplyCustomPalette(footer, stored.UiTheme);
-
-        void UpdateVersionLayout()
-        {
-            var occupiedWidth = footer.Controls
-                .Cast<Control>()
-                .Where(control => !ReferenceEquals(control, versionLabel))
-                .Sum(control => control.Width + control.Margin.Horizontal);
-            var preferredWidth = versionLabel.GetPreferredSize(Size.Empty).Width;
-            var availableWidth = Math.Max(
-                preferredWidth,
-                footer.DisplayRectangle.Width
-                    - footer.Padding.Horizontal
-                    - occupiedWidth
-                    - versionLabel.Margin.Horizontal);
-
-            if (versionLabel.Width != availableWidth)
-            {
-                versionLabel.Width = availableWidth;
-            }
-        }
-
-        string SelectedLanguage() =>
-            string.Equals(languageCombo.SelectedItem?.ToString(), "Русский", StringComparison.Ordinal)
-                ? "ru"
-                : "en";
 
         string SelectedTheme()
         {
@@ -178,84 +142,77 @@ internal static class SettingsVersionFeature
             };
         }
 
-        void UpdateApplyEnabled()
+        var managerState = ManagerVersionState.Checking(CurrentVersionIdentity());
+
+        void RenderManagerState()
         {
-            applyButton.Enabled = !string.Equals(initialLanguage, SelectedLanguage(), StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(initialTheme, SelectedTheme(), StringComparison.OrdinalIgnoreCase);
+            versionValue.Text = managerState.DisplayVersion;
+            versionStatus.Text = managerState.Kind switch
+            {
+                ManagerVersionStateKind.UpToDate => $"✓ {UiText.T("Up to date", "Актуально")}",
+                ManagerVersionStateKind.UpdateAvailable => $"↑ {UiText.T("Update available", "Есть обновление")}",
+                ManagerVersionStateKind.NetworkIssue => $"! {UiText.T("Network issue", "Ошибка сети")}",
+                _ => $"↻ {UiText.T("Checking…", "Проверка…")}",
+            };
+            versionStatus.ForeColor = ManagerStatusColor(managerState.Kind, SelectedTheme());
+            if (!versionStatus.Font.Bold)
+            {
+                versionStatus.Font = new Font(versionStatus.Font, FontStyle.Bold);
+            }
+
+            updateButton.Text = managerState.Kind switch
+            {
+                ManagerVersionStateKind.UpdateAvailable => UiText.T("UPDATE…", "ОБНОВИТЬ…"),
+                ManagerVersionStateKind.Checking => UiText.T("CHECKING…", "ПРОВЕРКА…"),
+                _ => UiText.T("CHECK", "ПРОВЕРИТЬ"),
+            };
+            updateButton.Enabled = managerState.Kind != ManagerVersionStateKind.Checking;
+            updateButton.AccessibleDescription = managerState.Detail;
+            versionStatus.AccessibleDescription = managerState.Detail;
         }
 
-        void PersistPaths()
+        async Task RefreshManagerStateAsync()
         {
+            managerState = ManagerVersionState.Checking(managerState.DisplayVersion);
+            RenderManagerState();
             try
             {
-                var current = ProjectStore.GetToolPathSettings();
-                current.CsdkRoot = csdkPath.Text.Trim();
-                current.DeadlockToolsRoot = deadlockToolsPath.Text.Trim();
-                current.RetailDeadlockRoot = deadlockClientPath.Text.Trim();
-                current.ProjectsRoot = projectsPath.Text.Trim();
-                ProjectStore.SaveToolPathSettings(current);
+                managerState = await CheckManagerVersionAsync();
             }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+            catch (Exception exception) when (exception is not OutOfMemoryException)
             {
-                MessageBox.Show(
-                    form,
-                    exception.Message,
-                    UiText.T("Could not save tool path", "Не удалось сохранить путь инструмента"),
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                managerState = ManagerVersionState.NetworkIssue(CurrentVersionIdentity(), exception.Message);
+            }
+
+            if (!form.IsDisposed)
+            {
+                RenderManagerState();
             }
         }
 
-        void ApplyInterfaceSettings()
+        PreparedForms.Add(form, new object());
+        themeCombo.SelectedIndexChanged += (_, _) => RenderManagerState();
+        updateButton.Click += async (_, _) =>
         {
-            try
+            if (managerState.Kind == ManagerVersionStateKind.UpdateAvailable)
             {
-                PersistPaths();
-                var current = ProjectStore.GetToolPathSettings();
-                current.UiLanguage = SelectedLanguage();
-                current.UiTheme = SelectedTheme();
-                ProjectStore.SaveToolPathSettings(current);
-
-                var interfaceChanged = typeof(SettingsForm).GetProperty(
-                    nameof(SettingsForm.InterfaceChanged),
-                    BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                interfaceChanged?.SetValue(form, true);
-
-                form.DialogResult = DialogResult.OK;
-                UiSettingsChangeBus.NotifyChanged();
-                form.Close();
+                LaunchUpdater(form);
+                return;
             }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
-            {
-                MessageBox.Show(
-                    form,
-                    exception.Message,
-                    UiText.T("Could not apply interface settings", "Не удалось применить настройки интерфейса"),
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
+
+            await RefreshManagerStateAsync();
+        };
+
+        RenderManagerState();
+        if (form.Visible)
+        {
+            _ = RefreshManagerStateAsync();
         }
-
-        footer.Layout += (_, _) => UpdateVersionLayout();
-        applyButton.Click += (_, _) => ApplyInterfaceSettings();
-        languageCombo.SelectedIndexChanged += (_, _) => UpdateApplyEnabled();
-        themeCombo.SelectedIndexChanged += (_, _) => UpdateApplyEnabled();
-        csdkPath.TextChanged += (_, _) => PersistPaths();
-        deadlockToolsPath.TextChanged += (_, _) => PersistPaths();
-        deadlockClientPath.TextChanged += (_, _) => PersistPaths();
-        projectsPath.TextChanged += (_, _) => PersistPaths();
-
-        UpdateVersionLayout();
-        UpdateApplyEnabled();
+        else
+        {
+            form.Shown += async (_, _) => await RefreshManagerStateAsync();
+        }
     }
-
-    private static bool IsSaveButton(Button button) =>
-        string.Equals(button.Text, "SAVE", StringComparison.Ordinal)
-        || string.Equals(button.Text, "СОХРАНИТЬ", StringComparison.Ordinal);
-
-    private static bool IsCancelButton(Button button) =>
-        string.Equals(button.Text, "CANCEL", StringComparison.Ordinal)
-        || string.Equals(button.Text, "ОТМЕНА", StringComparison.Ordinal);
 
     private static void LaunchUpdater(IWin32Window owner)
     {
@@ -296,6 +253,147 @@ internal static class SettingsVersionFeature
         }
     }
 
+    private static async Task<ManagerVersionState> CheckManagerVersionAsync()
+    {
+        if (ReleaseChannelPolicy.IsPortableRelease)
+        {
+            var current = NormalizeReleaseTag(GetDisplayVersion());
+            var latest = NormalizeReleaseTag(await GetLatestReleaseTagAsync().ConfigureAwait(false));
+            var display = $"{UiText.T("Version", "Версия")} {current}";
+            return string.Equals(current, latest, StringComparison.OrdinalIgnoreCase)
+                ? ManagerVersionState.UpToDate(
+                    display,
+                    UiText.T($"Deadlimit Manager {current} is the latest published release.", $"Deadlimit Manager {current} — последний опубликованный релиз."))
+                : ManagerVersionState.UpdateAvailable(
+                    display,
+                    UiText.T($"Deadlimit Manager {current} is installed; {latest} is available.", $"Установлен Deadlimit Manager {current}; доступна версия {latest}."));
+        }
+
+        var repositoryRoot = DeadlimitPaths.DefaultDeadlimitRoot;
+        var localSha = await ReadGitHeadAsync(repositoryRoot).ConfigureAwait(false);
+        var remoteSha = await GetMainCommitShaAsync().ConfigureAwait(false);
+        var displayVersion = $"main · {ShortSha(localSha)}";
+        return string.Equals(localSha, remoteSha, StringComparison.OrdinalIgnoreCase)
+            ? ManagerVersionState.UpToDate(
+                displayVersion,
+                UiText.T("This developer checkout matches origin/main.", "Эта рабочая копия соответствует origin/main."))
+            : ManagerVersionState.UpdateAvailable(
+                displayVersion,
+                UiText.T("A newer origin/main revision is available.", "Доступна более новая версия origin/main."));
+    }
+
+    private static async Task<string> GetLatestReleaseTagAsync()
+    {
+        using var response = await VersionHttpClient.GetAsync(LatestReleaseApiUrl).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+        using var document = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
+        if (document.RootElement.ValueKind != JsonValueKind.Array)
+        {
+            throw new InvalidOperationException("The Deadlimit release response is malformed.");
+        }
+
+        foreach (var release in document.RootElement.EnumerateArray())
+        {
+            var isDraft = release.TryGetProperty("draft", out var draft) && draft.GetBoolean();
+            if (isDraft || !release.TryGetProperty("tag_name", out var tag))
+            {
+                continue;
+            }
+
+            var value = tag.GetString();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value;
+            }
+        }
+
+        throw new InvalidOperationException("No published Deadlimit release is available.");
+    }
+
+    private static async Task<string> GetMainCommitShaAsync()
+    {
+        using var response = await VersionHttpClient.GetAsync(MainCommitApiUrl).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+        using var document = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
+        if (!document.RootElement.TryGetProperty("sha", out var shaElement)
+            || string.IsNullOrWhiteSpace(shaElement.GetString()))
+        {
+            throw new InvalidOperationException("The origin/main response has no commit identity.");
+        }
+
+        return shaElement.GetString()!;
+    }
+
+    private static async Task<string> ReadGitHeadAsync(string repositoryRoot)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "git",
+            WorkingDirectory = repositoryRoot,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        startInfo.ArgumentList.Add("-C");
+        startInfo.ArgumentList.Add(repositoryRoot);
+        startInfo.ArgumentList.Add("rev-parse");
+        startInfo.ArgumentList.Add("HEAD");
+
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Git could not be started.");
+        var outputTask = process.StandardOutput.ReadToEndAsync();
+        var errorTask = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync().ConfigureAwait(false);
+        var output = (await outputTask.ConfigureAwait(false)).Trim();
+        var error = (await errorTask.ConfigureAwait(false)).Trim();
+        if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
+        {
+            throw new InvalidOperationException(
+                string.IsNullOrWhiteSpace(error) ? "The current Git revision could not be read." : error);
+        }
+
+        return output;
+    }
+
+    private static string CurrentVersionIdentity() => ReleaseChannelPolicy.IsPortableRelease
+        ? $"{UiText.T("Version", "Версия")} {NormalizeReleaseTag(GetDisplayVersion())}"
+        : "main";
+
+    private static string NormalizeReleaseTag(string version) =>
+        version.Trim().TrimStart('v', 'V');
+
+    private static string ShortSha(string sha) => sha.Length <= 8 ? sha : sha[..8];
+
+    private static Color ManagerStatusColor(ManagerVersionStateKind kind, string theme)
+    {
+        var dark = string.Equals(theme, "dark", StringComparison.OrdinalIgnoreCase)
+            || (string.Equals(theme, "system", StringComparison.OrdinalIgnoreCase) && Application.IsDarkModeEnabled);
+        return kind switch
+        {
+            ManagerVersionStateKind.UpToDate => dark ? Color.FromArgb(113, 214, 137) : Color.FromArgb(25, 125, 55),
+            ManagerVersionStateKind.UpdateAvailable => dark ? Color.FromArgb(255, 194, 92) : Color.FromArgb(173, 103, 0),
+            ManagerVersionStateKind.NetworkIssue => dark ? Color.FromArgb(255, 118, 118) : Color.FromArgb(184, 40, 40),
+            _ => dark ? Color.FromArgb(117, 190, 255) : Color.FromArgb(30, 105, 175),
+        };
+    }
+
+    private static Control CreateSpacer() => new Panel
+    {
+        Width = 1,
+        Height = 26,
+        Margin = Padding.Empty,
+    };
+
+    private static HttpClient CreateVersionHttpClient()
+    {
+        var client = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("DeadlimitManager/1.0");
+        return client;
+    }
+
     private static string GetDisplayVersion()
     {
         var informationalVersion = typeof(SettingsVersionFeature).Assembly
@@ -310,6 +408,32 @@ internal static class SettingsVersionFeature
         }
 
         return Application.ProductVersion;
+    }
+
+    private enum ManagerVersionStateKind
+    {
+        Checking,
+        UpToDate,
+        UpdateAvailable,
+        NetworkIssue,
+    }
+
+    private sealed record ManagerVersionState(
+        ManagerVersionStateKind Kind,
+        string DisplayVersion,
+        string Detail)
+    {
+        public static ManagerVersionState Checking(string displayVersion) =>
+            new(ManagerVersionStateKind.Checking, displayVersion, UiText.T("Checking for Deadlimit Manager updates…", "Проверка обновлений Deadlimit Manager…"));
+
+        public static ManagerVersionState UpToDate(string displayVersion, string detail) =>
+            new(ManagerVersionStateKind.UpToDate, displayVersion, detail);
+
+        public static ManagerVersionState UpdateAvailable(string displayVersion, string detail) =>
+            new(ManagerVersionStateKind.UpdateAvailable, displayVersion, detail);
+
+        public static ManagerVersionState NetworkIssue(string displayVersion, string detail) =>
+            new(ManagerVersionStateKind.NetworkIssue, displayVersion, detail);
     }
 
     private static IEnumerable<T> FindDescendants<T>(Control root) where T : Control
