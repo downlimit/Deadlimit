@@ -103,6 +103,15 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
+        if (startupSmoke)
+        {
+            var settingsLayoutResult = SettingsForm.RunFooterLayoutSmoke();
+            if (settingsLayoutResult != 0)
+            {
+                return 20 + settingsLayoutResult;
+            }
+        }
+
         var settings = ProjectStore.GetToolPathSettings();
         DeadlockToolsLayoutMigration.TryMigrateManagedRelease(settings.DeadlockToolsRoot);
         UiTheme.ConfigureApplication(settings.UiTheme);
