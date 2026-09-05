@@ -4,65 +4,20 @@ namespace Deadlimit.App;
 
 internal static class ErrorLogShortcutFeature
 {
-    private const int WmShowWindow = 0x0018;
-    private static readonly ConditionalWeakTable<Form, object> AttachedDialogs = new();
+    private static readonly ConditionalWeakTable<Form, object> PreparedDialogs = new();
 
-    [ModuleInitializer]
-    internal static void Initialize()
+    internal static void Prepare(Form dialog)
     {
-        Application.AddMessageFilter(new ErrorDialogShowFilter());
-        Application.Idle += OnApplicationIdle;
-    }
-
-    private static void OnApplicationIdle(object? sender, EventArgs e)
-    {
-        foreach (var dialog in Application.OpenForms.Cast<Form>().ToArray())
-        {
-            AttachOnce(dialog);
-        }
-    }
-
-    private static void AttachOnce(Form dialog)
-    {
-        if (!IsSupportedErrorDialog(dialog) || AttachedDialogs.TryGetValue(dialog, out _))
+        ArgumentNullException.ThrowIfNull(dialog);
+        if (!IsSupportedErrorDialog(dialog) || PreparedDialogs.TryGetValue(dialog, out _))
         {
             return;
         }
 
-        if (TryAttach(dialog))
-        {
-            AttachedDialogs.Add(dialog, new object());
-        }
-    }
-
-    private static bool IsSupportedErrorDialog(Form dialog)
-    {
-        if (dialog is MainForm or SettingsForm || dialog.IsDisposed)
-        {
-            return false;
-        }
-
-        var title = dialog.Text?.Trim() ?? string.Empty;
-        if (title.Length == 0
-            || title.Contains("logs", StringComparison.OrdinalIgnoreCase)
-            || title.Contains("логи", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        return title.Contains("error", StringComparison.OrdinalIgnoreCase)
-            || title.Contains("failed", StringComparison.OrdinalIgnoreCase)
-            || title.Contains("could not", StringComparison.OrdinalIgnoreCase)
-            || title.Contains("ошибка", StringComparison.OrdinalIgnoreCase)
-            || title.Contains("не удалось", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool TryAttach(Form dialog)
-    {
         var projectFolder = ProjectStore.GetLastProjectFolder();
         if (string.IsNullOrWhiteSpace(projectFolder) || !Directory.Exists(projectFolder))
         {
-            return false;
+            return;
         }
 
         var buttonRow = FindDescendants<FlowLayoutPanel>(dialog)
@@ -73,7 +28,7 @@ internal static class ErrorLogShortcutFeature
                 string.Equals(button.Text, "OPEN LOGS", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(button.Text, "ОТКРЫТЬ ЛОГИ", StringComparison.OrdinalIgnoreCase)))
         {
-            return false;
+            return;
         }
 
         var openLogsButton = new Button
@@ -99,8 +54,29 @@ internal static class ErrorLogShortcutFeature
                 "Open the current project's **logs folder**.\n\nIf you report this error, the latest log can help explain what happened.",
                 "Открыть **папку логов** текущего проекта.\n\nЕсли вы будете сообщать об этой ошибке, последний лог поможет понять, что произошло."));
         dialog.FormClosed += (_, _) => toolTip.Dispose();
-        dialog.PerformLayout();
-        return true;
+        PreparedDialogs.Add(dialog, new object());
+    }
+
+    private static bool IsSupportedErrorDialog(Form dialog)
+    {
+        if (dialog is MainForm or SettingsForm || dialog.IsDisposed)
+        {
+            return false;
+        }
+
+        var title = dialog.Text?.Trim() ?? string.Empty;
+        if (title.Length == 0
+            || title.Contains("logs", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("логи", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return title.Contains("error", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("failed", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("could not", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("ошибка", StringComparison.OrdinalIgnoreCase)
+            || title.Contains("не удалось", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void OpenCurrentProjectLogs(Form owner, string projectFolder)
@@ -154,20 +130,6 @@ internal static class ErrorLogShortcutFeature
             {
                 yield return nested;
             }
-        }
-    }
-
-    private sealed class ErrorDialogShowFilter : IMessageFilter
-    {
-        public bool PreFilterMessage(ref Message message)
-        {
-            if (message.Msg == WmShowWindow
-                && Control.FromHandle(message.HWnd) is Form dialog)
-            {
-                AttachOnce(dialog);
-            }
-
-            return false;
         }
     }
 }
