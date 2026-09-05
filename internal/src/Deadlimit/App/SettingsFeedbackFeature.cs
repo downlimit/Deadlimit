@@ -4,12 +4,14 @@ namespace Deadlimit.App;
 
 internal static class SettingsFeedbackFeature
 {
+    private const int WmShowWindow = 0x0018;
     private const string FeedbackUrl = "https://github.com/downlimit/Deadlimit/issues/new/choose";
     private static readonly ConditionalWeakTable<SettingsForm, object> AttachedForms = new();
 
     [ModuleInitializer]
     internal static void Initialize()
     {
+        Application.AddMessageFilter(new SettingsShowFilter());
         Application.Idle += OnApplicationIdle;
     }
 
@@ -17,15 +19,20 @@ internal static class SettingsFeedbackFeature
     {
         foreach (var form in Application.OpenForms.OfType<SettingsForm>())
         {
-            if (AttachedForms.TryGetValue(form, out _))
-            {
-                continue;
-            }
+            AttachOnce(form);
+        }
+    }
 
-            if (TryAttach(form))
-            {
-                AttachedForms.Add(form, new object());
-            }
+    private static void AttachOnce(SettingsForm form)
+    {
+        if (AttachedForms.TryGetValue(form, out _))
+        {
+            return;
+        }
+
+        if (TryAttach(form))
+        {
+            AttachedForms.Add(form, new object());
         }
     }
 
@@ -87,6 +94,7 @@ internal static class SettingsFeedbackFeature
         grid.Controls.Add(caption, 0, row);
         grid.Controls.Add(openButton, 1, row);
         form.FormClosed += (_, _) => toolTip.Dispose();
+        form.PerformLayout();
         return true;
     }
 
@@ -125,6 +133,20 @@ internal static class SettingsFeedbackFeature
             {
                 yield return nested;
             }
+        }
+    }
+
+    private sealed class SettingsShowFilter : IMessageFilter
+    {
+        public bool PreFilterMessage(ref Message message)
+        {
+            if (message.Msg == WmShowWindow
+                && Control.FromHandle(message.HWnd) is SettingsForm form)
+            {
+                AttachOnce(form);
+            }
+
+            return false;
         }
     }
 }
