@@ -373,3 +373,76 @@ For full ordinary-Ivy classification, also record `_Globals_` offsets 40
 the same VCS identity and buffer layout; its values must be labelled CSDK
 evidence until matched to a retail frame. No present static source establishes
 that equivalence.
+
+# Offline Runtime Capture
+
+Issue #138 performed the required safe preflight only. The retail identity is
+unchanged: app `1422450` remains on buildid `24882156`, and the accepted
+`pbr_vulkan_60_ps.vcs` hash remains
+`eceff13193baccd5310db90ac9b3dd36928d941753c98494e349fa9e29826930`.
+
+The narrow offline host candidate is the configured Reduced CSDK12 tool binary:
+
+| Field | Preflight result |
+|---|---|
+| candidate executable | `C:\WorkProjects\Deadlock\Reduced_CSDK_12\game\bin_tools\win64\Deadlock_with_tools.exe` |
+| executable file version | `1.0.0.0` |
+| CSDK shader-resource candidate | `C:\WorkProjects\Deadlock\Reduced_CSDK_12\game\citadel\shaders_vulkan_dir.vpk` exists (13,168-byte directory VPK) |
+| launch / renderer API | unverified; no tool process was launched after the capture-tool prerequisite failed |
+| shader VPK selected by host | unverified; process launch and its SearchPaths were intentionally not inferred |
+| PS hash, permutation, and buffer-layout match | unverified; no offline draw was produced |
+
+No compatible installed Vulkan graphics capture tool was found. Standard
+RenderDoc command/UI locations were absent. Installed-app inventory found
+NVIDIA Nsight Systems `2025.6.3`, Nsight Compute `2026.1.1`, and Nsight Visual
+Studio Edition `2026.1.0`; it did not find NVIDIA Nsight Graphics or RenderDoc.
+Those installed tools do not provide the required offline Vulkan draw descriptor
+inspection path for this work item.
+
+The missing prerequisite is **RenderDoc v1.46** (the official current release
+at the time of this preflight), or another already approved Vulkan graphics
+capture tool that can inspect descriptor-buffer contents for the CSDK tool
+process. No software was downloaded or installed. No CSDK process, retail
+process, graphics debugger, hook, overlay, or injection was launched.
+
+# Captured NPR Values
+
+No values were captured. The table is intentionally empty of substituted
+metadata defaults:
+
+| Required source | Capture status | Reason |
+|---|---|---|
+| `_Globals_`, set 1/binding 0 | not captured | no compatible offline Vulkan capture tool installed |
+| `PerViewConstantBufferCitadel_t`, set 1/binding 4 | not captured | no compatible offline Vulkan capture tool installed |
+| `PerViewLightingConstantBufferGpu_t`, set 3/binding 0 | not captured | no compatible offline Vulkan capture tool installed |
+
+The all-zero VCS metadata defaults from NPR Global Control Values remain
+declaration evidence only. They are not raw runtime observations.
+
+# Offline vs Retail Equivalence
+
+Equivalence is **not established**. The candidate executable and its candidate
+shader VPK exist, while the preflight did not launch a renderer and therefore
+could not prove any of the required runtime conditions:
+
+| Requirement | Result |
+|---|---|
+| exact PS VCS identity selected by the offline host | unverified |
+| main opaque static combo 24 | unverified |
+| ordinary dynamic combo 0 / status disabled | unverified |
+| `_Globals_` and per-view descriptor layout | unverified at an offline draw |
+| two stable unchanged-state observations | not attempted |
+| absence of a tool-only override | unverified |
+
+Any future offline values retain the evidence class **Confirmed by CSDK/offline
+runtime** until a direct mechanism proves the retail client writes the same
+values. This issue does not make that upgrade.
+
+# Direct-Diffuse Implementation Decision
+
+The direct-diffuse slice remains **not implementation-ready**. The immediate
+blocker is the missing approved offline Vulkan capture tool; the next task must
+first use it with `Deadlock_with_tools.exe` or another proven CSDK host, verify
+the PS identity/permutation/layout, and capture the exact values listed in
+Runtime Capture Specification across two unchanged draws. GLSL remains gated
+until that evidence exists.
