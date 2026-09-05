@@ -186,8 +186,8 @@ internal sealed class SettingsForm : Form
         preferencesGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         AddLanguageRow(preferencesGrid, 0);
         AddThemeRow(preferencesGrid, 1);
-        AddScriptsFolderRow(preferencesGrid, 2);
-        AddCsdkCacheToolRow(preferencesGrid, 3);
+        AddCsdkCacheToolRow(preferencesGrid, 2);
+        AddScriptsFolderRow(preferencesGrid, 3);
         content.Controls.Add(preferencesGrid);
         root.Controls.Add(content, 0, 0);
 
