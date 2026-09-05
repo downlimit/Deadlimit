@@ -8,7 +8,7 @@ Set-StrictMode -Version Latest
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $worker = Join-Path $repoRoot 'internal\DeadlimitPortableUpdater.ps1'
-$testRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-portable-smoke-$([Guid]::NewGuid().ToString('N'))"
+$testRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit portable smoke $([Guid]::NewGuid().ToString('N'))"
 $installRoot = Join-Path $testRoot 'install\Deadlimit'
 
 function Assert-True([bool]$Condition, [string]$Message) {
@@ -28,6 +28,12 @@ function Invoke-ExecutableSmoke([string]$Executable, [string]$Argument, [string]
         throw "Packaged executable timed out: $Argument"
     }
     Assert-True ($process.ExitCode -eq 0) "Packaged executable smoke failed with exit code $($process.ExitCode): $Argument"
+}
+
+function Get-StreamSha256([IO.Stream]$Stream) {
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash($Stream))).Replace('-', '') }
+    finally { $sha.Dispose() }
 }
 
 function New-SyntheticPackage([string]$Name, [string]$Version, [string]$Payload, [switch]$MissingManager) {
@@ -88,8 +94,7 @@ function Invoke-Updater([object]$Package, [switch]$ExpectFailure, [switch]$Rollb
         '-ExecutionPolicy', 'Bypass',
         '-File', $worker,
         '-InstallRoot', $installRoot,
-        '-NoLaunch',
-        '-NoShortcuts'
+        '-NoLaunch'
     )
     if ($Rollback) {
         $arguments += '-Rollback'
@@ -111,7 +116,7 @@ function Invoke-Updater([object]$Package, [switch]$ExpectFailure, [switch]$Rollb
 function Invoke-InstalledRollback {
     $installedEntry = Join-Path $installRoot 'Update Deadlimit.cmd'
     Assert-True (Test-Path -LiteralPath $installedEntry -PathType Leaf) 'Installed rollback entry point is missing.'
-    $output = & $installedEntry -Rollback -NoLaunch -NoShortcuts 2>&1
+    $output = & $installedEntry -Rollback -NoLaunch 2>&1
     Assert-True ($LASTEXITCODE -eq 0) "Installed rollback entry failed with exit code $LASTEXITCODE.`n$($output -join "`n")"
 }
 
@@ -128,10 +133,14 @@ try {
     Invoke-Updater $v1
     Assert-True (Test-Path -LiteralPath (Join-Path $installRoot 'DeadlimitManager.exe')) 'First install did not produce DeadlimitManager.exe.'
     Assert-True ((Get-Content -LiteralPath (Join-Path $installRoot 'DeadlimitManager.exe') -Raw) -eq 'version-one') 'First install payload is incorrect.'
-    Assert-True (-not (Test-Path -LiteralPath "$installRoot.previous")) 'First install unexpectedly created a rollback folder.'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $installRoot 'Backup'))) 'First install unexpectedly created a rollback folder.'
+
+    $userData = Join-Path $installRoot 'UserData'
+    [IO.Directory]::CreateDirectory($userData) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $userData 'settings.json'), 'artist-settings')
 
     Invoke-Updater $v1
-    Assert-True (-not (Test-Path -LiteralPath "$installRoot.previous")) 'No-op update unexpectedly rotated the current install.'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $installRoot 'Backup'))) 'No-op update unexpectedly rotated the current install.'
 
     Invoke-Updater $invalid -ExpectFailure
     Assert-True ((Get-Content -LiteralPath (Join-Path $installRoot 'DeadlimitManager.exe') -Raw) -eq 'version-one') 'Rejected package changed the current install.'
@@ -145,32 +154,78 @@ try {
 
     Invoke-Updater $v2
     Assert-True ((Get-Content -LiteralPath (Join-Path $installRoot 'DeadlimitManager.exe') -Raw) -eq 'version-two') 'Update did not activate version two.'
-    Assert-True ((Get-Content -LiteralPath (Join-Path "$installRoot.previous" 'DeadlimitManager.exe') -Raw) -eq 'version-one') 'Update did not preserve version one for rollback.'
+    Assert-True ((Get-Content -LiteralPath (Join-Path $installRoot 'Backup\DeadlimitManager.exe') -Raw) -eq 'version-one') 'Update did not preserve version one for rollback.'
+    Assert-True ((Get-Content -LiteralPath (Join-Path $userData 'settings.json') -Raw) -eq 'artist-settings') 'Update did not preserve portable UserData.'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $installRoot 'Backup\UserData'))) 'Rollback payload duplicated portable UserData.'
 
     Invoke-InstalledRollback
     Assert-True ((Get-Content -LiteralPath (Join-Path $installRoot 'DeadlimitManager.exe') -Raw) -eq 'version-one') 'Rollback did not restore version one.'
-    Assert-True ((Get-Content -LiteralPath (Join-Path "$installRoot.previous" 'DeadlimitManager.exe') -Raw) -eq 'version-two') 'Rollback did not retain version two as the alternate install.'
+    Assert-True ((Get-Content -LiteralPath (Join-Path $installRoot 'Backup\DeadlimitManager.exe') -Raw) -eq 'version-two') 'Rollback did not retain version two as the alternate install.'
+    Assert-True ((Get-Content -LiteralPath (Join-Path $userData 'settings.json') -Raw) -eq 'artist-settings') 'Rollback did not preserve portable UserData.'
 
     if (-not [string]::IsNullOrWhiteSpace($PackagePath)) {
         Assert-True (-not [string]::IsNullOrWhiteSpace($ChecksumPath)) '-ChecksumPath is required when validating a real portable package.'
         $realInstall = Join-Path $testRoot 'real-install\Deadlimit'
-        $realArguments = @(
-            '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $worker,
-            '-InstallRoot', $realInstall, '-NoLaunch', '-NoShortcuts',
-            '-PackagePath', ([IO.Path]::GetFullPath($PackagePath)),
-            '-ChecksumPath', ([IO.Path]::GetFullPath($ChecksumPath))
-        )
-        $realOutput = & powershell.exe @realArguments 2>&1
-        Assert-True ($LASTEXITCODE -eq 0) "Real portable package install failed.`n$($realOutput -join "`n")"
-        Assert-True (Test-Path -LiteralPath (Join-Path $realInstall 'DeadlimitManager.exe')) 'Real portable package has no Manager executable after install.'
+        $realArchive = [IO.Path]::GetFullPath($PackagePath)
+        $realChecksum = [IO.Path]::GetFullPath($ChecksumPath)
+        $expectedHash = ([regex]::Match([IO.File]::ReadAllText($realChecksum), '(?i)[0-9a-f]{64}')).Value
+        $actualHash = (Get-FileHash -LiteralPath $realArchive -Algorithm SHA256).Hash
+        Assert-True ([string]::Equals($actualHash, $expectedHash, [StringComparison]::OrdinalIgnoreCase)) 'Real portable package checksum does not match.'
+
+        Add-Type -AssemblyName System.IO.Compression
+        $archive = [IO.Compression.ZipFile]::OpenRead($realArchive)
+        try {
+            $fileEntries = @($archive.Entries | Where-Object { -not [string]::IsNullOrEmpty($_.Name) })
+            $entryLookup = @{}
+            foreach ($entry in $fileEntries) { $entryLookup[$entry.FullName.Replace('\\', '/')] = $entry }
+            $manifestEntry = $entryLookup['release-manifest.json']
+            Assert-True ($null -ne $manifestEntry) 'Real portable package has no release manifest entry.'
+            $reader = [IO.StreamReader]::new($manifestEntry.Open())
+            try { $manifest = @($reader.ReadToEnd() | ConvertFrom-Json) }
+            finally { $reader.Dispose() }
+            Assert-True ($fileEntries.Count -eq $manifest.Count + 1) 'Real portable package contains undeclared files.'
+            foreach ($item in $manifest) {
+                $entry = $entryLookup[[string]$item.path]
+                Assert-True ($null -ne $entry) "Manifest path is missing from the real package: $($item.path)"
+                Assert-True ($entry.Length -eq [long]$item.bytes) "Manifest byte count differs: $($item.path)"
+                $entryStream = $entry.Open()
+                try { $entryHash = Get-StreamSha256 $entryStream }
+                finally { $entryStream.Dispose() }
+                Assert-True ([string]::Equals($entryHash, [string]$item.sha256, [StringComparison]::OrdinalIgnoreCase)) "Manifest SHA-256 differs: $($item.path)"
+            }
+            foreach ($forbiddenPath in @('UserData', 'Backup', 'Backup.next', 'Install-Deadlimit.cmd')) {
+                Assert-True (-not $entryLookup.ContainsKey($forbiddenPath)) "Fresh portable package contains forbidden state/bootstrap path: $forbiddenPath"
+            }
+        }
+        finally {
+            $archive.Dispose()
+        }
+
+        Expand-Archive -LiteralPath $realArchive -DestinationPath $realInstall
+        Assert-True (Test-Path -LiteralPath (Join-Path $realInstall 'DeadlimitManager.exe')) 'Extracted portable package has no Manager executable.'
         Assert-True (Test-Path -LiteralPath (Join-Path $realInstall 'release-manifest.json')) 'Real portable package has no release manifest.'
         Assert-True (Test-Path -LiteralPath (Join-Path $realInstall 'licenses') -PathType Container) 'Real portable package has no license payload.'
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $realInstall 'UserData'))) 'Fresh portable ZIP unexpectedly contains user state.'
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $realInstall 'Backup'))) 'Fresh portable ZIP unexpectedly contains a rollback payload.'
         $realManager = Join-Path $realInstall 'DeadlimitManager.exe'
         Invoke-ExecutableSmoke $realManager '--release-policy-smoke' $realInstall
         Invoke-ExecutableSmoke $realManager '--startup-smoke' $realInstall
+
+        $realUserData = Join-Path $realInstall 'UserData'
+        [IO.Directory]::CreateDirectory($realUserData) | Out-Null
+        [IO.File]::WriteAllText((Join-Path $realUserData 'portable-state.txt'), 'preserve-me')
+        $realUpdater = Join-Path $realInstall 'Update Deadlimit.cmd'
+        $realOutput = & $realUpdater -NoLaunch -PackagePath $realArchive -ChecksumPath $realChecksum 2>&1
+        Assert-True ($LASTEXITCODE -eq 0) "Extracted portable updater no-op failed.`n$($realOutput -join "`n")"
+        Assert-True ((Get-Content -LiteralPath (Join-Path $realUserData 'portable-state.txt') -Raw) -eq 'preserve-me') 'Extracted updater did not preserve portable UserData.'
     }
 
-    Write-Host 'Portable release install, no-op, checksum/traversal/broken-package rejection, update, and rollback smoke passed.'
+    $updaterSource = Get-Content -LiteralPath $worker -Raw
+    foreach ($forbidden in @('WScript.Shell', 'SpecialFolder]::Programs', 'Programs\Deadlimit')) {
+        Assert-True (-not $updaterSource.Contains($forbidden, [StringComparison]::Ordinal)) "Portable updater still contains system-install behavior: $forbidden"
+    }
+
+    Write-Host 'Portable release no-op, checksum/traversal/broken-package rejection, in-place update, UserData preservation, and rollback smoke passed.'
 }
 finally {
     if (Test-Path -LiteralPath $testRoot) {

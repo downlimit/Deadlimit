@@ -26,6 +26,35 @@ finally {
     }
 }
 
+$userDataType = $assembly.GetType('Deadlimit.Core.UserDataPaths', $true)
+$resolveUserData = $userDataType.GetMethod('ResolveRoot', $nonPublicStatic)
+if ($null -eq $resolveUserData) { throw 'UserDataPaths.ResolveRoot was not found.' }
+$portableDataRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-user-data-$([Guid]::NewGuid().ToString('N'))"
+try {
+    [IO.Directory]::CreateDirectory($portableDataRoot) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $portableDataRoot 'release.json'), '{}')
+    $resolvedUserData = [string]$resolveUserData.Invoke($null, [object[]]@([string]$portableDataRoot))
+    $expectedUserData = Join-Path $portableDataRoot 'UserData'
+    if (-not [string]::Equals($resolvedUserData, $expectedUserData, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Portable user data escaped the application folder: $resolvedUserData"
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $portableDataRoot) {
+        Remove-Item -LiteralPath $portableDataRoot -Recurse -Force
+    }
+}
+
+foreach ($path in @(
+    'internal/src/Deadlimit/Core/ProjectStore.cs',
+    'internal/src/Deadlimit/Core/HeroCatalogService.cs',
+    'internal/src/Deadlimit/App/ProjectLibraryFeature.cs')) {
+    $source = Get-Content -LiteralPath $path -Raw
+    if ($source.Contains('SpecialFolder.LocalApplicationData', [StringComparison]::Ordinal)) {
+        throw "Portable user state still has a direct AppData path: $path"
+    }
+}
+
 $toolchainSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ToolchainDependencyService.cs' -Raw
 $guardCount = ([regex]::Matches($toolchainSource, 'ReleaseChannelPolicy\.RequireUnverifiedToolchainAutomation\(\);')).Count
 if ($guardCount -ne 5) {

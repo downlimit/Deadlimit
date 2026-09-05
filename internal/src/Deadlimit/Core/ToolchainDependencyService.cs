@@ -706,7 +706,7 @@ public sealed class ToolchainDependencyService
         ToolchainOperationHub.OperationScope operation,
         IProgress<string>? progress)
     {
-        var cacheRoot = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Deadlimit", "tools", "DepotDownloader");
+        var cacheRoot = UserDataPaths.Combine("tools", "DepotDownloader");
         var executable = Path.Combine(cacheRoot, "DepotDownloader.exe");
         if (File.Exists(executable))
         {

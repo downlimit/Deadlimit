@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using Deadlimit.Core;
 
@@ -7,6 +8,7 @@ internal static class SettingsVersionFeature
 {
     private const string VersionValueName = "DeadlimitAggregatorVersionValue";
     private const string ApplyButtonName = "DeadlimitSettingsApplyButton";
+    private const string UpdateButtonName = "DeadlimitUpdateButton";
 
     public static void Attach()
     {
@@ -95,6 +97,14 @@ internal static class SettingsVersionFeature
         footer.Controls.Remove(oldSaveButton);
         oldCancelButton.Dispose();
         oldSaveButton.Dispose();
+        var updateButton = new Button
+        {
+            Name = UpdateButtonName,
+            Text = UiText.T("UPDATE DEADLIMIT", "ОБНОВИТЬ DEADLIMIT"),
+            AutoSize = true,
+        };
+        updateButton.Click += (_, _) => LaunchUpdater(form);
+        footer.Controls.Add(updateButton);
         footer.Controls.Add(applyButton);
         form.AcceptButton = applyButton;
         form.CancelButton = null;
@@ -246,6 +256,44 @@ internal static class SettingsVersionFeature
     private static bool IsCancelButton(Button button) =>
         string.Equals(button.Text, "CANCEL", StringComparison.Ordinal)
         || string.Equals(button.Text, "ОТМЕНА", StringComparison.Ordinal);
+
+    private static void LaunchUpdater(IWin32Window owner)
+    {
+        var updater = ReleaseChannelPolicy.IsPortableRelease
+            ? Path.Combine(AppContext.BaseDirectory, "Update Deadlimit.cmd")
+            : Path.Combine(DeadlimitPaths.DefaultDeadlimitRoot, "DeadlimitUpdater.bat");
+        if (!File.Exists(updater))
+        {
+            MessageBox.Show(
+                owner,
+                UiText.T(
+                    "The updater entry point was not found for the current release channel.",
+                    "Файл обновления не найден для текущего канала программы."),
+                UiText.T("Updater unavailable", "Обновление недоступно"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = updater,
+                WorkingDirectory = Path.GetDirectoryName(updater) ?? AppContext.BaseDirectory,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            MessageBox.Show(
+                owner,
+                exception.Message,
+                UiText.T("Could not start updater", "Не удалось запустить обновление"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+    }
 
     private static string GetDisplayVersion()
     {

@@ -1003,11 +1003,7 @@ internal static class ProjectLibraryFeature
             }
         }
 
-        private static string GetPath() =>
-            Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Deadlimit",
-                "project_library.json");
+        private static string GetPath() => UserDataPaths.Combine("project_library.json");
 
         private sealed class ProjectLibraryOrderSnapshot
         {

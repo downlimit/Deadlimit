@@ -1,6 +1,6 @@
 # Private portable rehearsal: 0.1.0-beta.1
 
-Status: **PACKAGE MECHANICS PASS — PUBLIC RELEASE NO-GO**
+Status: **SUPERSEDED PACKAGE PASS — PURE-PORTABLE REHEARSAL REQUIRED**
 
 - Rehearsal date: 2026-09-05
 - Source commit: `89ae79be7ee53014b44b8b2156b16a19c2c0ac25`
@@ -8,6 +8,11 @@ Status: **PACKAGE MECHANICS PASS — PUBLIC RELEASE NO-GO**
 
 This report records a private artifact rehearsal. It created no Git tag or
 GitHub Release and did not change repository visibility.
+
+The recorded artifact predates the pure-portable storage/update correction.
+Its evidence remains historical; the public candidate requires a new rehearsal
+whose ZIP creates no system shortcuts or AppData state and preserves in-folder
+`UserData` across update and rollback.
 
 ## Passed checks
 

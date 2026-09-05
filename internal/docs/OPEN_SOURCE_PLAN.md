@@ -101,18 +101,18 @@ separate instructions without knowing the maintainer's workstation layout.
 ## Phase 3 — Delivery and updater split
 
 - [x] Keep the current Git updater as the developer channel and label it accordingly in the public README.
-- [x] Create a single-file `Install-Deadlimit.cmd` bootstrap for users without Git; it fetches and verifies the release updater asset before execution.
-- [x] Build and install-smoke a self-contained `win-x64` portable ZIP in the private rehearsal workflow; public publication remains gated.
+- [x] Publish a self-contained `win-x64` portable ZIP that users extract into a writable folder; no bootstrap installer is required.
+- [x] Build and update-smoke the portable ZIP in the private rehearsal workflow; public publication remains gated.
 - [x] Generate a SHA-256 checksum alongside every rehearsal ZIP and require it during install/update.
-- [x] Install portable builds under `%LocalAppData%\Programs\Deadlimit` by default.
-- [x] Keep existing user settings under `%LocalAppData%\Deadlimit` and artist projects outside the replaceable application directory.
-- [x] Implement a stable updater backed by GitHub Releases rather than `origin/main`, with a single-file bootstrap and a local installed updater entry point.
-- [x] Make release updates transactional, restore the current install after a failed activation, and preserve one recoverable previous version.
+- [x] Keep portable settings and caches under local `UserData`; create no automatic shortcuts, registry entries, or files outside the extracted folder.
+- [x] Keep artist projects outside the replaceable application payload in their user-selected folders.
+- [x] Implement a stable in-folder updater backed by GitHub Releases rather than `origin/main`.
+- [x] Make release updates transactional, preserve `UserData`, restore the current payload after a failed activation, and keep one recoverable version under local `Backup`.
 - [x] Keep an explicit Developer/main channel for contributors.
 - [x] Test first install, no-op update, successful update, bad-checksum/traversal/broken-package preservation, and rollback with isolated synthetic packages.
 - [x] Document the expected Windows SmartScreen warning for unsigned early releases in both public guides.
 
-Phase acceptance: a non-Git user can install and update with one bootstrap,
+Phase acceptance: a non-Git user can extract, run, update, remove, and carry the portable folder without system residue,
 while a contributor can clone and work on `main` without mixing the two channels.
 
 ## Phase 4 — CI, security, and repository policy
@@ -168,7 +168,7 @@ Validated locally on Windows 11 and in private CI through 2026-09-05:
 
 - [x] Build `0.1.0-beta.1` in the private repository and record exact artifact evidence in `RELEASE_REHEARSAL_0.1.0-beta.1.md`.
 - [ ] Test installation on a clean Windows 11 environment without maintainer paths.
-- [x] Test installed updater activation from the previous real rehearsal ZIP to the current real rehearsal ZIP, preservation under `.previous`, and rollback. Automatic GitHub Releases selection remains publication-gated.
+- [x] Test updater activation between synthetic packages, preservation of local `UserData`, local `Backup`, failed-update recovery, and rollback. Real-package rehearsal must be repeated for the pure-portable layout; automatic GitHub Releases selection remains publication-gated.
 - [x] Re-run provenance, secret, and packaged-file audits: 822 commits produced zero prohibited asset-path hits and zero high-confidence credential-signature hits; the private portable ZIP passed the manifest and packaged-content audit recorded in the rehearsal report.
 - [~] Produce a final go/no-go report for the owner. The current rehearsal report is NO-GO until the clean-machine, GitHub Releases selection, release-time compatibility refresh, and explicit owner gates are resolved.
 - [!] Receive explicit owner approval to change visibility.

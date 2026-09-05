@@ -533,15 +533,7 @@ public sealed class HeroCatalogService
         }
     }
 
-    private static string GetCachePath() =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Deadlimit",
-            "hero_catalog.json");
+    private static string GetCachePath() => UserDataPaths.Combine("cache", "hero_catalog.json");
 
-    private static string GetIconCacheDirectory() =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "Deadlimit",
-            "hero_icons");
+    private static string GetIconCacheDirectory() => UserDataPaths.Combine("cache", "hero_icons");
 }

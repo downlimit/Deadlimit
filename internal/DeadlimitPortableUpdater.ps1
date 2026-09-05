@@ -2,7 +2,6 @@
 param(
     [switch]$Rollback,
     [switch]$NoLaunch,
-    [switch]$NoShortcuts,
     [string]$InstallRoot,
     [string]$PackagePath,
     [string]$ChecksumPath,
@@ -12,14 +11,12 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-function Get-DefaultInstallRoot {
-    $localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
-    return Join-Path $localAppData 'Programs\Deadlimit'
-}
-
 function Resolve-SafeInstallRoot([string]$Path) {
     if ([string]::IsNullOrWhiteSpace($Path)) {
-        $Path = Get-DefaultInstallRoot
+        $Path = $env:DEADLIMIT_PORTABLE_ROOT
+    }
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        throw 'The portable root was not provided. Run Update Deadlimit.cmd from the extracted Deadlimit folder.'
     }
 
     $fullPath = [IO.Path]::GetFullPath($Path).TrimEnd(
@@ -63,9 +60,21 @@ function Get-ExpectedSha256([string]$Path) {
     return $match.Value.ToLowerInvariant()
 }
 
+function Get-FileSha256([string]$Path) {
+    $stream = [IO.File]::OpenRead([IO.Path]::GetFullPath($Path))
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha.Dispose()
+        $stream.Dispose()
+    }
+}
+
 function Assert-PackageChecksum([string]$ArchivePath, [string]$HashPath) {
     $expected = Get-ExpectedSha256 $HashPath
-    $actual = (Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $actual = Get-FileSha256 $ArchivePath
     if (-not [string]::Equals($actual, $expected, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Deadlimit package checksum mismatch. Expected $expected, received $actual."
     }
@@ -189,36 +198,29 @@ function Stop-DeadlimitManager {
         Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
-function Set-DeadlimitShortcuts([string]$Root) {
-    if ($NoShortcuts) {
-        return
+function Get-ManagedPayloadItems([string]$Root) {
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) {
+        return @()
     }
+    return @(Get-ChildItem -LiteralPath $Root -Force | Where-Object {
+        $_.Name -notin @('UserData', 'Backup', 'Backup.next')
+    })
+}
 
-    $manager = Join-Path $Root 'DeadlimitManager.exe'
-    $updater = Join-Path $Root 'Update Deadlimit.cmd'
-    $desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)
-    $programs = [Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)
-    $startFolder = Join-Path $programs 'Deadlimit'
-    [IO.Directory]::CreateDirectory($startFolder) | Out-Null
+function Move-DirectoryChildren([string]$Source, [string]$Destination) {
+    [IO.Directory]::CreateDirectory($Destination) | Out-Null
+    foreach ($item in @(Get-ChildItem -LiteralPath $Source -Force)) {
+        Move-Item -LiteralPath $item.FullName -Destination $Destination
+    }
+}
 
-    $shell = New-Object -ComObject WScript.Shell
-    foreach ($destination in @($desktop, $startFolder)) {
-        if (-not [string]::IsNullOrWhiteSpace($destination)) {
-            $managerLink = $shell.CreateShortcut((Join-Path $destination 'Deadlimit Manager.lnk'))
-            $managerLink.TargetPath = $manager
-            $managerLink.WorkingDirectory = $Root
-            $managerLink.IconLocation = "$manager,0"
-            $managerLink.Description = 'Deadlimit Manager'
-            $managerLink.Save()
-
-            if (Test-Path -LiteralPath $updater -PathType Leaf) {
-                $updateLink = $shell.CreateShortcut((Join-Path $destination 'Update Deadlimit.lnk'))
-                $updateLink.TargetPath = $updater
-                $updateLink.WorkingDirectory = $Root
-                $updateLink.IconLocation = "$manager,0"
-                $updateLink.Description = 'Update Deadlimit'
-                $updateLink.Save()
-            }
+function Clear-ManagedPayload([string]$Root) {
+    foreach ($item in @(Get-ManagedPayloadItems $Root)) {
+        if ($item.PSIsContainer) {
+            Remove-ExactDirectory $item.FullName
+        }
+        else {
+            Remove-Item -LiteralPath $item.FullName -Force
         }
     }
 }
@@ -232,28 +234,37 @@ function Invoke-Rollback([string]$CurrentRoot, [string]$PreviousRoot) {
     }
 
     Stop-DeadlimitManager
-    $swapRoot = "$CurrentRoot.rollback-$([Guid]::NewGuid().ToString('N'))"
-    Move-Item -LiteralPath $CurrentRoot -Destination $swapRoot
+    $swapRoot = Join-Path $CurrentRoot 'Backup.next'
+    if (Test-Path -LiteralPath $swapRoot) {
+        throw "An incomplete update backup must be resolved before rollback: $swapRoot"
+    }
+
+    [IO.Directory]::CreateDirectory($swapRoot) | Out-Null
+    foreach ($item in @(Get-ManagedPayloadItems $CurrentRoot)) {
+        Move-Item -LiteralPath $item.FullName -Destination $swapRoot
+    }
     try {
-        Move-Item -LiteralPath $PreviousRoot -Destination $CurrentRoot
+        Move-DirectoryChildren $PreviousRoot $CurrentRoot
+        Remove-ExactDirectory $PreviousRoot
         Move-Item -LiteralPath $swapRoot -Destination $PreviousRoot
     }
     catch {
-        if (-not (Test-Path -LiteralPath $CurrentRoot) -and (Test-Path -LiteralPath $swapRoot)) {
-            Move-Item -LiteralPath $swapRoot -Destination $CurrentRoot
+        if (Test-Path -LiteralPath $swapRoot -PathType Container) {
+            Clear-ManagedPayload $CurrentRoot
+            Move-DirectoryChildren $swapRoot $CurrentRoot
+            Remove-ExactDirectory $swapRoot
         }
         throw
     }
 
-    Set-DeadlimitShortcuts $CurrentRoot
-    Write-Host "Deadlimit rollback complete. Previous/current installations were swapped: $CurrentRoot" -ForegroundColor Green
+    Write-Host "Deadlimit rollback complete. UserData stayed in place: $CurrentRoot" -ForegroundColor Green
     if (-not $NoLaunch) {
         Start-Process -FilePath (Join-Path $CurrentRoot 'DeadlimitManager.exe') -WorkingDirectory $CurrentRoot
     }
 }
 
 $resolvedInstallRoot = Resolve-SafeInstallRoot $InstallRoot
-$resolvedBackupRoot = "$resolvedInstallRoot.previous"
+$resolvedBackupRoot = Join-Path $resolvedInstallRoot 'Backup'
 $workRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-portable-$([Guid]::NewGuid().ToString('N'))"
 [IO.Directory]::CreateDirectory($workRoot) | Out-Null
 
@@ -273,7 +284,6 @@ try {
             $installed = Get-Content -LiteralPath $markerPath -Raw | ConvertFrom-Json
             if ($installed.packageSha256 -eq $packageHash -and
                 (Test-Path -LiteralPath (Join-Path $resolvedInstallRoot 'DeadlimitManager.exe') -PathType Leaf)) {
-                Set-DeadlimitShortcuts $resolvedInstallRoot
                 Write-Host 'Deadlimit is already up to date.' -ForegroundColor Green
                 exit 0
             }
@@ -298,17 +308,44 @@ try {
         throw 'The verified package release metadata has no version.'
     }
 
+    foreach ($reservedName in @('UserData', 'Backup', 'Backup.next')) {
+        if (Test-Path -LiteralPath (Join-Path $stageRoot $reservedName)) {
+            throw "The verified package contains the reserved portable data path: $reservedName"
+        }
+    }
+
+    $currentReleasePath = Join-Path $resolvedInstallRoot 'release.json'
+    if (Test-Path -LiteralPath $currentReleasePath -PathType Leaf) {
+        try {
+            $currentRelease = Get-Content -LiteralPath $currentReleasePath -Raw | ConvertFrom-Json
+            if ([string]$currentRelease.version -eq [string]$release.version) {
+                Write-Host 'Deadlimit is already up to date.' -ForegroundColor Green
+                exit 0
+            }
+        }
+        catch {
+            Write-Host 'Current release metadata is unreadable; the verified package will repair the program files.' -ForegroundColor Yellow
+        }
+    }
+
     Stop-DeadlimitManager
     [IO.Directory]::CreateDirectory((Split-Path -Parent $resolvedInstallRoot)) | Out-Null
-    Remove-ExactDirectory $resolvedBackupRoot
-    $movedCurrent = $false
-    if (Test-Path -LiteralPath $resolvedInstallRoot -PathType Container) {
-        Move-Item -LiteralPath $resolvedInstallRoot -Destination $resolvedBackupRoot
-        $movedCurrent = $true
+    [IO.Directory]::CreateDirectory($resolvedInstallRoot) | Out-Null
+    $nextBackupRoot = Join-Path $resolvedInstallRoot 'Backup.next'
+    if (Test-Path -LiteralPath $nextBackupRoot) {
+        throw "An incomplete portable update must be resolved before continuing: $nextBackupRoot"
+    }
+
+    $currentItems = @(Get-ManagedPayloadItems $resolvedInstallRoot)
+    $movedCurrent = $currentItems.Count -gt 0
+    [IO.Directory]::CreateDirectory($nextBackupRoot) | Out-Null
+    foreach ($item in $currentItems) {
+        Move-Item -LiteralPath $item.FullName -Destination $nextBackupRoot
     }
 
     try {
-        Move-Item -LiteralPath $stageRoot -Destination $resolvedInstallRoot
+        Move-DirectoryChildren $stageRoot $resolvedInstallRoot
+        Remove-ExactDirectory $stageRoot
         $marker = [ordered]@{
             version = [string]$release.version
             tag = [string]$package.Tag
@@ -319,14 +356,22 @@ try {
         $marker | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $resolvedInstallRoot '.deadlimit-install.json') -Encoding UTF8
     }
     catch {
-        Remove-ExactDirectory $resolvedInstallRoot
-        if ($movedCurrent -and (Test-Path -LiteralPath $resolvedBackupRoot -PathType Container)) {
-            Move-Item -LiteralPath $resolvedBackupRoot -Destination $resolvedInstallRoot
+        Clear-ManagedPayload $resolvedInstallRoot
+        if (Test-Path -LiteralPath $nextBackupRoot -PathType Container) {
+            Move-DirectoryChildren $nextBackupRoot $resolvedInstallRoot
+            Remove-ExactDirectory $nextBackupRoot
         }
         throw
     }
 
-    Set-DeadlimitShortcuts $resolvedInstallRoot
+    if ($movedCurrent) {
+        Remove-ExactDirectory $resolvedBackupRoot
+        Move-Item -LiteralPath $nextBackupRoot -Destination $resolvedBackupRoot
+    }
+    else {
+        Remove-ExactDirectory $nextBackupRoot
+    }
+
     Write-Host "Deadlimit $($release.version) installed successfully: $resolvedInstallRoot" -ForegroundColor Green
     if ($movedCurrent) {
         Write-Host "The previous installation is available for rollback: $resolvedBackupRoot"
