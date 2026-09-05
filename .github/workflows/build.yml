@@ -49,8 +49,8 @@ jobs:
           if (-not (Test-Path "$output/DeadlimitManager.exe")) {
             throw 'DeadlimitManager.exe was not produced.'
           }
-          if (Test-Path "$output/DeadlimitManager.exe") {
-            throw 'Legacy DeadlimitManager.exe was produced.'
+          if (Test-Path "$output/DeadlimitAggregator.exe") {
+            throw 'Legacy DeadlimitAggregator.exe was produced.'
           }
           if (Test-Path "$output/Deadlimit.exe") {
             throw 'Legacy Deadlimit.exe was produced.'
@@ -120,7 +120,7 @@ jobs:
           $forbidden = @(
             @{ Path = 'DeadlimitUpdater.bat'; Pattern = '-Root "%ROOT%"' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'Start-Process' },
-            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'The local checkout has tracked changes. Commit or revert them before running Deadlimit Updater.' },
+            @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'The local checkout has tracked changes. Commit or revert them before running Deadlimit Updater.' }
           )
           foreach ($check in $forbidden) {
             if (Select-String -LiteralPath $check.Path -SimpleMatch $check.Pattern -Quiet) {
