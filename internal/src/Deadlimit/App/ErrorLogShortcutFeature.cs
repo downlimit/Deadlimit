@@ -60,7 +60,7 @@ internal static class ErrorLogShortcutFeature
 
     private static bool IsSupportedErrorDialog(Form dialog)
     {
-        if (dialog is MainForm or SettingsForm || dialog.IsDisposed)
+        if (dialog is MainForm or SettingsForm || dialog.IsDisposed || !HasMainFormOwner(dialog))
         {
             return false;
         }
@@ -78,6 +78,19 @@ internal static class ErrorLogShortcutFeature
             || title.Contains("could not", StringComparison.OrdinalIgnoreCase)
             || title.Contains("ошибка", StringComparison.OrdinalIgnoreCase)
             || title.Contains("не удалось", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasMainFormOwner(Form dialog)
+    {
+        for (var owner = dialog.Owner; owner is not null; owner = owner.Owner)
+        {
+            if (owner is MainForm)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void OpenCurrentProjectLogs(Form owner, string projectFolder)
