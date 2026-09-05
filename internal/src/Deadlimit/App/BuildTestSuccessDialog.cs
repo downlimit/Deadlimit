@@ -9,8 +9,8 @@ internal sealed class BuildTestSuccessDialog : Form
             UiText.T("Build for test complete", "Сборка для теста готова"),
             $"{summary}\n\nVPK:\n{vpkPath}",
             UiText.T(
-                "Close this build summary.\n\nThe VPK has already been deployed; launch Deadlock separately when you are ready to test it.",
-                "Закрыть сводку сборки.\n\nVPK уже установлен; запустите Deadlock отдельно, когда будете готовы к тесту."))
+                "**OK** closes this build summary.\n\nThe mod is already installed in Deadlock and ready to test. Launch Deadlock separately when you want to check it.",
+                "**OK** закрывает это окно со сводкой сборки.\n\nМод уже установлен в Deadlock и готов к проверке. Запустите Deadlock отдельно, когда захотите его проверить."))
     {
     }
 
@@ -18,8 +18,8 @@ internal sealed class BuildTestSuccessDialog : Form
         UiText.T("Prepare for CSDK complete", "Подготовка для CSDK готова"),
         message,
         UiText.T(
-            "Close this preparation summary.\n\nThe project working files are already prepared; launch CSDK separately when you are ready to work with it.",
-            "Закрыть сводку подготовки.\n\nРабочие файлы проекта уже подготовлены; запустите CSDK отдельно, когда будете готовы с ним работать."));
+            "**OK** closes this preparation summary.\n\nThe project is already prepared for CSDK. Launch CSDK separately when you are ready to work with it.",
+            "**OK** закрывает это окно со сводкой подготовки.\n\nПроект уже подготовлен для CSDK. Запустите CSDK отдельно, когда будете готовы с ним работать."));
 
     private BuildTestSuccessDialog(string title, string body, string okToolTip)
     {

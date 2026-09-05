@@ -46,6 +46,97 @@ Assert-Contains 'internal/src/Deadlimit/App/DeadlimitRelocationService.cs' 'Rewr
 Assert-Contains 'internal/src/Deadlimit/Deadlimit.csproj' '<Version>0.1.0-beta.2</Version>'
 Assert-NotContains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'UiText.T("UPDATE DEADLIMIT", "ОБНОВИТЬ DEADLIMIT")'
 
+# Every app tooltip uses the RichToolTip alias, so width, wrapping and emphasis rules apply consistently.
+Assert-Contains 'internal/src/Deadlimit/App/GlobalToolTipAlias.cs' 'global using ToolTip = Deadlimit.App.RichToolTip;'
+Assert-Contains 'internal/src/Deadlimit/App/RichToolTip.cs' 'private const int MaxContentWidth = 440;'
+$appTooltipFiles = Get-ChildItem 'internal/src/Deadlimit/App' -Filter *.cs -File |
+    Where-Object { $_.Name -ne 'RichToolTip.cs' }
+foreach ($file in $appTooltipFiles) {
+    if (Select-String -LiteralPath $file.FullName -SimpleMatch 'System.Windows.Forms.ToolTip' -Quiet) {
+        throw "Tooltip bypasses RichToolTip in $($file.Name)."
+    }
+}
+
+# Run representative English and Russian tooltip copy through the same rewrite pipeline used by RichToolTip.
+$assemblyPath = Resolve-Path 'internal/src/Deadlimit/bin/Release/net10.0-windows/DeadlimitManager.dll'
+$assembly = [Reflection.Assembly]::LoadFrom($assemblyPath)
+$flags = [Reflection.BindingFlags]::Static -bor [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Public
+$fixupsType = $assembly.GetType('Deadlimit.App.TooltipCopyPolicyFixups', $true)
+$policyType = $assembly.GetType('Deadlimit.App.TooltipCopyPolicy', $true)
+$beforeMethod = $fixupsType.GetMethod('BeforeRewrite', $flags)
+$rewriteMethod = $policyType.GetMethod('Rewrite', $flags)
+$afterMethod = $fixupsType.GetMethod('AfterRewrite', $flags)
+
+function Rewrite-Tooltip([string]$Text) {
+    $value = [string]$beforeMethod.Invoke($null, @($Text))
+    $value = [string]$rewriteMethod.Invoke($null, @($value))
+    return [string]$afterMethod.Invoke($null, @($value))
+}
+
+function Assert-TooltipPlain([string]$Name, [string]$InputText, [string[]]$Required, [string[]]$Forbidden) {
+    $result = Rewrite-Tooltip $InputText
+    foreach ($term in $Required) {
+        if (-not $result.Contains($term, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Tooltip '$Name' lost required user-facing term '$term':`n$result"
+        }
+    }
+    foreach ($term in $Forbidden) {
+        if ($result.Contains($term, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Tooltip '$Name' still exposes technical term '$term':`n$result"
+        }
+    }
+}
+
+Assert-TooltipPlain 'prepare-en' `
+    "Prepare the selected project's working files for Reduced CSDK.\n\nA normal click preserves manual VMAT tuning and synchronizes matching project textures. Hold SHIFT to regenerate custom materials; the confirmation dialog lets you choose whether to create a backup first." `
+    @('**PREPARE FOR CSDK**', '**SHIFT**') `
+    @('VMAT', 'ModelDoc', 'Material Editor')
+
+Assert-TooltipPlain 'prepare-ru' `
+    'Подготовить рабочие файлы выбранного проекта для Reduced CSDK.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует совпавшие текстуры проекта. Удерживайте SHIFT, чтобы пересоздать custom-материалы; в окне подтверждения можно выбрать, создавать ли резервную копию.' `
+    @('**ПОДГОТОВИТЬ ДЛЯ CSDK**', '**SHIFT**') `
+    @('VMAT', 'custom-материалы', 'ModelDoc')
+
+Assert-TooltipPlain 'release-en' `
+    "Game-client VPK release slot: 01-99. Type the number directly or change it with the arrows by ±1.\n\nThe slot becomes part of the deployed VPK filename, for example Release ID 07 → pak07_dir.vpk." `
+    @('**Release ID**', '01-99') `
+    @('VPK', 'pak07_dir.vpk', 'slot')
+
+Assert-TooltipPlain 'release-ru' `
+    'Слот VPK игрового клиента Deadlock: 01-99. Число можно ввести вручную или менять стрелками на ±1.\n\nСлот входит в имя установленного VPK-файла, например Release ID 07 → pak07_dir.vpk.' `
+    @('**Release ID**', '01-99') `
+    @('VPK', 'pak07_dir.vpk', 'слот')
+
+Assert-TooltipPlain 'vertex-color-en' `
+    'Copies the repository MaxScript fileIn command. The helper exports selected geometry and renderable Shape/Spline objects to a **Vertex Color FBX** beside the latest Wall Worm DMX.\n\nOptional **Fixed Gamma** writes RGB^(1/2.2) for Source 2; leave it off for unchanged/Marmoset export.\n\n**PREPARE FOR CSDK** matches multi-color meshes by UV or polygon positions and keeps a rejected sidecar for retry.' `
+    @('**Vertex Color**', '**Fixed Gamma**', 'Wall Worm', 'CSDK') `
+    @('MaxScript', 'fileIn', 'DMX', 'FBX', 'RGB^', 'sidecar', 'polygon positions')
+
+Assert-TooltipPlain 'vertex-color-ru' `
+    'Копирует команду fileIn для MaxScript из репозитория. Скрипт экспортирует выделенную геометрию и renderable Shape/Spline в **Vertex Color FBX** рядом с последним DMX Wall Worm.\n\nОпциональный **Fixed Gamma** записывает RGB^(1/2.2) для Source 2; для обычного экспорта и Marmoset оставьте его выключенным.\n\n**ПОДГОТОВИТЬ ДЛЯ CSDK** сопоставляет многоцветные меши по UV или позициям полигонов и сохраняет отклонённый sidecar для повтора.' `
+    @('**Vertex Color**', '**Fixed Gamma**', 'Wall Worm', 'CSDK') `
+    @('MaxScript', 'fileIn', 'DMX', 'FBX', 'RGB^', 'sidecar', 'позициям полигонов')
+
+Assert-TooltipPlain 'csdk-fine-tune-en' `
+    'Run the optional CSDK fine-tuning from the current installation guide.\n\nDeadlimit downloads the required Deadlock depots, extracts the downloaded VPK as-is, removes the temporary pak01 VPK set, then re-applies Reduced CSDK.\n\nDepotDownloader may open a console for Steam QR authentication.\n\nThe configured Deadlock client folder is only validated and is **never modified**.' `
+    @('Reduced CSDK', 'QR code', 'never changed') `
+    @('depot', 'VPK', 'pak01', 'DepotDownloader', 'console', 'validated')
+
+Assert-TooltipPlain 'deadlocktools-path-en' `
+    'DeadlockTools.exe was not found in the selected DeadlockTools folder.' `
+    @('**DeadlockTools**', 'Choose') `
+    @('.exe')
+
+Assert-TooltipPlain 'apply-ru' `
+    'Проверить и применить изменённые папки и настройки интерфейса.\n\nПути к внешним инструментам можно оставить неуказанными.' `
+    @('**ПРИМЕНИТЬ**', 'сохраняет') `
+    @('неуказанными', 'внешним инструментам')
+
+Assert-TooltipPlain 'launch-game-en' `
+    "Launch Deadlock game client through Steam.\n\nHold SHIFT while clicking to copy 'cl_lock_camera true' to the clipboard without launching the game." `
+    @('**LAUNCH GAME**', '**SHIFT**') `
+    @('cl_lock_camera', 'command')
+
 # Static control text in App should either be localized, a technical/product token, a glyph, or data-driven.
 $allowed = @(
     'OK', 'CSDK', 'DMX', 'PNG', '📂', 'Deadlimit Manager', 'Deadlimit Scripts'
@@ -55,8 +146,7 @@ foreach ($file in $files) {
     $lineNumber = 0
     foreach ($line in Get-Content $file.FullName) {
         $lineNumber++
-        if ($line -notmatch 'Text\\s*=\\s*"([^"\\r\
-]*)"') { continue }
+        if ($line -notmatch 'Text\\s*=\\s*"([^"\\r\n]*)"') { continue }
         $literal = $Matches[1]
         if ($literal -notmatch '[A-Za-z]{3,}') { continue }
         if ($allowed | Where-Object { $literal -eq $_ -or $literal.StartsWith($_ + ':') }) { continue }
@@ -65,4 +155,4 @@ foreach ($file in $files) {
     }
 }
 
-Write-Host 'UI localization smoke passed.'
+Write-Host 'UI localization and tooltip copy smoke passed.'
