@@ -157,6 +157,7 @@ jobs:
               throw "Forbidden legacy/product-drift term '$term' remains:`n$($matches -join "`n")"
             }
           }
+          $global:LASTEXITCODE = 0
 
       - name: Updater root-resolution smoke
         shell: pwsh
