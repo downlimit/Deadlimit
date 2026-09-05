@@ -116,6 +116,7 @@ internal static class UiRenderingStabilityFeature
                 PrepareSettings(settingsForm, repaintOnRelease: true);
             }
 
+            ErrorLogShortcutFeature.Prepare(form);
             TrackModalOwner(form, allowOwnedNonModal: false);
         }
 
@@ -134,8 +135,8 @@ internal static class UiRenderingStabilityFeature
         if (redrawHeld)
         {
             // The base SettingsForm has already applied the selected theme in its
-            // constructor. Freeze the HWND only while the two compatibility features add
-            // their final controls/layout, so no partially assembled client area can paint.
+            // constructor. Freeze the HWND only while the final compatibility features add
+            // their controls/layout, so no partially assembled client area can paint.
             HoldRedraw(form);
         }
 
@@ -143,6 +144,7 @@ internal static class UiRenderingStabilityFeature
         {
             SettingsVersionFeature.Prepare(form);
             SettingsToolchainProgressFeature.Prepare(form);
+            SettingsFeedbackFeature.Prepare(form);
             PrepareControlTree(form);
             form.PerformLayout();
             PreparedSettingsForms.Add(form, new PreparedSettingsMarker());
@@ -423,6 +425,7 @@ internal static class UiRenderingStabilityFeature
                 TrackModalOwner(form, allowOwnedNonModal: false);
             }
 
+            ErrorLogShortcutFeature.Prepare(form);
             PrepareControlTree(form);
         }
 
@@ -480,6 +483,7 @@ internal static class UiRenderingStabilityFeature
                 TrackModalOwner(form, allowOwnedNonModal: false);
             }
 
+            ErrorLogShortcutFeature.Prepare(form);
             PrepareControlTree(form);
             return false;
         }
