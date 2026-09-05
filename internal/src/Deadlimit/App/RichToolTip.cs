@@ -120,8 +120,9 @@ internal sealed class RichToolTip : IDisposable
         }
 
         using var graphics = e.AssociatedControl.CreateGraphics();
-        using var boldFont = new Font(e.AssociatedControl.Font, FontStyle.Bold);
-        var layout = BuildLayout(graphics, e.AssociatedControl.Font, boldFont, text);
+        var regularFont = Control.DefaultFont;
+        using var boldFont = new Font(regularFont, FontStyle.Bold);
+        var layout = BuildLayout(graphics, regularFont, boldFont, text);
         e.ToolTipSize = new Size(
             layout.Width + (HorizontalPadding * 2),
             layout.Height + (VerticalPadding * 2));
@@ -146,7 +147,11 @@ internal sealed class RichToolTip : IDisposable
         var text = (e.AssociatedControl is not null && _texts.TryGetValue(e.AssociatedControl, out var stored)
             ? stored
             : e.ToolTipText) ?? string.Empty;
-        Font regularFont = e.Font ?? e.AssociatedControl?.Font ?? Control.DefaultFont;
+
+        // Measure and draw with the same text font. Tooltips are often attached to icon buttons
+        // whose control font is Segoe MDL2 Assets; using that font during measurement and a normal
+        // UI font during drawing makes the native tooltip window too small and clips the last words.
+        var regularFont = Control.DefaultFont;
         using var boldFont = new Font(regularFont, FontStyle.Bold);
         var layout = BuildLayout(e.Graphics, regularFont, boldFont, text);
         var originX = e.Bounds.Left + HorizontalPadding;
