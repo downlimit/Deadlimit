@@ -5,7 +5,7 @@ internal sealed class RichToolTip : IDisposable
     private const int HorizontalPadding = 10;
     private const int VerticalPadding = 8;
     private const int ParagraphGapPixels = 6;
-    private const int MaxContentWidth = 520;
+    private const int MaxContentWidth = 440;
 
     private static readonly Color BackgroundColor = Color.White;
     private static readonly Color BorderColor = Color.FromArgb(118, 118, 118);
@@ -16,11 +16,29 @@ internal sealed class RichToolTip : IDisposable
     [
         "SHIFT+LMB",
         "SHIFT+click",
+        "SHIFT-click",
         "Shift-click",
+        "SHIFT-клик",
         "PREPARE FOR CSDK",
+        "ПОДГОТОВИТЬ ДЛЯ CSDK",
         "BUILD FOR TEST",
+        "СОБРАТЬ ДЛЯ ТЕСТА",
         "LAUNCH CSDK",
+        "ЗАПУСК CSDK",
+        "LAUNCH GAME",
+        "ЗАПУСК ИГРЫ",
         "ONLINE PREPARATION",
+        "ОНЛАЙН-ПОДГОТОВКА",
+        "REFRESH LIST",
+        "ОБНОВИТЬ СПИСОК",
+        "SAVE PROJECT",
+        "СОХРАНИТЬ ПРОЕКТ",
+        "EXTRACT SOURCE",
+        "ИЗВЛЕЧЬ ИСХОДНИКИ",
+        "Deadlimit Scripts",
+        "Vertex Color FBX",
+        "Vertex Color",
+        "Fixed Gamma",
         "FINE-TUNE…",
         "ДОНАСТРОЙКА…",
         "INSTALL…",
@@ -29,6 +47,8 @@ internal sealed class RichToolTip : IDisposable
         "ОБНОВИТЬ…",
         "BROWSE…",
         "ОБЗОР…",
+        "CHECK",
+        "ПРОВЕРИТЬ",
         "APPLY",
         "ПРИМЕНИТЬ",
         "Release ID",
@@ -36,8 +56,8 @@ internal sealed class RichToolTip : IDisposable
         "Reduced CSDK",
         "Deadlock client",
         "Deadlock клиент",
-        "Vertex Color FBX",
-        "Fixed Gamma",
+        "CSDK startup",
+        "запуск CSDK",
         "0source",
         "SHIFT",
     ];
@@ -148,9 +168,6 @@ internal sealed class RichToolTip : IDisposable
             ? stored
             : e.ToolTipText) ?? string.Empty;
 
-        // Measure and draw with the same text font. Tooltips are often attached to icon buttons
-        // whose control font is Segoe MDL2 Assets; using that font during measurement and a normal
-        // UI font during drawing makes the native tooltip window too small and clips the last words.
         var regularFont = Control.DefaultFont;
         using var boldFont = new Font(regularFont, FontStyle.Bold);
         var layout = BuildLayout(e.Graphics, regularFont, boldFont, text);
@@ -411,10 +428,20 @@ internal sealed class RichToolTip : IDisposable
         }
     }
 
-    private static string Normalize(string text) =>
-        text.Replace("\r\n", "\n", StringComparison.Ordinal)
+    private static string Normalize(string text)
+    {
+        var normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n')
             .Trim();
+        if (normalized.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        normalized = TooltipCopyPolicyFixups.BeforeRewrite(normalized);
+        normalized = TooltipCopyPolicy.Rewrite(normalized);
+        return TooltipCopyPolicyFixups.AfterRewrite(normalized).Trim();
+    }
 
     private sealed record TextRun(string Text, bool Bold);
     private sealed record LayoutRun(string Text, bool Bold, int Width);
