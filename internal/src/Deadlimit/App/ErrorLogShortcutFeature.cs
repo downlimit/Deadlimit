@@ -4,11 +4,13 @@ namespace Deadlimit.App;
 
 internal static class ErrorLogShortcutFeature
 {
+    private const int WmShowWindow = 0x0018;
     private static readonly ConditionalWeakTable<Form, object> AttachedDialogs = new();
 
     [ModuleInitializer]
     internal static void Initialize()
     {
+        Application.AddMessageFilter(new ErrorDialogShowFilter());
         Application.Idle += OnApplicationIdle;
     }
 
@@ -16,15 +18,20 @@ internal static class ErrorLogShortcutFeature
     {
         foreach (var dialog in Application.OpenForms.Cast<Form>().ToArray())
         {
-            if (!IsSupportedErrorDialog(dialog) || AttachedDialogs.TryGetValue(dialog, out _))
-            {
-                continue;
-            }
+            AttachOnce(dialog);
+        }
+    }
 
-            if (TryAttach(dialog))
-            {
-                AttachedDialogs.Add(dialog, new object());
-            }
+    private static void AttachOnce(Form dialog)
+    {
+        if (!IsSupportedErrorDialog(dialog) || AttachedDialogs.TryGetValue(dialog, out _))
+        {
+            return;
+        }
+
+        if (TryAttach(dialog))
+        {
+            AttachedDialogs.Add(dialog, new object());
         }
     }
 
@@ -147,6 +154,20 @@ internal static class ErrorLogShortcutFeature
             {
                 yield return nested;
             }
+        }
+    }
+
+    private sealed class ErrorDialogShowFilter : IMessageFilter
+    {
+        public bool PreFilterMessage(ref Message message)
+        {
+            if (message.Msg == WmShowWindow
+                && Control.FromHandle(message.HWnd) is Form dialog)
+            {
+                AttachOnce(dialog);
+            }
+
+            return false;
         }
     }
 }
