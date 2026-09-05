@@ -4,40 +4,17 @@ namespace Deadlimit.App;
 
 internal static class SettingsFeedbackFeature
 {
-    private const int WmShowWindow = 0x0018;
     private const string FeedbackUrl = "https://github.com/downlimit/Deadlimit/issues/new/choose";
-    private static readonly ConditionalWeakTable<SettingsForm, object> AttachedForms = new();
+    private static readonly ConditionalWeakTable<SettingsForm, object> PreparedForms = new();
 
-    [ModuleInitializer]
-    internal static void Initialize()
+    internal static void Prepare(SettingsForm form)
     {
-        Application.AddMessageFilter(new SettingsShowFilter());
-        Application.Idle += OnApplicationIdle;
-    }
-
-    private static void OnApplicationIdle(object? sender, EventArgs e)
-    {
-        foreach (var form in Application.OpenForms.OfType<SettingsForm>())
-        {
-            AttachOnce(form);
-        }
-    }
-
-    private static void AttachOnce(SettingsForm form)
-    {
-        if (AttachedForms.TryGetValue(form, out _))
+        ArgumentNullException.ThrowIfNull(form);
+        if (PreparedForms.TryGetValue(form, out _))
         {
             return;
         }
 
-        if (TryAttach(form))
-        {
-            AttachedForms.Add(form, new object());
-        }
-    }
-
-    private static bool TryAttach(SettingsForm form)
-    {
         var grid = FindDescendants<TableLayoutPanel>(form)
             .FirstOrDefault(panel =>
                 panel.ColumnCount == 2
@@ -45,14 +22,14 @@ internal static class SettingsFeedbackFeature
                     string.Equals(label.Text, "Deadlimit Scripts", StringComparison.Ordinal)));
         if (grid is null)
         {
-            return false;
+            return;
         }
 
         var scriptsLabel = FindDescendants<Label>(grid)
             .FirstOrDefault(label => string.Equals(label.Text, "Deadlimit Scripts", StringComparison.Ordinal));
         if (scriptsLabel is null)
         {
-            return false;
+            return;
         }
 
         var row = grid.GetRow(scriptsLabel) + 1;
@@ -94,8 +71,7 @@ internal static class SettingsFeedbackFeature
         grid.Controls.Add(caption, 0, row);
         grid.Controls.Add(openButton, 1, row);
         form.FormClosed += (_, _) => toolTip.Dispose();
-        form.PerformLayout();
-        return true;
+        PreparedForms.Add(form, new object());
     }
 
     private static void OpenFeedback(Form owner)
@@ -133,20 +109,6 @@ internal static class SettingsFeedbackFeature
             {
                 yield return nested;
             }
-        }
-    }
-
-    private sealed class SettingsShowFilter : IMessageFilter
-    {
-        public bool PreFilterMessage(ref Message message)
-        {
-            if (message.Msg == WmShowWindow
-                && Control.FromHandle(message.HWnd) is SettingsForm form)
-            {
-                AttachOnce(form);
-            }
-
-            return false;
         }
     }
 }
