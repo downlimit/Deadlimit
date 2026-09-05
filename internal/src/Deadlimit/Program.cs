@@ -338,7 +338,7 @@ internal static class Program
 
         try
         {
-            Console.Out.WriteLine(VertexColorMaxScriptService.WriteScript(args[1]));
+            Console.Out.WriteLine(DeadlimitScriptsService.WriteScript(args[1]));
             return 0;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)

@@ -30,7 +30,7 @@ package entry.
 ## External tools and content
 
 Deadlimit interoperates with user-installed software and local content from
-Valve/Deadlock, Reduced CSDK, Wall Worm, Autodesk 3ds Max, Adobe Substance 3D
+Valve/Deadlock, Reduced CSDK, Wall Worm, Autodesk tooling used by the current MAXScript module, Adobe Substance 3D
 Painter, DeadlockTools, DepotDownloader, and Source 2 Viewer. Those products,
 services, binaries, and content are not part of Deadlimit and are not licensed
 under Deadlimit's MIT license.

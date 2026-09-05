@@ -38,7 +38,7 @@ internal static class VertexColorExportFeature
         {
             try
             {
-                button.Enabled = File.Exists(VertexColorMaxScriptService.GetBundledScriptPath());
+                button.Enabled = File.Exists(DeadlimitScriptsService.GetBundledScriptPath());
             }
             catch (DirectoryNotFoundException)
             {
@@ -50,15 +50,15 @@ internal static class VertexColorExportFeature
         {
             try
             {
-                var scriptPath = VertexColorMaxScriptService.GetBundledScriptPath();
-                Clipboard.SetText(VertexColorMaxScriptService.CreateFileInCommand(scriptPath));
+                var scriptPath = DeadlimitScriptsService.GetBundledScriptPath();
+                Clipboard.SetText(DeadlimitScriptsService.CreateFileInCommand(scriptPath));
 
                 MessageBox.Show(
                     form,
                     UiText.T(
-                        "The MAXScript fileIn command is in the clipboard.\n\nPaste it into MAXScript Listener once. For each update: export the normal DMX with Wall Worm, keep the same geometry and renderable Shape/Spline objects selected, then export the Vertex Color FBX. Keep both files together in the project root. PREPARE validates the pair, consumes the FBX after complete success, and keeps it after rejection, cancellation, or a later failure. The script reads no Deadlimit Aggregator project settings and contains no path to DeadlimitAggregator.exe.",
-                        "Команда fileIn для MAXScript скопирована в буфер обмена.\n\nОдин раз вставьте её в MAXScript Listener. При каждом обновлении: экспортируйте обычный DMX через Wall Worm, оставьте ту же геометрию и renderable Shape/Spline выделенными и экспортируйте Vertex Color FBX. Храните оба файла вместе в корне проекта. PREPARE проверяет пару, удаляет FBX после полного успеха и сохраняет его при отклонении, отмене или последующей ошибке. Скрипт ничего не читает из настроек проекта Deadlimit Aggregator и не содержит пути к DeadlimitAggregator.exe."),
-                    UiText.T("Deadlimit Max Script — Vertex Color", "Deadlimit Max Script — Vertex Color"),
+                        "The MAXScript fileIn command is in the clipboard.\n\nPaste it into MAXScript Listener once. For each update: export the normal DMX with Wall Worm, keep the same geometry and renderable Shape/Spline objects selected, then export the Vertex Color FBX. Keep both files together in the project root. PREPARE validates the pair, consumes the FBX after complete success, and keeps it after rejection, cancellation, or a later failure. The script reads no Deadlimit Manager project settings and contains no path to DeadlimitAggregator.exe.",
+                        "Команда fileIn для MAXScript скопирована в буфер обмена.\n\nОдин раз вставьте её в MAXScript Listener. При каждом обновлении: экспортируйте обычный DMX через Wall Worm, оставьте ту же геометрию и renderable Shape/Spline выделенными и экспортируйте Vertex Color FBX. Храните оба файла вместе в корне проекта. PREPARE проверяет пару, удаляет FBX после полного успеха и сохраняет его при отклонении, отмене или последующей ошибке. Скрипт ничего не читает из настроек проекта Deadlimit Manager и не содержит пути к DeadlimitAggregator.exe."),
+                    UiText.T("Deadlimit Scripts — Vertex Color", "Deadlimit Scripts — Vertex Color"),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Information);
             }

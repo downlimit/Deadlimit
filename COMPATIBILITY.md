@@ -9,7 +9,7 @@ apply only to the snapshots recorded below and in each release note.
 | --- | --- | --- | --- |
 | Operating system | Windows 11 Home 25H2 x64, build `26200.8894` | Supported and tested | Windows 10 is currently untested. |
 | .NET | SDK `10.0.400` | Required for clone-based development/launch | Portable `win-x64` rehearsal builds include a self-contained runtime. |
-| Autodesk 3ds Max | 2025, `27.3.0.30874` | Supported and tested | Other Max versions are untested. |
+| Deadlimit Scripts MAXScript host | 2025, `27.3.0.30874` | Supported and tested | Other Max versions are untested. |
 | Wall Worm | `7.36.2` | Snapshot-tested | Version read from the installed Wall Worm configuration; other builds remain untested. |
 | Reduced CSDK | Generation 12; `csdkcfg.exe` `0.1.0` | Snapshot-tested locally | Local binaries are fingerprinted below; the mutable upstream archive still lacks an authenticated release hash. |
 | Deadlock | Steam app `1422450`, build `24882156` | Snapshot-tested | Installed depot manifests are recorded below. |

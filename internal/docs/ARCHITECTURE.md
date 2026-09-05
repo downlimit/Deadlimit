@@ -127,7 +127,7 @@ with `-i <source.vmdl> -nop4`.
 
 The tested compile completed with `1 compiled, 0 failed`.
 
-The `game\bin_tools\win64\resourcecompiler.exe` variant aborted at startup in the same environment with a particles schema mismatch, so Deadlimit Aggregator must not treat the two binary sets as interchangeable without validation.
+The `game\bin_tools\win64\resourcecompiler.exe` variant aborted at startup in the same environment with a particles schema mismatch, so Deadlimit Manager must not treat the two binary sets as interchangeable without validation.
 
 ### AG2 post-processing
 
@@ -135,7 +135,7 @@ The tested compiled replacement model required DeadlockTools `add ag2` after com
 
 The current `fix unitstatus` command is conditional rather than universally required. In the tested `bin_cs2` output it reported `Data is not an array! Aborting...`, which means the specific structural defect it fixes was not present in that build.
 
-Deadlimit Aggregator should inspect/attempt the fix conditionally and treat an already-correct representation as a no-op, not as a fatal build failure.
+Deadlimit Manager should inspect/attempt the fix conditionally and treat an already-correct representation as a no-op, not as a fatal build failure.
 
 ### Wall Worm material path normalization
 
@@ -181,11 +181,11 @@ Every destructive/preprocessing operation should:
 
 REUSE materials remain references to retail resources.
 
-CUSTOM materials belong to the addon source tree. Deadlimit Aggregator may initialize them once, but must never overwrite an existing authored VMAT during normal prepare/release operations.
+CUSTOM materials belong to the addon source tree. Deadlimit Manager may initialize them once, but must never overwrite an existing authored VMAT during normal prepare/release operations.
 
 ## External tool adapters
 
-Deadlimit Aggregator should isolate external commands behind adapters so tool/version changes are localized:
+Deadlimit Manager should isolate external commands behind adapters so tool/version changes are localized:
 
 - ValveResourceFormat / Source 2 Viewer CLI;
 - Reduced CSDK ResourceCompiler;

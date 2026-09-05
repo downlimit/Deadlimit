@@ -49,8 +49,6 @@ for %%F in (
     "Deadlimit.lnk"
     "Updater.lnk"
     "Deadlimit Updater.lnk"
-    "Deadlimit Aggregator.lnk"
-    "Deadlimit Aggregator Updater.lnk"
     "Deadlimit Manager.lnk"
 ) do if exist "%ROOT%%%~F" del /f /q "%ROOT%%%~F" >nul 2>nul
 

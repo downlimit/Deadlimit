@@ -74,7 +74,7 @@ understand their rights, obligations, validation steps, and review path from roo
 - [x] Add `README.ru.md` as the secondary Russian guide.
 - [x] Document a five-minute clone-based quick start and label the portable user path as pending.
 - [x] Document the contributor/developer setup using .NET SDK 10.
-- [x] Add `COMPATIBILITY.md` with the exact audited workstation snapshot: Windows/Max/Painter versions, Wall Worm build, CSDK binary fingerprints, Deadlock build/depot manifests, DeadlockTools release/commit/fingerprint, and Shade research status. Upstream archive authentication remains a separate trust gate.
+- [x] Add `COMPATIBILITY.md` with the exact audited workstation snapshot: Windows/DCC/Painter versions, Wall Worm build, CSDK binary fingerprints, Deadlock build/depot manifests, DeadlockTools release/commit/fingerprint, and Shade research status. Upstream archive authentication remains a separate trust gate.
 - [x] Add `CHANGELOG.md` and adopt semantic versioning starting at `0.1.0-beta.1`.
 - [x] Retire obsolete `DeadlimitAggregator*` entry points after compatibility review; keep only the neutral `Deadlimit.cmd` shim for older local shortcuts.
 - [x] Remove maintainer-workstation path defaults from runtime code and public installation paths; derive clone/portable roots and keep Steam discovery explicit in Settings.
@@ -84,7 +84,7 @@ understand their rights, obligations, validation steps, and review path from roo
 Initial supported/tested matrix:
 
 - Windows 11 x64: tested and supported.
-- 3ds Max 2025: tested and supported.
+- Deadlimit Scripts MAXScript host 2025: tested and supported.
 - Wall Worm 7: supported only for the exact build recorded in release notes.
 - Reduced CSDK 12: supported only for the exact setup generation recorded in release notes.
 - Current Deadlock Steam build: tested snapshot recorded per release.
