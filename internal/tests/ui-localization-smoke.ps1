@@ -46,6 +46,18 @@ Assert-Contains 'internal/src/Deadlimit/App/DeadlimitRelocationService.cs' 'Rewr
 Assert-Contains 'internal/src/Deadlimit/Deadlimit.csproj' '<Version>0.1.0-beta.2</Version>'
 Assert-NotContains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'UiText.T("UPDATE DEADLIMIT", "ОБНОВИТЬ DEADLIMIT")'
 
+# BUILD FOR TEST must temporarily cover and disable LAUNCH GAME with the active blue state.
+Assert-Contains 'internal/src/Deadlimit/App/BuildLaunchInterlockFeature.cs' '[ModuleInitializer]'
+Assert-Contains 'internal/src/Deadlimit/App/BuildLaunchInterlockFeature.cs' 'launchGameButton.Enabled = false;'
+Assert-Contains 'internal/src/Deadlimit/App/BuildLaunchInterlockFeature.cs' 'UiText.T("BUILDING...", "ИДЁТ СБОРКА")'
+Assert-Contains 'internal/src/Deadlimit/App/BuildLaunchInterlockFeature.cs' 'BuildGradientStart'
+Assert-Contains 'internal/src/Deadlimit/App/BuildLaunchInterlockFeature.cs' 'if (interlocked && buildButton.Enabled)'
+
+# Russian error dialogs must keep actionable context instead of collapsing to a title-only message.
+Assert-Contains 'internal/src/Deadlimit/App/MessageBox.cs' 'BuildVertexColorPrepareContext'
+Assert-Contains 'internal/src/Deadlimit/App/MessageBox.cs' 'рядом нет актуального Vertex Color FBX'
+Assert-Contains 'internal/src/Deadlimit/App/MessageBox.cs' 'Подробности:\n{text}'
+
 # Every app tooltip uses the RichToolTip alias, so width, wrapping and emphasis rules apply consistently.
 Assert-Contains 'internal/src/Deadlimit/App/GlobalToolTipAlias.cs' 'global using ToolTip = Deadlimit.App.RichToolTip;'
 Assert-Contains 'internal/src/Deadlimit/App/RichToolTip.cs' 'private const int MaxContentWidth = 440;'
@@ -136,6 +148,18 @@ Assert-TooltipPlain 'launch-game-en' `
     "Launch Deadlock game client through Steam.\n\nHold SHIFT while clicking to copy 'cl_lock_camera true' to the clipboard without launching the game." `
     @('**LAUNCH GAME**', '**SHIFT**') `
     @('cl_lock_camera', 'command')
+
+# Verify the concrete missing-Vertex-Color-FBX message remains understandable in Russian.
+$messageBoxType = $assembly.GetType('Deadlimit.App.MessageBox', $true)
+$vertexContextMethod = $messageBoxType.GetMethod('BuildVertexColorPrepareContext', $flags)
+if ($null -eq $vertexContextMethod) { throw 'MessageBox.BuildVertexColorPrepareContext was not found.' }
+$sampleVertexError = "PREPARE stopped before changing CSDK content because ivy.dmx requires Vertex Color but its source pair is not safe.`n`nVertex Color source is incomplete: ivy_vertexcolor.fbx is missing. Export the Vertex Color FBX after the latest DMX export."
+$vertexContext = [string]$vertexContextMethod.Invoke($null, @($sampleVertexError))
+foreach ($term in @('ivy.dmx', 'ivy_vertexcolor.fbx', 'актуального Vertex Color FBX', 'ПОДГОТОВИТЬ ДЛЯ CSDK')) {
+    if (-not $vertexContext.Contains($term, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Vertex Color error context lost '$term':`n$vertexContext"
+    }
+}
 
 # Static control text in App should either be localized, a technical/product token, a glyph, or data-driven.
 $allowed = @(
