@@ -42,8 +42,8 @@ $workRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-installer-$([Guid]::
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $headers = @{ 'User-Agent' = 'DeadlimitInstaller/0.1' }
-    $api = 'https://api.github.com/repos/downlimit/Deadlimit/releases?per_page=20'
-    Write-Host 'Locating the latest published Deadlimit release...'
+    $api = 'https://api.github.com/repos/downlimit/Deadlimit/releases/tags/latest-main'
+    Write-Host 'Locating the latest successful Deadlimit build...'
     $releases = @(Invoke-RestMethod -UseBasicParsing -Headers $headers -Uri $api)
     $release = $releases | Where-Object { -not $_.draft } | Select-Object -First 1
     if ($null -eq $release) { throw 'No published Deadlimit release is available.' }
@@ -98,7 +98,7 @@ try {
     Set-Shortcut $shell (Join-Path $startFolder 'Deadlimit Manager.lnk') $manager $installRoot "$manager,0"
     Set-Shortcut $shell (Join-Path $startFolder 'Deadlimit Updater.lnk') $updater $installRoot $updaterIcon
 
-    Write-Host "Deadlimit $($release.tag_name) installed successfully: $installRoot" -ForegroundColor Green
+    Write-Host "The latest Deadlimit build was installed successfully: $installRoot" -ForegroundColor Green
     Start-Process -FilePath $manager -WorkingDirectory $installRoot
     exit 0
 }

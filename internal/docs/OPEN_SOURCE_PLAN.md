@@ -100,20 +100,20 @@ separate instructions without knowing the maintainer's workstation layout.
 ## Phase 3 — Unified delivery and updater
 
 - [x] Keep the current Git updater as the developer channel and label it accordingly in the public README.
-- [x] Publish one self-contained `win-x64` ZIP used by both the one-file installer and manual portable extraction.
-- [x] Build and update-smoke the portable ZIP in the private rehearsal workflow; public publication remains gated.
-- [x] Generate a SHA-256 checksum alongside every rehearsal ZIP and require it during install/update.
-- [x] Keep settings and caches under local `UserData`; manual portable extraction creates no shortcuts or installer state, while the explicit installer creates user-facing shortcuts.
+- [x] Publish one self-contained `win-x64` transport package used by the one-file installer and updater.
+- [x] Build and verify the artist package automatically after successful `main` CI.
+- [x] Generate a SHA-256 checksum for every package and require it during install/update.
+- [x] Keep settings and caches under local `UserData`; the installer creates user-facing shortcuts.
 - [x] Keep artist projects outside the replaceable application payload in their user-selected folders.
-- [x] Expose one `Update Deadlimit.cmd` entry and one UI action; route Git checkouts to `origin/main` and installed/portable copies to GitHub Releases.
+- [x] Expose one updater entry and one UI action; route Git checkouts to `origin/main` and artist installations to `latest-main`.
 - [x] Make release updates transactional, preserve `UserData`, restore the current payload after a failed activation, and keep one recoverable version under local `Backup`.
 - [x] Keep an explicit Developer/main channel for contributors.
+- [x] Replace routine numbered releases with one automatically refreshed `latest-main` artist channel.
 - [x] Test first install, no-op update, successful update, bad-checksum/traversal/broken-package preservation, and rollback with isolated synthetic packages.
 - [x] Document the expected Windows SmartScreen warning for unsigned early releases in both public guides.
 
-Phase acceptance: a non-Git user can run one installer or manually extract the
-same ZIP, while a contributor can clone `main`; all paths share one application
-UI and updater entry.
+Phase acceptance: a non-Git user downloads one permanent installer and receives
+accepted changes through one updater action, while a contributor clones `main`.
 
 ## Phase 4 — CI, security, and repository policy
 
@@ -123,8 +123,8 @@ UI and updater entry.
 - [~] Add dependency review and license-policy checks. Exact package license evidence and release-manifest verification pass; GitHub dependency review waits for public availability or GitHub Advanced Security.
 - [x] Add repository-owned DCO enforcement for every pull-request commit.
 - [x] Add release-package smoke tests, manifest/license checks, and checksum verification.
-- [x] Set current workflows to read-only repository contents permissions.
-- [x] Confirm fork pull requests never receive publication secrets: PR workflows use read-only contents permissions, reference no secrets, and no `pull_request_target` workflow exists; release publication is tag-only.
+- [x] Keep PR validation read-only; grant contents write only to the post-merge `publish-latest` job.
+- [x] Confirm fork pull requests cannot publish: the artist publication job runs only for a push to protected `main`, uses the scoped workflow token, and no `pull_request_target` workflow exists.
 - [ ] After the repository becomes public, protect `main`:
   - require pull requests;
   - require `build` and `smoke`;
@@ -183,7 +183,7 @@ Validated locally on Windows 11 and in private CI through 2026-09-05:
 
 Deadlimit can read a third-party CSDK guide, use DepotDownloader, and extract
 the user's locally downloaded VPK data after an explicit action. Git, installed,
-and manually extracted copies expose the same behavior. Source and release
+and artist installations expose the same behavior. Source and release
 archives carry no Valve content; these operations identify third-party sources
 and stop on authentication/access failure.
 
@@ -209,8 +209,9 @@ the project gains enough users to justify certificate cost and maintenance.
 
 ### 2026-09-05
 
+- Replaced manual numbered delivery with the rolling `latest-main` artist channel. Every successful `main` build now refreshes the package, checksum, installer, and version metadata automatically; the permanent installer and Settings updater use that channel.
 - Published `v0.1.0-beta.1` after PR #111 and both post-merge workflows passed. The release contains one installer, one self-contained ZIP, and their SHA-256 files; the tagged-package workflow passed in 1m40s.
-- Changed repository visibility to public with protected `main`, then restored the agreed single-file installer. Installer, manual portable extraction, and Git now share one application UI and `Update Deadlimit.cmd` entry; the release ZIP is built once.
+- Changed repository visibility to public with protected `main`, then restored the agreed single-file installer. This earlier installer/portable split was superseded by the rolling `latest-main` artist channel documented above.
 - Merged private PR #99 with the portable packager, checksum-verified installer/updater, rollback path, security tests, release workflows, and updated documentation.
 - Confirmed the repository remains private with zero tags and zero GitHub Releases after the merge.
 - Replaced maintainer-specific runtime defaults with application-root derivation and explicit Settings-based Steam discovery, and retired the obsolete `DeadlimitAggregator*` launchers.

@@ -207,3 +207,85 @@ jobs:
         run: |
           dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --release-policy-smoke
           dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --startup-smoke
+
+  publish-latest:
+    name: Publish latest artist build
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: deadlimit-latest-main
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build current main package
+        shell: pwsh
+        run: |
+          $version = '0.1.0-main.${{ github.run_number }}'
+          internal/release/New-DeadlimitPortable.ps1 -Version $version
+      - name: Verify installable package
+        shell: pwsh
+        run: |
+          internal/tests/portable-release-smoke.ps1 `
+            -PackagePath artifacts/portable/Deadlimit-win-x64.zip `
+            -ChecksumPath artifacts/portable/Deadlimit-win-x64.zip.sha256
+      - name: Update rolling artist release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'latest-main'
+          $version = '0.1.0-main.${{ github.run_number }}'
+          $coreAssets = @(
+            'artifacts/portable/Deadlimit-win-x64.zip',
+            'artifacts/portable/Deadlimit-win-x64.zip.sha256',
+            'artifacts/portable/Install-Deadlimit.cmd',
+            'artifacts/portable/Install-Deadlimit.cmd.sha256'
+          )
+          $metadataAsset = 'artifacts/portable/Deadlimit-release.json'
+
+          $existingTag = & gh release list `
+            --repo $env:GITHUB_REPOSITORY `
+            --limit 100 `
+            --json tagName `
+            --jq ".[] | select(.tagName == `"$tag`") | .tagName"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not inspect the rolling Deadlimit release.' }
+          $releaseExists = -not [string]::IsNullOrWhiteSpace(($existingTag | Select-Object -First 1))
+
+          if ($releaseExists) {
+            & gh api `
+              --method PATCH `
+              "repos/$env:GITHUB_REPOSITORY/git/refs/tags/$tag" `
+              -f "sha=$env:GITHUB_SHA" `
+              -F force=true | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw 'Could not move the rolling release tag to current main.' }
+
+            & gh release upload $tag @coreAssets --clobber --repo $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw 'Could not update the rolling Deadlimit package.' }
+            & gh release upload $tag $metadataAsset --clobber --repo $env:GITHUB_REPOSITORY
+            if ($LASTEXITCODE -ne 0) { throw 'Could not publish the rolling Deadlimit metadata.' }
+            & gh release edit $tag `
+              --repo $env:GITHUB_REPOSITORY `
+              --title "Deadlimit latest ($version)" `
+              --notes "Automatically built from the latest successful main commit: $env:GITHUB_SHA" `
+              --latest
+          }
+          else {
+            & gh release create $tag @coreAssets `
+              --repo $env:GITHUB_REPOSITORY `
+              --target $env:GITHUB_SHA `
+              --title "Deadlimit latest ($version)" `
+              --notes "Automatically built from the latest successful main commit: $env:GITHUB_SHA" `
+              --latest
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create the rolling Deadlimit release.' }
+            & gh release upload $tag $metadataAsset --repo $env:GITHUB_REPOSITORY
+          }
+
+          if ($LASTEXITCODE -ne 0) { throw 'Rolling Deadlimit publication failed.' }

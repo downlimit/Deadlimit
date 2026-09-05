@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = '0.1.0-beta.1',
+    [string]$Version = '0.1.0-main.local',
     [string]$OutputDirectory
 )
 
@@ -218,6 +218,7 @@ $archivePath = Join-Path $outputRoot 'Deadlimit-win-x64.zip'
 $checksumPath = "$archivePath.sha256"
 $installerPath = Join-Path $outputRoot 'Install-Deadlimit.cmd'
 $installerChecksumPath = "$installerPath.sha256"
+$releaseMetadataPath = Join-Path $outputRoot 'Deadlimit-release.json'
 
 & dotnet publish $projectPath `
     --configuration Release `
@@ -269,6 +270,7 @@ $releaseMetadata = [ordered]@{
     sourceCommitDate = $commitDate
 }
 Write-Utf8NoBom (Join-Path $packageRoot 'release.json') (($releaseMetadata | ConvertTo-Json) + "`n")
+Write-Utf8NoBom $releaseMetadataPath (($releaseMetadata | ConvertTo-Json) + "`n")
 
 $forbiddenPackageFiles = @(Get-ChildItem -LiteralPath $packageRoot -Recurse -File -Force |
     Where-Object {
