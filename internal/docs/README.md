@@ -2,7 +2,7 @@
 
 Deadlimit Manager is the Windows desktop application in the Deadlimit tool family for building and testing Deadlock character replacement mods with minimal manual Source 2/CSDK work.
 
-The umbrella `Deadlimit` repository also contains `Deadlimit Max Script` and `Deadlimit Shade`; see the repository root `README.md` for the project split. `Deadlimit Updater` updates the whole repository rather than one subproduct.
+The umbrella `Deadlimit` repository also contains `Deadlimit Scripts` and `Deadlimit Shade`; see the repository root `README.md` for the project split. `Deadlimit Updater` updates the whole repository rather than one subproduct.
 
 ## Target workflow
 

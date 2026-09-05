@@ -18,7 +18,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Windows, Deadlock, Reduced CSDK, 3ds Max, Wall Worm, and other relevant exact versions.
+      description: Windows, Deadlock, Reduced CSDK, MAXScript host, Wall Worm, and other relevant exact versions.
     validations:
       required: true
   - type: textarea

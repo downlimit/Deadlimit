@@ -1,10 +1,10 @@
-# Deadlimit Max Script
+# Deadlimit Scripts
 
-`DeadlimitPipelineScripts.ms` is the current 3ds Max implementation of Deadlimit Max Script. It groups Vertex Color authoring, bone display helpers, Inner Lineart topology, and Vertex Color FBX sidecar export in one window for the Deadlock pipeline.
+`DeadlimitPipelineScripts.ms` is the current MAXScript implementation of **Deadlimit Scripts (Deadlimit Pipeline Scripts)**. It groups Vertex Color authoring, bone display helpers, Inner Lineart topology, and Vertex Color FBX sidecar export in one window for the Deadlock pipeline.
 
-The implementation filename and existing MaxScript class/global identifiers are retained for compatibility. The project name is `Deadlimit Max Script`.
+The implementation filename and existing MAXScript class/global identifiers are retained for compatibility. `Deadlimit Scripts` is the product name; `Deadlimit Pipeline Scripts` is its long form. Additional DCC implementations, including Blender, share this product scope.
 
-The window uses four open stacked sections: BONE TOOLS, VERTEX COLOR, INNER LINEART, and the always-last EXPORT VERTEX COLOR section. The native 3ds Max rollout floater keeps the sections in flow when any section is collapsed or reopened, so they cannot overlap.
+The window uses four open stacked sections: BONE TOOLS, VERTEX COLOR, INNER LINEART, and the always-last EXPORT VERTEX COLOR section. The native MAXScript rollout floater keeps the sections in flow when any section is collapsed or reopened, so they cannot overlap.
 
 ## Vertex Color FBX export
 
@@ -29,7 +29,7 @@ VERTEX COLOR operates on selected geometry:
 - ON/OFF Vertex counts the selected meshes whose shaded Vertex Color display is enabled. When a strict majority is enabled, every selected mesh is forced OFF. Otherwise every selected mesh is forced ON. The display change is forced through the Nitrous cache immediately, including while the mesh remains selected.
 - The next row contains VERT, PALETTE, MAT, and SPREAD in that order. SPREAD treats the first selected mesh as the reference and applies enabled data to every later selected mesh in one Undo step. Its VERT path uses the same non-collapsing Editable Poly write described above. PALETTE copies the wire color, and MAT assigns the reference material. All three switches are on by default; the reference mesh stays unchanged.
 
-Vertex Color write commands retain exact before/after channel-0 snapshots for affected Editable Poly meshes during the current Max session. Their Undo and Redo restore the matching map channel, invalidate the stale Nitrous Vertex Color cache, and complete a viewport redraw, so restored colors become visible without deselecting objects or adding Vertex Paint modifiers. This compensates for direct `polyop` map writes, which do not create their own channel RestoreObj. The callbacks and snapshots are not saved into the scene, and restoration does not alter the base-object instance, modifier stack, topology, sub-object selections, or unrelated RGB/Alpha channels.
+Vertex Color write commands retain exact before/after channel-0 snapshots for affected Editable Poly meshes during the current host session. Their Undo and Redo restore the matching map channel, invalidate the stale Nitrous Vertex Color cache, and complete a viewport redraw, so restored colors become visible without deselecting objects or adding Vertex Paint modifiers. This compensates for direct `polyop` map writes, which do not create their own channel RestoreObj. The callbacks and snapshots are not saved into the scene, and restoration does not alter the base-object instance, modifier stack, topology, sub-object selections, or unrelated RGB/Alpha channels.
 
 ## Bone display tools
 
@@ -60,7 +60,7 @@ Flip Polygons and Invert Normals are on by default. The complete mesh and all ma
 
 CREATE LINEART is the reference transaction. ALTERNATIVE FAST uses the same geometry kernel, map-channel transfer, final polygon winding, evaluated-normal result, layer assignment, and optional Skin copy. It writes final winding into completed in-memory face records, writes persistent normals directly on Editable Mesh, and disables repeated undo snapshots while the new node is populated. Creating that node stays inside one named Undo transaction, so one Ctrl+Z removes the complete result. The Mesh-to-Poly return may cyclically rotate which corner is listed first for a polygon; vertex IDs, winding, UV/color/alpha corner values, smoothing, materials, transforms, and evaluated normals remain equivalent. The status line reports the fast operation time.
 
-Autodesk documents that scene-changing loop operations can store complete internal object copies for every undo record and that `setNormal` on Editable Mesh creates persistent explicit normals in modern 3ds Max. The fast path uses those two contracts to avoid the reference Modify-panel flip/normal workflow while preserving the evaluated result. Keep CREATE LINEART available as the conservative fallback while the alternative path is validated on production assets.
+Autodesk documents that scene-changing loop operations can store complete internal object copies for every undo record and that `setNormal` on Editable Mesh creates persistent explicit normals in modern MAXScript hosts. The fast path uses those two contracts to avoid the reference Modify-panel flip/normal workflow while preserving the evaluated result. Keep CREATE LINEART available as the conservative fallback while the alternative path is validated on production assets.
 
 Every supported face-corner map channel is copied from the source references, including UV channels, Vertex Color, Vertex Alpha, and Vertex Illumination. Existing UV seams and painted data on the source remain untouched. Generated map faces follow their new strip and junction faces.
 

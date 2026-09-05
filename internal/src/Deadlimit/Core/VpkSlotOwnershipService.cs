@@ -41,7 +41,7 @@ public sealed class VpkSlotOwnershipService
         if (ownershipFileExists && record is null)
         {
             throw new InvalidOperationException(
-                $"Deadlimit Aggregator found a VPK ownership file for this project but could not read it safely:\n\n{ownershipPath}\n\n" +
+                $"Deadlimit Manager found a VPK ownership file for this project but could not read it safely:\n\n{ownershipPath}\n\n" +
                 "The retail VPK slot will not be overwritten until that state is repaired or removed intentionally.");
         }
 
@@ -59,8 +59,8 @@ public sealed class VpkSlotOwnershipService
             }
 
             throw new InvalidOperationException(
-                $"Release ID {slot:D2} points to a VPK that Deadlimit Aggregator previously deployed for this project, " +
-                "but the file has been changed outside Deadlimit Aggregator. The slot will not be overwritten automatically.\n\n" +
+                $"Release ID {slot:D2} points to a VPK that Deadlimit Manager previously deployed for this project, " +
+                "but the file has been changed outside Deadlimit Manager. The slot will not be overwritten automatically.\n\n" +
                 $"{vpkPath}\n\n" +
                 "Restore/remove that VPK manually or choose another Release ID.");
         }
@@ -76,9 +76,9 @@ public sealed class VpkSlotOwnershipService
         }
 
         throw new InvalidOperationException(
-            $"Release ID {slot:D2} is already occupied by a VPK that is not known to this Deadlimit Aggregator project.\n\n" +
+            $"Release ID {slot:D2} is already occupied by a VPK that is not known to this Deadlimit Manager project.\n\n" +
             $"{vpkPath}\n\n" +
-            "Deadlimit Aggregator will not overwrite an unknown mod. Choose another Release ID or remove/move that VPK manually.");
+            "Deadlimit Manager will not overwrite an unknown mod. Choose another Release ID or remove/move that VPK manually.");
     }
 
     public void RecordSuccessfulDeployment(ProjectManifest manifest, string deployedVpkPath)
@@ -98,7 +98,7 @@ public sealed class VpkSlotOwnershipService
         if (ownershipFileExists && previous is null)
         {
             throw new InvalidOperationException(
-                $"Deadlimit Aggregator cannot update the malformed VPK ownership file safely:\n{ownershipPath}");
+                $"Deadlimit Manager cannot update the malformed VPK ownership file safely:\n{ownershipPath}");
         }
 
         if (previous is not null

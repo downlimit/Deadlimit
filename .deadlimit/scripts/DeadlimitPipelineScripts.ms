@@ -47,12 +47,12 @@
 */
 
 /*
-    Deadlimit Max Script for 3ds Max.
+    Deadlimit Pipeline Scripts — current MAXScript module.
 
     Run this script after exporting the regular DMX with Wall Worm. It reads the
     last Wall Worm export folder from 3dsMax.ini, finds the newest DMX there, and
     exports selected geometry and renderable Shape/Spline objects beside that DMX as <name>_vertexcolor.fbx.
-    Deadlimit Aggregator consumes it during PREPARE and keeps failed/cancelled handoffs for retry.
+    Deadlimit Manager consumes it during PREPARE and keeps failed/cancelled handoffs for retry.
 */
 
 /*
@@ -737,7 +737,7 @@ fn deadlimitVertexColorExportSidecar fixedGamma:false gammaValue:1.0 =
         select selectedExportNodes
         local exported = exportFile temporaryPath #noPrompt selectedOnly:true using:FBXEXP
         if exported != true or not (doesFileExist temporaryPath) then
-            throw "3ds Max FBX exporter did not create the sidecar."
+            throw "FBX exporter did not create the sidecar."
 
         fileClass.Copy temporaryPath sidecarPath true
         deleteFile temporaryPath
@@ -3084,7 +3084,7 @@ fn deadlimitDetachedInnerLineartApplyExplicitNormalsFast lineartNode =
 (
     -- Every generated face has smoothing group 1, so each connected output vertex owns one
     -- smooth normal. Editable Mesh can write those vertex normals directly as persistent explicit
-    -- normals (3ds Max 2015+), avoiding the temporary Edit Normals modifier and Modify-panel UI.
+    -- normals (supported MAXScript hosts), avoiding the temporary Edit Normals modifier and Modify-panel UI.
     convertToMesh lineartNode
     local vertexCount = getNumVerts lineartNode
     if vertexCount <= 0 then throw "Generated lineart mesh has no vertices for explicit normals."
@@ -3229,7 +3229,7 @@ fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false 
             -- Editable Poly flips complete elements, so select the complete generated face set
             -- and call its native FlipNormals button operation once. This reverses geometry and
             -- every map face together; polyop.flipNormals is intentionally avoided because it is
-            -- a no-op on this manifold Editable Poly result in 3ds Max 2025.
+            -- a no-op on this manifold Editable Poly result in the validated 2025 MAXScript host build.
             if flipGeometry and not fastUndo do
             (
                 local generatedFaceCount = polyop.getNumFaces lineartPoly
@@ -3523,7 +3523,7 @@ rollout deadlimitVertexColorFbxRollout "EXPORT VERTEX COLOR"
             format "Vertex Color FBX: %\nDMX: %\n" result[2] result[1]
             format "Inner Lineart Skin: % Skin(s), % clone(s) updated.\n" result[4][2] result[4][4]
             local gammaMessage = if result[3] then ("ON: " + (result[5] as string) + " / 2.2 = RGB exponent " + (result[6] as string)) else "OFF: stored RGB unchanged"
-            local successMessage = "SUCCESS\n\nVertex Color FBX exported to:\n" + result[2] + "\n\nFixed Gamma: " + gammaMessage + "\nLineart Skin: " + (result[4][4] as string) + " clone(s) synchronized\n\nRun PREPARE in Deadlimit Aggregator. A failed or cancelled PREPARE keeps the FBX for retry."
+            local successMessage = "SUCCESS\n\nVertex Color FBX exported to:\n" + result[2] + "\n\nFixed Gamma: " + gammaMessage + "\nLineart Skin: " + (result[4][4] as string) + " clone(s) synchronized\n\nRun PREPARE in Deadlimit Manager. A failed or cancelled PREPARE keeps the FBX for retry."
             showResultMessage successMessage "VERTEX COLOR FBX READY" false
         )
         catch
@@ -3537,7 +3537,7 @@ rollout deadlimitVertexColorFbxRollout "EXPORT VERTEX COLOR"
 
 )
 
-deadlimitPipelineFloater = newRolloutFloater "Deadlimit Max Script" 380 410
+deadlimitPipelineFloater = newRolloutFloater "Deadlimit Scripts" 380 410
 addRollout deadlimitVertexColorBoneToolsRollout deadlimitPipelineFloater rolledUp:false
 addRollout deadlimitVertexColorToolsRollout deadlimitPipelineFloater rolledUp:false
 addRollout deadlimitVertexColorInnerLineartRollout deadlimitPipelineFloater rolledUp:false

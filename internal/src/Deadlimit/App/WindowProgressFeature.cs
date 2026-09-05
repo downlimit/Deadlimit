@@ -4,7 +4,7 @@ internal static class WindowProgressFeature
 {
     private const string AppTitle = UiText.ProductName;
     private const string ProgressTitlePrefix = AppTitle + " — ";
-    private const string LegacyProgressTitlePrefix = "Deadlimit Aggregator — ";
+    private const string LegacyProgressTitlePrefix = "Deadlimit Manager — ";
 
     public static void Attach(MainForm form)
     {

@@ -85,7 +85,7 @@ understand their rights, obligations, validation steps, and review path from roo
 Initial supported/tested matrix:
 
 - Windows 11 x64: tested and supported.
-- 3ds Max 2025: tested and supported.
+- MAXScript host 2025: tested and supported.
 - Wall Worm 7: supported only for the exact build recorded in release notes.
 - Reduced CSDK 12: supported only for the exact setup generation recorded in release notes.
 - Current Deadlock Steam build: tested snapshot recorded per release.

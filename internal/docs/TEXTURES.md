@@ -1,4 +1,4 @@
-# Deadlimit Aggregator — Custom texture binding
+# Deadlimit Manager — Custom texture binding
 
 ## 2026-08-23 — Stage 2 inherited character-material scaffold
 
@@ -15,11 +15,11 @@ The important distinction is therefore:
 
 Current CSDK12 still uses `.vmat` sources in `content/citadel_addons/<addon>` and Material Editor for authoring/compilation. Current Source 2 materials expose conventional inputs such as `TextureColor`, `TextureNormal`, `TextureRoughness`, `TextureAmbientOcclusion`, and `TextureMetalness`; each input accepts an inline numeric value when no texture is assigned.
 
-Current Source 2 import settings also associate `TextureMetalness` with `F_METALNESS_TEXTURE` (and, for the complex shader, specular support), so Deadlimit Aggregator-managed materials reconcile the metalness texture-enable combo when the project-root metal map appears or disappears.
+Current Source 2 import settings also associate `TextureMetalness` with `F_METALNESS_TEXTURE` (and, for the complex shader, specular support), so Deadlimit Manager-managed materials reconcile the metalness texture-enable combo when the project-root metal map appears or disappears.
 
 ### V4 creation rule
 
-A missing CUSTOM VMAT is created from the uniquely inferred current retail character material (for example the body/skin/head/face material actually referenced by the current hero/model), then Deadlimit Aggregator sanitizes **only its texture inputs**.
+A missing CUSTOM VMAT is created from the uniquely inferred current retail character material (for example the body/skin/head/face material actually referenced by the current hero/model), then Deadlimit Manager sanitizes **only its texture inputs**.
 
 This intentionally preserves the retail material's:
 
@@ -29,7 +29,7 @@ This intentionally preserves the retail material's:
 - outline/rim/highlight strengths, thicknesses, radii and similar scalar tuning;
 - other non-texture flags and parameters.
 
-Deadlimit Aggregator does not hardcode a specific `v1`/`v3` material generation. It inherits whichever defensible current retail character material is resolved by the current hero/DMX pipeline.
+Deadlimit Manager does not hardcode a specific `v1`/`v3` material generation. It inherits whichever defensible current retail character material is resolved by the current hero/DMX pipeline.
 
 ### Automatic project-root PNG binding
 
@@ -39,7 +39,7 @@ Project-root PNG files are synchronized to:
 content/citadel_addons/<addon>/materials/<addon>/textures/
 ```
 
-Matching filenames are bound into Deadlimit Aggregator-managed CUSTOM VMAT texture slots.
+Matching filenames are bound into Deadlimit Manager-managed CUSTOM VMAT texture slots.
 
 Supported standard suffixes:
 
@@ -62,7 +62,7 @@ builder_ao.png          -> TextureAmbientOcclusion
 builder_metal.png       -> TextureMetalness
 ```
 
-For specialty inherited `Texture*` fields Deadlimit Aggregator also supports semantic-name matching. Example: a retail parameter `TextureRimLightMask` can bind `builder_rimlightmask.png` (or `builder_rimlight.png`) when the match is unambiguous.
+For specialty inherited `Texture*` fields Deadlimit Manager also supports semantic-name matching. Example: a retail parameter `TextureRimLightMask` can bind `builder_rimlightmask.png` (or `builder_rimlight.png`) when the match is unambiguous.
 
 If there is exactly one CUSTOM material and exactly one candidate for a semantic slot, a unique-project fallback may be used even if the filename prefix differs. Ambiguous matches fail closed.
 
@@ -107,7 +107,7 @@ Generated V4 scaffolds contain:
 // DEADLIMIT_GENERATED_CUSTOM_VMAT_V4
 ```
 
-Deadlimit Aggregator records current generated custom-material ownership in:
+Deadlimit Manager records current generated custom-material ownership in:
 
 ```text
 <project>/.deadlimit/managed-custom-materials.json

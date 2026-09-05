@@ -23,5 +23,5 @@ Checks run:
 
 ## Compatibility
 
-List the Windows, Deadlimit, Deadlock, CSDK, 3ds Max, Wall Worm, and other
+List the Windows, Deadlimit, Deadlock, CSDK, MAXScript host, Wall Worm, and other
 versions used for manual validation when they are relevant.

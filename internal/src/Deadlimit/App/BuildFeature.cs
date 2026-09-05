@@ -96,9 +96,9 @@ internal static class BuildFeature
             MessageBox.Show(
                 form,
                 UiText.T(
-                    "Save the current Deadlimit Aggregator project before running PREPARE FOR CSDK.",
-                    "Сохраните текущий проект Deadlimit Aggregator перед запуском ПОДГОТОВИТЬ ДЛЯ CSDK."),
-                "Deadlimit Aggregator",
+                    "Save the current Deadlimit Manager project before running PREPARE FOR CSDK.",
+                    "Сохраните текущий проект Deadlimit Manager перед запуском ПОДГОТОВИТЬ ДЛЯ CSDK."),
+                "Deadlimit Manager",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
             return;
@@ -192,7 +192,7 @@ internal static class BuildFeature
                 $"CSDK content:\n{result.AddonContentRoot}\n\n" +
                 $"Model source:\n{result.SourceVmdlPath}\n\n" +
                 $"CSDK game output: CLEAN. {gameState}\n" +
-                $"Deadlimit Aggregator did not compile it; use LAUNCH CSDK while working on the model and materials, or BUILD FOR TEST when you want to compile and deploy the game-client VPK. Launch the game separately when you are ready.\n\n" +
+                $"Deadlimit Manager did not compile it; use LAUNCH CSDK while working on the model and materials, or BUILD FOR TEST when you want to compile and deploy the game-client VPK. Launch the game separately when you are ready.\n\n" +
                 $"Log: {result.LogPath}",
                 $"Рабочие файлы проекта подготовлены.\n\n" +
                 $"Аддон: {result.AddonName}\n" +
@@ -210,7 +210,7 @@ internal static class BuildFeature
                 $"CSDK content:\n{result.AddonContentRoot}\n\n" +
                 $"Исходник модели:\n{result.SourceVmdlPath}\n\n" +
                 $"CSDK game output: CLEAN. {gameState}\n" +
-                $"Deadlimit Aggregator его не компилировал; для работы с моделью и материалами используйте ЗАПУСК CSDK, а для компиляции и установки VPK игрового клиента Deadlock — СОБРАТЬ ДЛЯ ТЕСТА. Игру запускайте отдельно, когда будете готовы.\n\n" +
+                $"Deadlimit Manager его не компилировал; для работы с моделью и материалами используйте ЗАПУСК CSDK, а для компиляции и установки VPK игрового клиента Deadlock — СОБРАТЬ ДЛЯ ТЕСТА. Игру запускайте отдельно, когда будете готовы.\n\n" +
                 $"Лог: {result.LogPath}");
 
             using var dialog = BuildTestSuccessDialog.CreatePrepareSummary(message);
@@ -245,9 +245,9 @@ internal static class BuildFeature
             MessageBox.Show(
                 form,
                 UiText.T(
-                    "Save the current Deadlimit Aggregator project before running BUILD FOR TEST.",
-                    "Сохраните текущий проект Deadlimit Aggregator перед запуском СОБРАТЬ ДЛЯ ТЕСТА."),
-                "Deadlimit Aggregator",
+                    "Save the current Deadlimit Manager project before running BUILD FOR TEST.",
+                    "Сохраните текущий проект Deadlimit Manager перед запуском СОБРАТЬ ДЛЯ ТЕСТА."),
+                "Deadlimit Manager",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
             return;
@@ -259,8 +259,8 @@ internal static class BuildFeature
             var closeAnswer = MessageBox.Show(
                 form,
                 UiText.T(
-                    "Deadlock is running and has the loaded VPK locked, so Deadlimit Aggregator cannot replace the current mod archive while the game is open.\n\nClose Deadlock automatically and continue BUILD FOR TEST?",
-                    "Deadlock сейчас запущен и блокирует загруженный VPK, поэтому Deadlimit Aggregator не может заменить текущий архив мода, пока игра открыта.\n\nАвтоматически закрыть Deadlock и продолжить СОБРАТЬ ДЛЯ ТЕСТА?"),
+                    "Deadlock is running and has the loaded VPK locked, so Deadlimit Manager cannot replace the current mod archive while the game is open.\n\nClose Deadlock automatically and continue BUILD FOR TEST?",
+                    "Deadlock сейчас запущен и блокирует загруженный VPK, поэтому Deadlimit Manager не может заменить текущий архив мода, пока игра открыта.\n\nАвтоматически закрыть Deadlock и продолжить СОБРАТЬ ДЛЯ ТЕСТА?"),
                 UiText.T("Deadlock must be closed", "Нужно закрыть Deadlock"),
                 MessageBoxButtons.YesNo,
                 MessageBoxIcon.Information);

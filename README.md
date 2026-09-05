@@ -3,7 +3,7 @@
 Deadlimit is a free, open-source Windows toolset that removes repetitive steps
 from the Deadlock character-replacement authoring workflow.
 
-It connects an artist-owned project folder, 3ds Max export, Reduced CSDK
+It connects an artist-owned project folder, DCC authoring/export, Reduced CSDK
 authoring, resource compilation, VPK packaging, and local game deployment. The
 project is hobby software maintained on a best-effort basis and may need updates
 whenever Deadlock or an external tool changes.
@@ -19,8 +19,7 @@ whenever Deadlock or an external tool changes.
 - **Deadlimit Manager** — the main Windows desktop application for projects,
   source extraction, CSDK preparation, live synchronization, build, packaging,
   and local deployment.
-- **Deadlimit Max Script** — 3ds Max helpers used by the DMX and Vertex Color
-  pipeline. The implementation retains the established
+- **Deadlimit Scripts** (**Deadlimit Pipeline Scripts**) — DCC-side authoring and export helpers for the DMX, Vertex Color, and Deadlock/Source 2 pipeline. The current bundled module is MAXScript-based; Blender support is planned under the same product. The implementation retains the established
   `DeadlimitPipelineScripts.ms` identifiers for compatibility.
 - **Deadlimit Shade** — experimental Substance 3D Painter shader and preset work.
 
@@ -30,7 +29,7 @@ Script are the current project focus.
 ## Tested environment
 
 - Windows 11 x64
-- Autodesk 3ds Max 2025
+- Autodesk tooling used by the current MAXScript module 2025
 - Wall Worm 7
 - Reduced CSDK 12
 - a current Steam installation of Deadlock

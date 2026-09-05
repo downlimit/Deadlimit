@@ -30,7 +30,7 @@ Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'Deadlimi
 
 # Static control text in App should either be localized, a technical/product token, a glyph, or data-driven.
 $allowed = @(
-    'OK', '3ds Max', 'CSDK', 'DMX', 'PNG', '📂', 'Deadlimit Aggregator'
+    'OK', 'CSDK', 'DMX', 'PNG', '📂', 'Deadlimit Manager', 'Deadlimit Scripts'
 )
 $files = Get-ChildItem 'internal/src/Deadlimit/App' -Filter *.cs -File
 foreach ($file in $files) {

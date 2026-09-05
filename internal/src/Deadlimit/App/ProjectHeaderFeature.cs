@@ -238,8 +238,8 @@ internal static class ProjectHeaderFeature
         toolTip.SetToolTip(
             settingsOverlay,
             UiText.T(
-                "Open Deadlimit Aggregator settings.\n\nConfigure the projects folder, tool locations, interface language and theme.",
-                "Открыть настройки Deadlimit Aggregator.\n\nЗдесь задаются папка проектов, пути к инструментам, язык и тема интерфейса."));
+                "Open Deadlimit Manager settings.\n\nConfigure the projects folder, tool locations, interface language and theme.",
+                "Открыть настройки Deadlimit Manager.\n\nЗдесь задаются папка проектов, пути к инструментам, язык и тема интерфейса."));
         toolTip.SetToolTip(
             prepareOverlay,
             UiText.T(
