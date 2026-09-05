@@ -252,3 +252,124 @@ are known, while avoiding an invented replacement for game-only lighting.
    direct diffuse/specular, rim, and final composition. Keep VCS, SPIR-V,
    reflected source, generated textures, CSDK files, and Valve assets out of
    Git.
+
+# NPR Global Control Values
+
+Issue #136 rechecked the static identity before inspecting controls. Steam app
+`1422450` remains on buildid `24882156`; the feature, PS, and VS VCS hashes in
+Reference Identity still match the Ivy capture. The table below covers the
+ordinary main PS family: static combo `24`, dynamic combo `0`.
+
+All `__Attribute__` controls below are selected as PS static-combo-24 globals
+with layout set `0` and control `0`. In the selected Vulkan SPIR-V they reside
+in `_Globals_`, descriptor set `1`, binding `0`, structure ID `1832`.
+`destination` is the VCS static-combo destination index; `offset` is the
+SPIR-V byte offset in the reflected uniform block.
+
+| Name | VCS source / owner | Type and location | Declared metadata default | Lifetime classification | Value evidence |
+|---|---|---|---|---|---|
+| `g_bNPRBounceDiffuse` | `__Attribute__` / `_Globals_` | VCS `Bool`; SPIR-V `int`; destination 10; offset 40 | `IntDefs = [0,0,0,0]` | per-draw global | declaration only; no current retail value recovered |
+| `g_flNPRDiffuseStepSharpness` | `__Attribute__` / `_Globals_` | VCS `Float`; SPIR-V `float`; destination 11; offset 44 | `FloatDefs = [0,0,0,0]` | per-draw global | declaration only; no current retail value recovered |
+| `g_flNPRDiffusePbrBlend` | `__Attribute__` / `_Globals_` | VCS `Float`; SPIR-V `float`; destination 14; offset 56 | `FloatDefs = [0,0,0,0]` | per-draw global | declaration only; no current retail value recovered |
+| `g_bNPRDirectDiffuse` | `__Attribute__` / `_Globals_` | VCS `Bool`; SPIR-V `int`; destination 18; offset 72 | `IntDefs = [0,0,0,0]` | per-draw global | declaration only; no current retail value recovered |
+| `g_flNPRDirectLightWrap` | `__Attribute__` / `_Globals_` | VCS `Float`; SPIR-V `float`; destination 19; offset 76 | `FloatDefs = [0,0,0,0]` | per-draw global | declaration only; no current retail value recovered |
+| `g_flOoNPRDirectLightNormalization` | `__Attribute__` / `_Globals_` | VCS `Float`; SPIR-V `float`; destination 20; offset 80 | `FloatDefs = [0,0,0,0]` | per-draw global | declaration only; no current retail value recovered |
+| `g_bNPRDirectSpecular` | `__Attribute__` / `_Globals_` | VCS `Bool`; SPIR-V `int`; destination 21; offset 84 | `IntDefs = [0,0,0,0]` | per-draw global | declaration only; no current retail value recovered |
+| `g_bNPRRimLighting` | `__Attribute__` / `_Globals_` | VCS `Bool`; SPIR-V `int`; destination 42; offset 168 | `IntDefs = [0,0,0,0]` | per-draw global | declaration only; no current retail value recovered |
+
+Additional selected NPR globals have the same owner/lifetime: DfAO influence
+range at offset 48, light weights at 60, exposure control at 108, exposure
+targets at 112, and the rim controls at 172–204. They are outside the bounded
+direct-diffuse implementation gate, yet establish that the whole NPR family is
+engine-provided rather than a set of Ivy VMAT scalar values.
+
+The per-view gate is separate from `_Globals_`:
+
+| Name | Owner | Type and location | Required interpretation |
+|---|---|---|---|
+| `PerViewConstantBufferCitadel_t._m5` | per-view constant buffer | SPIR-V `int`; descriptor set `1`, binding `4`; structure `1095`, member `5`, offset `652` | NPR branch gate: zero uses the ordinary bounce path; nonzero permits the NPR branches |
+
+The shader metadata's zero defaults are declared defaults only. The selected
+SPIR-V loads these fields from bound uniform buffers; it does not embed the
+metadata defaults as literal values. Consequently, no row above supplies a
+confirmed current retail value.
+
+# Value Provenance
+
+| Source examined | Result | Evidence class |
+|---|---|---|
+| current `pbr_vulkan_60_features.vcs` and `pbr_vulkan_60_ps.vcs` | exact names, `__Attribute__` source, VCS types, destinations, and all-zero declared metadata defaults | confirmed static metadata |
+| selected combo-24/dynamic-0 Vulkan SPIR-V | `_Globals_` set/binding, concrete member types/offsets, and direct buffer loads | confirmed static code/layout |
+| Ivy VMAT and recorded manifest | only the enabling feature `F_USE_NPR_LIGHTING`; no assignments for the NPR global controls | confirmed material-time absence |
+| readable current retail executable/config/resource files, searched by exact direct-diffuse names | no assignment/default found | confirmed negative result for the inspected files; does not prove an engine writer is absent |
+| configured Reduced CSDK12 files, searched by the same exact names | no assignment/default found | secondary negative result; CSDK provenance remains separate from retail |
+
+`g_flOoNPRDirectLightNormalization` is a direct `_Globals_` load at offset 80.
+The selected code contains no stable constant or local function that derives it
+before the direct-diffuse mix. Its value therefore remains per-draw runtime
+data alongside the wrap, sharpness, blend, and enable fields.
+
+`S_USE_STATUS_EFFECTS_PROXY=1` selects the status-capable static family. The
+ordinary state remains dynamic combo `0`; `D_USE_STATUS_EFFECTS_PROXY=1`
+would select dynamic combo `2`. It has no bearing on the unavailable NPR global
+values and must stay disabled for the requested ordinary-Ivy capture.
+
+# Direct-Diffuse Readiness
+
+The direct-diffuse slice is **not implementation-ready**. The exact static
+equation is known, while every non-geometric control in its enabled branch is a
+runtime `_Globals_` field:
+
+```text
+enable         = g_bNPRDirectDiffuse              // offset 72
+sharpness      = g_flNPRDiffuseStepSharpness      // offset 44
+blend          = g_flNPRDiffusePbrBlend           // offset 56
+directWrap     = g_flNPRDirectLightWrap           // offset 76
+normalization  = g_flOoNPRDirectLightNormalization // offset 80
+```
+
+The per-view gate at set `1`/binding `4`, offset `652`, is also required before
+the branch can execute. `NdotL` further depends on the engine's direct-light
+vector: `PerViewLightingConstantBufferGpu_t._m10` is a `vec4` at descriptor set
+`3`, binding `0`, structure `1475`, member `10`, byte offset `31120`.
+
+Painter can provide a chosen test light and an artist-facing approximation,
+yet it cannot turn the VCS zeros into confirmed retail controls. A next GLSL
+issue may implement the direct-diffuse sub-equation only after a capture records
+the five values above and establishes the selected gate state; until then it
+must label any values as an approximation.
+
+# Runtime Capture Specification
+
+Static/resource investigation leaves an exact runtime blocker. Do not attach,
+inject, hook, overlay, or instrument the retail online game in this work item.
+The following is the minimal specification for a separate safe offline/CSDK or
+approved frame-capture task.
+
+| Capture target | Exact identity |
+|---|---|
+| draw | Ivy body draw using `models/heroes_staging/tengu/tengu_v2/materials/ivy_bodyv3.vmat_c` |
+| shader | `shaders/vfx/pbr_vulkan_60_ps.vcs`, SHA-256 `eceff13193baccd5310db90ac9b3dd36928d941753c98494e349fa9e29826930`, Vulkan VCS 70 |
+| permutation | main opaque static combo 24: `S_USE_NPR_LIGHTING=1`, `S_USE_STATUS_EFFECTS_PROXY=1`; dynamic combo 0 with status proxy disabled |
+| NPR controls buffer | `_Globals_`, descriptor set 1, binding 0, SPIR-V structure 1832 |
+| NPR gate buffer | `PerViewConstantBufferCitadel_t`, descriptor set 1, binding 4, structure 1095 |
+| direct-light buffer | `PerViewLightingConstantBufferGpu_t`, descriptor set 3, binding 0, structure 1475 |
+
+Read these values from that same draw:
+
+| Buffer | Offset / type | Required value |
+|---|---|---|
+| `_Globals_` | 44 / `float` | `g_flNPRDiffuseStepSharpness` |
+| `_Globals_` | 56 / `float` | `g_flNPRDiffusePbrBlend` |
+| `_Globals_` | 72 / `int` | `g_bNPRDirectDiffuse` |
+| `_Globals_` | 76 / `float` | `g_flNPRDirectLightWrap` |
+| `_Globals_` | 80 / `float` | `g_flOoNPRDirectLightNormalization` |
+| `PerViewConstantBufferCitadel_t` | 652 / `int` | `_m5` NPR branch gate |
+| `PerViewLightingConstantBufferGpu_t` | 31120 / `vec4` | `_m10`; its XYZ is the selected direct-light vector used by the reflected `NdotL` path |
+
+For full ordinary-Ivy classification, also record `_Globals_` offsets 40
+(`g_bNPRBounceDiffuse`), 84 (`g_bNPRDirectSpecular`), and 168
+(`g_bNPRRimLighting`). A capture may use CSDK/offline tooling only if it proves
+the same VCS identity and buffer layout; its values must be labelled CSDK
+evidence until matched to a retail frame. No present static source establishes
+that equivalence.
