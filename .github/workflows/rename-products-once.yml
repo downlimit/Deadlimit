@@ -1,0 +1,241 @@
+name: One-time Deadlimit product naming migration
+
+on:
+  push:
+    branches: [ product/deadlimit-scripts-branding-v2 ]
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: product/deadlimit-scripts-branding-v2
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Apply product naming migration
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import re
+          import subprocess
+
+          root = Path.cwd()
+
+          def read_text(path):
+              try:
+                  return path.read_bytes().decode('utf-8')
+              except UnicodeDecodeError:
+                  return None
+
+          def write_text(path, text):
+              path.write_bytes(text.encode('utf-8'))
+
+          def tracked_paths():
+              raw = subprocess.check_output(['git', 'ls-files', '-z'])
+              return [root / item.decode('utf-8') for item in raw.split(b'\0') if item]
+
+          # Obsolete user-facing shortcut aliases are no longer part of the product vocabulary.
+          for relative in ['.gitignore', 'DeadlimitManager.cmd']:
+              path = root / relative
+              text = read_text(path)
+              if text is None:
+                  continue
+              lines = text.splitlines(keepends=True)
+              lines = [line for line in lines if 'Deadlimit Aggregator.lnk' not in line and 'Deadlimit Aggregator Updater.lnk' not in line]
+              write_text(path, ''.join(lines))
+
+          replacements = [
+              ('Autodesk 3ds Max', 'Autodesk tooling used by the current MAXScript module'),
+              ('Deadlimit Aggregator', 'Deadlimit Manager'),
+              ('Deadlimit Max Script', 'Deadlimit Scripts'),
+              ('MaxScript Deadlimit', 'Deadlimit Scripts'),
+              ('Deadlimit MaxScript', 'Deadlimit Scripts'),
+              ('3ds Max', 'MAXScript host'),
+              ('Max selection', 'host selection'),
+              ('current Max session', 'current host session'),
+              ('.deadlimit/maxscript-vertcolor-trans', '.deadlimit/scripts'),
+              ('.deadlimit\\maxscript-vertcolor-trans', '.deadlimit\\scripts'),
+              ('maxscript-vertcolor-trans', 'scripts'),
+              ('Deadlimit.MaxScript.PipelineScripts.ms', 'Deadlimit.Scripts.PipelineScripts.ms'),
+              ('VertexColorMaxScriptService', 'DeadlimitScriptsService'),
+              ('AddMaxScriptFolderRow', 'AddScriptsFolderRow'),
+              ('OpenMaxScriptFolder', 'OpenScriptsFolder'),
+          ]
+
+          for path in tracked_paths():
+              if not path.is_file():
+                  continue
+              text = read_text(path)
+              if text is None:
+                  continue
+              updated = text
+              for old, new in replacements:
+                  updated = updated.replace(old, new)
+              if updated != text:
+                  write_text(path, updated)
+
+          # Public product contract: three sibling products under Deadlimit.
+          readme = root / 'README.md'
+          text = read_text(readme)
+          text = text.replace('an artist-owned project folder, MAXScript host export, Reduced CSDK', 'an artist-owned project folder, DCC authoring/export, Reduced CSDK')
+          text = re.sub(
+              r'- \*\*Deadlimit Scripts\*\* — MAXScript host helpers used by the DMX and Vertex Color\n  pipeline\. The implementation retains the established\n  `DeadlimitPipelineScripts\.ms` identifiers for compatibility\.',
+              '- **Deadlimit Scripts** (**Deadlimit Pipeline Scripts**) — DCC-side authoring and export helpers for the DMX, Vertex Color, and Deadlock/Source 2 pipeline. The current bundled module is MAXScript-based; Blender support is planned under the same product. The implementation retains the established `DeadlimitPipelineScripts.ms` identifiers for compatibility.',
+              text)
+          text = re.sub(
+              r'Blender is planned but unsupported\. Shade is experimental; Manager and the Max\nScript are the current project focus\.',
+              'The current bundled Deadlimit Scripts module is MAXScript-based; Blender support is planned under the same product. Deadlimit Shade remains experimental.',
+              text)
+          text = text.replace('- Autodesk tooling used by the current MAXScript module 2025', '- Deadlimit Scripts MAXScript host: 2025')
+          write_text(readme, text)
+
+          readme_ru = root / 'README.ru.md'
+          text = read_text(readme_ru)
+          text = text.replace('рабочую папку художника, экспорт из MAXScript host, авторинг в Reduced', 'рабочую папку художника, DCC-экспорт и авторинг в Reduced')
+          text = re.sub(
+              r'- \*\*Deadlimit Scripts\*\* — вспомогательные инструменты MAXScript host для DMX и\n  Vertex Color\. Имена `DeadlimitPipelineScripts\.ms` сохранены для совместимости\.',
+              '- **Deadlimit Scripts** (**Deadlimit Pipeline Scripts**) — DCC-инструменты авторинга и экспорта для DMX, Vertex Color и Deadlock/Source 2 pipeline. Текущий встроенный модуль написан на MAXScript; поддержка Blender будет развиваться в рамках того же продукта. Имена `DeadlimitPipelineScripts.ms` сохранены для совместимости.',
+              text)
+          text = re.sub(
+              r'Blender пока не поддерживается\. Shade имеет экспериментальный статус; основной\nфокус — Manager и Max Script\.',
+              'Текущий встроенный модуль Deadlimit Scripts написан на MAXScript; поддержка Blender запланирована в рамках того же продукта. Deadlimit Shade пока экспериментальный.',
+              text)
+          text = text.replace('- Autodesk tooling used by the current MAXScript module 2025', '- Deadlimit Scripts MAXScript host: 2025')
+          write_text(readme_ru, text)
+
+          scripts_readme = root / '.deadlimit' / 'maxscript-vertcolor-trans' / 'README.md'
+          text = read_text(scripts_readme)
+          text = text.replace(
+              '`DeadlimitPipelineScripts.ms` is the current MAXScript host implementation of Deadlimit Scripts.',
+              '`DeadlimitPipelineScripts.ms` is the current MAXScript implementation of **Deadlimit Scripts (Deadlimit Pipeline Scripts)**.')
+          text = text.replace(
+              'The implementation filename and existing MaxScript class/global identifiers are retained for compatibility. The project name is `Deadlimit Scripts`.',
+              'The implementation filename and existing MAXScript class/global identifiers are retained for compatibility. `Deadlimit Scripts` is the product name; `Deadlimit Pipeline Scripts` is its long form. Additional DCC implementations, including Blender, share this product scope.')
+          text = text.replace('native MAXScript host rollout floater', 'native MAXScript rollout floater')
+          text = text.replace('modern MAXScript host', 'modern MAXScript hosts')
+          text = text.replace('MAXScript host 2025', 'validated 2025 MAXScript host build')
+          write_text(scripts_readme, text)
+
+          script = root / '.deadlimit' / 'maxscript-vertcolor-trans' / 'DeadlimitPipelineScripts.ms'
+          text = read_text(script)
+          text = text.replace('Deadlimit Scripts for MAXScript host.', 'Deadlimit Pipeline Scripts — current MAXScript module.')
+          text = text.replace('throw "MAXScript host FBX exporter did not create the sidecar."', 'throw "FBX exporter did not create the sidecar."')
+          text = text.replace('(MAXScript host 2015+)', '(supported MAXScript hosts)')
+          text = text.replace('in MAXScript host 2025.', 'in the validated 2025 MAXScript host build.')
+          write_text(script, text)
+
+          settings = root / 'internal' / 'src' / 'Deadlimit' / 'App' / 'SettingsForm.cs'
+          text = read_text(settings)
+          text = text.replace('CreatePreferenceCaption("MAXScript host")', 'CreatePreferenceCaption(UiText.T("Scripts", "Скрипты"))')
+          text = text.replace('UiText.T("📂 Deadlimit Scripts", "📂 Deadlimit Scripts")', '"📂 Deadlimit Scripts"')
+          text = text.replace('UiText.T("MaxScript folder unavailable", "Папка MaxScript недоступна")', 'UiText.T("Deadlimit Scripts folder unavailable", "Папка Deadlimit Scripts недоступна")')
+          write_text(settings, text)
+
+          uitext = root / 'internal' / 'src' / 'Deadlimit' / 'App' / 'UiText.cs'
+          text = read_text(uitext)
+          text = text.replace('            .Replace("Deadlimit Manager", ProductName, StringComparison.Ordinal)\n', '')
+          write_text(uitext, text)
+
+          compatibility = root / 'COMPATIBILITY.md'
+          text = read_text(compatibility)
+          text = text.replace('Autodesk tooling used by the current MAXScript module | 2025', 'Deadlimit Scripts MAXScript host | 2025')
+          write_text(compatibility, text)
+
+          smoke = root / 'internal' / 'tests' / 'ui-localization-smoke.ps1'
+          text = read_text(smoke)
+          text = text.replace("'OK', 'MAXScript host', 'CSDK', 'DMX', 'PNG', '📂', 'Deadlimit Manager'", "'OK', 'CSDK', 'DMX', 'PNG', '📂', 'Deadlimit Manager', 'Deadlimit Scripts'")
+          write_text(smoke, text)
+
+          # Preserve technical legacy executable/assembly guards, remove only retired display-brand checks.
+          build = root / '.github' / 'workflows' / 'build.yml'
+          text = read_text(build)
+          start = text.index('          $forbidden = @(')
+          end = text.index('          )\n          foreach ($check in $forbidden)', start)
+          block = text[start:end]
+          display_brand_markers = [
+              '<Product>Deadlimit Manager</Product>',
+              'Text = "Deadlimit Manager"',
+              'private const string AppTitle = "Deadlimit Manager"',
+          ]
+          kept = [line for line in block.splitlines(keepends=True) if not any(marker in line for marker in display_brand_markers)]
+          for i in range(len(kept) - 1, -1, -1):
+              if '@{ Path =' in kept[i]:
+                  kept[i] = re.sub(r'},\s*$', '}\n', kept[i])
+                  break
+          text = text[:start] + ''.join(kept) + text[end:]
+          marker = '      - name: Updater root-resolution smoke\n'
+          drift_step = '''      - name: Product naming drift guard\n        shell: pwsh\n        run: |\n          $forbiddenTerms = @(\n            ('Deadlimit ' + 'Aggregator'),\n            ('Deadlimit ' + 'Max Script'),\n            ('Deadlimit ' + 'MaxScript'),\n            ('MaxScript ' + 'Deadlimit'),\n            ('Deadlimit ' + 'Shader'),\n            ('3ds' + ' Max'),\n            ('3D' + ' Max')\n          )\n          foreach ($term in $forbiddenTerms) {\n            $matches = @(git grep -n -I -F -- $term -- .)\n            if ($LASTEXITCODE -gt 1) {\n              throw "git grep failed while checking product naming: $term"\n            }\n            if ($matches.Count -gt 0) {\n              throw "Forbidden legacy/product-drift term '$term' remains:`n$($matches -join "`n")"\n            }\n          }\n\n'''
+          if 'Product naming drift guard' not in text:
+              text = text.replace(marker, drift_step + marker)
+          write_text(build, text)
+
+          subprocess.check_call(['git', 'mv', '.deadlimit/maxscript-vertcolor-trans', '.deadlimit/scripts'])
+          subprocess.check_call(['git', 'mv', 'internal/src/Deadlimit/Core/VertexColorMaxScriptService.cs', 'internal/src/Deadlimit/Core/DeadlimitScriptsService.cs'])
+
+          (root / '.github' / 'workflows' / 'rename-products-once.yml').unlink()
+
+          forbidden_terms = [
+              'Deadlimit ' + 'Aggregator',
+              'Deadlimit ' + 'Max Script',
+              'Deadlimit ' + 'MaxScript',
+              'MaxScript ' + 'Deadlimit',
+              'Deadlimit ' + 'Shader',
+              '3ds' + ' Max',
+              '3D' + ' Max',
+          ]
+          for term in forbidden_terms:
+              result = subprocess.run(['git', 'grep', '-n', '-I', '-F', '--', term, '--', '.'], capture_output=True, text=True)
+              if result.returncode == 0:
+                  raise SystemExit(f"Product naming migration left {term!r}:\n{result.stdout}")
+              if result.returncode > 1:
+                  raise SystemExit(f"git grep failed for {term!r}: {result.stderr}")
+
+          public = read_text(readme)
+          required_products = ['**Deadlimit Manager**', '**Deadlimit Scripts**', '**Deadlimit Shade**', 'Deadlimit Pipeline Scripts']
+          for product in required_products:
+              if product not in public:
+                  raise SystemExit(f'Missing canonical product declaration: {product}')
+
+          subprocess.check_call(['git', 'diff', '--check'])
+          '@ | python -
+
+      - name: Restore
+        run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
+
+      - name: Build
+        run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+
+      - name: UI localization smoke
+        shell: pwsh
+        run: internal/tests/ui-localization-smoke.ps1
+
+      - name: Prepare behavior smoke
+        shell: pwsh
+        run: internal/tests/prepare-behavior-smoke.ps1
+
+      - name: Portable release smoke
+        shell: pwsh
+        run: internal/tests/portable-release-smoke.ps1
+
+      - name: Installer/updater smoke
+        shell: pwsh
+        run: internal/tests/installer-updater-smoke.ps1
+
+      - name: Commit migration
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Rename Deadlimit scripting product to Deadlimit Scripts'
+          git push origin HEAD:product/deadlimit-scripts-branding-v2
