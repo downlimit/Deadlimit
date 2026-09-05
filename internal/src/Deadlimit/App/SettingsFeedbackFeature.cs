@@ -64,7 +64,7 @@ internal static class SettingsFeedbackFeature
         };
         var openButton = new Button
         {
-            Text = UiText.T("OPEN", "ПЕРЕЙТИ"),
+            Text = UiText.T("Open", "Перейти"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 4, 0, 4),
@@ -81,8 +81,8 @@ internal static class SettingsFeedbackFeature
         toolTip.SetToolTip(
             openButton,
             UiText.T(
-                "Open the **Deadlimit feedback** page on GitHub to report a problem or suggest an improvement.\n\nIf an unusual error keeps happening and you cannot solve it, attach the latest log file. A log is a text report of what Deadlimit was doing.\n\nTo open the logs folder, return to the main project window and click the document icon next to **SAVE PROJECT**.",
-                "Открыть страницу **обратной связи Deadlimit** на GitHub, где можно сообщить об ошибке или предложить улучшение.\n\nЕсли необычная ошибка повторяется и справиться с ней не получается, приложите последний файл лога. Лог — это текстовый отчёт о том, что делал Deadlimit.\n\nЧтобы открыть папку с логами, вернитесь в главное окно проекта и нажмите кнопку с иконкой документа рядом с **СОХРАНИТЬ ПРОЕКТ**."));
+                "Open the **Deadlimit feedback** page on GitHub. Choose Bug report to describe a problem or Feature request to suggest an improvement.\n\nIf an unusual error keeps happening and you cannot solve it, attach the latest **log file**. A log is a text report of what Deadlimit was doing.\n\nTo open the logs folder, return to the main project window and click the document icon next to **SAVE PROJECT**.",
+                "Открыть страницу **обратной связи Deadlimit** на GitHub. Выберите Bug report, чтобы описать ошибку, или Feature request, чтобы предложить улучшение.\n\nЕсли необычная ошибка повторяется и справиться с ней не получается, приложите последний **файл лога**. Лог — это текстовый отчёт о том, что делал Deadlimit.\n\nЧтобы открыть папку с логами, вернитесь в главное окно проекта и нажмите кнопку с иконкой документа рядом с **СОХРАНИТЬ ПРОЕКТ**."));
 
         grid.Controls.Add(caption, 0, row);
         grid.Controls.Add(openButton, 1, row);
