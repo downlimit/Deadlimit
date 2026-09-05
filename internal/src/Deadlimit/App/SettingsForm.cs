@@ -577,8 +577,8 @@ internal sealed class SettingsForm : Form
         _toolTip.SetToolTip(
             optimizeButton,
             UiText.T(
-                "Run the bundled CSDK startup optimization.\n\nUse it after a clean Reduced CSDK installation/update or whenever CSDK startup becomes slow.",
-                "Запустить встроенную оптимизацию запуска CSDK.\n\nИспользуйте её после чистой установки/обновления Reduced CSDK или если CSDK снова долго открывается."));
+                "If CSDK takes several minutes to start, run this optimization. Afterward, CSDK should start in seconds instead of minutes.\n\nAlso use it after a clean Reduced CSDK installation/update or whenever startup becomes slow again.",
+                "Если запуск CSDK занимает несколько минут, проведите эту оптимизацию. После неё CSDK должен запускаться за секунды вместо минут.\n\nТакже используйте её после чистой установки/обновления Reduced CSDK или если запуск снова стал долгим."));
         grid.Controls.Add(CreatePreferenceCaption(UiText.T("CSDK startup optimization", "Оптимизация запуска CSDK")), 0, row);
         grid.Controls.Add(optimizeButton, 1, row);
     }
