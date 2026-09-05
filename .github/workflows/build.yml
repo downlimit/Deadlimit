@@ -23,6 +23,9 @@ jobs:
       - name: Portable updater transaction smoke
         shell: pwsh
         run: internal/tests/portable-release-smoke.ps1
+      - name: Installer and unified updater smoke
+        shell: pwsh
+        run: internal/tests/installer-updater-smoke.ps1
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
@@ -58,6 +61,8 @@ jobs:
 
           $requiredFiles = @(
             'DeadlimitManager.cmd',
+            'Update Deadlimit.cmd',
+            'Install-Deadlimit.cmd',
             'DeadlimitUpdater.bat',
             'internal/DeadlimitUpdater.ps1',
             'internal/DeadlimitManager.cmd',
@@ -76,6 +81,8 @@ jobs:
             @{ Path = 'DeadlimitManager.cmd'; Pattern = 'Deadlimit Updater.lnk' },
             @{ Path = 'DeadlimitManager.cmd'; Pattern = 'DeadlimitManager.exe' },
             @{ Path = 'DeadlimitManager.cmd'; Pattern = "@('Deadlimit Manager.lnk','Deadlimit Updater.lnk')" },
+            @{ Path = 'Update Deadlimit.cmd'; Pattern = 'DeadlimitUpdater.bat' },
+            @{ Path = 'Update Deadlimit.cmd'; Pattern = 'internal\DeadlimitPortableUpdater.ps1' },
             @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'Loading the latest Deadlimit Updater from origin/main' },
             @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'fetch origin main' },
             @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'show origin/main:internal/DeadlimitUpdater.ps1' },

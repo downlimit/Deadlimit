@@ -26,7 +26,7 @@ Assert-Contains 'internal/src/Deadlimit/App/ProjectLibraryFeature.cs' 'ProjectHe
 Assert-NotContains 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs' 'OpenHeaderFolder()'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'UiText.T("UPDATE DEADLIMIT", "ОБНОВИТЬ DEADLIMIT")'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'ReleaseChannelPolicy.IsPortableRelease'
-Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'DeadlimitUpdater.bat'
+Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'Path.Combine(updateRoot, "Update Deadlimit.cmd")'
 
 # Static control text in App should either be localized, a technical/product token, a glyph, or data-driven.
 $allowed = @(

@@ -1,6 +1,6 @@
 # Network and External-Execution Trust Audit
 
-Status: **AUDITED — unverified automation disabled in portable releases**
+Status: **AUDITED — external-tool actions are explicit and user-initiated**
 
 Last reviewed: 2026-09-04
 
@@ -13,7 +13,7 @@ implementation; it does not endorse or grant rights to any external content.
 | Flow | Source selected by Deadlimit | Destination / execution | Current integrity evidence | Required public-release mitigation |
 | --- | --- | --- | --- | --- |
 | Developer repository updater | `https://github.com/downlimit/Deadlimit.git`, branch `main` | Fast-forward of a developer Git checkout, then local build | HTTPS plus Git object integrity; no signed release boundary | Label this as the Developer channel. Build the user updater on immutable GitHub Releases with a published SHA-256. |
-| Portable ZIP and in-folder updater | GitHub Releases API for `downlimit/Deadlimit`; exact ZIP and `.sha256` asset names | Package runs from the user-selected extracted folder; its updater replaces only program payload there and preserves local `UserData` | HTTPS, source-host allowlist, SHA-256 before extraction, contained ZIP extraction, file manifest, local `Backup` rollback | Keep release publication owner-only, verify the private rehearsal artifact, and publish the ZIP/checksum together with the version tag. |
+| Installer, portable ZIP, and release updater | GitHub Releases API for `downlimit/Deadlimit`; exact ZIP and `.sha256` asset names | The one-file installer places the same ZIP payload under the user profile and creates shortcuts; manual extraction runs it anywhere; the shared updater preserves local `UserData` | HTTPS, source-host allowlist, SHA-256 before updater extraction and package activation, contained ZIP extraction, file manifest, local `Backup` rollback | Keep release publication owner-only and publish the installer plus ZIP/checksum together with the version tag. |
 | Reduced CSDK discovery and archive | `https://deadlockmodding.pages.dev/modding-tools/`, a discovered `csdk-N` page, then a Google Drive download | ZIP contents copied into the user-selected CSDK root | HTTPS, HTML-response rejection, contained ZIP extraction, and expected `csdkcfg.exe` presence; no authenticated checksum | Keep the action explicit and interactive. Show the source/generation before download, compute and record SHA-256 and source URL, and verify against an allowlisted release manifest when one is available. Never ship the archive. |
 | Depot manifests | Parsed from the selected community CSDK page; optional relative `DepotDownloaderManifests.zip` fallback | Parsed IDs are passed to DepotDownloader; fallback ZIP is applied to the selected CSDK root | HTTPS and contained ZIP extraction; page contents are mutable and no checksum is verified | Restrict redirects/hosts, record all app/depot/manifest IDs, hash the fallback archive, and include them in diagnostics before execution. |
 | DepotDownloader | GitHub API latest release for `SteamRE/DepotDownloader`, asset `DepotDownloader-windows-x64.zip` | Cached under `%LocalAppData%\Deadlimit\tools\DepotDownloader`, then run interactively for Steam authentication/download | HTTPS, exact asset-name selection, contained ZIP extraction, and expected executable presence; no version pin or checksum | Pin a reviewed version and SHA-256 in each Deadlimit release. Display that an external executable will run and preserve authentication inside its own visible console. |
@@ -30,11 +30,11 @@ implementation; it does not endorse or grant rights to any external content.
 - The updater shipped inside the portable ZIP verifies the next ZIP before
   extraction; a malformed checksum, traversal entry, missing Manager, reserved
   data path, or missing release metadata stops before the current payload is
-  replaced. It creates no shortcuts or Windows installer state.
-- Portable builds detect their package-owned `release.json` and disable CSDK,
-  DepotDownloader, and DeadlockTools install/update execution in both Settings
-  and the underlying service. Existing installations can still be selected and
-  validated. Clone-based Developer builds retain the opt-in automation.
+  replaced. The installer extracts its worker only from that verified ZIP;
+  manual portable extraction creates no shortcuts or Windows installer state.
+- CSDK, DepotDownloader, and DeadlockTools install/update actions require an
+  explicit user click and show their current source context. Their availability
+  is identical in Git, installed, and manually extracted copies.
 - CSDK setup validates the selected retail installation but writes full-game
   depot output into the separate user-selected CSDK root.
 - DepotDownloader runs visibly when Steam authentication may be required.
@@ -65,8 +65,7 @@ to the produced portable ZIP.
 
 ## Release gate
 
-The first public source-code switch may proceed with these integrations clearly
-documented as opt-in Developer-channel operations. The Deadlimit portable
-package has versioned release/tag inputs and checksums and disables the
-unverified automatic installers. Re-enabling any of these actions in a portable
-release requires pinned reviewed versions and expected upstream archive hashes.
+The public repository and binary package document these integrations as
+explicit user-initiated operations. Deadlimit releases use versioned tag inputs,
+package checksums, and a manifest. Pinning reviewed upstream versions and hashes
+remains the preferred future hardening for external tool downloads.

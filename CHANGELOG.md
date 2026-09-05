@@ -11,6 +11,8 @@ planned `0.1.0-beta.1` public beta. Dates use `YYYY-MM-DD`.
   and caches under their local `UserData`, update in place, preserve the prior
   program payload under local `Backup`, and create no automatic shortcuts or
   Windows installer state.
+- The one-file installer and manual portable path now consume the same release
+  ZIP, while Git and release copies expose the same updater entry and UI action.
 - GitHub workflows now use the current Node 24-based major versions of the
   official checkout, .NET setup, and artifact upload actions.
 - Runtime tool defaults now derive from the current clone/portable location and

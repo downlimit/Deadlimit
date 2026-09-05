@@ -216,6 +216,8 @@ $projectPath = Join-Path $repoRoot 'internal\src\Deadlimit\Deadlimit.csproj'
 $packageRoot = Join-Path $outputRoot 'Deadlimit-win-x64'
 $archivePath = Join-Path $outputRoot 'Deadlimit-win-x64.zip'
 $checksumPath = "$archivePath.sha256"
+$installerPath = Join-Path $outputRoot 'Install-Deadlimit.cmd'
+$installerChecksumPath = "$installerPath.sha256"
 
 & dotnet publish $projectPath `
     --configuration Release `
@@ -248,7 +250,8 @@ foreach ($document in @(
 $portableInternal = Join-Path $packageRoot 'internal'
 [IO.Directory]::CreateDirectory($portableInternal) | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot 'internal\DeadlimitPortableUpdater.ps1') -Destination $portableInternal
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'Update Deadlimit.cmd') -Destination $packageRoot
+Copy-Item -LiteralPath (Join-Path $repoRoot 'Update Deadlimit.cmd') -Destination $packageRoot
+Copy-Item -LiteralPath (Join-Path $repoRoot 'Install-Deadlimit.cmd') -Destination $installerPath
 
 Copy-NuGetLicensePayload $projectPath (Join-Path $packageRoot 'licenses')
 
@@ -296,7 +299,10 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $archiveHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Utf8NoBom $checksumPath "$archiveHash  Deadlimit-win-x64.zip`n"
+$installerHash = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash.ToLowerInvariant()
+Write-Utf8NoBom $installerChecksumPath "$installerHash  Install-Deadlimit.cmd`n"
 
 Write-Host "Portable package: $archivePath"
 Write-Host "SHA-256: $archiveHash"
+Write-Host "Installer SHA-256: $installerHash"
 Write-Host "Files: $($manifestEntries.Count)"

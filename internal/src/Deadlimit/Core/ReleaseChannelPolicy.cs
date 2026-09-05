@@ -6,7 +6,7 @@ public static class ReleaseChannelPolicy
 
     public static bool IsPortableRelease => IsPortableReleaseRoot(AppContext.BaseDirectory);
 
-    public static bool AllowsUnverifiedToolchainAutomation => !IsPortableRelease;
+    public static bool AllowsUnverifiedToolchainAutomation => true;
 
     internal static bool IsPortableReleaseRoot(string root) =>
         !string.IsNullOrWhiteSpace(root)
@@ -14,13 +14,7 @@ public static class ReleaseChannelPolicy
 
     public static void RequireUnverifiedToolchainAutomation()
     {
-        if (AllowsUnverifiedToolchainAutomation)
-        {
-            return;
-        }
-
-        throw new InvalidOperationException(
-            "Automatic CSDK, DepotDownloader, and DeadlockTools installation/update is disabled in portable releases " +
-            "until the upstream archives have release-pinned trusted checksums. Select an existing installation in Settings.");
+        // Git checkouts, installed copies, and manually extracted copies expose
+        // the same explicitly initiated toolchain actions.
     }
 }

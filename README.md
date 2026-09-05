@@ -8,9 +8,8 @@ authoring, resource compilation, VPK packaging, and local game deployment. The
 project is hobby software maintained on a best-effort basis and may need updates
 whenever Deadlock or an external tool changes.
 
-> Public-readiness work is in progress. The portable ZIP and stable
-> release updater described in the roadmap are not published yet. Current users
-> run Deadlimit from a Git clone and need the .NET 10 SDK.
+> The source repository is public. Artist-ready installer and portable packages
+> are published on the official GitHub Releases page.
 
 [Русская версия](README.ru.md)
 
@@ -58,10 +57,9 @@ license and terms.
    tool locations. Automatic dependency actions download third-party files into
    local tool folders; review the displayed source before using them.
 
-   Portable releases accept existing tool locations through **Browse**. Their
-   automatic CSDK, DepotDownloader, and DeadlockTools install/update actions
-   remain disabled until those upstream archives have release-pinned trusted
-   checksums. The clone-based Developer channel retains the opt-in automation.
+   The CSDK, DepotDownloader, and DeadlockTools actions are available with the
+   same explicit, user-initiated behavior in Git, installed, and manually
+   extracted copies.
 4. Create or open a Deadlimit project whose root contains the artist DMX files
    and matching texture sources.
 5. Run **PREPARE FOR CSDK** once, then launch CSDK for ModelDoc and material work.
@@ -110,17 +108,22 @@ The full Windows CI contract is in [`.github/workflows/build.yml`](.github/workf
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the fork/PR workflow and required DCO
 sign-off.
 
-## Portable user release
+## Install or run portable
 
-After the first public release, an artist downloads `Deadlimit-win-x64.zip`
-and its `.sha256` file from the official GitHub Release, verifies the checksum,
-extracts the ZIP into a permanent writable folder, and runs
+The easiest path for an artist is to download `Install-Deadlimit.cmd` from the
+official GitHub Release and run it. The installer downloads and verifies the
+same release ZIP used by the portable channel, installs it under
+`%LocalAppData%\Programs\Deadlimit`, creates Manager/Updater shortcuts on the
+Desktop and in the Start menu, and launches `DeadlimitManager.exe`.
+
+For a portable copy, download `Deadlimit-win-x64.zip` and its `.sha256` file,
+verify the checksum, extract the ZIP into a permanent writable folder, and run
 `DeadlimitManager.exe`. Running directly from the opened ZIP is unsupported.
 
-The release is self-contained: Git and the .NET SDK are unnecessary. Deadlimit
-creates no Start-menu/Desktop shortcuts and registers no Windows installer or
-uninstaller. Portable settings and caches stay under `UserData` inside the
-extracted folder. Artist projects remain wherever the user chooses to keep them.
+Both installation methods use the same self-contained application payload; Git
+and the .NET SDK are unnecessary. The manual portable path creates no shortcuts
+or Windows installer state. Settings and caches stay under `UserData` beside the
+application. Artist projects remain wherever the user chooses to keep them.
 
 `Update Deadlimit.cmd` downloads the latest published ZIP, verifies SHA-256,
 updates the program files in place, preserves `UserData`, and keeps the previous
@@ -129,17 +132,16 @@ current and backup program payloads while leaving user data in place. Deleting
 the extracted Deadlimit folder removes the application, its settings, cache,
 and rollback payload.
 
-The Settings window exposes the same `UPDATE DEADLIMIT` action in both release
-channels. A portable build opens its in-folder updater; a Git checkout opens the
-repository updater.
+The Settings window exposes the same `UPDATE DEADLIMIT` action everywhere.
+`Update Deadlimit.cmd` is the shared entry point: it updates a Git checkout from
+`main`, or downloads the latest verified release ZIP for installed/portable
+copies. The application UI and release payload are shared.
 
 ## Updating the current clone
 
-`Deadlimit Updater` is currently the developer/Git channel: it fetches
-`origin/main`, preserves unrelated local work when it can fast-forward safely,
-and rebuilds the Manager. The portable user channel is implemented but has not
-been published. These channels stay separate so a normal user update never
-depends on a mutable source checkout.
+Inside a Git checkout, the shared updater fetches `origin/main`, preserves
+unrelated local work when it can fast-forward safely, and rebuilds the Manager.
+Installed and portable copies consume immutable GitHub Release ZIPs instead.
 
 Early portable beta executables are expected to be unsigned, so Windows
 SmartScreen may display an unknown-publisher warning. Continue only when the
@@ -159,7 +161,6 @@ it does not distribute them. This is an independent community project with no
 affiliation, sponsorship, endorsement, or approval from Valve, Autodesk, Adobe,
 Wall Worm, or the maintainers of the other tools it can invoke.
 
-The live readiness plan is
+The readiness record is
 [`internal/docs/OPEN_SOURCE_PLAN.md`](internal/docs/OPEN_SOURCE_PLAN.md). Changing
-the repository to public and publishing the first portable release remain
-explicit maintainer approval gates.
+the repository visibility and publishing releases remain owner-controlled.

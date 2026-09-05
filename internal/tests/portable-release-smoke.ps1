@@ -47,7 +47,7 @@ function New-SyntheticPackage([string]$Name, [string]$Version, [string]$Payload,
     $portableInternal = Join-Path $source 'internal'
     [IO.Directory]::CreateDirectory($portableInternal) | Out-Null
     Copy-Item -LiteralPath $worker -Destination $portableInternal
-    Copy-Item -LiteralPath (Join-Path $repoRoot 'internal\release\Update Deadlimit.cmd') -Destination $source
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'Update Deadlimit.cmd') -Destination $source
     [IO.File]::WriteAllText(
         (Join-Path $source 'release.json'),
         (@{ product = 'Deadlimit Manager'; version = $Version } | ConvertTo-Json))
