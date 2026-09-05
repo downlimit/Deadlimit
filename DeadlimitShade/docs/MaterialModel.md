@@ -374,75 +374,73 @@ the same VCS identity and buffer layout; its values must be labelled CSDK
 evidence until matched to a retail frame. No present static source establishes
 that equivalence.
 
-# Offline Runtime Capture
+# RenderDoc Offline Capture
 
-Issue #138 performed the required safe preflight only. The retail identity is
-unchanged: app `1422450` remains on buildid `24882156`, and the accepted
-`pbr_vulkan_60_ps.vcs` hash remains
+RenderDoc v1.46 x64 was verified against the official RenderDoc builds source,
+and its signed MSI was downloaded for this task. The standard installation was
+started with reboot suppression, but Windows Installer did not complete in the
+available session; `qrenderdoc.exe` was not present afterward. No RenderDoc
+capture or runtime instrumentation was attempted.
+
+Issue #140 rechecked the retail reference before touching the offline host. The
+Steam manifest still reports app `1422450`, buildid `24882156`. Reading the
+retail shader VPK with the existing ValvePak dependency returned
+`shaders/vfx/pbr_vulkan_60_ps.vcs`, 9,230,833 bytes, SHA-256
 `eceff13193baccd5310db90ac9b3dd36928d941753c98494e349fa9e29826930`.
+The accepted retail identity is unchanged.
 
-The narrow offline host candidate is the configured Reduced CSDK12 tool binary:
+The only permitted process candidate remains:
 
-| Field | Preflight result |
+| Field | Offline preflight result |
 |---|---|
-| candidate executable | `C:\WorkProjects\Deadlock\Reduced_CSDK_12\game\bin_tools\win64\Deadlock_with_tools.exe` |
-| executable file version | `1.0.0.0` |
-| CSDK shader-resource candidate | `C:\WorkProjects\Deadlock\Reduced_CSDK_12\game\citadel\shaders_vulkan_dir.vpk` exists (13,168-byte directory VPK) |
-| launch / renderer API | unverified; no tool process was launched after the capture-tool prerequisite failed |
-| shader VPK selected by host | unverified; process launch and its SearchPaths were intentionally not inferred |
-| PS hash, permutation, and buffer-layout match | unverified; no offline draw was produced |
+| executable | `C:\WorkProjects\Deadlock\Reduced_CSDK_12\game\bin_tools\win64\Deadlock_with_tools.exe` |
+| file version / SHA-256 | `1.0.0.0` / `151ae3a06e9819af963717b480ef277e519aa00b7ae6b8968cd953dfed5520ec` |
+| candidate shader VPK | `C:\WorkProjects\Deadlock\Reduced_CSDK_12\game\citadel\shaders_vulkan_dir.vpk` |
+| candidate VPK size / SHA-256 | 13,168 bytes / `d98aef4f19c19b6d9650ed920dbccc072618e55b0e9b4e1576919bebcb9c133a` |
+| candidate PS entry | `shaders/vfx/pbr_vulkan_60_ps.vcs`, 8,554,374 bytes |
+| candidate PS entry SHA-256 | `8c11deab675e919973ce8b630b77db0bac6a27ec29635c81ae278aad356983ab` |
 
-No compatible installed Vulkan graphics capture tool was found. Standard
-RenderDoc command/UI locations were absent. Installed-app inventory found
-NVIDIA Nsight Systems `2025.6.3`, Nsight Compute `2026.1.1`, and Nsight Visual
-Studio Edition `2026.1.0`; it did not find NVIDIA Nsight Graphics or RenderDoc.
-Those installed tools do not provide the required offline Vulkan draw descriptor
-inspection path for this work item.
+The CSDK entry is a different payload from the accepted retail payload. This is
+a hard stop before launch-capture: the offline host cannot prove the required
+shader identity, so no draw is eligible for NPR buffer reads. The host was not
+launched and no retail process was started, attached, injected, hooked, or
+instrumented.
 
-The missing prerequisite is **RenderDoc v1.46** (the official current release
-at the time of this preflight), or another already approved Vulkan graphics
-capture tool that can inspect descriptor-buffer contents for the CSDK tool
-process. No software was downloaded or installed. No CSDK process, retail
-process, graphics debugger, hook, overlay, or injection was launched.
+The CSDK `gameinfo.gi` exposes the `citadel` search path and the candidate VPK
+exists, but that static fact does not establish the renderer, selected runtime
+VPK, or a Vulkan draw. Those runtime claims remain unresolved by design.
 
 # Captured NPR Values
 
-No values were captured. The table is intentionally empty of substituted
-metadata defaults:
+No values were captured. The shader identity stop condition prevents reading
+any buffer from a non-matching draw:
 
 | Required source | Capture status | Reason |
 |---|---|---|
-| `_Globals_`, set 1/binding 0 | not captured | no compatible offline Vulkan capture tool installed |
-| `PerViewConstantBufferCitadel_t`, set 1/binding 4 | not captured | no compatible offline Vulkan capture tool installed |
-| `PerViewLightingConstantBufferGpu_t`, set 3/binding 0 | not captured | no compatible offline Vulkan capture tool installed |
+| `_Globals_`, set 1/binding 0 | not captured | CSDK PS payload differs from retail reference |
+| `PerViewConstantBufferCitadel_t`, set 1/binding 4 | not captured | no eligible matching draw |
+| `PerViewLightingConstantBufferGpu_t`, set 3/binding 0 | not captured | no eligible matching draw |
 
-The all-zero VCS metadata defaults from NPR Global Control Values remain
-declaration evidence only. They are not raw runtime observations.
+The all-zero VCS metadata defaults remain declaration evidence only. They are
+not raw runtime observations.
 
-# Offline vs Retail Equivalence
+# Stability Across Draws
 
-Equivalence is **not established**. The candidate executable and its candidate
-shader VPK exist, while the preflight did not launch a renderer and therefore
-could not prove any of the required runtime conditions:
+The two-draw stability check was not attempted. The identity mismatch occurs
+before a draw can be accepted, so there are no stable, frame-dependent,
+tool-overridden, or averaged values to report.
 
-| Requirement | Result |
-|---|---|
-| exact PS VCS identity selected by the offline host | unverified |
-| main opaque static combo 24 | unverified |
-| ordinary dynamic combo 0 / status disabled | unverified |
-| `_Globals_` and per-view descriptor layout | unverified at an offline draw |
-| two stable unchanged-state observations | not attempted |
-| absence of a tool-only override | unverified |
+# CSDK vs Retail Provenance
 
-Any future offline values retain the evidence class **Confirmed by CSDK/offline
-runtime** until a direct mechanism proves the retail client writes the same
-values. This issue does not make that upgrade.
+Retail and CSDK shader provenance is explicitly divergent in this task. The
+retail reference is the accepted `pbr_vulkan_60_ps.vcs` identity above; the
+offline candidate contains a different payload. Therefore no CSDK runtime value
+would be evidence for retail equivalence, and no CSDK capture was performed.
 
-# Direct-Diffuse Implementation Decision
+# First GLSL Slice Decision
 
-The direct-diffuse slice remains **not implementation-ready**. The immediate
-blocker is the missing approved offline Vulkan capture tool; the next task must
-first use it with `Deadlock_with_tools.exe` or another proven CSDK host, verify
-the PS identity/permutation/layout, and capture the exact values listed in
-Runtime Capture Specification across two unchanged draws. GLSL remains gated
-until that evidence exists.
+The direct-diffuse slice remains **not implementation-ready**. The required
+shader identity, permutation/layout, gate state, numeric controls, and two-draw
+stability evidence are absent. GLSL files remain unchanged. A future task needs
+an approved offline host carrying the accepted PS payload before any NPR values
+are read.
