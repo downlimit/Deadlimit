@@ -9,7 +9,9 @@ namespace Deadlimit.App;
 internal static class SettingsVersionFeature
 {
     private const string VersionStatusName = "DeadlimitManagerVersionStatus";
-    private const string VersionValueName = "DeadlimitManagerVersionValue";
+    private const string ManagerPathName = "DeadlimitManagerPath";
+    private const string OpenButtonName = "DeadlimitManagerOpenButton";
+    private const string BrowseButtonName = "DeadlimitManagerBrowseButton";
     private const string UpdateButtonName = "DeadlimitUpdateButton";
     private const string LatestReleaseApiUrl = "https://api.github.com/repos/downlimit/Deadlimit/releases/tags/latest-main";
     private const string LatestReleaseMetadataAssetName = "Deadlimit-release.json";
@@ -38,22 +40,43 @@ internal static class SettingsVersionFeature
         var status = new Label
         {
             Name = VersionStatusName,
-            Text = UiText.T("↻ Checking…", "↻ Проверка…"),
+            Text = $"↻ {UiText.T("Checking…", "Проверка…")} [main]",
             AutoSize = false,
-            Width = 137,
+            Width = 199,
             Height = 24,
             TextAlign = ContentAlignment.MiddleLeft,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 4, 6, 4),
         };
-        var version = new TextBox
+        var managerPath = new TextBox
         {
-            Name = VersionValueName,
-            Text = $"{UiText.T("Version", "Версия")} {GetDisplayVersion()}",
+            Name = ManagerPathName,
+            Text = DeadlimitPaths.DefaultDeadlimitRoot,
             ReadOnly = true,
             TabStop = false,
             Anchor = AnchorStyles.Left | AnchorStyles.Right,
             Margin = new Padding(0, 4, 6, 4),
+        };
+        var openButton = new Button
+        {
+            Name = OpenButtonName,
+            Text = "📂",
+            AutoSize = false,
+            Width = 28,
+            Height = 24,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 4, 4, 4),
+            Padding = Padding.Empty,
+            TabStop = false,
+            Font = new Font("Segoe UI Emoji", 10F, FontStyle.Regular, GraphicsUnit.Point),
+        };
+        var browseButton = new Button
+        {
+            Name = BrowseButtonName,
+            Text = UiText.T("BROWSE…", "ОБЗОР…"),
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 4, 0, 4),
         };
         var action = new Button
         {
@@ -62,7 +85,7 @@ internal static class SettingsVersionFeature
             AutoSize = false,
             Width = 94,
             Height = 26,
-            Enabled = false,
+            Enabled = true,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 3, 5, 3),
         };
@@ -76,9 +99,9 @@ internal static class SettingsVersionFeature
             Margin = new Padding(0, 8, 10, 8),
         }, 0, row);
         grid.Controls.Add(status, 1, row);
-        grid.Controls.Add(version, 2, row);
-        grid.Controls.Add(CreateSpacer(), 3, row);
-        grid.Controls.Add(CreateSpacer(), 4, row);
+        grid.Controls.Add(managerPath, 2, row);
+        grid.Controls.Add(openButton, 3, row);
+        grid.Controls.Add(browseButton, 4, row);
         grid.Controls.Add(action, 5, row);
         grid.Controls.Add(CreateSpacer(), 6, row);
     }
@@ -107,11 +130,15 @@ internal static class SettingsVersionFeature
 
         var versionStatus = FindDescendants<Label>(toolGrid).FirstOrDefault(label =>
             string.Equals(label.Name, VersionStatusName, StringComparison.Ordinal));
-        var versionValue = FindDescendants<TextBox>(toolGrid).FirstOrDefault(textBox =>
-            string.Equals(textBox.Name, VersionValueName, StringComparison.Ordinal));
+        var managerPath = FindDescendants<TextBox>(toolGrid).FirstOrDefault(textBox =>
+            string.Equals(textBox.Name, ManagerPathName, StringComparison.Ordinal));
+        var openButton = FindDescendants<Button>(toolGrid).FirstOrDefault(button =>
+            string.Equals(button.Name, OpenButtonName, StringComparison.Ordinal));
+        var browseButton = FindDescendants<Button>(toolGrid).FirstOrDefault(button =>
+            string.Equals(button.Name, BrowseButtonName, StringComparison.Ordinal));
         var updateButton = FindDescendants<Button>(toolGrid).FirstOrDefault(button =>
             string.Equals(button.Name, UpdateButtonName, StringComparison.Ordinal));
-        if (versionStatus is null || versionValue is null || updateButton is null)
+        if (versionStatus is null || managerPath is null || openButton is null || browseButton is null || updateButton is null)
         {
             return;
         }
@@ -143,58 +170,149 @@ internal static class SettingsVersionFeature
             };
         }
 
-        var managerState = ManagerVersionState.Checking(CurrentVersionIdentity());
+        var managerState = ManagerVersionState.Checking(CurrentDisplayIdentity());
+        CancellationTokenSource? checkCancellation = null;
 
         void RenderManagerState()
         {
-            versionValue.Text = managerState.DisplayVersion;
-            versionStatus.Text = managerState.Kind switch
+            var stateText = managerState.Kind switch
             {
                 ManagerVersionStateKind.UpToDate => $"✓ {UiText.T("Up to date", "Актуально")}",
                 ManagerVersionStateKind.UpdateAvailable => $"↑ {UiText.T("Update available", "Есть обновление")}",
                 ManagerVersionStateKind.NetworkIssue => $"! {UiText.T("Network issue", "Ошибка сети")}",
+                ManagerVersionStateKind.Cancelled => $"○ {UiText.T("Check cancelled", "Проверка отменена")}",
                 _ => $"↻ {UiText.T("Checking…", "Проверка…")}",
             };
+            versionStatus.Text = $"{stateText} [{managerState.Identity}]";
             versionStatus.ForeColor = ManagerStatusColor(managerState.Kind, SelectedTheme());
             if (!versionStatus.Font.Bold)
             {
                 versionStatus.Font = new Font(versionStatus.Font, FontStyle.Bold);
             }
 
+            managerPath.Text = DeadlimitPaths.DefaultDeadlimitRoot;
             updateButton.Text = managerState.Kind switch
             {
                 ManagerVersionStateKind.UpdateAvailable => UiText.T("UPDATE…", "ОБНОВИТЬ…"),
                 ManagerVersionStateKind.Checking => UiText.T("CHECKING…", "ПРОВЕРКА…"),
                 _ => UiText.T("CHECK", "ПРОВЕРИТЬ"),
             };
-            updateButton.Enabled = managerState.Kind != ManagerVersionStateKind.Checking;
-            updateButton.AccessibleDescription = managerState.Detail;
+            updateButton.Enabled = true;
+            updateButton.AccessibleDescription = managerState.Kind == ManagerVersionStateKind.Checking
+                ? UiText.T("Checking for updates. Click again to cancel the check.", "Идёт проверка обновлений. Нажмите ещё раз, чтобы отменить проверку.")
+                : managerState.Detail;
             versionStatus.AccessibleDescription = managerState.Detail;
+            openButton.AccessibleDescription = UiText.T("Open the Deadlimit installation folder.", "Открыть папку установки Deadlimit.");
+            browseButton.AccessibleDescription = UiText.T("Move Deadlimit to another folder.", "Переместить Deadlimit в другую папку.");
         }
 
         async Task RefreshManagerStateAsync()
         {
-            managerState = ManagerVersionState.Checking(managerState.DisplayVersion);
+            checkCancellation?.Cancel();
+            checkCancellation?.Dispose();
+            var cancellation = new CancellationTokenSource();
+            checkCancellation = cancellation;
+            managerState = ManagerVersionState.Checking(managerState.Identity);
             RenderManagerState();
             try
             {
-                managerState = await CheckManagerVersionAsync();
+                var state = await CheckManagerVersionAsync(cancellation.Token);
+                if (ReferenceEquals(checkCancellation, cancellation) && !cancellation.IsCancellationRequested)
+                {
+                    managerState = state;
+                }
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+                if (ReferenceEquals(checkCancellation, cancellation))
+                {
+                    managerState = ManagerVersionState.Cancelled(managerState.Identity);
+                }
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
-                managerState = ManagerVersionState.NetworkIssue(CurrentVersionIdentity(), exception.Message);
+                if (ReferenceEquals(checkCancellation, cancellation))
+                {
+                    managerState = ManagerVersionState.NetworkIssue(managerState.Identity, exception.Message);
+                }
             }
-
-            if (!form.IsDisposed)
+            finally
             {
-                RenderManagerState();
+                if (ReferenceEquals(checkCancellation, cancellation))
+                {
+                    checkCancellation = null;
+                    cancellation.Dispose();
+                }
+
+                if (!form.IsDisposed)
+                {
+                    RenderManagerState();
+                }
             }
         }
 
         PreparedForms.Add(form, new object());
         themeCombo.SelectedIndexChanged += (_, _) => RenderManagerState();
+        openButton.Click += (_, _) => OpenFolder(form, managerPath.Text);
+        browseButton.Click += async (_, _) =>
+        {
+            var selected = ChooseRelocationFolder(form, managerPath.Text);
+            if (selected is null || string.Equals(
+                    Path.GetFullPath(selected).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                    Path.GetFullPath(managerPath.Text).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var answer = MessageBox.Show(
+                form,
+                UiText.T(
+                    $"Move Deadlimit to:\n{selected}\n\nDeadlimit Manager will restart after the move.",
+                    $"Переместить Deadlimit в:\n{selected}\n\nПосле перемещения Deadlimit Manager перезапустится."),
+                UiText.T("Move Deadlimit", "Перемещение Deadlimit"),
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+            if (answer != DialogResult.Yes)
+            {
+                return;
+            }
+
+            try
+            {
+                form.UseWaitCursor = true;
+                browseButton.Enabled = false;
+                await DeadlimitRelocationService.PrepareRelocationAsync(selected);
+                Application.Exit();
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                MessageBox.Show(
+                    form,
+                    exception.Message,
+                    UiText.T("Could not move Deadlimit", "Не удалось переместить Deadlimit"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            finally
+            {
+                if (!form.IsDisposed)
+                {
+                    form.UseWaitCursor = false;
+                    browseButton.Enabled = true;
+                }
+            }
+        };
         updateButton.Click += async (_, _) =>
         {
+            if (managerState.Kind == ManagerVersionStateKind.Checking)
+            {
+                checkCancellation?.Cancel();
+                managerState = ManagerVersionState.Cancelled(managerState.Identity);
+                RenderManagerState();
+                return;
+            }
+
             if (managerState.Kind == ManagerVersionStateKind.UpdateAvailable)
             {
                 LaunchUpdater(form);
@@ -212,6 +330,42 @@ internal static class SettingsVersionFeature
         else
         {
             form.Shown += async (_, _) => await RefreshManagerStateAsync();
+        }
+    }
+
+    private static string? ChooseRelocationFolder(IWin32Window owner, string currentRoot)
+    {
+        using var dialog = new FolderBrowserDialog
+        {
+            Description = UiText.T("Choose the new Deadlimit folder", "Выберите новую папку Deadlimit"),
+            ShowNewFolderButton = true,
+            UseDescriptionForTitle = true,
+            SelectedPath = Directory.GetParent(currentRoot)?.FullName ?? currentRoot,
+        };
+        return dialog.ShowDialog(owner) == DialogResult.OK
+            ? dialog.SelectedPath
+            : null;
+    }
+
+    private static void OpenFolder(IWin32Window owner, string path)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"\"{path}\"",
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            MessageBox.Show(
+                owner,
+                exception.Message,
+                UiText.T("Could not open Deadlimit folder", "Не удалось открыть папку Deadlimit"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
         }
     }
 
@@ -254,41 +408,39 @@ internal static class SettingsVersionFeature
         }
     }
 
-    private static async Task<ManagerVersionState> CheckManagerVersionAsync()
+    private static async Task<ManagerVersionState> CheckManagerVersionAsync(CancellationToken cancellationToken)
     {
         if (ReleaseChannelPolicy.IsPortableRelease)
         {
             var current = NormalizeReleaseTag(GetDisplayVersion());
-            var latest = NormalizeReleaseTag(await GetLatestReleaseVersionAsync().ConfigureAwait(false));
-            var display = $"{UiText.T("Version", "Версия")} {current}";
-            return string.Equals(current, latest, StringComparison.OrdinalIgnoreCase)
+            var latest = NormalizeReleaseTag(await GetLatestReleaseVersionAsync(cancellationToken).ConfigureAwait(false));
+                return string.Equals(current, latest, StringComparison.OrdinalIgnoreCase)
                 ? ManagerVersionState.UpToDate(
-                    display,
+                    $"v{current}",
                     UiText.T($"Deadlimit Manager {current} is the latest successful build.", $"Deadlimit Manager {current} — последняя успешная сборка."))
                 : ManagerVersionState.UpdateAvailable(
-                    display,
+                    $"v{current}",
                     UiText.T($"Deadlimit Manager {current} is installed; {latest} is available.", $"Установлен Deadlimit Manager {current}; доступна версия {latest}."));
         }
 
         var repositoryRoot = DeadlimitPaths.DefaultDeadlimitRoot;
-        var localSha = await ReadGitHeadAsync(repositoryRoot).ConfigureAwait(false);
-        var remoteSha = await GetMainCommitShaAsync().ConfigureAwait(false);
-        var displayVersion = $"main · {ShortSha(localSha)}";
+        var localSha = await ReadGitHeadAsync(repositoryRoot, cancellationToken).ConfigureAwait(false);
+        var remoteSha = await GetMainCommitShaAsync(cancellationToken).ConfigureAwait(false);
         return string.Equals(localSha, remoteSha, StringComparison.OrdinalIgnoreCase)
             ? ManagerVersionState.UpToDate(
-                displayVersion,
+                $"main-{ShortSha(localSha)}",
                 UiText.T("This developer checkout matches origin/main.", "Эта рабочая копия соответствует origin/main."))
             : ManagerVersionState.UpdateAvailable(
-                displayVersion,
+                $"main-{ShortSha(localSha)}",
                 UiText.T("A newer origin/main revision is available.", "Доступна более новая версия origin/main."));
     }
 
-    private static async Task<string> GetLatestReleaseVersionAsync()
+    private static async Task<string> GetLatestReleaseVersionAsync(CancellationToken cancellationToken)
     {
-        using var response = await VersionHttpClient.GetAsync(LatestReleaseApiUrl).ConfigureAwait(false);
+        using var response = await VersionHttpClient.GetAsync(LatestReleaseApiUrl, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-        using var document = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (document.RootElement.ValueKind != JsonValueKind.Object
             || !document.RootElement.TryGetProperty("assets", out var assets)
             || assets.ValueKind != JsonValueKind.Array)
@@ -317,10 +469,10 @@ internal static class SettingsVersionFeature
             throw new InvalidOperationException("The latest Deadlimit build has no trusted metadata asset.");
         }
 
-        using var metadataResponse = await VersionHttpClient.GetAsync(metadataUri).ConfigureAwait(false);
+        using var metadataResponse = await VersionHttpClient.GetAsync(metadataUri, cancellationToken).ConfigureAwait(false);
         metadataResponse.EnsureSuccessStatusCode();
         await using var metadataStream = await metadataResponse.Content.ReadAsStreamAsync().ConfigureAwait(false);
-        using var metadata = await JsonDocument.ParseAsync(metadataStream).ConfigureAwait(false);
+        using var metadata = await JsonDocument.ParseAsync(metadataStream, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!metadata.RootElement.TryGetProperty("version", out var version)
             || string.IsNullOrWhiteSpace(version.GetString()))
         {
@@ -330,12 +482,12 @@ internal static class SettingsVersionFeature
         return version.GetString()!;
     }
 
-    private static async Task<string> GetMainCommitShaAsync()
+    private static async Task<string> GetMainCommitShaAsync(CancellationToken cancellationToken)
     {
-        using var response = await VersionHttpClient.GetAsync(MainCommitApiUrl).ConfigureAwait(false);
+        using var response = await VersionHttpClient.GetAsync(MainCommitApiUrl, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-        using var document = await JsonDocument.ParseAsync(stream).ConfigureAwait(false);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!document.RootElement.TryGetProperty("sha", out var shaElement)
             || string.IsNullOrWhiteSpace(shaElement.GetString()))
         {
@@ -345,7 +497,7 @@ internal static class SettingsVersionFeature
         return shaElement.GetString()!;
     }
 
-    private static async Task<string> ReadGitHeadAsync(string repositoryRoot)
+    private static async Task<string> ReadGitHeadAsync(string repositoryRoot, CancellationToken cancellationToken)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -365,7 +517,7 @@ internal static class SettingsVersionFeature
             ?? throw new InvalidOperationException("Git could not be started.");
         var outputTask = process.StandardOutput.ReadToEndAsync();
         var errorTask = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync().ConfigureAwait(false);
+        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
         var output = (await outputTask.ConfigureAwait(false)).Trim();
         var error = (await errorTask.ConfigureAwait(false)).Trim();
         if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
@@ -377,8 +529,8 @@ internal static class SettingsVersionFeature
         return output;
     }
 
-    private static string CurrentVersionIdentity() => ReleaseChannelPolicy.IsPortableRelease
-        ? $"{UiText.T("Version", "Версия")} {NormalizeReleaseTag(GetDisplayVersion())}"
+    private static string CurrentDisplayIdentity() => ReleaseChannelPolicy.IsPortableRelease
+        ? $"v{NormalizeReleaseTag(GetDisplayVersion())}"
         : "main";
 
     private static string NormalizeReleaseTag(string version) =>
@@ -395,7 +547,8 @@ internal static class SettingsVersionFeature
             ManagerVersionStateKind.UpToDate => dark ? Color.FromArgb(113, 214, 137) : Color.FromArgb(25, 125, 55),
             ManagerVersionStateKind.UpdateAvailable => dark ? Color.FromArgb(255, 194, 92) : Color.FromArgb(173, 103, 0),
             ManagerVersionStateKind.NetworkIssue => dark ? Color.FromArgb(255, 118, 118) : Color.FromArgb(184, 40, 40),
-            _ => dark ? Color.FromArgb(117, 190, 255) : Color.FromArgb(30, 105, 175),
+            ManagerVersionStateKind.Checking => dark ? Color.FromArgb(117, 190, 255) : Color.FromArgb(30, 105, 175),
+            _ => dark ? Color.FromArgb(180, 180, 180) : Color.FromArgb(85, 85, 85),
         };
     }
 
@@ -432,6 +585,7 @@ internal static class SettingsVersionFeature
     private enum ManagerVersionStateKind
     {
         Checking,
+        Cancelled,
         UpToDate,
         UpdateAvailable,
         NetworkIssue,
@@ -439,20 +593,23 @@ internal static class SettingsVersionFeature
 
     private sealed record ManagerVersionState(
         ManagerVersionStateKind Kind,
-        string DisplayVersion,
+        string Identity,
         string Detail)
     {
-        public static ManagerVersionState Checking(string displayVersion) =>
-            new(ManagerVersionStateKind.Checking, displayVersion, UiText.T("Checking for Deadlimit Manager updates…", "Проверка обновлений Deadlimit Manager…"));
+        public static ManagerVersionState Checking(string identity) =>
+            new(ManagerVersionStateKind.Checking, identity, UiText.T("Checking for Deadlimit Manager updates…", "Проверка обновлений Deadlimit Manager…"));
 
-        public static ManagerVersionState UpToDate(string displayVersion, string detail) =>
-            new(ManagerVersionStateKind.UpToDate, displayVersion, detail);
+        public static ManagerVersionState Cancelled(string identity) =>
+            new(ManagerVersionStateKind.Cancelled, identity, UiText.T("Deadlimit Manager update check cancelled.", "Проверка обновлений Deadlimit Manager отменена."));
 
-        public static ManagerVersionState UpdateAvailable(string displayVersion, string detail) =>
-            new(ManagerVersionStateKind.UpdateAvailable, displayVersion, detail);
+        public static ManagerVersionState UpToDate(string identity, string detail) =>
+            new(ManagerVersionStateKind.UpToDate, identity, detail);
 
-        public static ManagerVersionState NetworkIssue(string displayVersion, string detail) =>
-            new(ManagerVersionStateKind.NetworkIssue, displayVersion, detail);
+        public static ManagerVersionState UpdateAvailable(string identity, string detail) =>
+            new(ManagerVersionStateKind.UpdateAvailable, identity, detail);
+
+        public static ManagerVersionState NetworkIssue(string identity, string detail) =>
+            new(ManagerVersionStateKind.NetworkIssue, identity, detail);
     }
 
     private static IEnumerable<T> FindDescendants<T>(Control root) where T : Control

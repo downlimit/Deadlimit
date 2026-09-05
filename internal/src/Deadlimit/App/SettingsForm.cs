@@ -53,6 +53,9 @@ internal sealed class SettingsForm : Form
     private ToolchainStatus _projectsStatus = new(ToolchainStatusKind.NotSpecified);
     private bool _busy;
     private bool _themePreviewApplied;
+    private CancellationTokenSource? _csdkCheckCancellation;
+    private CancellationTokenSource? _deadlockToolsCheckCancellation;
+    private int _retailCheckGeneration;
 
     public SettingsForm()
     {
@@ -132,6 +135,10 @@ internal sealed class SettingsForm : Form
     {
         if (disposing)
         {
+            _csdkCheckCancellation?.Cancel();
+            _csdkCheckCancellation?.Dispose();
+            _deadlockToolsCheckCancellation?.Cancel();
+            _deadlockToolsCheckCancellation?.Dispose();
             _toolTip.Dispose();
         }
         base.Dispose(disposing);
@@ -143,22 +150,12 @@ internal sealed class SettingsForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 3,
+            RowCount = 2,
             Padding = new Padding(12),
         };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        root.Controls.Add(new Label
-        {
-            AutoSize = true,
-            Dock = DockStyle.Fill,
-            Text = UiText.T(
-                "Tool status is checked when this window opens. Theme changes preview immediately; Apply commits changed settings without restarting Deadlimit Manager.",
-                "Состояние инструментов проверяется при открытии окна. Тема меняется сразу; кнопка «Применить» фиксирует изменённые настройки без перезапуска Deadlimit Manager."),
-            Margin = new Padding(0, 0, 0, 10),
-        }, 0, 0);
 
         var content = new FlowLayoutPanel
         {
@@ -192,20 +189,37 @@ internal sealed class SettingsForm : Form
         AddScriptsFolderRow(preferencesGrid, 2);
         AddCsdkCacheToolRow(preferencesGrid, 3);
         content.Controls.Add(preferencesGrid);
-        root.Controls.Add(content, 0, 1);
+        root.Controls.Add(content, 0, 0);
 
         var footer = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            ColumnCount = 3,
+            AutoSize = false,
+            Height = 30,
+            ColumnCount = 2,
             RowCount = 1,
             Margin = new Padding(0, 10, 0, 0),
         };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+
+        var friendlyVersionLabel = new Label
+        {
+            Text = $"v{GetFriendlyVersion()}",
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 7, 0, 0),
+        };
+
+        var footerActions = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Anchor = AnchorStyles.Right,
+            Margin = Padding.Empty,
+        };
 
         _closeCancelButton.Text = UiText.T("CLOSE", "ЗАКРЫТЬ");
         _applyButton.Text = UiText.T("APPLY", "ПРИМЕНИТЬ");
@@ -219,9 +233,11 @@ internal sealed class SettingsForm : Form
 
         _applyButton.Margin = new Padding(0, 0, 8, 0);
         _closeCancelButton.Margin = Padding.Empty;
-        footer.Controls.Add(_applyButton, 1, 0);
-        footer.Controls.Add(_closeCancelButton, 2, 0);
-        root.Controls.Add(footer, 0, 2);
+        footerActions.Controls.Add(_applyButton);
+        footerActions.Controls.Add(_closeCancelButton);
+        footer.Controls.Add(friendlyVersionLabel, 0, 0);
+        footer.Controls.Add(footerActions, 1, 0);
+        root.Controls.Add(footer, 0, 1);
 
         AcceptButton = _applyButton;
         CancelButton = _closeCancelButton;
@@ -314,6 +330,13 @@ internal sealed class SettingsForm : Form
         return measured.Width + 12 <= button.ClientSize.Width;
     }
 
+    private static string GetFriendlyVersion()
+    {
+        var version = Application.ProductVersion?.Trim() ?? "0.0.0";
+        var metadataSeparator = version.IndexOf('+');
+        return metadataSeparator >= 0 ? version[..metadataSeparator] : version;
+    }
+
 
     private static TableLayoutPanel CreateToolsGrid()
     {
@@ -327,8 +350,8 @@ internal sealed class SettingsForm : Form
             Width = 910,
         };
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 145));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 388));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 205));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 328));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 32));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
@@ -409,9 +432,22 @@ internal sealed class SettingsForm : Form
         _retailDeadlockCheckButton.Text = UiText.T("CHECK", "ПРОВЕРИТЬ");
         _retailDeadlockCheckButton.Click += async (_, _) =>
         {
+            if (_retailDeadlockStatus.Kind == ToolchainStatusKind.Checking)
+            {
+                _retailCheckGeneration++;
+                SetRetailStatus(new ToolchainStatus(
+                    ToolchainStatusKind.Cancelled,
+                    UiText.T("Deadlock client check cancelled.", "Проверка Deadlock клиента отменена.")));
+                return;
+            }
+
+            var generation = ++_retailCheckGeneration;
             SetRetailStatus(new ToolchainStatus(ToolchainStatusKind.Checking));
             await Task.Yield();
-            RefreshDeadlockGameStatus();
+            if (generation == _retailCheckGeneration)
+            {
+                RefreshDeadlockGameStatus();
+            }
         };
 
         _toolTip.SetToolTip(
@@ -579,6 +615,11 @@ internal sealed class SettingsForm : Form
 
     private async Task RefreshCsdkStatusAsync(bool skipCheckingState = false)
     {
+        _csdkCheckCancellation?.Cancel();
+        _csdkCheckCancellation?.Dispose();
+        var cancellation = new CancellationTokenSource();
+        _csdkCheckCancellation = cancellation;
+
         if (!skipCheckingState)
         {
             SetCsdkStatus(new ToolchainStatus(ToolchainStatusKind.Checking));
@@ -587,16 +628,59 @@ internal sealed class SettingsForm : Form
 
         try
         {
-            SetCsdkStatus(await _toolchain.CheckCsdkAsync(_csdkRootText.Text.Trim()));
+            var status = await _toolchain.CheckCsdkAsync(_csdkRootText.Text.Trim(), cancellation.Token);
+            if (ReferenceEquals(_csdkCheckCancellation, cancellation) && !cancellation.IsCancellationRequested)
+            {
+                SetCsdkStatus(status);
+            }
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            if (ReferenceEquals(_csdkCheckCancellation, cancellation))
+            {
+                SetCsdkStatus(new ToolchainStatus(
+                    ToolchainStatusKind.Cancelled,
+                    UiText.T("Reduced CSDK check cancelled.", "Проверка Reduced CSDK отменена.")));
+            }
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            SetCsdkStatus(new ToolchainStatus(ToolchainStatusKind.NetworkIssue, exception.Message));
+            if (ReferenceEquals(_csdkCheckCancellation, cancellation))
+            {
+                SetCsdkStatus(new ToolchainStatus(ToolchainStatusKind.NetworkIssue, exception.Message));
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_csdkCheckCancellation, cancellation))
+            {
+                _csdkCheckCancellation = null;
+                cancellation.Dispose();
+                UpdateActionAvailability();
+            }
         }
     }
 
+    private bool CancelCsdkCheck()
+    {
+        if (_csdkCheckCancellation is null)
+        {
+            return false;
+        }
+
+        _csdkCheckCancellation.Cancel();
+        SetCsdkStatus(new ToolchainStatus(
+            ToolchainStatusKind.Cancelled,
+            UiText.T("Reduced CSDK check cancelled.", "Проверка Reduced CSDK отменена.")));
+        return true;
+    }
     private async Task RefreshDeadlockToolsStatusAsync(bool skipCheckingState = false)
     {
+        _deadlockToolsCheckCancellation?.Cancel();
+        _deadlockToolsCheckCancellation?.Dispose();
+        var cancellation = new CancellationTokenSource();
+        _deadlockToolsCheckCancellation = cancellation;
+
         if (!skipCheckingState)
         {
             SetDeadlockToolsStatus(new ToolchainStatus(ToolchainStatusKind.Checking));
@@ -605,14 +689,52 @@ internal sealed class SettingsForm : Form
 
         try
         {
-            SetDeadlockToolsStatus(await _toolchain.CheckDeadlockToolsAsync(_deadlockToolsRootText.Text.Trim()));
+            var status = await _toolchain.CheckDeadlockToolsAsync(_deadlockToolsRootText.Text.Trim(), cancellation.Token);
+            if (ReferenceEquals(_deadlockToolsCheckCancellation, cancellation) && !cancellation.IsCancellationRequested)
+            {
+                SetDeadlockToolsStatus(status);
+            }
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            if (ReferenceEquals(_deadlockToolsCheckCancellation, cancellation))
+            {
+                SetDeadlockToolsStatus(new ToolchainStatus(
+                    ToolchainStatusKind.Cancelled,
+                    UiText.T("DeadlockTools check cancelled.", "Проверка DeadlockTools отменена.")));
+            }
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            SetDeadlockToolsStatus(new ToolchainStatus(ToolchainStatusKind.NetworkIssue, exception.Message));
+            if (ReferenceEquals(_deadlockToolsCheckCancellation, cancellation))
+            {
+                SetDeadlockToolsStatus(new ToolchainStatus(ToolchainStatusKind.NetworkIssue, exception.Message));
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_deadlockToolsCheckCancellation, cancellation))
+            {
+                _deadlockToolsCheckCancellation = null;
+                cancellation.Dispose();
+                UpdateActionAvailability();
+            }
         }
     }
 
+    private bool CancelDeadlockToolsCheck()
+    {
+        if (_deadlockToolsCheckCancellation is null)
+        {
+            return false;
+        }
+
+        _deadlockToolsCheckCancellation.Cancel();
+        SetDeadlockToolsStatus(new ToolchainStatus(
+            ToolchainStatusKind.Cancelled,
+            UiText.T("DeadlockTools check cancelled.", "Проверка DeadlockTools отменена.")));
+        return true;
+    }
     private void RefreshDeadlockGameStatus()
     {
         SetRetailStatus(_toolchain.CheckRetailDeadlock(_retailDeadlockRootText.Text.Trim()));
@@ -707,9 +829,9 @@ internal sealed class SettingsForm : Form
             ? UiText.T("CHECKING…", "ПРОВЕРКА…")
             : UiText.T("CHECK", "ПРОВЕРИТЬ");
 
-        _csdkPrimaryButton.Enabled = !_busy && _csdkStatus.Kind is not ToolchainStatusKind.Checking and not ToolchainStatusKind.Working;
-        _deadlockToolsPrimaryButton.Enabled = !_busy && _deadlockToolsStatus.Kind is not ToolchainStatusKind.Checking and not ToolchainStatusKind.Working;
-        _retailDeadlockCheckButton.Enabled = !_busy && _retailDeadlockStatus.Kind != ToolchainStatusKind.Checking;
+        _csdkPrimaryButton.Enabled = !_busy && _csdkStatus.Kind is not ToolchainStatusKind.Working;
+        _deadlockToolsPrimaryButton.Enabled = !_busy && _deadlockToolsStatus.Kind is not ToolchainStatusKind.Working;
+        _retailDeadlockCheckButton.Enabled = !_busy;
         _retailDeadlockFindButton.Enabled = !_busy;
 
         var csdkValid = Directory.Exists(_csdkRootText.Text.Trim())
@@ -760,6 +882,12 @@ internal sealed class SettingsForm : Form
 
     private async Task HandleCsdkPrimaryActionAsync()
     {
+        if (_csdkStatus.Kind == ToolchainStatusKind.Checking)
+        {
+            CancelCsdkCheck();
+            return;
+        }
+
         if (!_allowUnverifiedToolchainAutomation)
         {
             await RefreshCsdkStatusAsync();
@@ -804,13 +932,17 @@ internal sealed class SettingsForm : Form
             return;
         }
 
-        await RunBusyOperationAsync(
-            async _ => await RefreshCsdkStatusAsync(),
-            UiText.T("Could not check Reduced CSDK", "Не удалось проверить Reduced CSDK"));
+        await RefreshCsdkStatusAsync();
     }
 
     private async Task HandleDeadlockToolsPrimaryActionAsync()
     {
+        if (_deadlockToolsStatus.Kind == ToolchainStatusKind.Checking)
+        {
+            CancelDeadlockToolsCheck();
+            return;
+        }
+
         if (!_allowUnverifiedToolchainAutomation)
         {
             await RefreshDeadlockToolsStatusAsync();
@@ -858,9 +990,7 @@ internal sealed class SettingsForm : Form
             return;
         }
 
-        await RunBusyOperationAsync(
-            async _ => await RefreshDeadlockToolsStatusAsync(),
-            UiText.T("Could not check DeadlockTools", "Не удалось проверить DeadlockTools"));
+        await RefreshDeadlockToolsStatusAsync();
     }
 
     private async Task SetupCsdkAsync()
@@ -963,6 +1093,7 @@ internal sealed class SettingsForm : Form
             ToolchainStatusKind.UpdateAvailable => $"↑ {UiText.T("Update available", "Есть обновление")}",
             ToolchainStatusKind.InvalidPath => $"× {UiText.T("Invalid path", "Неверный путь")}",
             ToolchainStatusKind.NetworkIssue => $"! {UiText.T("Network issue", "Ошибка сети")}",
+            ToolchainStatusKind.Cancelled => $"○ {UiText.T("Check cancelled", "Проверка отменена")}",
             ToolchainStatusKind.Checking => $"↻ {UiText.T("Checking…", "Проверка…")}",
             ToolchainStatusKind.Working => $"↻ {UiText.T("Working…", "Выполнение…")}",
             ToolchainStatusKind.Ready when context == StatusContext.DeadlockGame => $"✓ {UiText.T("Client ready", "Клиент готов")}",

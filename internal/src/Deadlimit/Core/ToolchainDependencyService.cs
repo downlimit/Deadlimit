@@ -15,6 +15,7 @@ public enum ToolchainStatusKind
     UpdateAvailable,
     InvalidPath,
     NetworkIssue,
+    Cancelled,
     Checking,
     Working,
     Ready,
@@ -138,6 +139,10 @@ public sealed class ToolchainDependencyService
                 installedGeneration,
                 catalog.Generation);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception exception) when (IsNetworkException(exception))
         {
             return new(
@@ -209,6 +214,10 @@ public sealed class ToolchainDependencyService
                 $"DeadlockTools is present, but its version cannot be identified. Latest official release: {latestRelease.TagName}. Use INSTALL to switch to a Deadlimit-managed release installation.",
                 true,
                 AvailableVersion: latestRelease.TagName);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception exception) when (IsNetworkException(exception))
         {
