@@ -1,8 +1,8 @@
-# Deadlimit Aggregator — BUILD & TEST
+# Deadlimit Manager — BUILD & TEST
 
 ## 2026-08-23 — accepted iteration workflow
 
-After the initial CSDK authoring/material pass, routine character-skin iteration is a single Deadlimit Aggregator action:
+After the initial CSDK authoring/material pass, routine character-skin iteration is a single Deadlimit Manager action:
 
 ```text
 edit project-root DMX / PNG
@@ -70,7 +70,7 @@ Release ID: 01
 
 Lower VPK numbers have higher override priority according to current Deadlock mod-loading guidance.
 
-Deadlimit Aggregator now tracks ownership of its deployed slot in:
+Deadlimit Manager now tracks ownership of its deployed slot in:
 
 ```text
 .deadlimit/vpk-deployment.json
@@ -87,7 +87,7 @@ slot empty
 slot contains file whose hash matches this project's ownership record
 → safe to replace
 
-slot contains file whose recorded Deadlimit Aggregator hash no longer matches
+slot contains file whose recorded Deadlimit Manager hash no longer matches
 → stop; somebody changed the file outside this project
 
 slot contains unknown VPK with no ownership evidence
@@ -96,13 +96,13 @@ slot contains unknown VPK with no ownership evidence
 
 For projects that already completed BUILD & TEST before ownership tracking existed, the presence of the old `.deadlimit/build-test-state.json` is accepted once as migration evidence for the current configured slot. The next successful build records a proper VPK hash.
 
-If the project later changes Release ID, the previous slot is removed automatically only when its file still matches the hash that Deadlimit Aggregator previously recorded. Unknown/modified files are never deleted as cleanup.
+If the project later changes Release ID, the previous slot is removed automatically only when its file still matches the hash that Deadlimit Manager previously recorded. Unknown/modified files are never deleted as cleanup.
 
 ### VPK packaging
 
 BUILD & TEST creates the VPK **in-process** through the already embedded ValvePak library rather than launching `CSDKCfgVPK.exe`. Current ValvePak explicitly supports creating new VPK archives with `Package.AddFile(...)` and `Package.Write(...)`; new packages default to VPK version 2.
 
-This change is intentional UX behavior: the external CSDKCfgVPK success MessageBox cannot provide Deadlimit Aggregator-owned actions or progress. In-process packing removes that extra modal window and lets Deadlimit Aggregator own the complete transaction.
+This change is intentional UX behavior: the external CSDKCfgVPK success MessageBox cannot provide Deadlimit Manager-owned actions or progress. In-process packing removes that extra modal window and lets Deadlimit Manager own the complete transaction.
 
 Packaging is transactional:
 
@@ -120,7 +120,7 @@ The directory VPK is deployed after any numeric chunks so it acts as the final f
 
 ### Completion UX and running Deadlock
 
-Successful BUILD & TEST ends in a Deadlimit Aggregator-owned dialog.
+Successful BUILD & TEST ends in a Deadlimit Manager-owned dialog.
 
 When Deadlock is not running:
 
@@ -131,9 +131,9 @@ LAUNCH DEADLOCK GAME
 
 The launch action uses Steam app `1422450`.
 
-When Deadlock is already running, Deadlimit Aggregator does **not** force a restart. The dialog reports that the game is already running and suggests first trying to make the game reload/reselect the hero. The launch button is disabled in that state.
+When Deadlock is already running, Deadlimit Manager does **not** force a restart. The dialog reports that the game is already running and suggests first trying to make the game reload/reselect the hero. The launch button is disabled in that state.
 
-Reason: a mandatory restart for retail model-replacement VPK iteration has not yet been experimentally proven in our pipeline. Source 2 can cache loaded resources, so hot replacement may depend on whether the relevant hero/model is recreated or remains cached. Until tested, Deadlimit Aggregator must not kill a running match/client merely on a hypothesis.
+Reason: a mandatory restart for retail model-replacement VPK iteration has not yet been experimentally proven in our pipeline. Source 2 can cache loaded resources, so hot replacement may depend on whether the relevant hero/model is recreated or remains cached. Until tested, Deadlimit Manager must not kill a running match/client merely on a hypothesis.
 
 The concrete acceptance experiment is:
 
@@ -155,9 +155,9 @@ BUILD & TEST reports one overall 0–100 progress value across the whole transac
 The window title remains the compact high-visibility status surface and has an animated spinner:
 
 ```text
-Deadlimit Aggregator — [34% \] - Comparing prepared content...
-Deadlimit Aggregator — [56% |] - Compiling Source 2 assets — batch 2/4...
-Deadlimit Aggregator — [98% /] - Verifying VPK checksums...
+Deadlimit Manager — [34% \] - Comparing prepared content...
+Deadlimit Manager — [56% |] - Compiling Source 2 assets — batch 2/4...
+Deadlimit Manager — [98% /] - Verifying VPK checksums...
 ```
 
 Spinner frames rotate as:
@@ -168,7 +168,7 @@ Spinner frames rotate as:
 
 At 100% the spinner becomes a check mark.
 
-A real horizontal progress bar is also shown on the right side of Deadlimit Aggregator's existing status bar while BUILD & TEST is running. The standard Windows/WinForms caption is not custom-drawn, so the title itself stays textual; no fragile custom non-client title-bar rendering is introduced.
+A real horizontal progress bar is also shown on the right side of Deadlimit Manager's existing status bar while BUILD & TEST is running. The standard Windows/WinForms caption is not custom-drawn, so the title itself stays textual; no fragile custom non-client title-bar rendering is introduced.
 
 Progress weighting is based on real pipeline phases:
 
@@ -202,7 +202,7 @@ Later runs:
 7. if a removed source has no proven compiled-output mapping, fall back to a clean addon rebuild instead of risking stale runtime data;
 8. save the new hash snapshot only after compilation, required AG2 restoration and VPK packing all succeed.
 
-This is deliberately fail-safe: incremental speed is used only where Deadlimit Aggregator can prove what should be retained or invalidated.
+This is deliberately fail-safe: incremental speed is used only where Deadlimit Manager can prove what should be retained or invalidated.
 
 Build-state relative paths are treated as untrusted input. Entries that are rooted or contain an escaping `..` invalidate the snapshot and force a clean build; they are never joined into a deletion target. Source 2 resource paths read from the manifest or VMDL are likewise containment-checked before any addon write.
 
@@ -254,7 +254,7 @@ Compilation is batched at 25 direct inputs and uses the validated CSDK12 `game/b
 
 Current external Deadlock character-replacement guidance still requires AnimGraph2 data after CSDK12 character-model export; otherwise replacement characters can A-pose.
 
-Deadlimit Aggregator therefore reuses the command shape that was already confirmed by the earlier local Deadlimit pipeline whenever the main VMDL was recompiled:
+Deadlimit Manager therefore reuses the command shape that was already confirmed by the earlier local Deadlimit pipeline whenever the main VMDL was recompiled:
 
 ```text
 DeadlockTools add ag2 <compiled vmdl_c>
@@ -272,7 +272,7 @@ Rechecked 2026-08-23:
 - current CSDK12 documents `content/citadel_addons/<addon>` as authoring source and `game/citadel_addons/<addon>` as compiled output;
 - current Deadlock installation guidance still requires `Game citadel/addons` in retail `gameinfo.gi`, notes that updates can replace that file, and uses `pak01_dir.vpk` through `pak99_dir.vpk` with lower numbers having higher priority;
 - the current ValvePak API supports creating VPKs in-process and defaults new packages to VPK version 2;
-- SteamDB's current Windows launch configuration points at `game/bin/win64/deadlock.exe`; the older `project8.exe` process name is also recognized by Deadlimit Aggregator when detecting an already-running client;
+- SteamDB's current Windows launch configuration points at `game/bin/win64/deadlock.exe`; the older `project8.exe` process name is also recognized by Deadlimit Manager when detecting an already-running client;
 - Valve's current official Deadlock Steam page is app `1422450`;
 - current Deadlock modding guidance still identifies Dotryen DeadlockTools AG2 restoration as required for CSDK12 character replacements.
 
@@ -286,7 +286,7 @@ Confirmed by the user's live Ivy run on 2026-08-23:
 Implemented after that live proof but **not yet locally acceptance-tested**:
 
 - in-process ValvePak packaging;
-- Deadlimit Aggregator-owned completion dialog;
+- Deadlimit Manager-owned completion dialog;
 - overall progress bar/spinner;
 - automatic `gameinfo.gi` mod-loading guard;
 - VPK slot ownership/hash protection;

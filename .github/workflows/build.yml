@@ -129,16 +129,35 @@ jobs:
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'Start-Process' },
             @{ Path = 'internal/DeadlimitUpdater.ps1'; Pattern = 'The local checkout has tracked changes. Commit or revert them before running Deadlimit Updater.' },
             @{ Path = 'internal/src/Deadlimit/Deadlimit.csproj'; Pattern = '<AssemblyName>DeadlimitAggregator</AssemblyName>' },
-            @{ Path = 'internal/src/Deadlimit/Deadlimit.csproj'; Pattern = '<Product>Deadlimit Aggregator</Product>' },
-            @{ Path = 'internal/src/Deadlimit/Program.cs'; Pattern = 'Usage: DeadlimitAggregator.exe' },
-            @{ Path = 'internal/src/Deadlimit/App/StartupProgressForm.cs'; Pattern = 'Text = "Deadlimit Aggregator"' },
-            @{ Path = 'internal/src/Deadlimit/App/WindowProgressFeature.cs'; Pattern = 'private const string AppTitle = "Deadlimit Aggregator"' }
+            @{ Path = 'internal/src/Deadlimit/Program.cs'; Pattern = 'Usage: DeadlimitAggregator.exe' }
           )
           foreach ($check in $forbidden) {
             if (Select-String -LiteralPath $check.Path -SimpleMatch $check.Pattern -Quiet) {
               throw "Forbidden legacy/broken contract remains in $($check.Path): $($check.Pattern)"
             }
           }
+      - name: Product naming drift guard
+        shell: pwsh
+        run: |
+          $forbiddenTerms = @(
+            ('Deadlimit ' + 'Aggregator'),
+            ('Deadlimit ' + 'Max Script'),
+            ('Deadlimit ' + 'MaxScript'),
+            ('MaxScript ' + 'Deadlimit'),
+            ('Deadlimit ' + 'Shader'),
+            ('3ds' + ' Max'),
+            ('3D' + ' Max')
+          )
+          foreach ($term in $forbiddenTerms) {
+            $matches = @(git grep -n -I -F -- $term -- .)
+            if ($LASTEXITCODE -gt 1) {
+              throw "git grep failed while checking product naming: $term"
+            }
+            if ($matches.Count -gt 0) {
+              throw "Forbidden legacy/product-drift term '$term' remains:`n$($matches -join "`n")"
+            }
+          }
+
       - name: Updater root-resolution smoke
         shell: pwsh
         run: |

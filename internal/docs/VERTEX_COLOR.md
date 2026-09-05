@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The artist DMX starts as a normal Wall Worm export with all settings controlled by the Wall Worm window. A small universal MAXScript exports the currently selected geometry and renderable Shape/Spline objects through the Autodesk FBX exporter. Deadlimit Aggregator consumes that sidecar during PREPARE.
+The artist DMX starts as a normal Wall Worm export with all settings controlled by the Wall Worm window. A small universal MAXScript exports the currently selected geometry and renderable Shape/Spline objects through the Autodesk FBX exporter. Deadlimit Manager consumes that sidecar during PREPARE.
 
 ```text
 <name>.dmx
@@ -12,23 +12,23 @@ The artist DMX starts as a normal Wall Worm export with all settings controlled 
 ## Artist workflow
 
 1. Export the normal DMX with Wall Worm.
-2. Keep the same geometry and renderable Shape/Spline objects selected in 3ds Max.
+2. Keep the same geometry and renderable Shape/Spline objects selected in MAXScript host.
 3. Run `DeadlimitPipelineScripts.ms`, choose the `FIXED GAMMA` mode, and press **EXPORT VERTEX COLOR FBX**.
 4. Run PREPARE normally.
 
-The helper reads Wall Worm's last export folder from `3dsMax.ini` and finds the newest primary DMX there. It does not read a Deadlimit Aggregator project, launch Deadlimit Aggregator, or contain a path to `DeadlimitAggregator.exe`.
+The helper reads Wall Worm's last export folder from `3dsMax.ini` and finds the newest primary DMX there. It does not read a Deadlimit Manager project, launch Deadlimit Manager, or contain a path to `DeadlimitAggregator.exe`.
 
-The FBX export is ASCII, selection-only, animation/cameras/lights disabled and triangulation enabled. Renderable Shape/Spline objects receive a temporary `Turn To Mesh` modifier before export. `FIXED GAMMA` is on by default; its adjacent GAMMA spinner applies `channel 0 RGB^(GAMMA/2.2)`. The default `1.0` applies the established `1/2.2` Source 2 correction, while `2.2` produces exponent `1.0` and preserves stored RGB. The spinner locks while FIXED GAMMA is off. The helper restores temporary modifiers, previous FBX settings, Max selection, and the scene dirty state after success or failure. During PREPARE, Deadlimit Aggregator patches the CSDK-bound DMX copy and reloads and validates its color streams. An applied `_vertexcolor.fbx` remains beside the artist DMX until the complete PREPARE transaction has saved the VMDL, materials, project metadata and final log. Only then is the temporary FBX removed. Rejection, cancellation, or any later PREPARE failure leaves the FBX available for retry and diagnosis.
+The FBX export is ASCII, selection-only, animation/cameras/lights disabled and triangulation enabled. Renderable Shape/Spline objects receive a temporary `Turn To Mesh` modifier before export. `FIXED GAMMA` is on by default; its adjacent GAMMA spinner applies `channel 0 RGB^(GAMMA/2.2)`. The default `1.0` applies the established `1/2.2` Source 2 correction, while `2.2` produces exponent `1.0` and preserves stored RGB. The spinner locks while FIXED GAMMA is off. The helper restores temporary modifiers, previous FBX settings, host selection, and the scene dirty state after success or failure. During PREPARE, Deadlimit Manager patches the CSDK-bound DMX copy and reloads and validates its color streams. An applied `_vertexcolor.fbx` remains beside the artist DMX until the complete PREPARE transaction has saved the VMDL, materials, project metadata and final log. Only then is the temporary FBX removed. Rejection, cancellation, or any later PREPARE failure leaves the FBX available for retry and diagnosis.
 
 Before export, stored Inner Lineart Skin groups on selected meshes are synchronized from each source vertex to its coincident clones. Ordinary weights, DQ masks, normalization, and supported rigid state are included. Stale topology rejects the export. A synchronization that changes clone data deliberately leaves the scene dirty so the repaired weights can be saved.
 
 Inner Lineart's optional Alpha Marker writes black to Vertex Alpha (Max map channel `-2`) on participating corners while preserving Vertex Color RGB (channel `0`). DISPLAY LINEART / DISPLAY VERTCOLOR switches selected meshes between `#alpha` and `#color` viewport display without changing stored values.
 
-The versioned helper and a short README live in `.deadlimit/maxscript-vertcolor-trans/` in the `Deadlimit` repository. Settings exposes `📂 Deadlimit Max Script` to open that folder.
+The versioned helper and a short README live in `.deadlimit/scripts/` in the `Deadlimit` repository. Settings exposes `📂 Deadlimit Scripts` to open that folder.
 
 ## Material priority
 
-A DMX mesh is selected for transfer when any assigned material identity contains the exact substring `vertexcolor`, case-insensitively. Deadlimit Aggregator checks the serialized material element name and its `mtlName` path.
+A DMX mesh is selected for transfer when any assigned material identity contains the exact substring `vertexcolor`, case-insensitively. Deadlimit Manager checks the serialized material element name and its `mtlName` path.
 
 The transfer contract is all-or-nothing:
 
@@ -70,6 +70,6 @@ Validation requires:
 - valid color indices and RGBA values;
 - sidecar modification time at least as new as the primary DMX.
 
-FBX per-corner colors can split the DMX logical vertex domain. After validation, Deadlimit Aggregator expands the prepared DMX position, normal, UV and skin streams onto that domain, preserving their values while adding `color$0` and `color$0Indices`.
+FBX per-corner colors can split the DMX logical vertex domain. After validation, Deadlimit Manager expands the prepared DMX position, normal, UV and skin streams onto that domain, preserving their values while adding `color$0` and `color$0Indices`.
 
 All checks and a full DMX reload complete before the prepared DMX target is replaced. A missing, stale, malformed or rejected sidecar leaves the normal prepared copy unchanged.

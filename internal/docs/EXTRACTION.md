@@ -33,19 +33,19 @@ ValveResourceFormat exposes the VPK/resource parsing and decompilation primitive
 
 ## Integration decision
 
-Deadlimit Aggregator embeds the pinned ValveResourceFormat NuGet package and performs extraction in-process.
+Deadlimit Manager embeds the pinned ValveResourceFormat NuGet package and performs extraction in-process.
 
 Consequences:
 
 - the artist is not asked to locate or install `Source2Viewer-CLI.exe`;
 - the ordinary `Source2Viewer.exe` GUI is optional and remains useful only for manual inspection;
-- Deadlimit Aggregator does not depend on unstable CLI argument syntax;
+- Deadlimit Manager does not depend on unstable CLI argument syntax;
 - upgrading ValveResourceFormat is an explicit compatibility change and requires a fresh Deadlock extraction smoke test.
 
 ## Current implemented flow
 
 ```text
-saved Deadlimit Aggregator project
+saved Deadlimit Manager project
 → EXTRACT HERO SOURCE
 → open current retail VPK(s) through ValveResourceFormat/ValvePak
 → discover a hero .vmdl_c candidate
@@ -87,7 +87,7 @@ For each VPK entry in the discovered hero resource folder:
 
 ## Local validation — 2026-08-22
 
-The embedded extraction path was exercised successfully against the current retail Deadlock install from a real Deadlimit Aggregator project.
+The embedded extraction path was exercised successfully against the current retail Deadlock install from a real Deadlimit Manager project.
 
 Observed result:
 

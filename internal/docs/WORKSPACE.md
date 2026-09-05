@@ -1,10 +1,10 @@
-# Deadlimit Aggregator — Artist project workspace
+# Deadlimit Manager — Artist project workspace
 
 This file defines the current project-folder contract used by the artist-facing workflow.
 
 ## Working-folder layout
 
-A Deadlimit Aggregator project points at the artist's existing project folder. Deadlimit Aggregator does not require the artist to reorganize that folder into a tool-owned hierarchy.
+A Deadlimit Manager project points at the artist's existing project folder. Deadlimit Manager does not require the artist to reorganize that folder into a tool-owned hierarchy.
 
 Current expected shape:
 
@@ -13,27 +13,27 @@ Current expected shape:
 ├─ *.dmx
 ├─ *.png
 ├─ 0source\          # current retail hero extraction; generated on demand
-├─ 1scene\           # optional artist-owned folder; Deadlimit Aggregator does not assume or manage it
-├─ 6temp\            # optional artist-owned folder; Deadlimit Aggregator does not assume or manage it
-└─ .deadlimit\       # hidden Deadlimit Aggregator metadata / staging / safety backup
+├─ 1scene\           # optional artist-owned folder; Deadlimit Manager does not assume or manage it
+├─ 6temp\            # optional artist-owned folder; Deadlimit Manager does not assume or manage it
+└─ .deadlimit\       # hidden Deadlimit Manager metadata / staging / safety backup
    ├─ project.json
    └─ 0source.previous\   # previous extraction, when a refresh replaces an existing 0source
 ```
 
-Only the conventions that affect Deadlimit Aggregator are normative. Folder names such as `1scene` and `6temp` are examples of artist-owned structure and must not be hardcoded as required directories.
+Only the conventions that affect Deadlimit Manager are normative. Folder names such as `1scene` and `6temp` are examples of artist-owned structure and must not be hardcoded as required directories.
 
 ## Root asset contract
 
 The project root is the normal handoff point from the DCC/texturing workflow.
 
-For the current Stage 1 implementation Deadlimit Aggregator scans only the top level of the selected project folder for:
+For the current Stage 1 implementation Deadlimit Manager scans only the top level of the selected project folder for:
 
 - `*.dmx` model files;
 - `*.png` textures.
 
 It records relative file names in the project manifest. Other files and folders are ignored unless a later pipeline stage explicitly needs them.
 
-Deadlimit Aggregator must not move, rename, overwrite, or copy these artist-owned root assets merely to create/open a project.
+Deadlimit Manager must not move, rename, overwrite, or copy these artist-owned root assets merely to create/open a project.
 
 ## `0source` contract
 
@@ -42,22 +42,22 @@ Deadlimit Aggregator must not move, rename, overwrite, or copy these artist-owne
 Current intended/implemented behavior:
 
 1. the user clicks `EXTRACT HERO SOURCE`;
-2. Deadlimit Aggregator saves the current project metadata first;
-3. Deadlimit Aggregator uses its embedded pinned ValveResourceFormat library to inspect the current retail Deadlock VPKs; no separate Source2Viewer CLI selection is required;
-4. Deadlimit Aggregator discovers a matching hero `.vmdl_c` from current retail resources;
+2. Deadlimit Manager saves the current project metadata first;
+3. Deadlimit Manager uses its embedded pinned ValveResourceFormat library to inspect the current retail Deadlock VPKs; no separate Source2Viewer CLI selection is required;
+4. Deadlimit Manager discovers a matching hero `.vmdl_c` from current retail resources;
 5. the hero resource folder is decompiled into a hidden staging directory;
-6. only after a non-empty extraction does Deadlimit Aggregator publish the staging result as `<ProjectFolder>\0source\`;
+6. only after a non-empty extraction does Deadlimit Manager publish the staging result as `<ProjectFolder>\0source\`;
 7. if an older `0source` existed, it is moved to hidden `.deadlimit\0source.previous\` before the new extraction is published;
-8. if publishing the new extraction fails, Deadlimit Aggregator attempts to restore the previous `0source`;
+8. if publishing the new extraction fails, Deadlimit Manager attempts to restore the previous `0source`;
 9. the selected retail model path, source VPK, ValveResourceFormat version, extraction timestamp, and extracted file count are persisted in `project.json`.
 
 `0source` is generated data. Artist-authored DMX/PNG files remain in the project root and are not touched by extraction.
 
 The first extraction slice decompiles the discovered retail hero resource folder. Full transitive dependency closure outside that folder remains to be validated from real extraction output before it is generalized.
 
-## Deadlimit Aggregator metadata
+## Deadlimit Manager metadata
 
-Deadlimit Aggregator stores its own per-project state under:
+Deadlimit Manager stores its own per-project state under:
 
 ```text
 <ProjectFolder>\.deadlimit\project.json
@@ -81,7 +81,7 @@ The manifest currently stores:
 
 ## Persistence
 
-Deadlimit Aggregator remembers the last opened project in the legacy compatibility path `%LOCALAPPDATA%\Deadlimit\settings.json`.
+Deadlimit Manager remembers the last opened project in the legacy compatibility path `%LOCALAPPDATA%\Deadlimit\settings.json`.
 
 On the next launch, if that project and its manifest still exist, the project is reopened automatically.
 
@@ -96,7 +96,7 @@ select existing artist folder
 → scan root DMX/PNG
 → enter project name + hero + optional release ID
 → save hidden manifest
-→ close/reopen Deadlimit Aggregator
+→ close/reopen Deadlimit Manager
 → last project and metadata restore correctly
 ```
 

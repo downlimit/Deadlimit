@@ -4,7 +4,7 @@ This file records decisions that should remain stable unless new evidence justif
 
 ## Product decisions
 
-### Deadlimit Aggregator is an artist-facing workflow tool
+### Deadlimit Manager is an artist-facing workflow tool
 
 The tool exists to remove mechanical Source 2/Deadlock modding work while keeping artistic authoring explicit.
 
@@ -27,7 +27,7 @@ Routine builds must never overwrite an existing authored custom VMAT.
 
 ### Extraction is a first-class module
 
-Deadlimit Aggregator should eventually be able to select a retail Deadlock hero and create a modding-ready source folder containing the model and relevant dependencies.
+Deadlimit Manager should eventually be able to select a retail Deadlock hero and create a modding-ready source folder containing the model and relevant dependencies.
 
 Hero resource paths must be discovered from current retail data rather than assumed from a fixed template.
 
@@ -64,13 +64,13 @@ Therefore `PREPARE FOR CSDK` must:
 - never invoke ResourceCompiler itself;
 - never apply post-compile binary patches during this authoring-preparation action.
 
-Compilation, runtime-output cleanup/rebuild policy, and any post-compile patching belong to a later explicit release/test action, where Deadlimit Aggregator can control the entire transaction intentionally.
+Compilation, runtime-output cleanup/rebuild policy, and any post-compile patching belong to a later explicit release/test action, where Deadlimit Manager can control the entire transaction intentionally.
 
 ### Embed ValveResourceFormat for extraction
 
-Deadlimit Aggregator must not require the artist to install or locate the separate `Source2Viewer-CLI.exe` merely to extract retail resources.
+Deadlimit Manager must not require the artist to install or locate the separate `Source2Viewer-CLI.exe` merely to extract retail resources.
 
-The normal Source 2 Viewer executable is the GUI application; the official command-line utility is a separate binary named `Source2Viewer-CLI`. Because the official CLI interface explicitly does not guarantee argument stability, Deadlimit Aggregator uses ValveResourceFormat as an in-process library instead of automating the CLI.
+The normal Source 2 Viewer executable is the GUI application; the official command-line utility is a separate binary named `Source2Viewer-CLI`. Because the official CLI interface explicitly does not guarantee argument stability, Deadlimit Manager uses ValveResourceFormat as an in-process library instead of automating the CLI.
 
 The current pinned dependency is:
 
@@ -80,7 +80,7 @@ ValveResourceFormat 20.0.6980
 
 This version targets .NET 10 and was current when the integration was made on 2026-08-22. Upgrading ValveResourceFormat is an explicit compatibility change: extraction must be rebuilt and smoke-tested against the current Deadlock retail resources before the pinned version is changed.
 
-The Source 2 Viewer GUI remains useful as a manual inspection/reference tool, but it is not a runtime prerequisite for Deadlimit Aggregator extraction.
+The Source 2 Viewer GUI remains useful as a manual inspection/reference tool, but it is not a runtime prerequisite for Deadlimit Manager extraction.
 
 ### Validated ResourceCompiler path is retained as release-stage evidence
 
@@ -113,7 +113,7 @@ Only matching cases supported by evidence should be normalized. Valid `materials
 
 ### AG2/NmSkeleton repair is post-compile and evidence-driven
 
-After a controlled runtime compilation step, Deadlimit Aggregator may verify required graph/skeleton references and invoke DeadlockTools `add ag2` when the compiled model needs them restored.
+After a controlled runtime compilation step, Deadlimit Manager may verify required graph/skeleton references and invoke DeadlockTools `add ag2` when the compiled model needs them restored.
 
 `fix unitstatus` is conditional and must not be treated as universally required.
 
@@ -121,7 +121,7 @@ AG2/NmSkeleton post-processing does not belong to `PREPARE FOR CSDK`, because th
 
 ### Originals are immutable inputs
 
-Deadlimit Aggregator should perform generated/preprocessed work inside project/CSDK workspaces rather than destructively editing the artist's original source folder.
+Deadlimit Manager should perform generated/preprocessed work inside project/CSDK workspaces rather than destructively editing the artist's original source folder.
 
 ### Project state is persistent
 
