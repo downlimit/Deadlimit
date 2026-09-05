@@ -315,10 +315,77 @@ internal static class MessageBox
             return text;
         }
 
+        var vertexColorContext = BuildVertexColorPrepareContext(text);
+        if (!string.IsNullOrWhiteSpace(vertexColorContext))
+        {
+            return vertexColorContext;
+        }
+
         var localizedCaption = caption.Trim().TrimEnd('.', '!', '?', ':');
         return localizedCaption.Length == 0
             ? text
-            : localizedCaption + ".";
+            : $"{localizedCaption}.\n\nПодробности:\n{text}";
+    }
+
+    private static string? BuildVertexColorPrepareContext(string text)
+    {
+        if (!text.Contains("Vertex Color", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var dmxName = TakeBetween(text, "because ", " requires Vertex Color")
+            ?? TakeBetween(text, "validation failed for ", ".");
+        if (string.IsNullOrWhiteSpace(dmxName))
+        {
+            return null;
+        }
+
+        var sidecarName = TakeBetween(
+            text,
+            "Vertex Color source is incomplete: ",
+            " is missing.");
+        if (!string.IsNullOrWhiteSpace(sidecarName))
+        {
+            return $"Последний DMX \"{dmxName}\" использует материал со словом vertexcolor в названии, но рядом нет актуального Vertex Color FBX \"{sidecarName}\".\n\n" +
+                   "Экспортируйте Vertex Color FBX после последнего DMX и снова нажмите ПОДГОТОВИТЬ ДЛЯ CSDK.";
+        }
+
+        sidecarName = TakeBetween(
+            text,
+            "Vertex Color source is incomplete: ",
+            " is older than ");
+        if (!string.IsNullOrWhiteSpace(sidecarName))
+        {
+            return $"Последний DMX \"{dmxName}\" использует материал со словом vertexcolor в названии, но Vertex Color FBX \"{sidecarName}\" старее этого DMX.\n\n" +
+                   "Экспортируйте Vertex Color FBX заново после последнего DMX и снова нажмите ПОДГОТОВИТЬ ДЛЯ CSDK.";
+        }
+
+        if (text.Contains("Vertex Color validation failed", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"DMX \"{dmxName}\" использует Vertex Color, но Deadlimit не смог безопасно сопоставить его с Vertex Color FBX.\n\n" +
+                   "Экспортируйте DMX и Vertex Color FBX заново одной парой и снова нажмите ПОДГОТОВИТЬ ДЛЯ CSDK.";
+        }
+
+        return null;
+    }
+
+    private static string? TakeBetween(string text, string startMarker, string endMarker)
+    {
+        var start = text.IndexOf(startMarker, StringComparison.OrdinalIgnoreCase);
+        if (start < 0)
+        {
+            return null;
+        }
+
+        start += startMarker.Length;
+        var end = text.IndexOf(endMarker, start, StringComparison.OrdinalIgnoreCase);
+        if (end <= start)
+        {
+            return null;
+        }
+
+        return text[start..end].Trim();
     }
 
     private static bool LooksLikeRussianProse(string value)
