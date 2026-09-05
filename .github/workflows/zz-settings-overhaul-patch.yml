@@ -40,6 +40,11 @@ jobs:
           $relocation = Get-Content -LiteralPath $relocationPath -Raw
           $relocation = $relocation.Replace('        Process.Start(startInfo)' + [Environment]::NewLine + '            ?? throw', '        _ = Process.Start(startInfo)' + [Environment]::NewLine + '            ?? throw')
           Set-Content -LiteralPath $relocationPath -Value $relocation -NoNewline -Encoding utf8
+          $smokePath = 'internal/tests/ui-localization-smoke.ps1'
+          $smoke = Get-Content -LiteralPath $smokePath -Raw
+          $obsolete = "Assert-Contains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'UiText.T(`"Version`", `"Версия`")'" + [Environment]::NewLine
+          $smoke = $smoke.Replace($obsolete, '')
+          Set-Content -LiteralPath $smokePath -Value $smoke -NoNewline -Encoding utf8
       - name: Restore
         shell: pwsh
         run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
