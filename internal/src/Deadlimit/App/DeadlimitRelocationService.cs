@@ -57,6 +57,7 @@ internal static class DeadlimitRelocationService
         var startInfo = new ProcessStartInfo
         {
             FileName = "powershell.exe",
+            WorkingDirectory = Path.GetTempPath(),
             UseShellExecute = false,
             CreateNoWindow = true,
         };
