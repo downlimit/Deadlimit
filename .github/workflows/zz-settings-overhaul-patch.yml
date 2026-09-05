@@ -29,10 +29,13 @@ jobs:
           t = t.replace(
               'new, count = re.subn(pattern, replacement, text, count=1, flags=flags)',
               'new, count = re.subn(pattern, lambda _match: replacement, text, count=1, flags=flags)')
-          t = t.replace("footer_replacement = textwrap.dedent(r'''\\\\\n", "footer_replacement = textwrap.dedent(r'''\n")
           p.write_text(t, encoding='utf-8')
           '@ | python -
           python internal/dev/apply-settings-overhaul.py
+          $settingsPath = 'internal/src/Deadlimit/App/SettingsForm.cs'
+          $settings = Get-Content -LiteralPath $settingsPath -Raw
+          $settings = $settings -replace '(?m)^\\\r?\n', ''
+          Set-Content -LiteralPath $settingsPath -Value $settings -NoNewline -Encoding utf8
       - name: Restore
         shell: pwsh
         run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
