@@ -63,5 +63,6 @@ release must be rebuilt from its final tag and will have different hashes.
   `COMPATIBILITY.md`.
 - Receive explicit owner approval for public visibility and the first release.
 
-Until these items are resolved or explicitly accepted at the documented owner
-gate, the repository stays private and `v0.1.0-beta.1` must not be published.
+The owner subsequently approved public source visibility. This historical
+rehearsal still does not authorize publishing `v0.1.0-beta.1`; the installer and
+shared updater entry must pass their release workflow first.

@@ -1,6 +1,6 @@
 # Deadlimit Open-Source Readiness Plan
 
-Status: **IN PROGRESS — repository remains private**
+Status: **PUBLIC SOURCE — FIRST BINARY RELEASE IN PROGRESS**
 
 Last updated: 2026-09-05
 
@@ -41,16 +41,15 @@ request whenever scope, evidence, risk, or completion status changes.
 - [x] Inventory and verify every transitive NuGet dependency and required notice. The portable packager includes each exact nuspec, package-provided notice, resolved metadata, and full standard text for SPDX-only MIT/BSD packages.
 - [x] Scan the full Git history for secrets, personal files, and prohibited game assets without printing secret values. The final 822-commit scan found zero prohibited asset paths and zero configured high-confidence credential signatures.
 - [x] Audit all network download/install paths and record their owners, checksums, and trust boundaries in `NETWORK_TRUST_AUDIT.md`.
-- [x] Review the opt-in CSDK setup path that automates DepotDownloader and local VPK extraction. Portable releases disable unverified CSDK/DepotDownloader/DeadlockTools automation at UI and service layers; existing tools remain selectable. The Developer channel retains explicit opt-in access.
+- [x] Review the opt-in CSDK setup path that automates DepotDownloader and local VPK extraction. Git and release copies expose the same explicitly initiated CSDK/DepotDownloader/DeadlockTools actions.
 - [x] Add a CI policy that rejects prohibited game archives, extracted game-tree paths, compiled retail resources, third-party executables/archives, and unexpected files larger than 2 MiB.
 
 Phase acceptance: a written audit has no unresolved red finding; every yellow
 finding has an explicit mitigation or owner-accepted limitation.
 
 Current result: **accepted with documented yellow findings**. The repository and
-history contain no detected prohibited content. Mutable, unauthenticated
-toolchain automation is disabled in portable releases and remains available only
-as an explicit Developer-channel operation.
+history contain no detected prohibited content. Mutable upstream tool downloads
+remain explicit user actions and share the same behavior across delivery modes.
 
 ## Phase 1 — Licensing and community contract
 
@@ -98,27 +97,28 @@ Initial supported/tested matrix:
 Phase acceptance: a first-time user and a first-time contributor can follow
 separate instructions without knowing the maintainer's workstation layout.
 
-## Phase 3 — Delivery and updater split
+## Phase 3 — Unified delivery and updater
 
 - [x] Keep the current Git updater as the developer channel and label it accordingly in the public README.
-- [x] Publish a self-contained `win-x64` portable ZIP that users extract into a writable folder; no bootstrap installer is required.
+- [x] Publish one self-contained `win-x64` ZIP used by both the one-file installer and manual portable extraction.
 - [x] Build and update-smoke the portable ZIP in the private rehearsal workflow; public publication remains gated.
 - [x] Generate a SHA-256 checksum alongside every rehearsal ZIP and require it during install/update.
-- [x] Keep portable settings and caches under local `UserData`; create no automatic shortcuts, registry entries, or files outside the extracted folder.
+- [x] Keep settings and caches under local `UserData`; manual portable extraction creates no shortcuts or installer state, while the explicit installer creates user-facing shortcuts.
 - [x] Keep artist projects outside the replaceable application payload in their user-selected folders.
-- [x] Implement a stable in-folder updater backed by GitHub Releases rather than `origin/main`.
+- [x] Expose one `Update Deadlimit.cmd` entry and one UI action; route Git checkouts to `origin/main` and installed/portable copies to GitHub Releases.
 - [x] Make release updates transactional, preserve `UserData`, restore the current payload after a failed activation, and keep one recoverable version under local `Backup`.
 - [x] Keep an explicit Developer/main channel for contributors.
 - [x] Test first install, no-op update, successful update, bad-checksum/traversal/broken-package preservation, and rollback with isolated synthetic packages.
 - [x] Document the expected Windows SmartScreen warning for unsigned early releases in both public guides.
 
-Phase acceptance: a non-Git user can extract, run, update, remove, and carry the portable folder without system residue,
-while a contributor can clone and work on `main` without mixing the two channels.
+Phase acceptance: a non-Git user can run one installer or manually extract the
+same ZIP, while a contributor can clone `main`; all paths share one application
+UI and updater entry.
 
 ## Phase 4 — CI, security, and repository policy
 
-- [~] Keep existing Windows `build` and `smoke` jobs on pull requests; mark them required when public branch protection becomes available.
-- [!] Add CodeQL for C# when the repository is public or private GitHub Advanced Security is available; do not add a knowingly unavailable required check.
+- [x] Require the Windows `build`, `dco`, and `smoke` checks on protected `main`.
+- [ ] Add CodeQL for C# as a later security improvement; it is outside the first installer/release scope.
 - [x] Add Dependabot for NuGet and GitHub Actions.
 - [~] Add dependency review and license-policy checks. Exact package license evidence and release-manifest verification pass; GitHub dependency review waits for public availability or GitHub Advanced Security.
 - [x] Add repository-owned DCO enforcement for every pull-request commit.
@@ -172,10 +172,10 @@ Validated locally on Windows 11 and in private CI through 2026-09-05:
 - [x] Test updater activation between synthetic packages, preservation of local `UserData`, local `Backup`, failed-update recovery, and rollback. The real pure-portable ZIP passed extraction/startup and same-package updater checks; an old-to-new real ZIP transition and automatic GitHub Releases selection remain publication-gated.
 - [x] Re-run provenance, secret, and packaged-file audits: 822 commits produced zero prohibited asset-path hits and zero high-confidence credential-signature hits; the private portable ZIP passed the manifest and packaged-content audit recorded in the rehearsal report.
 - [~] Produce a final go/no-go report for the owner. The current rehearsal report is NO-GO until the clean-machine, GitHub Releases selection, release-time compatibility refresh, and explicit owner gates are resolved.
-- [!] Receive explicit owner approval to change visibility.
-- [ ] Change `PRIVATE` to `PUBLIC`.
-- [ ] Apply branch protection immediately after visibility changes.
-- [ ] Publish `v0.1.0-beta.1` and seed a small set of `good first issue` tasks.
+- [x] Receive explicit owner approval to change visibility.
+- [x] Change `PRIVATE` to `PUBLIC`.
+- [x] Apply branch protection immediately after visibility changes.
+- [~] Publish `v0.1.0-beta.1`; issue seeding can follow real user feedback.
 
 ## Known risk register
 
@@ -210,6 +210,7 @@ the project gains enough users to justify certificate cost and maintenance.
 
 ### 2026-09-05
 
+- Changed repository visibility to public with protected `main`, then restored the agreed single-file installer. Installer, manual portable extraction, and Git now share one application UI and `Update Deadlimit.cmd` entry; the release ZIP is built once.
 - Merged private PR #99 with the portable packager, checksum-verified installer/updater, rollback path, security tests, release workflows, and updated documentation.
 - Confirmed the repository remains private with zero tags and zero GitHub Releases after the merge.
 - Replaced maintainer-specific runtime defaults with application-root derivation and explicit Settings-based Steam discovery, and retired the obsolete `DeadlimitAggregator*` launchers.

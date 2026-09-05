@@ -79,7 +79,7 @@ internal static class Program
     private static int RunReleasePolicySmoke()
     {
         var isPortable = ReleaseChannelPolicy.IsPortableRelease;
-        if (ReleaseChannelPolicy.AllowsUnverifiedToolchainAutomation == isPortable)
+        if (!ReleaseChannelPolicy.AllowsUnverifiedToolchainAutomation)
         {
             return 2;
         }
@@ -94,15 +94,8 @@ internal static class Program
             return 4;
         }
 
-        try
-        {
-            ReleaseChannelPolicy.RequireUnverifiedToolchainAutomation();
-            return isPortable ? 3 : 0;
-        }
-        catch (InvalidOperationException) when (isPortable)
-        {
-            return 0;
-        }
+        ReleaseChannelPolicy.RequireUnverifiedToolchainAutomation();
+        return 0;
     }
 
     private static int RunApplication(bool startupSmoke)

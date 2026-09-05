@@ -259,9 +259,10 @@ internal static class SettingsVersionFeature
 
     private static void LaunchUpdater(IWin32Window owner)
     {
-        var updater = ReleaseChannelPolicy.IsPortableRelease
-            ? Path.Combine(AppContext.BaseDirectory, "Update Deadlimit.cmd")
-            : Path.Combine(DeadlimitPaths.DefaultDeadlimitRoot, "DeadlimitUpdater.bat");
+        var updateRoot = ReleaseChannelPolicy.IsPortableRelease
+            ? AppContext.BaseDirectory
+            : DeadlimitPaths.DefaultDeadlimitRoot;
+        var updater = Path.Combine(updateRoot, "Update Deadlimit.cmd");
         if (!File.Exists(updater))
         {
             MessageBox.Show(
