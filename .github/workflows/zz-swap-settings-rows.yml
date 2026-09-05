@@ -1,0 +1,47 @@
+name: Swap Settings rows
+
+on:
+  push:
+    branches:
+      - ui/swap-csdk-scripts-settings-rows
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Swap CSDK and Scripts rows
+        shell: pwsh
+        run: |
+          $path = 'internal/src/Deadlimit/App/SettingsForm.cs'
+          $text = Get-Content -LiteralPath $path -Raw
+          $old = "        AddScriptsFolderRow(preferencesGrid, 2);`r`n        AddCsdkCacheToolRow(preferencesGrid, 3);"
+          $new = "        AddCsdkCacheToolRow(preferencesGrid, 2);`r`n        AddScriptsFolderRow(preferencesGrid, 3);"
+          if (-not $text.Contains($old)) {
+            $old = "        AddScriptsFolderRow(preferencesGrid, 2);`n        AddCsdkCacheToolRow(preferencesGrid, 3);"
+            $new = "        AddCsdkCacheToolRow(preferencesGrid, 2);`n        AddScriptsFolderRow(preferencesGrid, 3);"
+          }
+          if (-not $text.Contains($old)) { throw 'Settings row order block not found.' }
+          $text = $text.Replace($old, $new)
+          Set-Content -LiteralPath $path -Value $text -NoNewline -Encoding utf8
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build
+        shell: pwsh
+        run: dotnet build internal/src/Deadlimit/Deadlimit.csproj -c Release --nologo
+      - name: Commit
+        shell: pwsh
+        run: |
+          git config user.name "Oleg Knyazev"
+          git config user.email "down.limit@gmail.com"
+          git add internal/src/Deadlimit/App/SettingsForm.cs
+          if (git diff --cached --quiet) { throw 'No row-order change produced.' }
+          git commit -m "Swap CSDK and Scripts Settings rows" -m "Signed-off-by: Oleg Knyazev <down.limit@gmail.com>"
+          git push origin HEAD:ui/swap-csdk-scripts-settings-rows
