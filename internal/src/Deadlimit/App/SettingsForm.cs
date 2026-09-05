@@ -182,7 +182,7 @@ internal sealed class SettingsForm : Form
             RowCount = 4,
             Margin = new Padding(0, 10, 0, 0),
         };
-        preferencesGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 145));
+        preferencesGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
         preferencesGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         AddLanguageRow(preferencesGrid, 0);
         AddThemeRow(preferencesGrid, 1);
@@ -549,41 +549,39 @@ internal sealed class SettingsForm : Form
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         var openButton = new Button
         {
-            Text = "📂 Deadlimit Scripts",
+            Text = UiText.T("Open scripts section", "Открыть раздел скриптов"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 4, 0, 4),
-            Font = new Font("Segoe UI Emoji", 9F, FontStyle.Regular, GraphicsUnit.Point),
         };
         openButton.Click += (_, _) => OpenScriptsFolder();
         _toolTip.SetToolTip(
             openButton,
             UiText.T(
-                "Open the bundled Deadlimit Scripts folder.\n\nIt contains DeadlimitPipelineScripts.ms and its README.",
-                "Открыть встроенную папку Deadlimit Scripts.\n\nВ ней находятся DeadlimitPipelineScripts.ms и README."));
-        grid.Controls.Add(CreatePreferenceCaption(UiText.T("Scripts", "Скрипты")), 0, row);
+                "Open the bundled Deadlimit Scripts section in File Explorer.\n\nIt contains DeadlimitPipelineScripts.ms and its README.",
+                "Открыть раздел Deadlimit Scripts в Проводнике.\n\nВ нём находятся DeadlimitPipelineScripts.ms и README."));
+        grid.Controls.Add(CreatePreferenceCaption("Deadlimit Scripts"), 0, row);
         grid.Controls.Add(openButton, 1, row);
     }
 
     private void AddCsdkCacheToolRow(TableLayoutPanel grid, int row)
     {
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        var openButton = new Button
+        var optimizeButton = new Button
         {
-            Text = UiText.T("📂 CSDK Fast Startup Fix", "📂 Исправление быстрого запуска CSDK"),
+            Text = UiText.T("Run optimization", "Провести оптимизацию"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 4, 0, 4),
-            Font = new Font("Segoe UI Emoji", 9F, FontStyle.Regular, GraphicsUnit.Point),
         };
-        openButton.Click += (_, _) => OpenCsdkCacheToolFolder();
+        optimizeButton.Click += (_, _) => RunCsdkStartupOptimization();
         _toolTip.SetToolTip(
-            openButton,
+            optimizeButton,
             UiText.T(
-                "Open File Explorer and select the bundled CSDK cache repair CMD.\n\nRun it after a clean Reduced CSDK installation/update or whenever CSDK startup becomes slow.",
-                "Открыть Проводник и выделить встроенный CMD для восстановления кеша CSDK.\n\nЗапускайте его после чистой установки/обновления Reduced CSDK или если CSDK снова долго открывается."));
-        grid.Controls.Add(CreatePreferenceCaption("CSDK"), 0, row);
-        grid.Controls.Add(openButton, 1, row);
+                "Run the bundled CSDK startup optimization.\n\nUse it after a clean Reduced CSDK installation/update or whenever CSDK startup becomes slow.",
+                "Запустить встроенную оптимизацию запуска CSDK.\n\nИспользуйте её после чистой установки/обновления Reduced CSDK или если CSDK снова долго открывается."));
+        grid.Controls.Add(CreatePreferenceCaption(UiText.T("CSDK startup optimization", "Оптимизация запуска CSDK")), 0, row);
+        grid.Controls.Add(optimizeButton, 1, row);
     }
 
     private void ApplyInitialStatuses()
@@ -1330,15 +1328,15 @@ internal sealed class SettingsForm : Form
         }
     }
 
-    private void OpenCsdkCacheToolFolder()
+    private void RunCsdkStartupOptimization()
     {
         try
         {
             var commandPath = CsdkAssetCacheToolService.GetBundledCommandPath();
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
-                FileName = "explorer.exe",
-                Arguments = $"/select,\"{commandPath}\"",
+                FileName = commandPath,
+                WorkingDirectory = Path.GetDirectoryName(commandPath) ?? AppContext.BaseDirectory,
                 UseShellExecute = true,
             });
         }
@@ -1347,7 +1345,7 @@ internal sealed class SettingsForm : Form
                                            or InvalidOperationException
                                            or System.ComponentModel.Win32Exception)
         {
-            MessageBox.Show(this, exception.Message, UiText.T("CSDK cache tool unavailable", "Инструмент кеша CSDK недоступен"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(this, exception.Message, UiText.T("CSDK optimization unavailable", "Оптимизация CSDK недоступна"), MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
