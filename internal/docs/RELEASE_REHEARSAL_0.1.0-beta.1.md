@@ -1,36 +1,33 @@
 # Private portable rehearsal: 0.1.0-beta.1
 
-Status: **SUPERSEDED PACKAGE PASS — PURE-PORTABLE REHEARSAL REQUIRED**
+Status: **PACKAGE MECHANICS PASS — PUBLIC RELEASE NO-GO**
 
 - Rehearsal date: 2026-09-05
-- Source commit: `89ae79be7ee53014b44b8b2156b16a19c2c0ac25`
-- Private workflow run: [Portable release rehearsal 33925867426](https://github.com/downlimit/Deadlimit/actions/runs/33925867426)
+- Source commit: `8845f54b4ca1cd3022e429008ee503278203ab64`
+- Private workflow run: [Portable release rehearsal 33961628049](https://github.com/downlimit/Deadlimit/actions/runs/33961628049)
 
 This report records a private artifact rehearsal. It created no Git tag or
 GitHub Release and did not change repository visibility.
-
-The recorded artifact predates the pure-portable storage/update correction.
-Its evidence remains historical; the public candidate requires a new rehearsal
-whose ZIP creates no system shortcuts or AppData state and preserves in-folder
-`UserData` across update and rollback.
 
 ## Passed checks
 
 - GitHub-hosted Windows runner checkout, .NET 10 restore, and transaction smoke.
 - Self-contained `win-x64` publish and portable ZIP creation.
-- Installation of the produced ZIP into an isolated temporary location.
+- Direct extraction of the produced ZIP into an isolated writable folder.
 - Packaged `DeadlimitManager.exe --release-policy-smoke` verified that
-  untrusted external-tool automation is blocked, then `--startup-smoke`
-  verified normal portable startup.
+  portable settings resolve under in-folder `UserData` and untrusted
+  external-tool automation is blocked; `--startup-smoke` verified startup.
 - Private artifact upload through the current Node 24-based official actions.
 - Published ZIP SHA-256 matches the downloaded artifact.
-- Published updater SHA-256 matches the downloaded updater.
 - All 362 entries declared by `release-manifest.json` match their byte counts
   and SHA-256 values.
-- The installed updater activated the first real rehearsal package
-  (`3A09D89A...E0DD3E5D9`), upgraded it transactionally to the second package
-  (`1F3560DE...C24EE912`), preserved the first package under `.previous`, and
-  restored it successfully through the installed rollback entry point.
+- The ZIP contains no `UserData`, `Backup`, `Backup.next`, or bootstrap
+  installer. Its updater source contains no Start-menu/Desktop shortcut logic.
+- Synthetic package tests verified checksum/traversal/broken-package rejection,
+  transactional in-place update, preservation of local `UserData`, recovery,
+  local `Backup`, and rollback.
+- The downloaded real ZIP passed manifest, release-policy, startup, and
+  in-folder updater no-op checks; locally created `UserData` survived.
 - The ZIP contains 363 entries, including the manifest, with zero detected DMX,
   FBX, MAX, VPK, compiled Source 2, or extracted retail/game-tree entries.
 - The ZIP contains the project license, third-party notices, and 57 files under
@@ -45,10 +42,10 @@ whose ZIP creates no system shortcuts or AppData state and preserves in-folder
 | Item | Value |
 | --- | --- |
 | ZIP | `Deadlimit-win-x64.zip` |
-| ZIP bytes | `82,726,499` |
-| ZIP SHA-256 | `A6AED23230648CDAE5A59BAF05FAD2768723E14ADA5B49506142ECB9607FF45A` |
-| Uncompressed bytes | `233,073,093` |
-| Updater SHA-256 | `E9EE312B2A65EBD99D1AD22A1C98283F6D80782C11FE38982BD6FF89A86CA9D9` |
+| ZIP bytes | `82,728,285` |
+| ZIP SHA-256 | `9A26C432455712257538F22DA4D8929A9B34878B508CBE719D1E2584E09DBD3A` |
+| Uncompressed bytes | `233,078,911` |
+| In-package updater SHA-256 | `D55122D092F67C8E50334760918A85B3BEB710AA896CE3068423C4C305003D64` |
 | Package version | `0.1.0-beta.1` |
 | Runtime | `win-x64`, self-contained |
 
@@ -59,8 +56,8 @@ release must be rebuilt from its final tag and will have different hashes.
 
 - Run a clean Windows 11 user-machine test outside the GitHub-hosted runner.
 - Exercise automatic GitHub Releases channel selection after a private or
-  public release exists; direct package activation, update, and rollback are
-  already verified with two real rehearsal ZIPs.
+  public release exists. Also rehearse an actual old-to-new transition between
+  two pure-portable release ZIPs; the same transaction is covered synthetically.
 - Refresh the exact compatibility snapshot at release time; current local
   versions, binary fingerprints, and Deadlock depot manifests are recorded in
   `COMPATIBILITY.md`.

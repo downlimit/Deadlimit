@@ -163,12 +163,13 @@ Validated locally on Windows 11 and in private CI through 2026-09-05:
 - [x] Downloaded rehearsal artifact audit: ZIP/updater checksums match, all 362 manifest entries verify, 363 ZIP entries contain zero detected prohibited game/authoring assets, and dependency license evidence is present.
 - [x] Portable-policy PR #107 passed `build`, `dco`, and `smoke`; merged as `89ae79b`.
 - [x] Private rehearsal run `33925867426` from `89ae79b`: packaged release-policy/startup smokes passed, and the downloaded ZIP again verified all 362 manifest items with zero prohibited or undeclared entries.
+- [x] Pure-portable PR #109 passed `build`, `dco`, and `smoke`; merged as `8845f54`. Private rehearsal run `33961628049` then passed extraction, startup, manifest, in-folder updater, `UserData` preservation, and private artifact upload. The downloaded 82,728,285-byte ZIP independently matched SHA-256 `9A26C432...E09DBD3A` and all 362 manifest items.
 
 ## Phase 5 — Private release rehearsal and public launch
 
 - [x] Build `0.1.0-beta.1` in the private repository and record exact artifact evidence in `RELEASE_REHEARSAL_0.1.0-beta.1.md`.
 - [ ] Test installation on a clean Windows 11 environment without maintainer paths.
-- [x] Test updater activation between synthetic packages, preservation of local `UserData`, local `Backup`, failed-update recovery, and rollback. Real-package rehearsal must be repeated for the pure-portable layout; automatic GitHub Releases selection remains publication-gated.
+- [x] Test updater activation between synthetic packages, preservation of local `UserData`, local `Backup`, failed-update recovery, and rollback. The real pure-portable ZIP passed extraction/startup and same-package updater checks; an old-to-new real ZIP transition and automatic GitHub Releases selection remain publication-gated.
 - [x] Re-run provenance, secret, and packaged-file audits: 822 commits produced zero prohibited asset-path hits and zero high-confidence credential-signature hits; the private portable ZIP passed the manifest and packaged-content audit recorded in the rehearsal report.
 - [~] Produce a final go/no-go report for the owner. The current rehearsal report is NO-GO until the clean-machine, GitHub Releases selection, release-time compatibility refresh, and explicit owner gates are resolved.
 - [!] Receive explicit owner approval to change visibility.
