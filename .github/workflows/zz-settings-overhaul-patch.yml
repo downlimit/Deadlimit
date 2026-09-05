@@ -36,6 +36,10 @@ jobs:
           $settings = Get-Content -LiteralPath $settingsPath -Raw
           $settings = $settings -replace '(?m)^\\\r?\n', ''
           Set-Content -LiteralPath $settingsPath -Value $settings -NoNewline -Encoding utf8
+          $relocationPath = 'internal/src/Deadlimit/App/DeadlimitRelocationService.cs'
+          $relocation = Get-Content -LiteralPath $relocationPath -Raw
+          $relocation = $relocation.Replace('        Process.Start(startInfo)' + [Environment]::NewLine + '            ?? throw', '        _ = Process.Start(startInfo)' + [Environment]::NewLine + '            ?? throw')
+          Set-Content -LiteralPath $relocationPath -Value $relocation -NoNewline -Encoding utf8
       - name: Restore
         shell: pwsh
         run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
