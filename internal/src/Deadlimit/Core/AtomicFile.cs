@@ -34,17 +34,37 @@ internal static class AtomicFile
         }
         finally
         {
-            try
+            TryDeleteTemporary(temporary);
+        }
+    }
+
+    public static void WriteAllBytes(string path, ReadOnlySpan<byte> contents)
+    {
+        var target = Path.GetFullPath(path);
+        var folder = Path.GetDirectoryName(target)
+            ?? throw new ArgumentException("Target path has no parent folder.", nameof(path));
+        Directory.CreateDirectory(folder);
+
+        var temporary = Path.Combine(folder, $".{Path.GetFileName(target)}.tmp-{Guid.NewGuid():N}");
+        try
+        {
+            using (var stream = new FileStream(
+                       temporary,
+                       FileMode.CreateNew,
+                       FileAccess.Write,
+                       FileShare.None,
+                       64 * 1024,
+                       FileOptions.WriteThrough))
             {
-                if (File.Exists(temporary))
-                {
-                    File.Delete(temporary);
-                }
+                stream.Write(contents);
+                stream.Flush(flushToDisk: true);
             }
-            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-            {
-                // The publish result or its original failure remains authoritative.
-            }
+
+            Replace(temporary, target);
+        }
+        finally
+        {
+            TryDeleteTemporary(temporary);
         }
     }
 
@@ -60,5 +80,20 @@ internal static class AtomicFile
         }
 
         File.Move(temporary, target);
+    }
+
+    private static void TryDeleteTemporary(string temporary)
+    {
+        try
+        {
+            if (File.Exists(temporary))
+            {
+                File.Delete(temporary);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // The publish result or its original failure remains authoritative.
+        }
     }
 }

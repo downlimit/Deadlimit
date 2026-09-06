@@ -105,6 +105,36 @@ internal static class Program
 
         if (startupSmoke)
         {
+            var vpkOwnershipResult = VpkSlotOwnershipSmoke.Run();
+            if (vpkOwnershipResult != 0)
+            {
+                return 10 + vpkOwnershipResult;
+            }
+
+            var repairInspectionResult = ImportedVpkRepairInspectionSmoke.Run();
+            if (repairInspectionResult != 0)
+            {
+                return 30 + repairInspectionResult;
+            }
+
+            var bindingRepairResult = CompiledModelAnimationBindingRepairSmoke.Run();
+            if (bindingRepairResult != 0)
+            {
+                return 40 + bindingRepairResult;
+            }
+
+            var repackResult = ImportedVpkRepackSmoke.Run();
+            if (repackResult != 0)
+            {
+                return 50 + repackResult;
+            }
+
+            var importedBuildResult = ImportedVpkBuildAndTestSmoke.Run();
+            if (importedBuildResult != 0)
+            {
+                return 60 + importedBuildResult;
+            }
+
             var settingsLayoutResult = SettingsForm.RunFooterLayoutSmoke();
             if (settingsLayoutResult != 0)
             {
@@ -156,6 +186,7 @@ internal static class Program
         UpdateStartup(startup, 62, UiText.T("Loading project controls...", "Загрузка элементов проекта..."));
         ProjectLibraryHotfixFeature.Attach(form);
         ProjectLibraryFeature.Attach(form);
+        ProjectCreationChoiceFeature.Attach(form);
         HeroCatalogFeature.Attach(form);
         ProjectLogsFeature.Attach(form);
         ProjectSaveStateFeature.Attach(form);
