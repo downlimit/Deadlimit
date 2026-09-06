@@ -19,6 +19,27 @@ DeadlimitShade/
         Deadlock_Hero.glsl
         Deadlock_Outline.glsl
 
+    painter_plugins/
+        deadlimit_apply.py
+
+    profiles/
+        schema.json
+        ivy.json
+
+    tools/
+        Deadlimit.MeshPreview/
+        Generate-CharacterProfiles.ps1
+        Install-DeadlimitPainterPlugin.ps1
+        New-OutlinePreviewMesh.ps1
+        New-ShaderTestSphere.ps1
+        Open-PainterShadePreview.ps1
+
+    tests/
+        profile-contract-smoke.ps1
+        outline-mesh-contract-smoke.ps1
+        outline-preview-mesh-smoke.ps1
+        painter-apply-contract-smoke.ps1
+
     docs/
         ROADMAP.md
         Outline.md
@@ -35,6 +56,43 @@ DeadlimitShade/
   `tools/Generate-CharacterProfiles.ps1` embeds the same generated resolver in
   both standalone Painter shaders because Painter does not support custom GLSL
   import libraries.
+- `tools/New-ShaderTestSphere.ps1` creates a disposable two-material OBJ with
+  unchanged hero geometry and a width-controlled, reversed-winding outline
+  shell for the first Painter outline proof.
+- `tools/Deadlimit.MeshPreview` is the shipped self-contained mesh processor.
+  It reads FBX, GLB or glTF, retains the complete source scene, appends a
+  reversed-winding shell for every mesh and writes the same format selected by
+  the artist. FBX centimetres and glTF metres receive format-specific outline
+  units. No separately installed DCC is used.
+- `tools/New-OutlinePreviewMesh.ps1` appends a derived outline shell to an
+  imported OBJ while retaining every source line, source material assignment,
+  UV reference and vertex-color component. Its literal inverted-hull default
+  offsets split render vertices along their existing normals. Experimental
+  averaging/welding modes are diagnostic and have no retail-parity claim.
+- `tests/outline-mesh-contract-smoke.ps1` verifies shell displacement, material
+  isolation, winding, deterministic generation and width-only regeneration.
+- `tests/outline-preview-mesh-smoke.ps1` verifies imported OBJ preservation,
+  normalized displacement, split normals, negative indices and predictable
+  rejection when per-corner render normals are unavailable.
+- `tools/Open-PainterShadePreview.ps1` connects to an already running Painter
+  remote-scripting endpoint. `-HeroOnly` validates the original character mesh
+  or an existing textured SPP without requiring preview-shell geometry. The
+  two-material mode creates independent hero/outline Shader Instances and
+  applies one synchronized character profile.
+- `painter_plugins/deadlimit_apply.py` adds a `Deadlimit Shade` dock with one
+  character selector and one `Apply Deadlimit` button. Apply reads outline
+  width/color from the selected profile, builds a format-preserving disposable preview mesh,
+  reloads it with stroke preservation and assigns both shader instances with
+  the same stable character ID. It retains the original source path in a cache
+  manifest so Apply continues to work after Painter restarts.
+- `tools/Install-DeadlimitPainterPlugin.ps1` installs the dock plus its minimal
+  runtime and both GLSL resources into the current user's Painter directories.
+  On first installation, enable `Python > deadlimit_apply` once; Painter stores
+  its `launch_at_start` preference for later sessions.
+- The intended artist workflow is a normal Painter `File > New` using the
+  `Deadlimit Shade` template. Preview mesh generation, shader assignment,
+  profile synchronization and temporary-cache management are integration
+  responsibilities; artists do not need a separate DCC.
 - `docs/ROADMAP.md` is the authoritative implementation sequence.
 - `docs/Outline.md` records the geometry-shell architecture and production-isolation requirements.
 - `docs/Validation.md` defines the first Painter smoke tests and subsequent retail validation protocol.
@@ -146,17 +204,21 @@ Hypotheses must not silently become common shader rules.
 
 ## Immediate next check
 
-The bootstrap stops at the first external dependency that this repository cannot prove by itself: Painter compilation/runtime behavior.
+`Apply Deadlimit` now passes on the actual Ivy project. Painter 9.1.0 preserved
+all seven source Texture Sets, added `__deadlimit_outline`, assigned the hero
+shader only to the three authored builder sets and retained `Main shader` on
+the four Valve sets. The complete 74-mesh FBX received a 1.0 mm shell. The
+visible operation completed in 5.5 seconds and the prepared 211.8 MB SPP
+reopened with the same shader mapping.
 
-Run the bootstrap protocol in [`docs/Validation.md`](docs/Validation.md):
+The next slice is the zero-setup project-creation path:
 
-1. load `Deadlock_Hero.glsl` in the current Substance 3D Painter;
-2. confirm it compiles and the diagnostic views appear;
-3. load `Deadlock_Outline.glsl` on a dedicated `__deadlimit_outline` Texture Set;
-4. confirm flat unlit color and culling behavior;
-5. only then capture the first current Ivy retail material manifest and begin Deadlock-specific material reconstruction.
-
-This keeps the implementation sequence as one check -> result -> conclusion -> next step.
+1. package the Deadlimit shaders and Apply plugin as a Painter installation;
+2. add the `Deadlimit Shade` File > New template;
+3. detect the newly selected FBX/GLB/glTF and run the same proven Apply path;
+4. expose a texture/mask-folder choice only when automatic discovery cannot
+   resolve it;
+5. validate a fresh project without hand-authored setup.
 
 ## Non-goals for the first version
 

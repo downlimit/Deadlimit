@@ -13,7 +13,8 @@
     "retailReference",
     "directDiffuse",
     "referenceTint",
-    "outline"
+    "outline",
+    "painterApply"
   ],
   "properties": {
     "schemaVersion": {
@@ -85,13 +86,32 @@
         "enabled",
         "color",
         "colorEvidence",
+        "widthMillimeters",
         "widthStatus"
       ],
       "properties": {
         "enabled": { "type": "boolean" },
         "color": { "$ref": "#/$defs/color" },
         "colorEvidence": { "enum": ["material-parameter", "calibration", "retail-runtime"] },
+        "widthMillimeters": { "type": "number", "exclusiveMinimum": 0.0, "maximum": 100.0 },
         "widthStatus": { "enum": ["unresolved", "calibration", "validated"] }
+      }
+    },
+    "painterApply": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outlineAllMeshes",
+        "heroTextureSets"
+      ],
+      "properties": {
+        "outlineAllMeshes": { "const": true },
+        "heroTextureSets": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
       }
     }
   },

@@ -32,6 +32,15 @@
       0.054902
     ],
     "colorEvidence": "material-parameter",
-    "widthStatus": "unresolved"
+    "widthMillimeters": 1.0,
+    "widthStatus": "calibration"
+  },
+  "painterApply": {
+    "outlineAllMeshes": true,
+    "heroTextureSets": [
+      "ivy_builder_arms",
+      "ivy_builder_body",
+      "ivy_builder_head"
+    ]
   }
 }

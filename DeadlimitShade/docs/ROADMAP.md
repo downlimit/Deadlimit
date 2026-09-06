@@ -10,7 +10,7 @@ Deadlimit Shade is the Deadlock material-authoring product under the Deadlimit u
 
 Deadlimit Shade must be driven by observed current retail resources where practical. Static knowledge in this repository is a compatibility baseline, not permission to assume that a retail shader or material contract cannot change.
 
-The product is broader than one GLSL file. The target system has seven responsibilities:
+The product is broader than one GLSL file. The target system has eight responsibilities:
 
 1. **Retail reference inspection** — obtain the current character-material inputs, shader family, texture references and relevant VMAT parameters from the installed retail Deadlock build.
 2. **Painter shader kit** — provide the minimum set of Painter shaders required to preview supported Deadlock material families.
@@ -19,6 +19,9 @@ The product is broader than one GLSL file. The target system has seven responsib
 5. **Authoring/export contract** — define Painter channels and export packing from evidence taken from current Deadlock materials rather than from a generic PBR convention.
 6. **Deadlimit pipeline bridge** — later connect exported authoring data to the existing CSDK/VMAT/compile/package pipeline without changing its already validated ownership rules.
 7. **Character profiles** — let the artist select a supported Deadlock character and apply that character's verified material controls, texture conventions and outline defaults consistently across the Painter project.
+8. **Minimal Painter workflow** — keep mesh preparation, shader assignment and
+   profile synchronization behind the installed Deadlimit Shade integration so
+   ordinary project creation remains the artist-facing workflow.
 
 The standalone Shade workflow may expose paths to retail Deadlock and Substance 3D Painter, but path discovery should reuse existing Deadlimit/Steam detection where available instead of hardcoding one machine layout.
 
@@ -31,6 +34,44 @@ calibrated profile, not a permanent hardcoded special case. `Custom` remains
 available for unsupported characters and for parameter investigation.
 
 Retail Deadlock is the visual ground truth. ValveResourceFormat / Source 2 Viewer is used for resource discovery, decompilation and inspection; its renderer is not the acceptance oracle for Deadlock shading.
+
+## Target artist workflow
+
+Deadlimit Shade has a one-time installation step. Normal project creation should
+then require only:
+
+1. open Substance 3D Painter and choose `File > New`;
+2. select the artist's ordinary source mesh;
+3. select the `Deadlimit Shade` project template;
+4. create the project;
+5. select a supported character profile and, when automatic discovery is
+   insufficient, select the source texture/mask folder.
+
+The installed Painter integration completes the remaining work automatically:
+
+- generate a disposable preview mesh while leaving the selected source file
+  unchanged;
+- preserve source geometry, render normals, UVs, vertex colors and material
+  identities;
+- add the reversed, expanded `__deadlimit_outline` shell;
+- reload the prepared preview mesh into the newly created project;
+- assign `Deadlock_Hero.glsl` to source Texture Sets and
+  `Deadlock_Outline.glsl` to the reserved outline Texture Set;
+- apply one character selection atomically to shading, mask interpretation,
+  outline color and outline width;
+- install the required channels, environment and Deadlock export preset;
+- keep preview-only shell data out of authored texture exports and downstream
+  Deadlimit packages.
+
+The temporary preview mesh belongs in a versioned local cache keyed by source
+content, builder version, character profile and outline settings. Regeneration
+must be deterministic and must never modify the production mesh in place.
+
+Painter's surface-shader API cannot create or expand the outline geometry. The
+mesh-processing step is therefore required, but it is an implementation detail
+of the installed workflow rather than an artist-authored preparation step.
+The shipped workflow uses the bundled native mesh processor. It does not
+require 3ds Max, Blender or another user-installed DCC.
 
 ## Shader inventory
 
@@ -185,6 +226,13 @@ selection atomically to:
 Until that integration exists, both Painter Shader Instances expose the same
 stable profile ID manually. Validation must reject a project whose hero and
 outline profile selections disagree.
+
+The first integration slice now exposes a `Deadlimit Shade` dock with a single
+`Character` selector and `Apply Deadlimit` action. The action owns profile
+synchronization, disposable format-native preview generation, mesh reload and
+both shader assignments. The native processor preserves every source object
+and material, adds one reserved outline material, and supports FBX, GLB and
+glTF without modifying the selected source file.
 
 ## Evidence rules
 
@@ -366,6 +414,13 @@ The first manual prototype may use a single Ivy shell. The milestone is complete
 only after character switching updates outline shading and width coherently and
 the same mechanism works on at least one materially different hero.
 
+The production form of this milestone is a standalone preview-mesh processor.
+It accepts a supported Painter source format, writes a canonical disposable
+Painter-compatible scene, and preserves stable source material/Texture Set
+identities. FBX-native validation through 3ds Max is the current correctness
+oracle for normals, transforms, material assignments and winding; it is not a
+runtime dependency of the finished artist workflow.
+
 A fragment-only `N·V`/Fresnel edge darkening mode may exist later as a fallback. It is not the primary outline implementation.
 
 ## Milestone 6 — Controlled validation environment
@@ -424,7 +479,10 @@ Deliverables:
 - required Texture Set channels;
 - channel defaults;
 - project/template configuration;
+- an installable `Deadlimit Shade` template that carries shader resources,
+  channels, display/environment settings and export configuration;
 - texture naming contract;
+- automatic mask discovery plus an explicit folder-selection fallback;
 - Deadlock export preset;
 - exact output packing/inversion/color-space rules;
 - normal-map convention;
@@ -444,7 +502,9 @@ Initial application responsibilities:
 - detect installed/current Shade resource version;
 - inspect the current retail material contract needed by supported Shade profiles;
 - install/update Painter shader, template, environment and export resources;
-- generate a preview mesh with optional outline shell;
+- observe creation of a project that uses the Deadlimit Shade template;
+- generate a cached preview mesh with the outline shell and reload it into that
+  same project without discarding authored project state;
 - expose one character selector and synchronize hero shader, outline shader,
   preview geometry and validation settings from the selected profile;
 - own `Outline Width` and other geometry-generation settings;
@@ -460,10 +520,11 @@ Automation is introduced only after the manual operation being automated is prov
 Preferred sequence:
 
 1. deterministic command/service for retail reference inspection;
-2. deterministic preview-mesh generation;
-3. deterministic Shade resource installation;
-4. Painter project mesh refresh/reimport through a supported current Painter scripting/CLI mechanism;
-5. export-to-Deadlimit bridge.
+2. deterministic FBX-native preview-mesh generation proven on an actual hero;
+3. standalone cached preview-mesh generation without a user-operated DCC;
+4. deterministic Shade resource and project-template installation;
+5. Painter project detection, mesh refresh and atomic shader/profile setup;
+6. texture/mask discovery and export-to-Deadlimit bridge.
 
 Do not make Painter automation a prerequisite for proving the shader itself.
 
@@ -534,26 +595,99 @@ Do not create empty placeholder assets solely to satisfy this tree.
 
 ## Immediate implementation slice
 
-The active implementation slice is:
+The active slice first proves the character shader on the real textured Ivy
+project, then resumes outline integration:
 
-1. define the versioned character-profile schema and reserve stable IDs for
-   `Custom` and Ivy;
-2. add the `Character` combobox and profile resolver to
-   `Deadlock_Hero.glsl`;
-3. implement the recovered NPR direct-diffuse equation with exposed calibration
-   controls and intermediate debug views;
-4. add a deterministic `NdotL` sweep test and fixed Painter test-light setup;
-5. create the first Ivy profile from confirmed material values and explicitly
-   labelled calibration values;
-6. validate the result against several controlled Ivy reference views;
-7. prove the two-material Ivy preview mesh and outline shell manually;
-8. add the matching character selector/profile resolver to
-   `Deadlock_Outline.glsl` while keeping width in the mesh generator;
-9. repeat hero plus outline validation on a materially different character;
-10. automate profile synchronization and shell refresh only after the manual
-    contracts are stable.
+1. open a disposable copy of the existing Ivy SPP without changing its source
+   FBX, layers or masks;
+2. validate the exact original FBX and all seven expected Texture Sets;
+3. apply `Deadlock_Hero` to every source Texture Set with `-HeroOnly` and select
+   the Ivy profile;
+4. obtain a visual viewport pass for the actual Ivy skin in shaded and diagnostic
+   views;
+5. compare that output with the controlled Deadlock reference and correct the
+   common hero shader where evidence requires it;
+6. after the hero viewport passes, produce one compact disposable preview shell
+   that preserves the source material identities and authored SPP content;
+7. obtain a combined hero/outline viewport pass and a width-regeneration pass;
+8. prototype the `Deadlimit Shade` project template and automatic post-create
+   setup around the proven contracts.
 
-This slice is successful when an artist can choose Ivy in Painter, author
-textures under a recognizably Deadlock-style direct-light response, enable the
-preview silhouette outline, return to `Custom`, and reproduce the same result
-without hidden project state.
+This slice is successful when the real textured Ivy project visibly renders
+through `Deadlock_Hero`, followed by a clean controllable outline without losing
+the project's authored content. A large intermediate FBX is not itself an
+acceptance result.
+
+### Implementation progress — 2026-09-06
+
+- profile schema, stable `Custom`/Ivy IDs and deterministic dual-shader profile
+  generation are implemented;
+- hero NPR direct-diffuse controls, intermediate diagnostics and mathematical
+  sweep checks are implemented;
+- the outline shader consumes the same generated character selector and keeps
+  width outside GLSL;
+- the controlled sphere generator now emits unchanged hero geometry plus a
+  width-controlled, reversed-winding `__deadlimit_outline` shell;
+- a generic imported-OBJ builder now preserves all source mesh records and
+  implements the literal inverted-hull prototype: duplicate split render
+  vertices, offset along their existing normals and reverse winding;
+- the outline mesh smoke proves deterministic output, material isolation,
+  displacement, winding and width-only regeneration at the OBJ contract level;
+- the imported-OBJ smoke additionally proves source-line, material, UV and
+  vertex-color preservation, negative-index handling and fail-closed behavior
+  when per-corner render normals are unavailable;
+- controlled Painter shader compilation, Texture Set separation, viewport
+  culling and synchronized `Custom`/Ivy profile switching are validated on the
+  generated sphere;
+- `Open-PainterShadePreview.ps1` captures the proven remote import, shader
+  assignment, multi-Texture-Set hero mapping, profile synchronization and
+  preserving reload contract as a reusable tool;
+- Painter visually passed width changes `0.04 -> 0.08 -> 0.04`; each reload
+  retained the hero/outline mapping and Ivy diagnostic profile values;
+- a 3ds Max batch bridge exported only `ivy_ivy*` nodes from the controlled FBX
+  with normals, UVs and materials, without modifying the source;
+- the FBX-native inverted-hull generator now emits a disposable 3-mm Ivy shell
+  with two source nodes and 32,084 source faces; a full-face-corner split keeps
+  render normals exact and creates 96,252 shell vertices;
+- Painter imports the original `texture_ivy_builder.fbx` directly and exposes
+  seven Ivy Texture Sets, while the first exported source-plus-shell FBX stayed
+  busy in Painter's importer for more than five minutes; this is an FBX export
+  compatibility blocker, not evidence against the source FBX or the shell
+  algorithm;
+- the actual Ivy character passed programmatic import, three-Texture-Set shader
+  assignment and a preserving `0.5 -> 1.0` diagnostic width reload;
+- actual-character inspection at deliberately large diagnostic widths shows
+  internal shell exposure at boundaries and one detached source component.
+  Coordinate welding cannot be applied blindly:
+  at least one coincident-position group has opposing normals whose average is
+  zero. The retail vertex-stage outline operation still requires static/runtime
+  proof; averaged-normal variants remain diagnostics rather than defaults.
+- `Open-PainterShadePreview.ps1 -HeroOnly` now treats the character shader as an
+  independent validation path and works in Windows PowerShell 5.1 without the
+  unsupported `Invoke-RestMethod -NoProxy` parameter;
+- Painter 9.1.0 opened the 169 MB disposable copy of the textured Ivy SPP,
+  reported the original FBX and all seven expected Texture Sets, mapped every
+  set to `Deadlimit Hero`, selected Ivy ID 1 with shaded view and saved the copy;
+- that textured-SPP result is confirmed at application/API level. Current
+  Computer Use discovery returned no Windows application surfaces, so no new
+  visual PASS is claimed for the Ivy viewport;
+- a full-scene export that created 73 source nodes plus 73 separate outline
+  nodes (87,197 source faces; 261,591 split shell vertices) left Painter at
+  `busy:true` with no useful visible progress. It is recorded as a rejected
+  integration experiment rather than a required pipeline stage.
+- the rejected DCC backend has been replaced by the self-contained
+  `Deadlimit.MeshPreview` processor. The actual Ivy source completed in under
+  one second and retained all 74 meshes plus all seven source materials;
+- the final Painter Apply completed in 5.5 seconds with visible phase/elapsed
+  progress, added one outline Texture Set, assigned `Deadlimit Hero` only to
+  `ivy_builder_arms/body/head`, and retained `Main shader` on all four Valve
+  Texture Sets;
+- `subs_ivy_builder_deadlimit.spp` reopened with the same eight Texture Sets and
+  three Shader Instances. A cache manifest restored the original FBX after a
+  simulated fresh plugin session;
+- format-native offline conversion preserves physical bounds for FBX, GLB and
+  glTF. GLB/glTF millimetres use metre-based units and no repeated root scaling.
+
+The successful 2026-09-06 validation used Painter 9.1.0. Its remote server bound
+to IPv6 loopback (`::1:60041`), so the automation probes IPv4, IPv6 and
+`localhost` rather than treating `127.0.0.1` refusal as application failure.
