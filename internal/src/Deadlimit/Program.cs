@@ -129,6 +129,12 @@ internal static class Program
                 return 50 + repackResult;
             }
 
+            var importedBuildResult = ImportedVpkBuildAndTestSmoke.Run();
+            if (importedBuildResult != 0)
+            {
+                return 60 + importedBuildResult;
+            }
+
             var settingsLayoutResult = SettingsForm.RunFooterLayoutSmoke();
             if (settingsLayoutResult != 0)
             {
