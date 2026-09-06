@@ -4,6 +4,7 @@ Set-StrictMode -Version Latest
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $updaterWorkerSource = Join-Path $repositoryRoot 'internal\DeadlimitUpdater.ps1'
 $updaterBootstrapSource = Join-Path $repositoryRoot 'DeadlimitUpdater.bat'
+$managerBuildSource = Join-Path $repositoryRoot 'internal\src\Deadlimit\bin\Release\net10.0-windows'
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('deadlimit-updater-dirty-' + [Guid]::NewGuid().ToString('N'))
 $remote = Join-Path $testRoot 'remote.git'
 $seed = Join-Path $testRoot 'seed'
@@ -42,7 +43,10 @@ try {
     Set-Content -LiteralPath (Join-Path $seed 'DeadlimitManager.cmd') -Value "@echo off`r`nexit /b 0`r`n" -Encoding ascii
     $managerBin = Join-Path $seed 'internal\src\Deadlimit\bin\Release\net10.0-windows'
     New-Item -ItemType Directory -Path $managerBin -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\notepad.exe') -Destination (Join-Path $managerBin 'DeadlimitManager.exe')
+    if (-not (Test-Path -LiteralPath (Join-Path $managerBuildSource 'DeadlimitManager.exe'))) {
+        throw 'Updater smoke requires the Manager Release build produced by the preceding CI build step.'
+    }
+    Copy-Item -Path (Join-Path $managerBuildSource '*') -Destination $managerBin -Recurse -Force
     Set-Content -LiteralPath (Join-Path $seed 'local.txt') -Value 'base local' -Encoding ascii
     Set-Content -LiteralPath (Join-Path $seed 'incoming.txt') -Value 'base incoming' -Encoding ascii
     Run-Git $seed add .
@@ -69,9 +73,9 @@ try {
     # the freshly refreshed Manager after a successful update.
     $managerExe = Join-Path $work 'internal\src\Deadlimit\bin\Release\net10.0-windows\DeadlimitManager.exe'
     $initialManager = Start-Process -FilePath $managerExe -PassThru
-    Start-Sleep -Milliseconds 400
+    Start-Sleep -Milliseconds 700
     if ($initialManager.HasExited) {
-        throw 'Updater smoke could not start the simulated Deadlimit Manager process.'
+        throw 'Updater smoke could not keep the real Deadlimit Manager build running.'
     }
 
     $exitCode = Run-Updater $work
@@ -79,7 +83,7 @@ try {
         throw "Bootstrapped updater rejected unrelated local tracked changes with exit code $exitCode."
     }
 
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Milliseconds 700
     $restartedManagers = @(Get-Process -Name DeadlimitManager -ErrorAction SilentlyContinue)
     if ($restartedManagers.Count -eq 0) {
         throw 'Updater did not relaunch Deadlimit Manager after updating while Manager was running.'
