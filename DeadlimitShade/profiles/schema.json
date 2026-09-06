@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deadlimit.local/schemas/deadlimit-shade-character-profile-v1.json",
+  "title": "Deadlimit Shade character profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "key",
+    "displayName",
+    "status",
+    "retailReference",
+    "directDiffuse",
+    "referenceTint",
+    "outline"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "calibration",
+        "validated"
+      ]
+    },
+    "retailReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "appId",
+        "buildId",
+        "material",
+        "materialSha256",
+        "pixelShaderSha256"
+      ],
+      "properties": {
+        "appId": { "type": "integer" },
+        "buildId": { "type": "integer" },
+        "material": { "type": "string", "minLength": 1 },
+        "materialSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "pixelShaderSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "directDiffuse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "stepSharpness",
+        "pbrBlend",
+        "wrap",
+        "normalization",
+        "evidence"
+      ],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "stepSharpness": { "type": "number", "minimum": 0.0, "maximum": 0.95 },
+        "pbrBlend": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "wrap": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "normalization": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
+        "evidence": { "enum": ["calibration", "retail-runtime"] }
+      }
+    },
+    "referenceTint": {
+      "$ref": "#/$defs/color"
+    },
+    "outline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "color",
+        "colorEvidence",
+        "widthStatus"
+      ],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "color": { "$ref": "#/$defs/color" },
+        "colorEvidence": { "enum": ["material-parameter", "calibration", "retail-runtime"] },
+        "widthStatus": { "enum": ["unresolved", "calibration", "validated"] }
+      }
+    }
+  },
+  "$defs": {
+    "color": {
+      "type": "array",
+      "items": { "type": "number", "minimum": 0.0 },
+      "minItems": 3,
+      "maxItems": 3
+    }
+  }
+}

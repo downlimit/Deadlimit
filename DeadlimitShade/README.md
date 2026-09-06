@@ -25,8 +25,16 @@ DeadlimitShade/
         Validation.md
 ```
 
-- `shaders/Deadlock_Hero.glsl` is a current Painter metal/rough bootstrap with Deadlimit diagnostic views. It deliberately does not claim Deadlock material parity yet.
-- `shaders/Deadlock_Outline.glsl` is the preview-only flat shader for the dedicated inverted-hull shell Texture Set.
+- `shaders/Deadlock_Hero.glsl` combines the Painter metal/rough baseline with
+  the statically recovered NPR direct-diffuse response, calibration controls,
+  character profiles and focused diagnostic views.
+- `shaders/Deadlock_Outline.glsl` is the preview-only flat shader for the
+  dedicated inverted-hull shell Texture Set and consumes the same character
+  profile IDs as the hero shader.
+- `profiles/*.json` is the source of truth for built-in character profiles;
+  `tools/Generate-CharacterProfiles.ps1` embeds the same generated resolver in
+  both standalone Painter shaders because Painter does not support custom GLSL
+  import libraries.
 - `docs/ROADMAP.md` is the authoritative implementation sequence.
 - `docs/Outline.md` records the geometry-shell architecture and production-isolation requirements.
 - `docs/Validation.md` defines the first Painter smoke tests and subsequent retail validation protocol.

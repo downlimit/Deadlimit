@@ -2,7 +2,7 @@
 
 Status: bootstrap protocol.
 
-Updated: 2026-09-05.
+Updated: 2026-09-06.
 
 ## Purpose
 
@@ -168,3 +168,48 @@ Allowed evidence classes:
 ## Regression rule
 
 After a feature becomes part of the common hero shader, changing it requires rechecking every reference material that previously established the feature as common. A hero-specific failure does not justify changing the common model until the mechanism causing the difference is identified.
+
+## Test G — character profile contract
+
+Run:
+
+```powershell
+pwsh -NoProfile -File DeadlimitShade/tests/profile-contract-smoke.ps1
+```
+
+The smoke verifies:
+
+- every profile matches `profiles/schema.json`;
+- IDs and keys are unique and ID `0` remains reserved for `Custom`;
+- embedded profile blocks in both shaders are reproducible from the JSON profiles;
+- hero and outline shaders expose matching `Custom` and Ivy IDs;
+- both shaders contain the generated profile resolver;
+- the recovered NPR quantizer is identity at zero sharpness, monotonic and
+  symmetric over the normalized sweep.
+
+In Painter, select the `Character Profile` debug view and switch between
+`Custom` and Ivy. The diagnostic color must change. Enable
+`Use Custom Calibration` while Ivy is selected; the diagnostic must return to
+the custom color.
+
+## Test H — NPR direct-diffuse isolation
+
+Use a smooth sphere or another mesh with a continuous range of world-space
+normal directions. Keep Base Color, Metallic, Roughness and AO constant.
+
+1. Select `Custom` and disable `NPR Direct Diffuse`.
+2. Record `N dot L (Signed)` and `Final Direct Diffuse`.
+3. Enable `NPR Direct Diffuse`.
+4. Inspect `Wrapped Direct Diffuse`, then `Quantized Direct Diffuse`.
+5. Set `Diffuse Step Sharpness = 0`; quantized output must equal wrapped input.
+6. Increase sharpness and confirm the transition contracts toward a step while
+   remaining continuous at the midpoint.
+7. Set `Diffuse PBR Blend = 1`; final direct diffuse must return to clamped
+   Lambert response.
+8. Select Ivy with `Use Custom Calibration` disabled and record the resulting
+   profile response.
+
+The test-light direction, color, intensity, environment, camera and exposure
+must remain unchanged for all images. The Ivy values are calibration settings;
+this test establishes deterministic Painter behavior and does not claim exact
+retail runtime values.
