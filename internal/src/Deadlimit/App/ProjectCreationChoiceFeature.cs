@@ -71,6 +71,8 @@ internal static class ProjectCreationChoiceFeature
                 "Add a project to the Library.\n\nCreate a new project or import an existing Deadlock VPK.",
                 "Добавить проект в Библиотеку.\n\nСоздайте новый проект или импортируйте существующий VPK Deadlock."));
 
+        ImportedProjectModeFeature.Attach(form);
+
         form.Disposed += (_, _) =>
         {
             toolTip.Dispose();
@@ -171,10 +173,12 @@ internal static class ProjectCreationChoiceFeature
 
         VpkImportCandidate candidate;
         VpkImportIdentity identity;
+        ImportedVpkProjectResult importedProject;
         try
         {
             candidate = VpkImportSourceValidator.Validate(dialog.FileName);
             identity = VpkImportIdentityService.Infer(candidate);
+            importedProject = ImportedVpkProjectService.Create(candidate, identity, settings.ProjectsRoot);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -187,15 +191,49 @@ internal static class ProjectCreationChoiceFeature
             return;
         }
 
-        ShowValidatedImportPreview(form, candidate, identity);
+        TrySelectImportedProject(form, importedProject.ProjectFolder);
+        ShowImportedProjectCreated(form, importedProject.Manifest, identity);
     }
 
-    private static void ShowValidatedImportPreview(
+    private static void TrySelectImportedProject(MainForm form, string projectFolder)
+    {
+        try
+        {
+            var refreshMethod = typeof(MainForm)
+                .GetMethods(BindingFlags.Instance | BindingFlags.NonPublic)
+                .FirstOrDefault(method =>
+                {
+                    if (!string.Equals(method.Name, "RefreshProjectLibrary", StringComparison.Ordinal))
+                    {
+                        return false;
+                    }
+
+                    var parameters = method.GetParameters();
+                    return parameters.Length == 3
+                        && parameters[0].ParameterType == typeof(bool)
+                        && parameters[1].ParameterType == typeof(bool)
+                        && parameters[2].ParameterType == typeof(string);
+                });
+
+            refreshMethod?.Invoke(form, [false, false, projectFolder]);
+        }
+        catch (Exception exception) when (exception is TargetInvocationException
+            or ArgumentException
+            or MethodAccessException
+            or InvalidOperationException)
+        {
+            // ProjectStore already remembers the imported project as last selected.
+            // A normal Library refresh/activation will pick it up if this best-effort
+            // immediate refresh cannot be invoked on the current UI implementation.
+        }
+    }
+
+    private static void ShowImportedProjectCreated(
         MainForm form,
-        VpkImportCandidate candidate,
+        ProjectManifest manifest,
         VpkImportIdentity identity)
     {
-        var releaseId = candidate.ReleaseTarget
+        var releaseId = manifest.ReleaseTarget
             ?? UiText.T("not derived from filename", "не определён по имени файла");
         var hero = identity.HeroDisplayName
             ?? UiText.T("not identified confidently", "не определён с достаточной уверенностью");
@@ -206,9 +244,9 @@ internal static class ProjectCreationChoiceFeature
         MessageBox.Show(
             form,
             UiText.T(
-                $"VPK source is valid.\n\nProject: {identity.ProjectName}\nHero: {hero}\nRelease ID: {releaseId}\nPrimary model: {primaryModel}\nFiles: {candidate.EntryCount}\nSHA-256: {candidate.SourceVpkSha256}\n\nCreating the imported project and persisting this identity are the next implementation stage.",
-                $"VPK успешно проверен.\n\nПроект: {identity.ProjectName}\nГерой: {hero}\nRelease ID: {releaseId}\nОсновная модель: {primaryModel}\nФайлов: {candidate.EntryCount}\nSHA-256: {candidate.SourceVpkSha256}\n\nСоздание импортированного проекта и сохранение этой информации выполняются на следующем этапе реализации."),
-            UiText.T("VPK identity detected", "VPK распознан"),
+                $"Imported VPK project created.\n\nProject: {manifest.ProjectName}\nHero: {hero}\nRelease ID: {releaseId}\nPrimary model: {primaryModel}\nSource files: {manifest.ImportedVpk!.SourceEntryCount}\nSHA-256: {manifest.ImportedVpk.OriginalVpkSha256}\n\nCompiled payload extraction is the next implementation stage.",
+                $"Проект из VPK создан.\n\nПроект: {manifest.ProjectName}\nГерой: {hero}\nRelease ID: {releaseId}\nОсновная модель: {primaryModel}\nФайлов в исходном VPK: {manifest.ImportedVpk!.SourceEntryCount}\nSHA-256: {manifest.ImportedVpk.OriginalVpkSha256}\n\nИзвлечение compiled payload выполняется на следующем этапе реализации."),
+            UiText.T("VPK project created", "Проект из VPK создан"),
             MessageBoxButtons.OK,
             MessageBoxIcon.Information);
     }
