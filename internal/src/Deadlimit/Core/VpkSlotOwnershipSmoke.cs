@@ -67,7 +67,10 @@ internal static class VpkSlotOwnershipSmoke
                 return 3;
             }
 
-            File.Delete(vpkPath);
+            foreach (var familyFile in VpkArchiveIdentityService.EnumerateFamily(vpkPath))
+            {
+                File.Delete(familyFile);
+            }
             WriteVpk(vpkPath, [9, 8, 7, 6]);
 
             try
