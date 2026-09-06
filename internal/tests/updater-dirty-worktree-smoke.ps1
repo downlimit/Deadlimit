@@ -68,9 +68,9 @@ try {
     Run-Git $seed commit -m 'unrelated remote update'
     Run-Git $seed push origin main
 
-    # The in-app update case starts while DeadlimitManager.exe is still running.
-    # The bootstrap must therefore force the worker into no-wait mode and restart
-    # the freshly refreshed Manager after a successful update.
+    # The in-app update case carries a process-local marker inherited from Manager.
+    # It must force the worker into no-wait mode and restart the freshly refreshed
+    # Manager after a successful update.
     $managerExe = Join-Path $work 'internal\src\Deadlimit\bin\Release\net10.0-windows\DeadlimitManager.exe'
     $initialManager = Start-Process -FilePath $managerExe -PassThru
     Start-Sleep -Milliseconds 700
@@ -78,7 +78,14 @@ try {
         throw 'Updater smoke could not keep the real Deadlimit Manager build running.'
     }
 
-    $exitCode = Run-Updater $work
+    $previousRelaunchMarker = $env:DEADLIMIT_UPDATER_RELAUNCH_MANAGER
+    try {
+        $env:DEADLIMIT_UPDATER_RELAUNCH_MANAGER = '1'
+        $exitCode = Run-Updater $work
+    }
+    finally {
+        $env:DEADLIMIT_UPDATER_RELAUNCH_MANAGER = $previousRelaunchMarker
+    }
     if ($exitCode -ne 0) {
         throw "Bootstrapped updater rejected unrelated local tracked changes with exit code $exitCode."
     }
@@ -86,7 +93,7 @@ try {
     Start-Sleep -Milliseconds 700
     $restartedManagers = @(Get-Process -Name DeadlimitManager -ErrorAction SilentlyContinue)
     if ($restartedManagers.Count -eq 0) {
-        throw 'Updater did not relaunch Deadlimit Manager after updating while Manager was running.'
+        throw 'Updater did not relaunch Deadlimit Manager after an in-app update.'
     }
     foreach ($process in $restartedManagers) {
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
@@ -135,7 +142,7 @@ try {
         throw 'Updater modified local work during overlap rejection.'
     }
 
-    Write-Host 'Updater self-bootstrap, Manager relaunch, and dirty-worktree smoke passed.'
+    Write-Host 'Updater self-bootstrap, in-app Manager relaunch, and dirty-worktree smoke passed.'
 }
 finally {
     Get-Process -Name DeadlimitManager -ErrorAction SilentlyContinue |
