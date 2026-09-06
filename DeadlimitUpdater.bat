@@ -11,9 +11,7 @@ set "ROOT=%CD%"
 popd
 set "MANAGER_EXE=%ROOT%\internal\src\Deadlimit\bin\Release\net10.0-windows\DeadlimitManager.exe"
 set "RESTART_MANAGER=0"
-
-tasklist.exe /FI "IMAGENAME eq DeadlimitManager.exe" /NH 2>nul | findstr.exe /I /C:"DeadlimitManager.exe" >nul
-if not errorlevel 1 set "RESTART_MANAGER=1"
+if /I "%DEADLIMIT_UPDATER_RELAUNCH_MANAGER%"=="1" set "RESTART_MANAGER=1"
 
 where git.exe >nul 2>&1
 if errorlevel 1 (
