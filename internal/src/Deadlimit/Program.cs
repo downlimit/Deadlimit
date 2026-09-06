@@ -105,6 +105,12 @@ internal static class Program
 
         if (startupSmoke)
         {
+            var vpkOwnershipResult = VpkSlotOwnershipSmoke.Run();
+            if (vpkOwnershipResult != 0)
+            {
+                return 10 + vpkOwnershipResult;
+            }
+
             var settingsLayoutResult = SettingsForm.RunFooterLayoutSmoke();
             if (settingsLayoutResult != 0)
             {
