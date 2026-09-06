@@ -196,7 +196,7 @@ public static class ImportedVpkPayloadService
     {
         var original = value.Replace('\\', '/');
         var normalized = SafePath.NormalizeRelative(original, "VPK internal path");
-        if (normalized.EndsWith('/', StringComparison.Ordinal))
+        if (normalized.EndsWith("/", StringComparison.Ordinal))
         {
             throw new InvalidDataException($"VPK entry path does not identify a file: '{value}'.");
         }
