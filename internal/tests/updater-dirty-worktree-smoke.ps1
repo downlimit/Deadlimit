@@ -4,6 +4,7 @@ Set-StrictMode -Version Latest
 $repositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $updaterWorkerSource = Join-Path $repositoryRoot 'internal\DeadlimitUpdater.ps1'
 $updaterBootstrapSource = Join-Path $repositoryRoot 'DeadlimitUpdater.bat'
+$managerBuildSource = Join-Path $repositoryRoot 'internal\src\Deadlimit\bin\Release\net10.0-windows'
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('deadlimit-updater-dirty-' + [Guid]::NewGuid().ToString('N'))
 $remote = Join-Path $testRoot 'remote.git'
 $seed = Join-Path $testRoot 'seed'
@@ -18,12 +19,9 @@ function Run-Git([string]$workingDirectory, [Parameter(ValueFromRemainingArgumen
 
 function Run-Updater([string]$workingDirectory) {
     $bootstrap = Join-Path $workingDirectory 'DeadlimitUpdater.bat'
-    $output = & cmd.exe /d /c "`"$bootstrap`" -NoWait" 2>&1
-    $exitCode = $LASTEXITCODE
-    foreach ($line in $output) {
-        Write-Host $line
-    }
-    return $exitCode
+    $process = Start-Process -FilePath $env:ComSpec -ArgumentList @('/d', '/c', "`"$bootstrap`"") -WorkingDirectory $workingDirectory -PassThru -NoNewWindow
+    $process.WaitForExit()
+    return $process.ExitCode
 }
 
 try {
@@ -40,6 +38,12 @@ try {
     Copy-Item -LiteralPath $updaterWorkerSource -Destination (Join-Path $seed 'internal\DeadlimitUpdater.ps1')
     Copy-Item -LiteralPath $updaterBootstrapSource -Destination (Join-Path $seed 'DeadlimitUpdater.bat')
     Set-Content -LiteralPath (Join-Path $seed 'DeadlimitManager.cmd') -Value "@echo off`r`nexit /b 0`r`n" -Encoding ascii
+    $managerBin = Join-Path $seed 'internal\src\Deadlimit\bin\Release\net10.0-windows'
+    New-Item -ItemType Directory -Path $managerBin -Force | Out-Null
+    if (-not (Test-Path -LiteralPath (Join-Path $managerBuildSource 'DeadlimitManager.exe'))) {
+        throw 'Updater smoke requires the Manager Release build produced by the preceding CI build step.'
+    }
+    Copy-Item -Path (Join-Path $managerBuildSource '*') -Destination $managerBin -Recurse -Force
     Set-Content -LiteralPath (Join-Path $seed 'local.txt') -Value 'base local' -Encoding ascii
     Set-Content -LiteralPath (Join-Path $seed 'incoming.txt') -Value 'base incoming' -Encoding ascii
     Run-Git $seed add .
@@ -61,9 +65,35 @@ try {
     Run-Git $seed commit -m 'unrelated remote update'
     Run-Git $seed push origin main
 
-    $exitCode = Run-Updater $work
+    # The in-app update case carries a process-local marker inherited from Manager.
+    # It must force the worker into no-wait mode and restart the freshly refreshed
+    # Manager after a successful update.
+    $managerExe = Join-Path $work 'internal\src\Deadlimit\bin\Release\net10.0-windows\DeadlimitManager.exe'
+    $initialManager = Start-Process -FilePath $managerExe -PassThru
+    Start-Sleep -Milliseconds 700
+    if ($initialManager.HasExited) {
+        throw 'Updater smoke could not keep the real Deadlimit Manager build running.'
+    }
+
+    $previousRelaunchMarker = $env:DEADLIMIT_UPDATER_RELAUNCH_MANAGER
+    try {
+        $env:DEADLIMIT_UPDATER_RELAUNCH_MANAGER = '1'
+        $exitCode = Run-Updater $work
+    }
+    finally {
+        $env:DEADLIMIT_UPDATER_RELAUNCH_MANAGER = $previousRelaunchMarker
+    }
     if ($exitCode -ne 0) {
         throw "Bootstrapped updater rejected unrelated local tracked changes with exit code $exitCode."
+    }
+
+    Start-Sleep -Milliseconds 700
+    $restartedManagers = @(Get-Process -Name DeadlimitManager -ErrorAction SilentlyContinue)
+    if ($restartedManagers.Count -eq 0) {
+        throw 'Updater did not relaunch Deadlimit Manager after an in-app update.'
+    }
+    foreach ($process in $restartedManagers) {
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
     }
 
     $localContent = (Get-Content -LiteralPath (Join-Path $work 'local.txt') -Raw).Trim()
@@ -109,8 +139,10 @@ try {
         throw 'Updater modified local work during overlap rejection.'
     }
 
-    Write-Host 'Updater self-bootstrap and dirty-worktree smoke passed.'
+    Write-Host 'Updater self-bootstrap, in-app Manager relaunch, and dirty-worktree smoke passed.'
 }
 finally {
+    Get-Process -Name DeadlimitManager -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

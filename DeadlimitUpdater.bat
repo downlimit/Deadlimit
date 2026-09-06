@@ -9,6 +9,9 @@ if errorlevel 1 (
 )
 set "ROOT=%CD%"
 popd
+set "MANAGER_EXE=%ROOT%\internal\src\Deadlimit\bin\Release\net10.0-windows\DeadlimitManager.exe"
+set "RESTART_MANAGER=0"
+if /I "%DEADLIMIT_UPDATER_RELAUNCH_MANAGER%"=="1" set "RESTART_MANAGER=1"
 
 where git.exe >nul 2>&1
 if errorlevel 1 (
@@ -46,8 +49,23 @@ rem Stable bootstrap contract: the downloaded worker resolves the real checkout
 rem from this environment variable instead of its temporary script location.
 set "DEADLIMIT_UPDATER_ROOT=%ROOT%"
 set "DEADLIMIT_UPDATER_BOOTSTRAPPED=1"
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%WORKER%" %*
+if "%RESTART_MANAGER%"=="1" (
+    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%WORKER%" -NoWait %*
+) else (
+    powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%WORKER%" %*
+)
 set "EXIT_CODE=%ERRORLEVEL%"
 
 del /q "%WORKER%" >nul 2>&1
+
+if "%EXIT_CODE%"=="0" if "%RESTART_MANAGER%"=="1" (
+    if exist "%MANAGER_EXE%" (
+        start "" "%MANAGER_EXE%"
+    ) else (
+        echo ERROR: Deadlimit Manager executable was not found after the update:
+        echo %MANAGER_EXE%
+        set "EXIT_CODE=1"
+    )
+)
+
 exit /b %EXIT_CODE%
