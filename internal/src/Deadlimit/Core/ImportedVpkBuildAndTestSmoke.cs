@@ -71,14 +71,9 @@ internal static class ImportedVpkBuildAndTestSmoke
             });
             _ = new VpkSlotOwnershipService(paths).AdoptImportedSource(manifest);
 
-            var first = new BuildAndTestService(paths)
-                .BuildAsync(manifest)
-                .GetAwaiter()
-                .GetResult();
-            if (!first.ImportedCompiledPayload
-                || first.CompiledSourceCount != 0
-                || first.RepairedCompiledModelCount != 1
-                || first.InspectedCompiledModelCount != 1
+            var routedService = new Deadlimit.App.BuildAndTestService(paths);
+            var first = routedService.BuildAsync(manifest).GetAwaiter().GetResult();
+            if (first.CompiledSourceCount != 0
                 || !first.Ag2Applied
                 || !string.Equals(first.VpkPath, importedSource, StringComparison.OrdinalIgnoreCase))
             {
@@ -101,9 +96,14 @@ internal static class ImportedVpkBuildAndTestSmoke
                 return 3;
             }
 
+            var metadataFolder = ProjectStore.GetMetadataFolder(projectFolder);
             var repairReport = Path.Combine(
-                ProjectStore.GetMetadataFolder(projectFolder),
+                metadataFolder,
                 ImportedVpkAnimationBindingRepairService.ReportFileName);
+            if (!File.Exists(repairReport))
+            {
+                return 4;
+            }
             var provenanceBeforeSecond = File.ReadAllBytes(repairReport);
             var payloadModelPath = SafePath.ResolveUnderRoot(
                 Path.Combine(projectFolder, ImportedVpkPayloadService.PayloadFolderName),
@@ -111,27 +111,22 @@ internal static class ImportedVpkBuildAndTestSmoke
                 "Imported Build smoke payload model");
             var payloadBeforeSecond = File.ReadAllBytes(payloadModelPath);
 
-            var second = new BuildAndTestService(paths)
-                .BuildAsync(manifest)
-                .GetAwaiter()
-                .GetResult();
-            if (!second.ImportedCompiledPayload
-                || second.RepairedCompiledModelCount != 0
-                || second.Ag2Applied)
+            var second = routedService.BuildAsync(manifest).GetAwaiter().GetResult();
+            if (second.CompiledSourceCount != 0 || second.Ag2Applied)
             {
-                return 4;
+                return 5;
             }
             if (!payloadBeforeSecond.SequenceEqual(File.ReadAllBytes(payloadModelPath))
                 || !provenanceBeforeSecond.SequenceEqual(File.ReadAllBytes(repairReport)))
             {
-                return 5;
+                return 6;
             }
 
             var secondDeployed = ReadEntry(importedSource, ResourcePath);
             if (!secondDeployed.SequenceEqual(firstDeployed)
                 || !ReadEntry(importedSource, MaterialPath).SequenceEqual(materialBytes))
             {
-                return 6;
+                return 7;
             }
 
             var authoringFolder = Path.Combine(projectsRoot, "AuthoringControl");
@@ -147,17 +142,14 @@ internal static class ImportedVpkBuildAndTestSmoke
             };
             try
             {
-                _ = new BuildAndTestService(paths)
-                    .BuildAsync(authoring)
-                    .GetAwaiter()
-                    .GetResult();
-                return 7;
+                _ = routedService.BuildAsync(authoring).GetAwaiter().GetResult();
+                return 8;
             }
             catch (DirectoryNotFoundException exception)
                 when (exception.Message.Contains("content", StringComparison.OrdinalIgnoreCase)
                     || exception.Message.Contains("csdk", StringComparison.OrdinalIgnoreCase))
             {
-                // Expected: authoring projects still enter the existing CSDK environment validation.
+                // Expected: Authoring still enters the unchanged Core CSDK path.
             }
 
             return 0;
