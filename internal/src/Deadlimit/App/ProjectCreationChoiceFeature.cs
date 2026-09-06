@@ -192,7 +192,7 @@ internal static class ProjectCreationChoiceFeature
         }
 
         TrySelectImportedProject(form, importedProject.ProjectFolder);
-        ShowImportedProjectCreated(form, importedProject.Manifest, identity);
+        ShowImportedProjectCreated(form, importedProject, identity);
     }
 
     private static void TrySelectImportedProject(MainForm form, string projectFolder)
@@ -230,9 +230,10 @@ internal static class ProjectCreationChoiceFeature
 
     private static void ShowImportedProjectCreated(
         MainForm form,
-        ProjectManifest manifest,
+        ImportedVpkProjectResult importedProject,
         VpkImportIdentity identity)
     {
+        var manifest = importedProject.Manifest;
         var releaseId = manifest.ReleaseTarget
             ?? UiText.T("not derived from filename", "не определён по имени файла");
         var hero = identity.HeroDisplayName
@@ -244,8 +245,8 @@ internal static class ProjectCreationChoiceFeature
         MessageBox.Show(
             form,
             UiText.T(
-                $"Imported VPK project created.\n\nProject: {manifest.ProjectName}\nHero: {hero}\nRelease ID: {releaseId}\nPrimary model: {primaryModel}\nSource files: {manifest.ImportedVpk!.SourceEntryCount}\nSHA-256: {manifest.ImportedVpk.OriginalVpkSha256}\n\nCompiled payload extraction is the next implementation stage.",
-                $"Проект из VPK создан.\n\nПроект: {manifest.ProjectName}\nГерой: {hero}\nRelease ID: {releaseId}\nОсновная модель: {primaryModel}\nФайлов в исходном VPK: {manifest.ImportedVpk!.SourceEntryCount}\nSHA-256: {manifest.ImportedVpk.OriginalVpkSha256}\n\nИзвлечение compiled payload выполняется на следующем этапе реализации."),
+                $"Imported VPK project created.\n\nProject: {manifest.ProjectName}\nHero: {hero}\nRelease ID: {releaseId}\nPrimary model: {primaryModel}\nPreserved files: {manifest.ImportedVpk!.SourceEntryCount}\nPayload: {importedProject.PayloadFolder}\nSHA-256: {manifest.ImportedVpk.OriginalVpkSha256}\n\nThe original VPK entry manifest is stored in .deadlimit/original-vpk.json.",
+                $"Проект из VPK создан.\n\nПроект: {manifest.ProjectName}\nГерой: {hero}\nRelease ID: {releaseId}\nОсновная модель: {primaryModel}\nСохранено файлов: {manifest.ImportedVpk!.SourceEntryCount}\nPayload: {importedProject.PayloadFolder}\nSHA-256: {manifest.ImportedVpk.OriginalVpkSha256}\n\nСписок исходных VPK-файлов и их хэшей сохранён в .deadlimit/original-vpk.json."),
             UiText.T("VPK project created", "Проект из VPK создан"),
             MessageBoxButtons.OK,
             MessageBoxIcon.Information);
