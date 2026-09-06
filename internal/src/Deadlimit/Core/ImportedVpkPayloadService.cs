@@ -11,6 +11,7 @@ public sealed class OriginalVpkSnapshot
     public string SourceVpkPath { get; set; } = string.Empty;
     public string SourceVpkSha256 { get; set; } = string.Empty;
     public string? SourceReleaseTarget { get; set; }
+    public uint? SourceVpkVersion { get; set; }
     public int SourceEntryCount { get; set; }
     public DateTimeOffset CapturedUtc { get; set; } = DateTimeOffset.UtcNow;
     public List<OriginalVpkEntrySnapshot> Entries { get; set; } = [];
@@ -83,6 +84,7 @@ public static class ImportedVpkPayloadService
         Directory.CreateDirectory(stagingFolder);
         try
         {
+            var sourceVpkVersion = ReadVpkVersion(source.SourceVpkPath);
             var snapshots = ExtractRawEntries(source.SourceVpkPath, stagingFolder);
             if (snapshots.Count != source.EntryCount)
             {
@@ -96,6 +98,7 @@ public static class ImportedVpkPayloadService
                 SourceVpkPath = source.SourceVpkPath,
                 SourceVpkSha256 = source.SourceVpkSha256,
                 SourceReleaseTarget = source.ReleaseTarget,
+                SourceVpkVersion = sourceVpkVersion,
                 SourceEntryCount = snapshots.Count,
                 CapturedUtc = DateTimeOffset.UtcNow,
                 Entries = [.. snapshots],
@@ -142,6 +145,13 @@ public static class ImportedVpkPayloadService
         {
             return null;
         }
+    }
+
+    private static uint ReadVpkVersion(string sourceVpkPath)
+    {
+        using var package = new Package();
+        package.Read(sourceVpkPath);
+        return package.Version;
     }
 
     private static IReadOnlyList<OriginalVpkEntrySnapshot> ExtractRawEntries(
