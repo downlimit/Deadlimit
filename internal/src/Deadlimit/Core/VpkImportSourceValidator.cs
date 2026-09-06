@@ -46,11 +46,7 @@ public static class VpkImportSourceValidator
                 ?? throw new InvalidDataException("The selected VPK did not expose an entry table.");
             entryCount = entries.Sum(group => group.Value.Count);
         }
-        catch (Exception exception) when (exception is IOException
-            or UnauthorizedAccessException
-            or InvalidDataException
-            or ArgumentException
-            or NotSupportedException)
+        catch (Exception exception) when (exception is not OutOfMemoryException)
         {
             throw new InvalidDataException(
                 $"The selected VPK could not be read as a supported Valve VPK directory archive: {fileName}",
