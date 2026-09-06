@@ -48,8 +48,7 @@ internal sealed class ImportedVpkBuildAndTestService
             Report(progress, 15, LocalizedText.T(
                 "Inspecting compiled model animation bindings against current retail Deadlock...",
                 "Проверка animation bindings compiled-моделей по актуальному retail Deadlock..."));
-            var inspectionService = new ImportedVpkRepairInspectionService(_paths);
-            var inspection = inspectionService.InspectAndSave(manifest);
+            var inspection = new ImportedVpkRepairInspectionService(_paths).InspectAndSave(manifest);
             var eligible = inspection.Targets
                 .Where(target => target.Status is ImportedVpkRepairTargetStatus.BindingsMissing
                     or ImportedVpkRepairTargetStatus.BindingsDiffer)
@@ -86,9 +85,9 @@ internal sealed class ImportedVpkBuildAndTestService
             }
             else
             {
-                // Do not run the repair service as a no-op here. If this payload was
-                // repaired by an earlier build, its report is the provenance Stage 9
-                // uses to prove why those bytes differ from the imported source.
+                // A previous successful repair report is Stage 9 provenance for payload
+                // bytes that intentionally differ from the imported source. Do not
+                // overwrite that report with a no-op repair run.
                 log.AppendLine("No binding repair required; existing repair provenance was preserved unchanged.");
             }
 
@@ -113,10 +112,9 @@ internal sealed class ImportedVpkBuildAndTestService
             var deployedVpk = DeployVerifiedRepack(
                 repack,
                 slotCheck.VpkPath,
-                cancellationToken);
+                cancellationToken,
+                log);
 
-            // Keep ownership and the deployed family in one successful operation for
-            // imported projects. BuildFeature may record it again; that is idempotent.
             slotGuard.RecordSuccessfulDeployment(manifest, deployedVpk);
 
             Report(progress, 100, LocalizedText.T(
@@ -124,9 +122,13 @@ internal sealed class ImportedVpkBuildAndTestService
                 "Импортированный VPK исправлен, проверен и готов к тесту в retail."));
             log.AppendLine();
             log.AppendLine("RESULT: IMPORTED BUILD & TEST SUCCESS");
+            log.AppendLine($"Compiled models repaired this run: {repairedCount}");
             log.AppendLine($"VPK deployed: {deployedVpk}");
             File.WriteAllText(logPath, log.ToString());
 
+            // Keep the established BuildAndTestResult contract unchanged. Imported
+            // projects compile no authoring source; Ag2Applied indicates whether this
+            // run changed compiled model binding bytes.
             return new BuildAndTestResult(
                 manifest.ProjectName,
                 CompiledSourceCount: 0,
@@ -135,12 +137,7 @@ internal sealed class ImportedVpkBuildAndTestService
                 Ag2Applied: repairedCount > 0,
                 warnings,
                 deployedVpk,
-                logPath)
-            {
-                ImportedCompiledPayload = true,
-                InspectedCompiledModelCount = inspection.Targets.Count,
-                RepairedCompiledModelCount = repairedCount,
-            };
+                logPath);
         }
         catch (Exception exception)
         {
@@ -199,7 +196,8 @@ internal sealed class ImportedVpkBuildAndTestService
     private static string DeployVerifiedRepack(
         ImportedVpkRepackResult repack,
         string retailVpkPath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        StringBuilder log)
     {
         var sourceVpk = Path.GetFullPath(repack.OutputVpkPath);
         var destinationVpk = Path.GetFullPath(retailVpkPath);
@@ -233,6 +231,8 @@ internal sealed class ImportedVpkBuildAndTestService
         var stagedVpk = Path.Combine(stageFolder, Path.GetFileName(sourceVpk));
         var movedToRetail = new List<string>();
         var backedUp = new List<(string Original, string Backup)>();
+        var deploymentCommitted = false;
+        var rollbackSucceeded = false;
 
         try
         {
@@ -264,11 +264,14 @@ internal sealed class ImportedVpkBuildAndTestService
             }
 
             VerifyArchive(destinationVpk, repack);
+            deploymentCommitted = true;
+            log.AppendLine($"Retail imported-VPK transaction committed: {movedToRetail.Count} file(s).");
             return destinationVpk;
         }
-        catch
+        catch (Exception deploymentError)
         {
-            foreach (var deployed in movedToRetail)
+            var rollbackErrors = new List<Exception>();
+            foreach (var deployed in movedToRetail.AsEnumerable().Reverse())
             {
                 try
                 {
@@ -279,30 +282,49 @@ internal sealed class ImportedVpkBuildAndTestService
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
                 {
-                    // Preserve the primary deployment error; restoration below still gets a chance.
+                    rollbackErrors.Add(exception);
                 }
             }
 
-            foreach (var backup in backedUp)
+            foreach (var backup in backedUp.AsEnumerable().Reverse())
             {
                 try
                 {
                     if (File.Exists(backup.Backup))
                     {
+                        if (File.Exists(backup.Original))
+                        {
+                            File.Delete(backup.Original);
+                        }
                         File.Move(backup.Backup, backup.Original);
                     }
                 }
                 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
                 {
-                    // Preserve the primary deployment error.
+                    rollbackErrors.Add(exception);
                 }
             }
-            throw;
+
+            rollbackSucceeded = rollbackErrors.Count == 0;
+            if (rollbackSucceeded)
+            {
+                throw new InvalidOperationException(
+                    $"Imported VPK deployment failed; the previous retail VPK family was restored. {deploymentError.Message}",
+                    deploymentError);
+            }
+
+            throw new AggregateException(
+                "Imported VPK deployment failed and rollback was incomplete. The preserved backup folder was left in place for manual recovery: " +
+                backupFolder,
+                new[] { deploymentError }.Concat(rollbackErrors));
         }
         finally
         {
             DeleteDirectoryBestEffort(stageFolder);
-            DeleteDirectoryBestEffort(backupFolder);
+            if (deploymentCommitted || rollbackSucceeded)
+            {
+                DeleteDirectoryBestEffort(backupFolder);
+            }
         }
     }
 
@@ -367,7 +389,7 @@ internal sealed class ImportedVpkBuildAndTestService
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
-            // Staging/backup folders are reconstructable and outside the deployed archive family.
+            // Staging/backup cleanup must not hide a successful deployment or rollback.
         }
     }
 
