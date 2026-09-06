@@ -63,7 +63,7 @@ Do not combine later stages into an earlier implementation unless required by a 
 
 ## Stage 1 — Project creation choice
 
-Status: **TODO**
+Status: **IMPLEMENTED — awaiting manual UI acceptance**
 
 Change the Library `+` action from directly opening the new-project dialog to opening a small choice dialog first.
 
@@ -82,6 +82,10 @@ Acceptance:
 
 - Existing project creation behaves exactly as before after choosing `Create Project`.
 - `Import VPK...` can be selected independently.
+
+Implementation note:
+
+- The Stage 1 import branch intentionally stops at an explicit boundary message. The VPK picker and validation belong to Stage 2 and are not pulled forward into this stage.
 
 ---
 
@@ -138,205 +142,219 @@ Requirements:
 Acceptance:
 
 - A normal single-hero replacement VPK imports under the expected hero/project identity.
-- Ambiguous multi-hero or non-character VPKs do not receive a false hero identity.
+- Ambiguous archives receive a stable fallback name rather than a guessed hero.
 
 ---
 
-## Stage 4 — Preserve the imported compiled payload
+## Stage 4 — Imported project mode and manifest contract
 
 Status: **TODO**
 
-Do not decompile and recompile the imported mod as part of the normal import transaction.
+Add an explicit project mode distinction.
 
-Store the exact archive payload under a dedicated project subdirectory:
+Minimum modes:
 
 ```text
-<ProjectFolder>\payload\...
+Authoring
+ImportedVpk
 ```
 
-Do not place imported archive files directly beside project metadata and authoring inputs in the project root.
+The manifest schema must be bumped if the serialized contract changes.
+
+Imported-project metadata must retain at least:
+
+- source VPK filename;
+- source VPK path;
+- source Release ID when known;
+- original VPK SHA-256;
+- inferred hero or heroes;
+- detected primary model resources;
+- import timestamp/version information sufficient for diagnostics.
 
 Requirements:
 
-- Preserve archive-relative resource paths exactly.
-- Store a per-file import manifest containing at least relative path, size, and SHA-256.
-- Record the original VPK SHA-256.
-- Keep `.deadlimit` metadata outside the payload set that will later be repacked.
+- Existing manifests continue to load as `Authoring` by default.
+- Imported projects cannot accidentally enter the normal DMX/ResourceCompiler authoring path.
 
 Acceptance:
 
-- The extracted `payload` file set hashes back to the original archive contents.
-- Deadlimit metadata cannot accidentally enter the rebuilt VPK.
+- Existing projects load without migration breakage.
+- Imported VPK projects are unambiguously identified after restarting Deadlimit Manager.
 
 ---
 
-## Stage 5 — Adopt the original VPK slot safely
+## Stage 5 — Preserve compiled payload
 
 Status: **TODO**
 
-Extend the current VPK ownership model with an explicit import/adoption transaction.
+Extract the imported VPK into a dedicated payload subtree rather than mixing archive contents with Deadlimit metadata.
 
-Current behavior correctly refuses to overwrite an unknown existing `pak##_dir.vpk`; imported projects need a controlled exception because that exact file is their source artifact.
-
-Requirements:
-
-- Adoption is permitted only during successful VPK import.
-- Record the imported VPK path, Release ID, and original SHA-256.
-- After adoption, normal Deadlimit ownership checks apply.
-- If the VPK changes externally after import, the existing external-modification protection must still stop automatic overwrite.
-
-Acceptance:
-
-- An imported `pak42_dir.vpk` can later deploy back to slot `42`.
-- Another project cannot silently claim or overwrite that slot.
-- External edits after adoption are detected.
-
----
-
-## Stage 6 — Detect repairable compiled models
-
-Status: **TODO**
-
-Scan the imported payload for candidate `.vmdl_c` resources.
-
-For each candidate, determine whether it is a character/model resource eligible for animation-binding repair.
-
-Inspect at minimum:
-
-- resource type is Model;
-- current `m_animGraph2Refs` state;
-- current `m_vecNmSkeletonRefs` state;
-- resource path / hero-family identity.
-
-Requirements:
-
-- Do not patch every `.vmdl_c` indiscriminately.
-- Classify candidates as repairable, already current, ambiguous, or unsupported.
-- Ambiguous candidates remain untouched and must be reported rather than guessed.
-
-Acceptance:
-
-- A known hero main model is selected for inspection.
-- unrelated compiled models remain byte-identical.
-
----
-
-## Stage 7 — Resolve the current retail reference model
-
-Status: **TODO**
-
-For each repairable imported model, locate the corresponding model in the user's current retail Deadlock installation.
-
-The current retail compiled model is the authoritative source for animation binding values.
-
-Requirements:
-
-- Prefer exact resource-path identity where possible.
-- Support hero internal-name/family resolution when exact paths changed.
-- Reuse existing retail VPK scanning infrastructure.
-- Do not copy geometry, materials, render meshes, or unrelated model data from retail.
-
-Acceptance:
-
-- The system resolves the correct current retail model for tested imported replacements.
-- Failure to resolve produces a non-destructive error/warning and no guessed patch.
-
----
-
-## Stage 8 — Replace stale or missing animation bindings
-
-Status: **TODO**
-
-Read the current retail values for:
+Preferred structure:
 
 ```text
-m_animGraph2Refs
-m_vecNmSkeletonRefs
+<ProjectFolder>\
+  payload\
+    models\...
+    materials\...
+    ...
+  .deadlimit\
+    project.json
+    original-vpk.json
+    ...
 ```
 
-Compare them with the imported model.
-
-Repair policy:
-
-- missing imported value + valid retail value → copy retail value;
-- imported value differs from valid current retail value → replace with retail value;
-- imported value already matches retail → leave model untouched;
-- retail reference cannot be established safely → do not modify.
-
-This stage intentionally differs from the current `DeadlockTools add ag2` behavior, which only adds missing fields and skips fields that already exist. Imported old mods may contain stale existing references, so repair must support replacement.
+The exact payload folder name may change if a stronger existing workspace convention is identified before implementation.
 
 Requirements:
 
-- Modify only the required model DATA fields.
-- Preserve all unrelated model data.
-- Log the exact fields changed per resource.
-- Keep an untouched backup/hash reference from the import manifest.
+- Do not decompile/recompile imported compiled resources during import.
+- Do not place `.deadlimit` metadata inside the future VPK payload.
+- Record the original archive entry set and per-entry SHA-256.
+- Preserve internal VPK paths exactly.
 
 Acceptance:
 
-- Missing refs are restored.
-- Stale refs are replaced with current retail refs.
-- Already-current models remain byte-identical whenever no serialization is required.
+- Repacking an untouched imported payload produces the same internal path set as the source archive.
+- Deadlimit metadata is never included in the rebuilt VPK.
 
 ---
 
-## Stage 9 — Repack only the imported payload
+## Stage 6 — Release ID adoption and ownership
 
 Status: **TODO**
 
-Build the VPK directly from the imported `payload` tree after repair.
+Imported retail addon VPKs must become safely owned by the importing project without weakening the existing overwrite guard.
 
-Import-project Build & Test path:
+Requirements:
+
+- If the selected source is `pak##_dir.vpk`, derive the candidate Release ID from the filename.
+- Record the imported source SHA-256 before any deployment mutation.
+- Extend `VpkSlotOwnershipService` with an explicit import/adopt operation.
+- Adoption is valid only when the VPK currently occupying the slot matches the imported source identity expected by the project.
+- Never silently claim an unrelated VPK at the same Release ID.
+
+Acceptance:
+
+- Importing the current `pak42_dir.vpk` lets that project later redeploy slot 42.
+- Replacing `pak42_dir.vpk` externally with unrelated bytes restores the ownership conflict instead of overwriting it.
+
+---
+
+## Stage 7 — Detect repair targets
+
+Status: **TODO**
+
+Identify compiled character model resources in the imported payload that are eligible for binding repair.
+
+Requirements:
+
+- Prefer exact model-path correspondence with current retail resources.
+- Reuse existing hero/model discovery rules where appropriate.
+- Do not apply a hero-specific workaround to unrelated models merely because filenames look similar.
+- Produce a repair inspection result before modifying bytes.
+
+The result should distinguish at least:
 
 ```text
-payload
-→ inspect/repair compiled resources
+matched retail model
+missing retail counterpart
+bindings already current
+bindings missing
+bindings differ
+unsupported/unreadable resource
+```
+
+Acceptance:
+
+- A known replacement main model resolves to the corresponding current retail model.
+- Non-model payload entries are ignored by this repair stage.
+
+---
+
+## Stage 8 — Repair AG2/NmSkeleton bindings from retail truth
+
+Status: **TODO**
+
+For each confirmed repair target:
+
+1. load the imported compiled `.vmdl_c`;
+2. load its exact current retail counterpart;
+3. read retail:
+   - `m_animGraph2Refs`
+   - `m_vecNmSkeletonRefs`;
+4. compare with imported values;
+5. replace imported values when missing or different;
+6. serialize the modified compiled model.
+
+Requirements:
+
+- Retail model values are authoritative.
+- Do not rely on `DeadlockTools add ag2` alone for imported VPK repair because it skips fields that already exist.
+- If an imported field is stale but present, it must still be replaceable.
+- Do not mutate unrelated compiled fields.
+- Record which resource paths changed and why.
+
+Acceptance:
+
+- A model with missing bindings receives the current retail bindings.
+- A model with stale existing bindings receives the current retail bindings instead of being skipped.
+- A model whose bindings already match retail remains byte-unmodified if serialization is unnecessary.
+
+---
+
+## Stage 9 — Repack integrity and verification
+
+Status: **TODO**
+
+Rebuild the imported project from the preserved compiled payload using the existing ValvePak writer and verification path.
+
+Requirements:
+
+- Package the payload subtree only.
+- Preserve the same internal path set unless the user intentionally changed payload contents.
+- Compare against the import manifest before deploy.
+- Report exactly which entries changed because of repair.
+- Verify the generated VPK before replacing the retail destination.
+- Preserve source VPK version when practical and supported; otherwise document and validate the chosen output version.
+
+Acceptance:
+
+- Untouched entries retain their original SHA-256.
+- Only intended repaired resources differ.
+- Output VPK verification succeeds before deployment.
+
+---
+
+## Stage 10 — Imported-project Build/Test path
+
+Status: **TODO**
+
+Route `ImportedVpk` projects through a compiled-payload build path instead of the normal authoring pipeline.
+
+Imported flow:
+
+```text
+validate imported project
+→ inspect payload
+→ repair eligible compiled models
+→ verify payload invariants
 → pack VPK
 → verify VPK
-→ deploy to adopted Release ID
+→ deploy adopted Release ID
+→ test in retail Deadlock
 ```
 
-The normal authoring path remains:
+Must not run by default:
 
-```text
-project authoring sources
-→ PrepareAuthoringService
-→ ResourceCompiler
-→ post-process compiled model
-→ pack VPK
-→ deploy
-```
-
-Requirements:
-
-- Imported projects must not run through `PrepareAuthoringService` or ResourceCompiler merely to rebuild the archive.
-- The output archive must contain the same relative file set as the imported archive unless a future explicitly accepted feature changes that rule.
-- Only repair-target files may differ in content.
+- `PrepareAuthoringService`;
+- DMX preparation;
+- ModelDoc authoring generation;
+- ResourceCompiler recompilation of the imported mod.
 
 Acceptance:
 
-- File set before/after rebuild is identical.
-- Hash differences are limited to intentionally repaired resources.
-
----
-
-## Stage 10 — Verification and deployment
-
-Status: **TODO**
-
-Before replacing the retail addon VPK:
-
-- verify the temporary VPK can be read;
-- verify archive-relative file set matches the import manifest;
-- verify untouched resources retain their imported SHA-256;
-- record all deliberately changed resources;
-- deploy through the existing verified VPK deployment mechanism;
-- update the project's ownership hash after successful deployment.
-
-Acceptance:
-
-- A failed verification never replaces the existing retail VPK.
-- A successful rebuild becomes the new owned VPK state for the project.
+- Existing authoring projects still use the current BUILD & TEST pipeline unchanged.
+- Imported projects never enter DMX/ResourceCompiler stages merely to repair bindings.
 
 ---
 
@@ -344,70 +362,68 @@ Acceptance:
 
 Status: **TODO**
 
-Validate the feature against real mods that currently exhibit broken character animations after a Deadlock update.
+Before treating animation repair as proven, validate on at least one real VPK that is currently broken after a Deadlock update.
 
-Required test matrix:
+Required experiment:
 
-1. mod with missing AG2/NmSkeleton refs;
-2. mod with existing but stale refs;
-3. already-working/current mod;
-4. mod whose animation problem is unrelated to these bindings;
-5. ambiguous or multi-model VPK.
-
-For each fixture record:
-
-- original VPK hash;
-- imported candidate model(s);
-- fields detected before repair;
-- current retail reference fields;
-- fields changed;
-- rebuilt VPK hash;
-- in-game result.
+1. capture source VPK hash and entry manifest;
+2. identify the broken model;
+3. inspect its AG2/NmSkeleton values;
+4. inspect the current retail counterpart;
+5. record the exact difference;
+6. run only the binding repair;
+7. rebuild and deploy;
+8. test the mod in the retail Deadlock client.
 
 Acceptance:
 
-- At least one previously broken real mod is restored in retail Deadlock by the binding repair.
-- An already-working mod is not unnecessarily modified.
-- An unrelated animation failure is reported as not repaired rather than falsely declared fixed.
+- The previously broken character animation works in retail after repair.
+- The changed archive entries are explainable and limited to the intended repair.
+
+If the mod remains broken:
+
+- do not broaden the automatic repair immediately;
+- classify the next failure first;
+- only add another repair rule when a concrete cause is demonstrated.
 
 ---
 
-## Stage 12 — Product wording and final UX
+## Stage 12 — Secondary repair profiles
 
-Status: **TODO**
+Status: **BLOCKED until Stage 11 evidence**
 
-Only after Stage 11 confirms the supported failure class, finalize user-facing wording.
+Possible later repair profiles include:
+
+- `unitstatus` normalization equivalent to DeadlockTools `fix unitstatus`;
+- detection/reporting of likely harmful custom packed `vnmskel_c` resources;
+- detection/reporting of unsupported or obsolete custom `vnmclip_c` resources;
+- other current-Deadlock compiled-resource compatibility repairs proven by real failures.
+
+These are not part of the initial animation-binding fix and must not be enabled speculatively.
+
+---
+
+## Product wording
+
+Until Stage 11 proves the repair class in retail, avoid claiming a universal **Fix Animations** feature.
 
 Preferred technical description:
 
-> Repair model animation bindings against the current Deadlock retail resources.
+> Repair model animation bindings against current Deadlock resources.
 
-Avoid claiming universal animation repair unless additional failure classes have been independently implemented and validated.
+User-facing wording may become shorter after the behavior is validated, but the implementation must continue to distinguish binding repair from unrelated animation problems.
 
-Potential imported-project status information:
+## Safety invariants
 
-- imported from `pak##_dir.vpk`;
-- Release ID;
-- detected hero/model identity;
-- last repair result;
-- number of repaired model resources;
-- current/changed externally state.
+The imported-VPK path must preserve all of these properties:
 
-Acceptance:
-
-- UI wording accurately reflects the validated repair scope.
-- The normal authoring-project UX remains unaffected.
-
-## Non-goals for the first implementation
-
-- rebuilding arbitrary source animation assets;
-- automatically repairing custom IK authoring;
-- regenerating custom `vnmclip` data;
-- repairing root-motion authoring;
-- recompiling an imported mod through CSDK by default;
-- changing unrelated assets while repairing animation bindings;
-- guessing hero/skeleton identities when evidence is ambiguous.
-
-## Completion definition
-
-This plan is complete when an existing retail-addon VPK can be imported as a Deadlimit project, safely adopted in its original Release ID slot, preserved as a compiled payload, compared against current retail character animation bindings, minimally repaired where necessary, verified, repacked, deployed, and confirmed in-game on real previously broken mods.
+1. Existing authoring projects behave exactly as before.
+2. Imported compiled resources are not unnecessarily decompiled/recompiled.
+3. Deadlimit metadata never enters the rebuilt VPK.
+4. Original source VPK identity is recorded before mutation.
+5. Release ID ownership protection remains active.
+6. Retail resources are the authority for current animation bindings.
+7. Only evidence-backed repair rules are automatic.
+8. Every rebuilt VPK is verified before deployment.
+9. Every changed compiled resource is reportable.
+10. Hero-specific exceptions do not become global rules without separate validation.
