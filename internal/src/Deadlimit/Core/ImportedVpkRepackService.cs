@@ -323,7 +323,10 @@ public sealed class ImportedVpkRepackService
             throw new InvalidDataException(
                 $"Rebuilt VPK version mismatch. Expected {expectedVersion}, found {package.Version}.");
         }
-        package.VerifyHashes();
+        if (package.Version == 2)
+        {
+            package.VerifyHashes();
+        }
         package.VerifyFileChecksums();
 
         var packageEntries = package.Entries
