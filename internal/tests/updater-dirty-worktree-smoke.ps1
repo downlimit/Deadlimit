@@ -19,7 +19,8 @@ function Run-Git([string]$workingDirectory, [Parameter(ValueFromRemainingArgumen
 
 function Run-Updater([string]$workingDirectory) {
     $bootstrap = Join-Path $workingDirectory 'DeadlimitUpdater.bat'
-    $process = Start-Process -FilePath $env:ComSpec -ArgumentList @('/d', '/c', "`"$bootstrap`"") -WorkingDirectory $workingDirectory -Wait -PassThru -NoNewWindow
+    $process = Start-Process -FilePath $env:ComSpec -ArgumentList @('/d', '/c', "`"$bootstrap`"") -WorkingDirectory $workingDirectory -PassThru -NoNewWindow
+    $process.WaitForExit()
     return $process.ExitCode
 }
 
