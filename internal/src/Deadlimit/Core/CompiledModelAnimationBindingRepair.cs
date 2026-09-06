@@ -123,12 +123,14 @@ internal static class CompiledModelAnimationBindingRepair
         var graphRefs = new List<string>();
         if (hasGraphField)
         {
-            if (!graphArray.IsArray)
+            var graphs = graphArray
+                ?? throw new InvalidDataException($"{AnimGraph2Field} exists but has no value.");
+            if (!graphs.IsArray)
             {
                 throw new InvalidDataException($"{AnimGraph2Field} exists but is not an array.");
             }
 
-            foreach (var graphRef in graphArray.Values)
+            foreach (var graphRef in graphs.Values)
             {
                 if (graphRef.ValueType != KVValueType.Collection)
                 {
@@ -150,12 +152,14 @@ internal static class CompiledModelAnimationBindingRepair
         var skeletonRefs = new List<string>();
         if (hasSkeletonField)
         {
-            if (!skeletonArray.IsArray)
+            var skeletons = skeletonArray
+                ?? throw new InvalidDataException($"{NmSkeletonField} exists but has no value.");
+            if (!skeletons.IsArray)
             {
                 throw new InvalidDataException($"{NmSkeletonField} exists but is not an array.");
             }
 
-            foreach (var skeletonRef in skeletonArray.Values)
+            foreach (var skeletonRef in skeletons.Values)
             {
                 if (skeletonRef.ValueType != KVValueType.String)
                 {
