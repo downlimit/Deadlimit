@@ -111,6 +111,12 @@ internal static class Program
                 return 10 + vpkOwnershipResult;
             }
 
+            var repairInspectionResult = ImportedVpkRepairInspectionSmoke.Run();
+            if (repairInspectionResult != 0)
+            {
+                return 30 + repairInspectionResult;
+            }
+
             var settingsLayoutResult = SettingsForm.RunFooterLayoutSmoke();
             if (settingsLayoutResult != 0)
             {
