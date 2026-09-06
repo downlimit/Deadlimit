@@ -16,7 +16,12 @@ public sealed record BuildAndTestResult(
     bool Ag2Applied,
     IReadOnlyList<string> Warnings,
     string VpkPath,
-    string LogPath);
+    string LogPath)
+{
+    public bool ImportedCompiledPayload { get; init; }
+    public int InspectedCompiledModelCount { get; init; }
+    public int RepairedCompiledModelCount { get; init; }
+}
 
 public sealed class BuildAndTestService
 {
@@ -62,6 +67,12 @@ public sealed class BuildAndTestService
         IProgress<BuildAndTestProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        if (manifest.Mode == ProjectMode.ImportedVpk)
+        {
+            return new ImportedVpkBuildAndTestService(_paths)
+                .Build(manifest, progress, cancellationToken);
+        }
+
         ValidateEnvironment(manifest);
 
         var releaseSlot = ParseReleaseSlot(manifest.ReleaseTarget);
@@ -428,51 +439,72 @@ public sealed class BuildAndTestService
         CancellationToken cancellationToken)
     {
         var ordered = sources
-            .OrderBy(path => Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)
-            .ThenBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var batchCount = (ordered.Length + CompileBatchSize - 1) / CompileBatchSize;
         for (var offset = 0; offset < ordered.Length; offset += CompileBatchSize)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var batchIndex = offset / CompileBatchSize;
             var batch = ordered.Skip(offset).Take(CompileBatchSize).ToArray();
-            var beforePercent = 40 + (int)Math.Floor(36.0 * batchIndex / Math.Max(1, batchCount));
-            Report(progress, beforePercent, LocalizedText.T($"Compiling Source 2 assets — batch {batchIndex + 1}/{batchCount}...", $"Компиляция ресурсов Source 2 — пакет {batchIndex + 1}/{batchCount}..."));
+            var args = new List<string>
+            {
+                "-f",
+                "-nop4",
+                "-game",
+                _paths.CsdkGameRoot,
+            };
+            args.AddRange(batch);
 
-            var arguments = new List<string>(batch.Length * 2 + 1);
+            var batchNumber = offset / CompileBatchSize + 1;
+            var batchTotal = (int)Math.Ceiling(ordered.Length / (double)CompileBatchSize);
+            var compilePercent = 40 + (int)Math.Round(
+                36d * Math.Min(offset + batch.Length, ordered.Length) / Math.Max(ordered.Length, 1));
+            Report(
+                progress,
+                Math.Min(76, compilePercent),
+                LocalizedText.T(
+                    $"ResourceCompiler batch {batchNumber}/{batchTotal}...",
+                    $"ResourceCompiler пакет {batchNumber}/{batchTotal}..."));
+
+            log.AppendLine($"ResourceCompiler batch {batchNumber}/{batchTotal}:");
             foreach (var source in batch)
             {
-                arguments.Add("-i");
-                arguments.Add(source);
+                log.AppendLine($"  {source}");
             }
-            arguments.Add("-nop4");
 
-            var result = await RunProcessAsync(
+            var result = await ProcessRunner.RunAsync(
                 _paths.ResourceCompilerPath,
-                arguments,
-                Path.GetDirectoryName(_paths.ResourceCompilerPath)!,
-                cancellationToken);
+                args,
+                workingDirectory: _paths.CsdkBinRoot,
+                cancellationToken: cancellationToken);
 
-            AppendProcessLog(log, $"ResourceCompiler batch {batchIndex + 1}", result);
-            if (!result.Success)
+            log.AppendLine(result.StandardOutput);
+            if (!string.IsNullOrWhiteSpace(result.StandardError))
+            {
+                log.AppendLine(result.StandardError);
+            }
+
+            if (result.ExitCode != 0)
             {
                 throw new InvalidOperationException(
-                    $"ResourceCompiler failed with exit code {result.ExitCode}. See the Build & Test log.");
+                    $"ResourceCompiler failed with exit code {result.ExitCode}.\n\n{result.StandardError}\n\nSee log for full output.");
             }
-
-            var afterPercent = 40 + (int)Math.Ceiling(36.0 * (batchIndex + 1) / Math.Max(1, batchCount));
-            Report(progress, afterPercent, LocalizedText.T($"Compiled Source 2 assets — batch {batchIndex + 1}/{batchCount}.", $"Ресурсы Source 2 скомпилированы — пакет {batchIndex + 1}/{batchCount}."));
         }
+    }
+
+    private static bool IsDirectCompileSource(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return DirectCompileExtensions.Contains(extension);
     }
 
     private static void VerifyCompiledOutputs(
         string contentRoot,
         string gameRoot,
-        IEnumerable<string> compileTargets)
+        IEnumerable<string> sources)
     {
-        foreach (var source in compileTargets)
+        var missing = new List<string>();
+        foreach (var source in sources)
         {
             var relative = NormalizeRelativePath(Path.GetRelativePath(contentRoot, source));
             var compiledRelative = GetCompiledRelativePath(relative);
@@ -484,13 +516,59 @@ public sealed class BuildAndTestService
             var output = SafePath.ResolveUnderRoot(
                 gameRoot,
                 ToWindowsPath(compiledRelative),
-                "Verified compiled output");
+                "Compiled output verification");
             if (!File.Exists(output))
             {
-                throw new InvalidOperationException(
-                    $"ResourceCompiler exited successfully, but expected output was not found: {output}");
+                missing.Add(compiledRelative);
             }
         }
+
+        if (missing.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "ResourceCompiler completed but expected compiled outputs are missing:\n" +
+                string.Join("\n", missing.Select(path => $"- {path}")));
+        }
+    }
+
+    private static string? GetCompiledRelativePath(string sourceRelative)
+    {
+        var extension = Path.GetExtension(sourceRelative);
+        if (string.IsNullOrWhiteSpace(extension))
+        {
+            return null;
+        }
+
+        if (string.Equals(extension, ".vtex", StringComparison.OrdinalIgnoreCase))
+        {
+            return sourceRelative + "_c";
+        }
+
+        if (DirectCompileExtensions.Contains(extension))
+        {
+            return sourceRelative + "_c";
+        }
+
+        return null;
+    }
+
+    private static string GetCompiledMainModelPath(ProjectManifest manifest, string addonGameRoot)
+    {
+        if (!string.IsNullOrWhiteSpace(manifest.RetailMainModel))
+        {
+            return SafePath.ResolveUnderRoot(
+                addonGameRoot,
+                ToWindowsPath(manifest.RetailMainModel),
+                "Compiled main model");
+        }
+
+        var hero = manifest.Hero?.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(hero))
+        {
+            throw new InvalidOperationException("Hero is not selected for BUILD & TEST.");
+        }
+
+        return Path.Combine(addonGameRoot, "models", "heroes", hero, $"{hero}.vmdl_c");
     }
 
     private void ApplyAg2(
@@ -501,454 +579,147 @@ public sealed class BuildAndTestService
     {
         if (!File.Exists(compiledMainModel))
         {
-            throw new InvalidOperationException(
-                $"Compiled character model was not found before AG2 restoration: {compiledMainModel}");
+            throw new FileNotFoundException(
+                "Compiled main VMDL_C was not found for AnimGraph2 / NmSkeleton patching.",
+                compiledMainModel);
         }
-        if (!File.Exists(_paths.DeadlockToolsExePath))
+
+        var deadlockTools = _paths.DeadlockToolsExePath;
+        if (!File.Exists(deadlockTools))
         {
             throw new FileNotFoundException(
-                "DeadlockTools is required to restore AnimGraph2/NmSkeleton for a freshly compiled character model.",
-                _paths.DeadlockToolsExePath);
+                "DeadlockTools.exe is required to restore AnimGraph2 / NmSkeleton references after compile.",
+                deadlockTools);
         }
 
-        var nmSkeletonRef = FindNmSkeletonReference(manifest);
-        if (nmSkeletonRef is null)
+        var sourceVmdl = RetailVmdlInheritance.FindRetailVmdl(manifest)
+            ?? throw new InvalidOperationException(
+                "Retail source VMDL is missing; extract hero source before Build & Test so the NmSkeleton reference can be recovered.");
+        var nmSkeletonRef = FindNmSkeletonReference(sourceVmdl)
+            ?? throw new InvalidOperationException(
+                "Retail source VMDL does not expose an NmSkeleton reference required by current Deadlock.");
+
+        var family = InferRetailFamily(manifest.RetailMainModel)
+            ?? throw new InvalidOperationException(
+                $"Could not infer the retail hero family from: {manifest.RetailMainModel}");
+        var heroToken = NormalizeHeroToken(manifest.Hero)
+            ?? throw new InvalidOperationException("Hero is not selected for Build & Test.");
+
+        var args = new List<string>
         {
-            throw new InvalidOperationException(
-                "No NmSkeleton (.vnmskel) reference could be discovered in this project's 0source. Refresh hero source before BUILD & TEST.");
-        }
+            "add",
+            "ag2",
+            compiledMainModel,
+            "-h",
+            heroToken,
+            "-f",
+            family,
+            "--override-skeleton",
+            nmSkeletonRef,
+        };
 
-        var family = InferFamily(nmSkeletonRef, manifest.RetailMainModel);
-        var heroToken = NormalizeCliToken(manifest.Hero);
-        if (family.Length == 0 || heroToken.Length == 0)
-        {
-            throw new InvalidOperationException("Could not derive generic DeadlockTools hero/family arguments from this project.");
-        }
+        log.AppendLine("DeadlockTools add ag2:");
+        log.AppendLine($"  model={compiledMainModel}");
+        log.AppendLine($"  hero={heroToken}");
+        log.AppendLine($"  family={family}");
+        log.AppendLine($"  skeleton={nmSkeletonRef}");
 
-        var result = RunProcessAsync(
-                _paths.DeadlockToolsExePath,
-                [
-                    "add", "ag2", compiledMainModel,
-                    "-h", heroToken,
-                    "-f", family,
-                    "--override-skeleton", nmSkeletonRef,
-                ],
-                Path.GetDirectoryName(_paths.DeadlockToolsExePath)!,
-                cancellationToken)
+        var result = ProcessRunner.RunAsync(
+                deadlockTools,
+                args,
+                workingDirectory: Path.GetDirectoryName(deadlockTools),
+                cancellationToken: cancellationToken)
             .GetAwaiter()
             .GetResult();
 
-        AppendProcessLog(log, "DeadlockTools add ag2", result);
-        if (!result.Success)
+        log.AppendLine(result.StandardOutput);
+        if (!string.IsNullOrWhiteSpace(result.StandardError))
+        {
+            log.AppendLine(result.StandardError);
+        }
+
+        if (result.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                $"DeadlockTools add ag2 failed with exit code {result.ExitCode}. See the Build & Test log.");
+                $"DeadlockTools add ag2 failed with exit code {result.ExitCode}.\n\n{result.StandardError}");
         }
 
         manifest.NmSkeletonRef = nmSkeletonRef;
-        ProjectStore.Save(manifest);
     }
 
-    private static void PackVpk(
-        string addonGameRoot,
-        string outputVpk,
-        StringBuilder log,
-        IProgress<BuildAndTestProgress>? progress,
-        CancellationToken cancellationToken)
+    private static string? FindNmSkeletonReference(string sourceVmdl)
     {
-        if (!Directory.Exists(addonGameRoot))
-        {
-            throw new InvalidOperationException(
-                $"Cannot create VPK because the compiled addon game folder is missing: {addonGameRoot}");
-        }
-
-        var files = Directory.EnumerateFiles(addonGameRoot, "*", SearchOption.AllDirectories)
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        if (files.Length == 0)
-        {
-            throw new InvalidOperationException(
-                $"Cannot create VPK because the compiled addon game folder is empty: {addonGameRoot}");
-        }
-
-        var targetDirectory = Path.GetDirectoryName(outputVpk)!;
-        Directory.CreateDirectory(targetDirectory);
-        var targetBase = Path.GetFileName(outputVpk);
-        const string suffix = "_dir.vpk";
-        targetBase = targetBase.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
-            ? targetBase[..^suffix.Length]
-            : Path.GetFileNameWithoutExtension(targetBase);
-        var temporaryVpk = Path.Combine(
-            targetDirectory,
-            $"{targetBase}_deadlimit_{Guid.NewGuid():N}_dir.vpk");
-
-        try
-        {
-            using (var package = new Package { Version = 2 })
-            {
-                for (var index = 0; index < files.Length; index++)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var file = files[index];
-                    var relative = NormalizeRelativePath(Path.GetRelativePath(addonGameRoot, file));
-                    package.AddFile(relative, File.ReadAllBytes(file));
-
-                    var percent = 90 + (int)Math.Floor(6.0 * (index + 1) / files.Length);
-                    Report(progress, percent, $"Packing VPK — {index + 1}/{files.Length} files...");
-                }
-
-                Report(progress, 97, "Writing VPK archive...");
-                package.Write(temporaryVpk);
-            }
-
-            if (!File.Exists(temporaryVpk))
-            {
-                throw new InvalidOperationException(
-                    $"ValvePak completed without an exception, but the temporary VPK was not created: {temporaryVpk}");
-            }
-
-            Report(progress, 98, "Verifying VPK checksums...");
-            VerifyVpk(temporaryVpk);
-
-            DeployVerifiedVpkFamily(temporaryVpk, outputVpk, log);
-            log.AppendLine();
-            log.AppendLine("[ValvePak in-process packaging]");
-            log.AppendLine($"Packed files: {files.Length}");
-            log.AppendLine("VPK version: 2");
-            log.AppendLine($"Output: {outputVpk}");
-            Report(progress, 99, "VPK deployed to retail Deadlock addons.");
-        }
-        finally
-        {
-            foreach (var temporaryFile in EnumerateVpkFamily(temporaryVpk))
-            {
-                try
-                {
-                    File.Delete(temporaryFile);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    log.AppendLine($"Could not remove temporary VPK staging file '{temporaryFile}': {ex.Message}");
-                }
-            }
-        }
+        var text = File.ReadAllText(sourceVmdl);
+        var match = NmSkeletonRegex.Match(text);
+        return match.Success
+            ? NormalizeRelativePath(match.Value)
+            : null;
     }
 
-    private static void DeployVerifiedVpkFamily(
-        string stagedVpk,
-        string outputVpk,
-        StringBuilder log)
+    private static string? InferRetailFamily(string? retailMainModel)
     {
-        var stagedFamily = EnumerateVpkFamily(stagedVpk);
-        if (!stagedFamily.Contains(stagedVpk, StringComparer.OrdinalIgnoreCase))
-        {
-            throw new FileNotFoundException(
-                "The verified staging VPK disappeared before retail deployment.",
-                stagedVpk);
-        }
-
-        var stagedBaseName = GetVpkBaseName(stagedVpk);
-        var outputBaseName = GetVpkBaseName(outputVpk);
-        var outputDirectory = Path.GetDirectoryName(outputVpk)!;
-        var mappings = stagedFamily
-            .Select(path =>
-            {
-                var fileName = Path.GetFileName(path);
-                var targetName = string.Equals(path, stagedVpk, StringComparison.OrdinalIgnoreCase)
-                    ? Path.GetFileName(outputVpk)
-                    : outputBaseName + fileName[stagedBaseName.Length..];
-                return new VpkDeploymentMapping(path, Path.Combine(outputDirectory, targetName));
-            })
-            .OrderBy(mapping => string.Equals(mapping.StagedPath, stagedVpk, StringComparison.OrdinalIgnoreCase)
-                ? 1
-                : 0)
-            .ToArray();
-
-        var targetPaths = mappings
-            .Select(mapping => mapping.TargetPath)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var obsoletePreviousFiles = EnumerateVpkFamily(outputVpk)
-            .Where(path => !targetPaths.Contains(path))
-            .ToArray();
-        var transactionId = Guid.NewGuid().ToString("N");
-        var completed = new List<VpkDeploymentStep>();
-
-        try
-        {
-            foreach (var mapping in mappings)
-            {
-                var backupPath = File.Exists(mapping.TargetPath)
-                    ? mapping.TargetPath + $".deadlimit-backup-{transactionId}"
-                    : null;
-
-                if (backupPath is null)
-                {
-                    File.Move(mapping.StagedPath, mapping.TargetPath);
-                }
-                else
-                {
-                    File.Replace(
-                        mapping.StagedPath,
-                        mapping.TargetPath,
-                        backupPath,
-                        ignoreMetadataErrors: true);
-                }
-
-                completed.Add(new VpkDeploymentStep(mapping.TargetPath, backupPath));
-            }
-
-            VerifyVpk(outputVpk);
-
-            foreach (var obsoletePath in obsoletePreviousFiles)
-            {
-                TryDeleteDeploymentArtifact(obsoletePath, "obsolete previous VPK chunk", log);
-            }
-
-            foreach (var step in completed)
-            {
-                if (step.BackupPath is not null)
-                {
-                    TryDeleteDeploymentArtifact(step.BackupPath, "verified VPK transaction backup", log);
-                }
-            }
-
-            log.AppendLine(
-                $"Retail VPK transaction committed: {mappings.Length} staged file(s), " +
-                $"{completed.Count(step => step.BackupPath is not null)} previous file backup(s), " +
-                $"{obsoletePreviousFiles.Length} obsolete chunk(s).");
-        }
-        catch (Exception deploymentError)
-        {
-            var rollbackErrors = new List<Exception>();
-            foreach (var step in completed.AsEnumerable().Reverse())
-            {
-                try
-                {
-                    if (step.BackupPath is null)
-                    {
-                        if (File.Exists(step.TargetPath))
-                        {
-                            File.Delete(step.TargetPath);
-                        }
-                    }
-                    else if (File.Exists(step.BackupPath))
-                    {
-                        if (File.Exists(step.TargetPath))
-                        {
-                            File.Replace(
-                                step.BackupPath,
-                                step.TargetPath,
-                                destinationBackupFileName: null,
-                                ignoreMetadataErrors: true);
-                        }
-                        else
-                        {
-                            File.Move(step.BackupPath, step.TargetPath);
-                        }
-                    }
-                }
-                catch (Exception rollbackError) when (rollbackError is IOException
-                    or UnauthorizedAccessException)
-                {
-                    rollbackErrors.Add(rollbackError);
-                }
-            }
-
-            if (rollbackErrors.Count == 0)
-            {
-                throw new InvalidOperationException(
-                    $"Retail VPK deployment failed; the previous VPK family was restored. {deploymentError.Message}",
-                    deploymentError);
-            }
-
-            throw new AggregateException(
-                "Retail VPK deployment failed and its rollback was incomplete. " +
-                "Close programs that may lock the retail addon files and inspect the .deadlimit-backup files before retrying.",
-                new[] { deploymentError }.Concat(rollbackErrors));
-        }
-    }
-
-    private static void VerifyVpk(string path)
-    {
-        using var verificationPackage = new Package();
-        verificationPackage.Read(path);
-        verificationPackage.VerifyHashes();
-        verificationPackage.VerifyFileChecksums();
-    }
-
-    private static IReadOnlyList<string> EnumerateVpkFamily(string dirVpkPath)
-    {
-        var directory = Path.GetDirectoryName(dirVpkPath)!;
-        if (!Directory.Exists(directory))
-        {
-            return Array.Empty<string>();
-        }
-
-        var baseName = GetVpkBaseName(dirVpkPath);
-        var chunkRegex = new Regex(
-            $"^{Regex.Escape(baseName)}_\\d{{3}}\\.vpk$",
-            RegexOptions.IgnoreCase | RegexOptions.Compiled);
-        var result = Directory.EnumerateFiles(directory, $"{baseName}_*.vpk", SearchOption.TopDirectoryOnly)
-            .Where(path => chunkRegex.IsMatch(Path.GetFileName(path)))
-            .ToList();
-        if (File.Exists(dirVpkPath))
-        {
-            result.Add(dirVpkPath);
-        }
-
-        return result
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-    }
-
-    private static string GetVpkBaseName(string dirVpkPath)
-    {
-        var fileName = Path.GetFileName(dirVpkPath);
-        const string dirSuffix = "_dir.vpk";
-        return fileName.EndsWith(dirSuffix, StringComparison.OrdinalIgnoreCase)
-            ? fileName[..^dirSuffix.Length]
-            : Path.GetFileNameWithoutExtension(fileName);
-    }
-
-    private static void TryDeleteDeploymentArtifact(
-        string path,
-        string description,
-        StringBuilder log)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-                log.AppendLine($"Removed {description}: {path}");
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            log.AppendLine($"Could not remove {description} '{path}': {ex.Message}");
-        }
-    }
-
-    private sealed record VpkDeploymentMapping(string StagedPath, string TargetPath);
-
-    private sealed record VpkDeploymentStep(string TargetPath, string? BackupPath);
-
-    private static string GetCompiledMainModelPath(ProjectManifest manifest, string addonGameRoot)
-    {
-        if (string.IsNullOrWhiteSpace(manifest.RetailMainModel))
-        {
-            throw new InvalidOperationException("Retail main model is unknown.");
-        }
-        return SafePath.ResolveUnderRoot(
-            addonGameRoot,
-            ToWindowsPath(NormalizeResourcePath(manifest.RetailMainModel)),
-            "Compiled retail main model");
-    }
-
-    private static string? FindNmSkeletonReference(ProjectManifest manifest)
-    {
-        var sourceRoot = SafePath.ResolveUnderRoot(
-            manifest.ProjectFolder,
-            manifest.SourceDumpFolderName,
-            "Project source-dump folder");
-        if (!Directory.Exists(sourceRoot))
+        if (string.IsNullOrWhiteSpace(retailMainModel))
         {
             return null;
         }
 
-        var desiredVmdlName = string.IsNullOrWhiteSpace(manifest.RetailMainModel)
-            ? null
-            : Path.GetFileName(ToSourceVmdlResourcePath(manifest.RetailMainModel));
-
-        var candidates = Directory.EnumerateFiles(sourceRoot, "*.vmdl", SearchOption.AllDirectories)
-            .OrderByDescending(path => desiredVmdlName is not null
-                && string.Equals(Path.GetFileName(path), desiredVmdlName, StringComparison.OrdinalIgnoreCase))
-            .ThenBy(path => path.Length)
-            .ToArray();
-
-        foreach (var file in candidates)
+        var normalized = NormalizeRelativePath(retailMainModel);
+        foreach (var family in new[] { "heroes_wip", "heroes_staging", "heroes" })
         {
-            try
+            if (normalized.StartsWith($"models/{family}/", StringComparison.OrdinalIgnoreCase))
             {
-                var text = File.ReadAllText(file).Replace('\\', '/');
-                var match = NmSkeletonRegex.Match(text);
-                if (match.Success)
-                {
-                    return NormalizeResourcePath(match.Value);
-                }
-            }
-            catch (IOException)
-            {
-            }
-            catch (UnauthorizedAccessException)
-            {
+                return family;
             }
         }
-
         return null;
     }
 
-    private static string InferFamily(string nmSkeletonRef, string? retailMainModel)
+    private static string? NormalizeHeroToken(string? hero)
     {
-        foreach (var value in new[] { nmSkeletonRef, retailMainModel })
+        if (string.IsNullOrWhiteSpace(hero))
         {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                continue;
-            }
-
-            var parts = NormalizeResourcePath(value)
-                .Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length >= 2
-                && string.Equals(parts[0], "models", StringComparison.OrdinalIgnoreCase))
-            {
-                return parts[1];
-            }
+            return null;
         }
-        return string.Empty;
+
+        return Regex.Replace(hero.Trim().ToLowerInvariant(), "[^a-z0-9_]+", "_")
+            .Trim('_');
     }
 
-    private static string ToSourceVmdlResourcePath(string compiledResourcePath)
+    private static int MapPrepareProgress(string message)
     {
-        var normalized = NormalizeResourcePath(compiledResourcePath);
-        return normalized.EndsWith(".vmdl_c", StringComparison.OrdinalIgnoreCase)
-            ? normalized[..^2]
-            : normalized;
-    }
-
-    private static string NormalizeCliToken(string value) =>
-        new(value
-            .Trim()
-            .ToLowerInvariant()
-            .Where(char.IsLetterOrDigit)
-            .ToArray());
-
-    private static bool IsDirectCompileSource(string path) =>
-        DirectCompileExtensions.Contains(Path.GetExtension(path));
-
-    private static string? GetCompiledRelativePath(string sourceRelativePath)
-    {
-        var extension = Path.GetExtension(sourceRelativePath);
-        var compiledExtension = extension.ToLowerInvariant() switch
+        if (message.StartsWith("Cleaning stale", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Очистка устаревшего", StringComparison.OrdinalIgnoreCase))
         {
-            ".vmdl" => ".vmdl_c",
-            ".vmat" => ".vmat_c",
-            ".vtex" => ".vtex_c",
-            ".vpcf" => ".vpcf_c",
-            ".vsndevts" => ".vsndevts_c",
-            ".wav" => ".vsnd_c",
-            ".xml" => ".vxml_c",
-            ".css" => ".vcss_c",
-            ".js" => ".vjs_c",
-            ".vsvg" => ".vsvg_c",
-            ".png" or ".tga" or ".jpg" or ".jpeg" or ".tif" or ".tiff" => ".vtex_c",
-            _ => null,
-        };
-
-        return compiledExtension is null
-            ? null
-            : NormalizeRelativePath(Path.ChangeExtension(sourceRelativePath, compiledExtension));
+            return 8;
+        }
+        if (message.StartsWith("Refreshing retail", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Обновление retail", StringComparison.OrdinalIgnoreCase))
+        {
+            return 14;
+        }
+        if (message.StartsWith("Overlaying artist", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Наложение пользовательских", StringComparison.OrdinalIgnoreCase))
+        {
+            return 20;
+        }
+        if (message.StartsWith("Preparing addon-owned", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Подготовка custom", StringComparison.OrdinalIgnoreCase))
+        {
+            return 25;
+        }
+        if (message.StartsWith("Applying narrow", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Применение необходимых", StringComparison.OrdinalIgnoreCase))
+        {
+            return 28;
+        }
+        return 10;
     }
+
+    private static string NormalizeRelativePath(string path) =>
+        path.Replace('\\', '/').TrimStart('/');
+
+    private static string ToWindowsPath(string path) =>
+        NormalizeRelativePath(path).Replace('/', Path.DirectorySeparatorChar);
+
+    private static void Report(
+        IProgress<BuildAndTestProgress>? progress,
+        int percent,
+        string message) => progress?.Report(new BuildAndTestProgress(message, percent));
 
     private static BuildTestState? TryLoadState(string path)
     {
@@ -960,16 +731,11 @@ public sealed class BuildAndTestService
         try
         {
             var state = JsonSerializer.Deserialize<BuildTestState>(File.ReadAllText(path));
-            if (state is null || state.ContentHashes is null)
+            if (state?.ContentHashes is null)
             {
                 return null;
             }
 
-            state.ContentHashes = state.ContentHashes
-                .ToDictionary(
-                    pair => SafePath.NormalizeRelative(pair.Key, "Build-state content path"),
-                    pair => pair.Value,
-                    StringComparer.OrdinalIgnoreCase);
             return state;
         }
         catch (JsonException)
@@ -977,14 +743,6 @@ public sealed class BuildAndTestService
             return null;
         }
         catch (IOException)
-        {
-            return null;
-        }
-        catch (InvalidDataException)
-        {
-            return null;
-        }
-        catch (ArgumentException)
         {
             return null;
         }
@@ -999,126 +757,268 @@ public sealed class BuildAndTestService
             new JsonSerializerOptions { WriteIndented = true });
     }
 
-    private static async Task<ProcessResult> RunProcessAsync(
-        string fileName,
-        IReadOnlyList<string> arguments,
-        string workingDirectory,
+    private static void PackVpk(
+        string addonGameRoot,
+        string vpkPath,
+        StringBuilder log,
+        IProgress<BuildAndTestProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = fileName,
-            WorkingDirectory = workingDirectory,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
+        var files = Directory.EnumerateFiles(addonGameRoot, "*", SearchOption.AllDirectories)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
-        foreach (var argument in arguments)
+        if (files.Length == 0)
         {
-            startInfo.ArgumentList.Add(argument);
+            throw new InvalidOperationException(
+                $"Compiled addon game folder is empty: {addonGameRoot}");
         }
 
-        using var process = new Process { StartInfo = startInfo };
-        process.Start();
+        var retailAddonsRoot = Path.GetDirectoryName(vpkPath)
+            ?? throw new InvalidOperationException("Retail VPK destination has no parent folder.");
+        Directory.CreateDirectory(retailAddonsRoot);
 
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
+        var finalBaseName = GetVpkBaseName(vpkPath);
+        var temporaryBaseName = $"{finalBaseName}_deadlimit_tmp_{Guid.NewGuid():N}";
+        var temporaryVpk = Path.Combine(retailAddonsRoot, $"{temporaryBaseName}_dir.vpk");
 
-        return new ProcessResult(
-            process.ExitCode,
-            await stdoutTask,
-            await stderrTask,
-            $"{fileName} {string.Join(' ', arguments.Select(QuoteForLog))}");
+        try
+        {
+            using (var package = new Package { Version = 2 })
+            {
+                var added = 0;
+                foreach (var file in files)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var relative = NormalizeRelativePath(Path.GetRelativePath(addonGameRoot, file));
+                    package.AddFile(relative, File.ReadAllBytes(file));
+                    added++;
+
+                    if (added % 25 == 0 || added == files.Length)
+                    {
+                        var percent = 90 + (int)Math.Round(4d * added / files.Length);
+                        Report(
+                            progress,
+                            Math.Min(94, percent),
+                            LocalizedText.T(
+                                $"Packing VPK files {added}/{files.Length}...",
+                                $"Упаковка файлов VPK {added}/{files.Length}..."));
+                    }
+                }
+
+                package.Write(temporaryVpk);
+            }
+
+            if (!File.Exists(temporaryVpk))
+            {
+                throw new InvalidOperationException(
+                    $"ValvePak completed without creating the expected VPK: {temporaryVpk}");
+            }
+
+            Report(progress, 95, LocalizedText.T("Verifying generated VPK...", "Проверка созданного VPK..."));
+            VerifyVpk(temporaryVpk);
+            DeployVerifiedVpkFamily(temporaryVpk, vpkPath, cancellationToken);
+            VerifyVpk(vpkPath);
+
+            log.AppendLine($"Packed VPK from: {addonGameRoot}");
+            log.AppendLine($"Packed VPK to: {vpkPath}");
+            log.AppendLine($"Packed file count: {files.Length}");
+            log.AppendLine("VPK checksums: verified before and after deployment");
+        }
+        catch (IOException ex) when (File.Exists(vpkPath))
+        {
+            throw new InvalidOperationException(
+                $"Could not replace the retail VPK:\n\n{vpkPath}\n\n" +
+                "The archive is probably locked by the running Deadlock client or another process. " +
+                "Close Deadlock and retry BUILD & TEST.",
+                ex);
+        }
+        finally
+        {
+            DeleteVpkFamilyBestEffort(temporaryVpk);
+        }
     }
 
-    private static void AppendProcessLog(StringBuilder log, string label, ProcessResult result)
+    private static void DeployVerifiedVpkFamily(
+        string temporaryVpk,
+        string finalVpk,
+        CancellationToken cancellationToken)
     {
-        log.AppendLine();
-        log.AppendLine($"[{label}]");
-        log.AppendLine(result.CommandLine);
-        log.AppendLine($"ExitCode: {result.ExitCode}");
-        if (!string.IsNullOrWhiteSpace(result.StdOut))
+        var directory = Path.GetDirectoryName(finalVpk)
+            ?? throw new InvalidOperationException("Retail VPK destination has no parent folder.");
+        var temporaryBaseName = GetVpkBaseName(temporaryVpk);
+        var finalBaseName = GetVpkBaseName(finalVpk);
+
+        var temporaryFamily = EnumerateVpkFamily(temporaryVpk);
+        if (!temporaryFamily.Any(path =>
+                string.Equals(path, temporaryVpk, StringComparison.OrdinalIgnoreCase)))
         {
-            log.AppendLine("STDOUT:");
-            log.AppendLine(result.StdOut.TrimEnd());
+            throw new FileNotFoundException(
+                "Verified temporary VPK disappeared before deployment.",
+                temporaryVpk);
         }
-        if (!string.IsNullOrWhiteSpace(result.StdErr))
+
+        var finalFamily = EnumerateVpkFamily(finalVpk);
+        var backupDirectory = Path.Combine(
+            directory,
+            $".deadlimit-vpk-backup-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(backupDirectory);
+
+        var backedUp = new List<(string Original, string Backup)>();
+        var deployed = new List<string>();
+
+        try
         {
-            log.AppendLine("STDERR:");
-            log.AppendLine(result.StdErr.TrimEnd());
+            foreach (var existing in finalFamily)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var backup = Path.Combine(backupDirectory, Path.GetFileName(existing));
+                File.Move(existing, backup);
+                backedUp.Add((existing, backup));
+            }
+
+            var mappings = temporaryFamily
+                .Select(path =>
+                {
+                    var fileName = Path.GetFileName(path);
+                    var finalName = string.Equals(
+                            path,
+                            temporaryVpk,
+                            StringComparison.OrdinalIgnoreCase)
+                        ? $"{finalBaseName}_dir.vpk"
+                        : finalBaseName + fileName[temporaryBaseName.Length..];
+                    return (Source: path, Target: Path.Combine(directory, finalName));
+                })
+                .OrderBy(mapping =>
+                    string.Equals(mapping.Source, temporaryVpk, StringComparison.OrdinalIgnoreCase)
+                        ? 1
+                        : 0)
+                .ToArray();
+
+            foreach (var mapping in mappings)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                File.Move(mapping.Source, mapping.Target);
+                deployed.Add(mapping.Target);
+            }
+        }
+        catch
+        {
+            foreach (var deployedPath in deployed)
+            {
+                try
+                {
+                    if (File.Exists(deployedPath))
+                    {
+                        File.Delete(deployedPath);
+                    }
+                }
+                catch (IOException)
+                {
+                    // Best-effort rollback; preserve the original deployment error.
+                }
+            }
+
+            foreach (var backup in backedUp)
+            {
+                try
+                {
+                    if (File.Exists(backup.Backup))
+                    {
+                        File.Move(backup.Backup, backup.Original);
+                    }
+                }
+                catch (IOException)
+                {
+                    // Best-effort rollback; preserve the original deployment error.
+                }
+            }
+
+            throw;
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(backupDirectory))
+                {
+                    Directory.Delete(backupDirectory, recursive: true);
+                }
+            }
+            catch (IOException)
+            {
+                // Deployment result remains authoritative; stale backup cleanup is non-fatal.
+            }
         }
     }
 
-    private static string QuoteForLog(string value) =>
-        value.Any(char.IsWhiteSpace) ? $"\"{value}\"" : value;
-
-    private static int MapPrepareProgress(string message)
+    private static void VerifyVpk(string path)
     {
-        if (message.StartsWith("Cleaning stale", StringComparison.OrdinalIgnoreCase))
-        {
-            return 8;
-        }
-        if (message.StartsWith("Refreshing retail", StringComparison.OrdinalIgnoreCase))
-        {
-            return 12;
-        }
-        if (message.StartsWith("Overlaying artist", StringComparison.OrdinalIgnoreCase))
-        {
-            return 17;
-        }
-        if (message.StartsWith("Preparing addon-owned", StringComparison.OrdinalIgnoreCase))
-        {
-            return 22;
-        }
-        if (message.StartsWith("Applying narrow", StringComparison.OrdinalIgnoreCase))
-        {
-            return 27;
-        }
-        return 10;
+        using var package = new Package();
+        package.Read(path);
+        package.VerifyHashes();
+        package.VerifyFileChecksums();
     }
 
-    private static void Report(
-        IProgress<BuildAndTestProgress>? progress,
-        int percent,
-        string message) =>
-        progress?.Report(new BuildAndTestProgress(message, Math.Clamp(percent, 0, 100)));
+    private static string GetVpkBaseName(string dirVpkPath)
+    {
+        var fileName = Path.GetFileName(dirVpkPath);
+        const string suffix = "_dir.vpk";
+        return fileName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase)
+            ? fileName[..^suffix.Length]
+            : Path.GetFileNameWithoutExtension(fileName);
+    }
 
-    private static string NormalizeResourcePath(string value) =>
-        SafePath.NormalizeRelative(value, "Source 2 resource path");
+    private static IReadOnlyList<string> EnumerateVpkFamily(string dirVpkPath)
+    {
+        var fullDirVpkPath = Path.GetFullPath(dirVpkPath);
+        var directory = Path.GetDirectoryName(fullDirVpkPath)!;
+        if (!Directory.Exists(directory))
+        {
+            return Array.Empty<string>();
+        }
 
-    private static string NormalizeRelativePath(string value) =>
-        SafePath.NormalizeRelative(value, "Build relative path");
+        var baseName = GetVpkBaseName(fullDirVpkPath);
+        var chunkRegex = new Regex(
+            $"^{Regex.Escape(baseName)}_\\d{{3}}\\.vpk$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        var result = Directory.EnumerateFiles(directory, $"{baseName}_*.vpk", SearchOption.TopDirectoryOnly)
+            .Where(path => chunkRegex.IsMatch(Path.GetFileName(path)))
+            .Select(Path.GetFullPath)
+            .ToList();
+        if (File.Exists(fullDirVpkPath))
+        {
+            result.Add(fullDirVpkPath);
+        }
 
-    private static string ToWindowsPath(string value) =>
-        value.Replace('/', Path.DirectorySeparatorChar);
+        return result
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(path => Path.GetFileName(path), StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static void DeleteVpkFamilyBestEffort(string dirVpkPath)
+    {
+        foreach (var path in EnumerateVpkFamily(dirVpkPath))
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (IOException)
+            {
+                // Preserve the primary build/deploy result.
+            }
+        }
+    }
 
     private sealed class BuildTestState
     {
-        public int SchemaVersion { get; set; } = 1;
         public Dictionary<string, string> ContentHashes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
-    private sealed class InlineProgress<T> : IProgress<T>
+    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
     {
-        private readonly Action<T> _report;
-
-        public InlineProgress(Action<T> report)
-        {
-            _report = report;
-        }
-
-        public void Report(T value) => _report(value);
-    }
-
-    private sealed record ProcessResult(
-        int ExitCode,
-        string StdOut,
-        string StdErr,
-        string CommandLine)
-    {
-        public bool Success => ExitCode == 0;
+        public void Report(T value) => report(value);
     }
 }
