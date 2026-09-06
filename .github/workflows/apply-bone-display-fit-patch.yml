@@ -1,0 +1,202 @@
+name: Apply bone display fit patch
+
+on:
+  push:
+    branches:
+      - scripts-fit-bone-display-shape
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: scripts-fit-bone-display-shape
+          fetch-depth: 0
+      - name: Patch bone display fitting
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          script_path = Path('.deadlimit/scripts/DeadlimitPipelineScripts.ms')
+          readme_path = Path('.deadlimit/scripts/README.md')
+          script = script_path.read_text(encoding='utf-8')
+          readme = readme_path.read_text(encoding='utf-8')
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              return text.replace(old, new, 1)
+
+          script = replace_once(
+              script,
+              '''    - FIT X uses average pivot-to-child-pivot distance; a leaf uses half its distance to
+                the parent. Length planning happens before mutation so a multi-selection is stable.''',
+              '''    - FIT X uses average pivot-to-child-pivot distance. Leaf-length fitting can be disabled;
+                when enabled a leaf uses half its distance to the parent. Optional thickness fitting sets
+                Width and Height to 40% of the resulting display length and Taper to 33%.
+                Planning happens before mutation so a multi-selection is stable.''',
+              'bone tools contract')
+
+          old_function = '''fn deadlimitVertexColorFitBoneLengths =
+          (
+              local bones = deadlimitVertexColorSelectedBones()
+
+              -- Build the complete plan first so every target uses the original hierarchy.
+              local lengthPlan = #()
+              local skipped = 0
+              for bone in bones do
+              (
+                  local boneChildren = for child in bone.children where isValidNode child and (classOf child) == BoneGeometry collect child
+                  local targetWorldLength = undefined
+
+                  if boneChildren.count > 0 then
+                  (
+                      local totalDistance = 0.0
+                      for child in boneChildren do totalDistance += distance bone.pos child.pos
+                      targetWorldLength = totalDistance / boneChildren.count
+                  )
+                  else if isValidNode bone.parent then
+                  (
+                      targetWorldLength = (distance bone.pos bone.parent.pos) * 0.5
+                  )
+
+                  local localXAxisScale = length bone.transform.row1
+                  if targetWorldLength != undefined and targetWorldLength >= 0.0 and localXAxisScale > 0.000000001 then
+                  (
+                      local direction = if bone.length < 0.0 then -1.0 else 1.0
+                      append lengthPlan #(bone, direction * targetWorldLength / localXAxisScale)
+                  )
+                  else
+                      skipped += 1
+              )
+
+              undo "Fit Selected Bone Display Lengths" on
+              (
+                  for item in lengthPlan do item[1].length = item[2]
+              )
+
+              redrawViews()
+              #(lengthPlan.count, skipped)
+          )'''
+
+          new_function = '''fn deadlimitVertexColorFitBoneLengths affectThickness:true affectLeafLengths:true =
+          (
+              local bones = deadlimitVertexColorSelectedBones()
+
+              -- Build the complete display plan first so every target uses the original hierarchy.
+              local displayPlan = #()
+              local skipped = 0
+              local leafLengthsKept = 0
+              for bone in bones do
+              (
+                  local boneChildren = for child in bone.children where isValidNode child and (classOf child) == BoneGeometry collect child
+                  local isLeaf = boneChildren.count == 0
+                  local targetWorldLength = undefined
+                  local shouldFitLength = true
+
+                  if boneChildren.count > 0 then
+                  (
+                      local totalDistance = 0.0
+                      for child in boneChildren do totalDistance += distance bone.pos child.pos
+                      targetWorldLength = totalDistance / boneChildren.count
+                  )
+                  else if not affectLeafLengths then
+                  (
+                      shouldFitLength = false
+                      leafLengthsKept += 1
+                  )
+                  else if isValidNode bone.parent then
+                  (
+                      targetWorldLength = (distance bone.pos bone.parent.pos) * 0.5
+                  )
+                  else
+                  (
+                      shouldFitLength = false
+                      skipped += 1
+                  )
+
+                  local plannedLength = undefined
+                  if shouldFitLength do
+                  (
+                      local localXAxisScale = length bone.transform.row1
+                      if targetWorldLength != undefined and targetWorldLength >= 0.0 and localXAxisScale > 0.000000001 then
+                      (
+                          local direction = if bone.length < 0.0 then -1.0 else 1.0
+                          plannedLength = direction * targetWorldLength / localXAxisScale
+                      )
+                      else
+                          skipped += 1
+                  )
+
+                  local resultingLength = if plannedLength != undefined then abs plannedLength else abs bone.length
+                  local plannedThickness = undefined
+                  if affectThickness and resultingLength > 0.000000001 do plannedThickness = resultingLength / 2.5
+                  append displayPlan #(bone, plannedLength, plannedThickness)
+              )
+
+              local fittedLengths = 0
+              local fittedThickness = 0
+              undo "Fit Selected Bone Display" on
+              (
+                  for item in displayPlan do
+                  (
+                      if item[2] != undefined do
+                      (
+                          item[1].length = item[2]
+                          fittedLengths += 1
+                      )
+                      if item[3] != undefined do
+                      (
+                          item[1].width = item[3]
+                          item[1].height = item[3]
+                          item[1].taper = 33.0
+                          fittedThickness += 1
+                      )
+                  )
+              )
+
+              redrawViews()
+              #(fittedLengths, skipped, fittedThickness, leafLengthsKept)
+          )'''
+          script = replace_once(script, old_function, new_function, 'fit bone function')
+
+          old_controls = '''    button fitBoneLengthsButton "Fit to Hierarchy" width:125 height:22 across:3 tooltip:"Fit selected BoneGeometry lengths to the average bone-child pivot distance. Selected leaf bones use half the parent-pivot distance."
+              button flipBoneXButton "Flip X" width:58 height:22 tooltip:"Flip selected BoneGeometry display meshes along local X while preserving node transforms, pivots, hierarchy, and names."
+              checkbox flipRightSuffixOnlyCheckbox "_R/_r" checked:false width:60 height:22 tooltip:"When enabled, Flip X affects only selected bones whose names end exactly in _R or _r."
+              spinner boneLengthCmSpinner "Length (cm):" range:[0.0,100000.0,10.0] type:#float scale:0.1 fieldWidth:62 width:150 align:#left across:2 tooltip:"Visual length in centimeters."'''
+          new_controls = '''    button fitBoneLengthsButton "Fit to Hierarchy" width:125 height:22 across:3 tooltip:"Fit selected BoneGeometry lengths to the average bone-child pivot distance. Leaf fitting and thickness fitting follow the options below."
+              button flipBoneXButton "Flip X" width:58 height:22 tooltip:"Flip selected BoneGeometry display meshes along local X while preserving node transforms, pivots, hierarchy, and names."
+              checkbox flipRightSuffixOnlyCheckbox "_R/_r" checked:false width:60 height:22 tooltip:"When enabled, Flip X affects only selected bones whose names end exactly in _R or _r."
+              checkbox fitBoneThicknessCheckbox "Affect Thickness" checked:true width:120 across:2 tooltip:"When Fit to Hierarchy runs, also set Width and Height to 40% of the resulting bone length and Taper to 33%."
+              checkbox fitLeafBoneLengthCheckbox "Affect Leaf Length" checked:true width:130 tooltip:"When Fit to Hierarchy runs, leaf bones use half the parent-pivot distance. Turn this off to keep leaf bone lengths unchanged."
+              spinner boneLengthCmSpinner "Length (cm):" range:[0.0,100000.0,10.0] type:#float scale:0.1 fieldWidth:62 width:150 align:#left across:2 tooltip:"Visual length in centimeters."'''
+          script = replace_once(script, old_controls, new_controls, 'bone rollout controls')
+
+          old_callback = '''            local result = deadlimitVertexColorFitBoneLengths()
+                      deadlimitVertexColorFbxRollout.statusLabel.text = "Fit Selected: " + (result[1] as string) + " resized, " + (result[2] as string) + " skipped."'''
+          new_callback = '''            local result = deadlimitVertexColorFitBoneLengths affectThickness:fitBoneThicknessCheckbox.checked affectLeafLengths:fitLeafBoneLengthCheckbox.checked
+                      deadlimitVertexColorFbxRollout.statusLabel.text = "Fit: " + (result[1] as string) + " length, " + (result[3] as string) + " thickness, " + (result[4] as string) + " leaf kept, " + (result[2] as string) + " skipped."'''
+          script = replace_once(script, old_callback, new_callback, 'fit callback')
+
+          old_readme = '''- Fit to Hierarchy uses the average pivot distance to direct bone children. A leaf uses half the distance to its parent pivot.'''
+          new_readme = '''- Fit to Hierarchy uses the average pivot distance to direct bone children. `Affect Leaf Length` is on by default; leaves then use half the distance to the parent pivot, while turning it off keeps their current lengths. `Affect Thickness` is also on by default and sets Width and Height to 40% of each resulting display length (`length / 2.5`) plus Taper to 33%. When leaf-length fitting is off, thickness fitting still uses the leaf's unchanged current length.'''
+          readme = replace_once(readme, old_readme, new_readme, 'bone tools readme')
+
+          script_path.write_text(script, encoding='utf-8', newline='\n')
+          readme_path.write_text(readme, encoding='utf-8', newline='\n')
+          PY
+
+          git diff --check
+          git rm .github/workflows/apply-bone-display-fit-patch.yml
+          git config user.name "Oleg Knyazev"
+          git config user.email "down.limit@gmail.com"
+          git add .deadlimit/scripts/DeadlimitPipelineScripts.ms .deadlimit/scripts/README.md
+          git commit -m "scripts: fit bone display thickness and leaf lengths" -m "Signed-off-by: Oleg Knyazev <down.limit@gmail.com>"
+          git push origin HEAD:scripts-fit-bone-display-shape
