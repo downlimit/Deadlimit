@@ -140,8 +140,8 @@ internal static class ProjectCreationChoiceFeature
         MessageBox.Show(
             form,
             UiText.T(
-                "VPK import mode is selected. VPK file selection is the next implementation stage.",
-                "Выбран режим импорта VPK. Выбор файла VPK будет добавлен на следующем этапе реализации."),
+                "VPK import mode is selected. File selection is intentionally deferred to Stage 2.",
+                "Выбран режим импорта VPK. Выбор файла намеренно оставлен для этапа 2."),
             UiText.T("Import VPK", "Импорт VPK"),
             MessageBoxButtons.OK,
             MessageBoxIcon.Information);
