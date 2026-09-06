@@ -123,6 +123,12 @@ internal static class Program
                 return 40 + bindingRepairResult;
             }
 
+            var repackResult = ImportedVpkRepackSmoke.Run();
+            if (repackResult != 0)
+            {
+                return 50 + repackResult;
+            }
+
             var settingsLayoutResult = SettingsForm.RunFooterLayoutSmoke();
             if (settingsLayoutResult != 0)
             {
