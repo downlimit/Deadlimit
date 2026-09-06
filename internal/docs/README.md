@@ -34,6 +34,7 @@ Export DMX / save textures
 - `VERTEX_COLOR.md` — one-button Max sidecar export, strict DMX topology validation, color-stream transfer, and fail-safe fallback behavior.
 - `OUTPUT_LIFECYCLE.md` — authoritative `content` vs disposable compiled `game` contract, clean authoring PREPARE behavior, and incremental BUILD & TEST stale-output handling.
 - `BUILD_TEST.md` — accepted one-click daily iteration transaction: incremental prepare/compile, AG2 restoration, VPK packaging and direct game-client addons deployment.
+- `VPK_IMPORT_REPAIR.md` — staged implementation plan for importing existing `pak##_dir.vpk` mods, preserving their compiled payload, repairing stale/missing AG2/NmSkeleton bindings against current retail Deadlock, verifying the rebuild, and redeploying to the adopted Release ID.
 - `RUNNING_GAME.md` — live-confirmed VPK file-lock behavior when Deadlock is running and the resulting close-before-deploy contract.
 - `ARCHITECTURE.md` — environment roots, architecture, pipeline structure, and confirmed technical facts.
 - `ROADMAP.md` — implementation stages and acceptance criteria.
