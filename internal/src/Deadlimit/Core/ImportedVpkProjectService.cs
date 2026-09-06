@@ -2,7 +2,9 @@ namespace Deadlimit.Core;
 
 public sealed record ImportedVpkProjectResult(
     ProjectManifest Manifest,
-    string ProjectFolder);
+    string ProjectFolder,
+    string PayloadFolder,
+    string OriginalVpkSnapshotPath);
 
 public static class ImportedVpkProjectService
 {
@@ -73,7 +75,12 @@ public static class ImportedVpkProjectService
             };
 
             ProjectStore.Save(manifest);
-            return new ImportedVpkProjectResult(manifest, projectFolder);
+            var payload = ImportedVpkPayloadService.Extract(manifest, refreshedCandidate);
+            return new ImportedVpkProjectResult(
+                manifest,
+                projectFolder,
+                payload.PayloadFolder,
+                payload.SnapshotPath);
         }
         catch
         {
