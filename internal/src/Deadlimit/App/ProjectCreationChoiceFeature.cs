@@ -170,9 +170,11 @@ internal static class ProjectCreationChoiceFeature
         }
 
         VpkImportCandidate candidate;
+        VpkImportIdentity identity;
         try
         {
             candidate = VpkImportSourceValidator.Validate(dialog.FileName);
+            identity = VpkImportIdentityService.Infer(candidate);
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -185,14 +187,28 @@ internal static class ProjectCreationChoiceFeature
             return;
         }
 
+        ShowValidatedImportPreview(form, candidate, identity);
+    }
+
+    private static void ShowValidatedImportPreview(
+        MainForm form,
+        VpkImportCandidate candidate,
+        VpkImportIdentity identity)
+    {
         var releaseId = candidate.ReleaseTarget
             ?? UiText.T("not derived from filename", "не определён по имени файла");
+        var hero = identity.HeroDisplayName
+            ?? UiText.T("not identified confidently", "не определён с достаточной уверенностью");
+        var primaryModel = identity.PrimaryModelResources.Count > 0
+            ? identity.PrimaryModelResources[0]
+            : UiText.T("not uniquely identified", "не определена однозначно");
+
         MessageBox.Show(
             form,
             UiText.T(
-                $"VPK source is valid.\n\nRelease ID: {releaseId}\nFiles: {candidate.EntryCount}\nSHA-256: {candidate.SourceVpkSha256}\n\nProject identity and folder creation are the next import stage.",
-                $"VPK успешно проверен.\n\nRelease ID: {releaseId}\nФайлов: {candidate.EntryCount}\nSHA-256: {candidate.SourceVpkSha256}\n\nОпределение проекта и создание его папки выполняются на следующем этапе импорта."),
-            UiText.T("VPK ready to import", "VPK готов к импорту"),
+                $"VPK source is valid.\n\nProject: {identity.ProjectName}\nHero: {hero}\nRelease ID: {releaseId}\nPrimary model: {primaryModel}\nFiles: {candidate.EntryCount}\nSHA-256: {candidate.SourceVpkSha256}\n\nCreating the imported project and persisting this identity are the next implementation stage.",
+                $"VPK успешно проверен.\n\nПроект: {identity.ProjectName}\nГерой: {hero}\nRelease ID: {releaseId}\nОсновная модель: {primaryModel}\nФайлов: {candidate.EntryCount}\nSHA-256: {candidate.SourceVpkSha256}\n\nСоздание импортированного проекта и сохранение этой информации выполняются на следующем этапе реализации."),
+            UiText.T("VPK identity detected", "VPK распознан"),
             MessageBoxButtons.OK,
             MessageBoxIcon.Information);
     }
