@@ -42,7 +42,7 @@ try {
     Set-Content -LiteralPath (Join-Path $seed 'DeadlimitManager.cmd') -Value "@echo off`r`nexit /b 0`r`n" -Encoding ascii
     $managerBin = Join-Path $seed 'internal\src\Deadlimit\bin\Release\net10.0-windows'
     New-Item -ItemType Directory -Path $managerBin -Force | Out-Null
-    Copy-Item -LiteralPath $env:ComSpec -Destination (Join-Path $managerBin 'DeadlimitManager.exe')
+    Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\notepad.exe') -Destination (Join-Path $managerBin 'DeadlimitManager.exe')
     Set-Content -LiteralPath (Join-Path $seed 'local.txt') -Value 'base local' -Encoding ascii
     Set-Content -LiteralPath (Join-Path $seed 'incoming.txt') -Value 'base incoming' -Encoding ascii
     Run-Git $seed add .
@@ -68,7 +68,7 @@ try {
     # The bootstrap must therefore force the worker into no-wait mode and restart
     # the freshly refreshed Manager after a successful update.
     $managerExe = Join-Path $work 'internal\src\Deadlimit\bin\Release\net10.0-windows\DeadlimitManager.exe'
-    $initialManager = Start-Process -FilePath $managerExe -ArgumentList '/d', '/c', 'ping -t 127.0.0.1 ^>nul' -WindowStyle Hidden -PassThru
+    $initialManager = Start-Process -FilePath $managerExe -PassThru
     Start-Sleep -Milliseconds 400
     if ($initialManager.HasExited) {
         throw 'Updater smoke could not start the simulated Deadlimit Manager process.'
