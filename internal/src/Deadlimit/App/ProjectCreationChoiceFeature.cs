@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Reflection;
+using Deadlimit.Core;
 
 namespace Deadlimit.App;
 
@@ -113,7 +114,7 @@ internal static class ProjectCreationChoiceFeature
         Button sender,
         IReadOnlyList<EventHandler> createProjectHandlers)
     {
-        var settings = Core.ProjectStore.GetToolPathSettings();
+        var settings = ProjectStore.GetToolPathSettings();
         using var dialog = new ProjectEntryChoiceDialog(settings.UiTheme);
         if (dialog.ShowDialog(form) != DialogResult.OK)
         {
@@ -130,19 +131,68 @@ internal static class ProjectCreationChoiceFeature
                 break;
 
             case ProjectEntryChoice.ImportVpk:
-                ShowImportStageBoundary(form);
+                SelectVpkImportSource(form);
                 break;
         }
     }
 
-    private static void ShowImportStageBoundary(MainForm form)
+    private static void SelectVpkImportSource(MainForm form)
     {
+        var settings = ProjectStore.GetToolPathSettings();
+        var retailAddons = Path.Combine(
+            settings.RetailDeadlockRoot,
+            "game",
+            "citadel",
+            "addons");
+
+        using var dialog = new OpenFileDialog
+        {
+            Title = UiText.T("Import Deadlock VPK", "Импорт VPK Deadlock"),
+            Filter = UiText.T(
+                "VPK directory archives (*_dir.vpk)|*_dir.vpk",
+                "Архивы VPK directory (*_dir.vpk)|*_dir.vpk"),
+            FilterIndex = 1,
+            CheckFileExists = true,
+            CheckPathExists = true,
+            Multiselect = false,
+            RestoreDirectory = true,
+            DereferenceLinks = true,
+            SupportMultiDottedExtensions = true,
+        };
+        if (Directory.Exists(retailAddons))
+        {
+            dialog.InitialDirectory = retailAddons;
+        }
+
+        if (dialog.ShowDialog(form) != DialogResult.OK)
+        {
+            return;
+        }
+
+        VpkImportCandidate candidate;
+        try
+        {
+            candidate = VpkImportSourceValidator.Validate(dialog.FileName);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            MessageBox.Show(
+                form,
+                exception.Message,
+                UiText.T("Could not import VPK", "Не удалось импортировать VPK"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+
+        var releaseId = candidate.ReleaseTarget
+            ?? UiText.T("not derived from filename", "не определён по имени файла");
         MessageBox.Show(
             form,
             UiText.T(
-                "VPK import mode is selected. File selection is intentionally deferred to Stage 2.",
-                "Выбран режим импорта VPK. Выбор файла намеренно оставлен для этапа 2."),
-            UiText.T("Import VPK", "Импорт VPK"),
+                $"VPK source is valid.\n\nRelease ID: {releaseId}\nFiles: {candidate.EntryCount}\nSHA-256: {candidate.SourceVpkSha256}\n\nProject identity and folder creation are the next import stage.",
+                $"VPK успешно проверен.\n\nRelease ID: {releaseId}\nФайлов: {candidate.EntryCount}\nSHA-256: {candidate.SourceVpkSha256}\n\nОпределение проекта и создание его папки выполняются на следующем этапе импорта."),
+            UiText.T("VPK ready to import", "VPK готов к импорту"),
             MessageBoxButtons.OK,
             MessageBoxIcon.Information);
     }
