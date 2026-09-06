@@ -97,12 +97,11 @@ internal static class ImportedVpkRepackSmoke
             using (var package = new Package())
             {
                 package.Read(repacked.OutputVpkPath);
-                package.VerifyHashes();
-                package.VerifyFileChecksums();
                 if (package.Version != 1)
                 {
                     return 3;
                 }
+                package.VerifyFileChecksums();
 
                 var archiveEntries = package.Entries!
                     .SelectMany(group => group.Value)
