@@ -997,8 +997,10 @@ fn deadlimitVertexColorToggleLineartDisplay =
     FEATURE: BONE DISPLAY TOOLS
 
     These commands edit BoneGeometry presentation only:
-    - FIT X uses average pivot-to-child-pivot distance; a leaf uses half its distance to
-      the parent. Length planning happens before mutation so a multi-selection is stable.
+    - FIT X uses average pivot-to-child-pivot distance. Leaf-length fitting can be disabled;
+      when enabled a leaf uses half its distance to the parent. Optional thickness fitting sets
+      Width and Height to 40% of the resulting display length and Taper to 33%.
+      Planning happens before mutation so a multi-selection is stable.
     - SET applies a world-space centimeter length while compensating local X scale.
     - FLIP X normalizes negative length and rotates objectOffsetRot 180 degrees, producing
       a convex tail while the node transform/pivot remains unchanged. Its optional suffix
@@ -1022,17 +1024,20 @@ fn deadlimitVertexColorSelectedBones =
     bones
 )
 
-fn deadlimitVertexColorFitBoneLengths =
+fn deadlimitVertexColorFitBoneLengths affectThickness:true affectLeafLengths:true =
 (
     local bones = deadlimitVertexColorSelectedBones()
 
-    -- Build the complete plan first so every target uses the original hierarchy.
-    local lengthPlan = #()
+    -- Build the complete display plan first so every target uses the original hierarchy.
+    local displayPlan = #()
     local skipped = 0
+    local leafLengthsKept = 0
     for bone in bones do
     (
         local boneChildren = for child in bone.children where isValidNode child and (classOf child) == BoneGeometry collect child
+        local isLeaf = boneChildren.count == 0
         local targetWorldLength = undefined
+        local shouldFitLength = true
 
         if boneChildren.count > 0 then
         (
@@ -1040,28 +1045,63 @@ fn deadlimitVertexColorFitBoneLengths =
             for child in boneChildren do totalDistance += distance bone.pos child.pos
             targetWorldLength = totalDistance / boneChildren.count
         )
+        else if not affectLeafLengths then
+        (
+            shouldFitLength = false
+            leafLengthsKept += 1
+        )
         else if isValidNode bone.parent then
         (
             targetWorldLength = (distance bone.pos bone.parent.pos) * 0.5
         )
-
-        local localXAxisScale = length bone.transform.row1
-        if targetWorldLength != undefined and targetWorldLength >= 0.0 and localXAxisScale > 0.000000001 then
-        (
-            local direction = if bone.length < 0.0 then -1.0 else 1.0
-            append lengthPlan #(bone, direction * targetWorldLength / localXAxisScale)
-        )
         else
+        (
+            shouldFitLength = false
             skipped += 1
+        )
+
+        local plannedLength = undefined
+        if shouldFitLength do
+        (
+            local localXAxisScale = length bone.transform.row1
+            if targetWorldLength != undefined and targetWorldLength >= 0.0 and localXAxisScale > 0.000000001 then
+            (
+                local direction = if bone.length < 0.0 then -1.0 else 1.0
+                plannedLength = direction * targetWorldLength / localXAxisScale
+            )
+            else
+                skipped += 1
+        )
+
+        local resultingLength = if plannedLength != undefined then abs plannedLength else abs bone.length
+        local plannedThickness = undefined
+        if affectThickness and resultingLength > 0.000000001 do plannedThickness = resultingLength / 2.5
+        append displayPlan #(bone, plannedLength, plannedThickness)
     )
 
-    undo "Fit Selected Bone Display Lengths" on
+    local fittedLengths = 0
+    local fittedThickness = 0
+    undo "Fit Selected Bone Display" on
     (
-        for item in lengthPlan do item[1].length = item[2]
+        for item in displayPlan do
+        (
+            if item[2] != undefined do
+            (
+                item[1].length = item[2]
+                fittedLengths += 1
+            )
+            if item[3] != undefined do
+            (
+                item[1].width = item[3]
+                item[1].height = item[3]
+                item[1].taper = 33.0
+                fittedThickness += 1
+            )
+        )
     )
 
     redrawViews()
-    #(lengthPlan.count, skipped)
+    #(fittedLengths, skipped, fittedThickness, leafLengthsKept)
 )
 
 fn deadlimitVertexColorSetSelectedBoneLength centimeters =
@@ -3375,9 +3415,11 @@ rollout deadlimitVertexColorToolsRollout "VERTEX COLOR"
 
 rollout deadlimitVertexColorBoneToolsRollout "BONE TOOLS"
 (
-    button fitBoneLengthsButton "Fit to Hierarchy" width:125 height:22 across:3 tooltip:"Fit selected BoneGeometry lengths to the average bone-child pivot distance. Selected leaf bones use half the parent-pivot distance."
+    button fitBoneLengthsButton "Fit to Hierarchy" width:125 height:22 across:3 tooltip:"Fit selected BoneGeometry lengths to the average bone-child pivot distance. Leaf fitting and thickness fitting follow the options below."
     button flipBoneXButton "Flip X" width:58 height:22 tooltip:"Flip selected BoneGeometry display meshes along local X while preserving node transforms, pivots, hierarchy, and names."
     checkbox flipRightSuffixOnlyCheckbox "_R/_r" checked:false width:60 height:22 tooltip:"When enabled, Flip X affects only selected bones whose names end exactly in _R or _r."
+    checkbox fitBoneThicknessCheckbox "Affect Thickness" checked:true width:120 across:2 tooltip:"When Fit to Hierarchy runs, also set Width and Height to 40% of the resulting bone length and Taper to 33%."
+    checkbox fitLeafBoneLengthCheckbox "Affect Leaf Length" checked:true width:130 tooltip:"When Fit to Hierarchy runs, leaf bones use half the parent-pivot distance. Turn this off to keep leaf bone lengths unchanged."
     spinner boneLengthCmSpinner "Length (cm):" range:[0.0,100000.0,10.0] type:#float scale:0.1 fieldWidth:62 width:150 align:#left across:2 tooltip:"Visual length in centimeters."
     button setBoneLengthButton "SET" width:94 height:22 tooltip:"Set selected bones to this visual length while preserving their current X direction."
     button restoreConvertedBonesButton "RESTORE CONVERTED BRANCH" width:244 height:22 align:#center tooltip:"Restore selected accidental 9-vertex/9-face Editable Poly bone branches to BoneGeometry. Preserves nodes, controllers, hierarchy, transforms, names, and display dimensions; one Ctrl+Z reverts the whole repair."
@@ -3386,8 +3428,8 @@ rollout deadlimitVertexColorBoneToolsRollout "BONE TOOLS"
     (
         try
         (
-            local result = deadlimitVertexColorFitBoneLengths()
-            deadlimitVertexColorFbxRollout.statusLabel.text = "Fit Selected: " + (result[1] as string) + " resized, " + (result[2] as string) + " skipped."
+            local result = deadlimitVertexColorFitBoneLengths affectThickness:fitBoneThicknessCheckbox.checked affectLeafLengths:fitLeafBoneLengthCheckbox.checked
+            deadlimitVertexColorFbxRollout.statusLabel.text = "Fit: " + (result[1] as string) + " length, " + (result[3] as string) + " thickness, " + (result[4] as string) + " leaf kept, " + (result[2] as string) + " skipped."
         )
         catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
     )
