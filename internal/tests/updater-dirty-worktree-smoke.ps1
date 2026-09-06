@@ -18,7 +18,7 @@ function Run-Git([string]$workingDirectory, [Parameter(ValueFromRemainingArgumen
 
 function Run-Updater([string]$workingDirectory) {
     $bootstrap = Join-Path $workingDirectory 'DeadlimitUpdater.bat'
-    $output = & cmd.exe /d /c "`"$bootstrap`" -NoWait" 2>&1
+    $output = & cmd.exe /d /c "`"$bootstrap`"" 2>&1
     $exitCode = $LASTEXITCODE
     foreach ($line in $output) {
         Write-Host $line
@@ -40,6 +40,9 @@ try {
     Copy-Item -LiteralPath $updaterWorkerSource -Destination (Join-Path $seed 'internal\DeadlimitUpdater.ps1')
     Copy-Item -LiteralPath $updaterBootstrapSource -Destination (Join-Path $seed 'DeadlimitUpdater.bat')
     Set-Content -LiteralPath (Join-Path $seed 'DeadlimitManager.cmd') -Value "@echo off`r`nexit /b 0`r`n" -Encoding ascii
+    $managerBin = Join-Path $seed 'internal\src\Deadlimit\bin\Release\net10.0-windows'
+    New-Item -ItemType Directory -Path $managerBin -Force | Out-Null
+    Copy-Item -LiteralPath $env:ComSpec -Destination (Join-Path $managerBin 'DeadlimitManager.exe')
     Set-Content -LiteralPath (Join-Path $seed 'local.txt') -Value 'base local' -Encoding ascii
     Set-Content -LiteralPath (Join-Path $seed 'incoming.txt') -Value 'base incoming' -Encoding ascii
     Run-Git $seed add .
@@ -61,9 +64,28 @@ try {
     Run-Git $seed commit -m 'unrelated remote update'
     Run-Git $seed push origin main
 
+    # The in-app update case starts while DeadlimitManager.exe is still running.
+    # The bootstrap must therefore force the worker into no-wait mode and restart
+    # the freshly refreshed Manager after a successful update.
+    $managerExe = Join-Path $work 'internal\src\Deadlimit\bin\Release\net10.0-windows\DeadlimitManager.exe'
+    $initialManager = Start-Process -FilePath $managerExe -ArgumentList '/d', '/c', 'ping -t 127.0.0.1 ^>nul' -WindowStyle Hidden -PassThru
+    Start-Sleep -Milliseconds 400
+    if ($initialManager.HasExited) {
+        throw 'Updater smoke could not start the simulated Deadlimit Manager process.'
+    }
+
     $exitCode = Run-Updater $work
     if ($exitCode -ne 0) {
         throw "Bootstrapped updater rejected unrelated local tracked changes with exit code $exitCode."
+    }
+
+    Start-Sleep -Milliseconds 500
+    $restartedManagers = @(Get-Process -Name DeadlimitManager -ErrorAction SilentlyContinue)
+    if ($restartedManagers.Count -eq 0) {
+        throw 'Updater did not relaunch Deadlimit Manager after updating while Manager was running.'
+    }
+    foreach ($process in $restartedManagers) {
+        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
     }
 
     $localContent = (Get-Content -LiteralPath (Join-Path $work 'local.txt') -Raw).Trim()
@@ -109,8 +131,10 @@ try {
         throw 'Updater modified local work during overlap rejection.'
     }
 
-    Write-Host 'Updater self-bootstrap and dirty-worktree smoke passed.'
+    Write-Host 'Updater self-bootstrap, Manager relaunch, and dirty-worktree smoke passed.'
 }
 finally {
+    Get-Process -Name DeadlimitManager -ErrorAction SilentlyContinue |
+        Stop-Process -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
