@@ -90,6 +90,11 @@ public static class ImportedVpkProjectService
             // then records a fingerprint for the complete VPK family before any mutation.
             new VpkSlotOwnershipService(paths).AdoptImportedSource(manifest);
 
+            // Stage 7 is inspection-only: exact current-retail model paths are compared
+            // against preserved compiled models and the result is written to metadata.
+            // No payload bytes are changed here.
+            new ImportedVpkRepairInspectionService(paths).InspectAndSave(manifest);
+
             return new ImportedVpkProjectResult(
                 manifest,
                 projectFolder,
