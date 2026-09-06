@@ -11,10 +11,18 @@ public static class ImportedVpkProjectService
     public static ImportedVpkProjectResult Create(
         VpkImportCandidate candidate,
         VpkImportIdentity identity,
-        string projectsRoot)
+        string projectsRoot) =>
+        Create(candidate, identity, projectsRoot, new DeadlimitPaths());
+
+    public static ImportedVpkProjectResult Create(
+        VpkImportCandidate candidate,
+        VpkImportIdentity identity,
+        string projectsRoot,
+        DeadlimitPaths paths)
     {
         ArgumentNullException.ThrowIfNull(candidate);
         ArgumentNullException.ThrowIfNull(identity);
+        ArgumentNullException.ThrowIfNull(paths);
 
         if (string.IsNullOrWhiteSpace(projectsRoot) || !Directory.Exists(projectsRoot))
         {
@@ -76,6 +84,12 @@ public static class ImportedVpkProjectService
 
             ProjectStore.Save(manifest);
             var payload = ImportedVpkPayloadService.Extract(manifest, refreshedCandidate);
+
+            // Imported retail slots are claimed only after the raw payload snapshot exists.
+            // Adoption compares the current retail VPK entry-by-entry against that snapshot,
+            // then records a fingerprint for the complete VPK family before any mutation.
+            new VpkSlotOwnershipService(paths).AdoptImportedSource(manifest);
+
             return new ImportedVpkProjectResult(
                 manifest,
                 projectFolder,
