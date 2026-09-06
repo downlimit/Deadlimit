@@ -117,6 +117,12 @@ internal static class Program
                 return 30 + repairInspectionResult;
             }
 
+            var bindingRepairResult = CompiledModelAnimationBindingRepairSmoke.Run();
+            if (bindingRepairResult != 0)
+            {
+                return 40 + bindingRepairResult;
+            }
+
             var settingsLayoutResult = SettingsForm.RunFooterLayoutSmoke();
             if (settingsLayoutResult != 0)
             {
