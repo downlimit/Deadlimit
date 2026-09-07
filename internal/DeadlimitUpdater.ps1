@@ -134,8 +134,8 @@ try {
         throw "DeadlimitManager.cmd was not found after update."
     }
 
-    # Keep the Manager executable and the two root shortcuts current, but do not
-    # launch the Manager. The updater is a repository maintenance action only.
+    # Keep the Manager executable and the two root shortcuts current before
+    # relaunching the Manager after a successful updater run.
     & $env:ComSpec /d /c "`"$launcher`" --refresh-only"
     if ($LASTEXITCODE -ne 0) {
         throw "Deadlimit Manager refresh failed with exit code $LASTEXITCODE."
@@ -166,8 +166,14 @@ try {
         }
     }
 
+    $managerShortcut = Join-Path $rootPath "Deadlimit Manager.lnk"
+    if (-not (Test-Path -LiteralPath $managerShortcut -PathType Leaf)) {
+        throw "Deadlimit Manager shortcut was not found after update."
+    }
+
     Write-Host ""
-    Write-Host "Update complete."
+    Write-Host "Update complete. Restarting Deadlimit Manager..."
+    Start-Process -FilePath $managerShortcut -WorkingDirectory $rootPath
     Wait-ForAnyKey
     exit 0
 }
