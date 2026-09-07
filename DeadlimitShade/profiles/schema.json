@@ -12,6 +12,9 @@
     "status",
     "retailReference",
     "directDiffuse",
+    "directSpecular",
+    "rimLighting",
+    "previewLighting",
     "referenceTint",
     "outline",
     "painterApply"
@@ -73,7 +76,47 @@
         "pbrBlend": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
         "wrap": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
         "normalization": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
-        "evidence": { "enum": ["calibration", "retail-runtime"] }
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "directSpecular": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "intensity", "roughnessScale", "threshold", "softness", "evidence"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "intensity": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
+        "roughnessScale": { "type": "number", "minimum": 0.0, "maximum": 2.0 },
+        "threshold": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "softness": { "type": "number", "minimum": 0.001, "maximum": 0.5 },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "rimLighting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "color", "intensity", "power", "threshold", "softness", "evidence"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "color": { "$ref": "#/$defs/color" },
+        "intensity": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
+        "power": { "type": "number", "minimum": 0.1, "maximum": 12.0 },
+        "threshold": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "softness": { "type": "number", "minimum": 0.001, "maximum": 0.5 },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "previewLighting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keyDirection", "keyColor", "keyIntensity", "environmentDiffuse", "environmentSpecular", "evidence"],
+      "properties": {
+        "keyDirection": { "$ref": "#/$defs/direction" },
+        "keyColor": { "$ref": "#/$defs/color" },
+        "keyIntensity": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
+        "environmentDiffuse": { "type": "number", "minimum": 0.0, "maximum": 2.0 },
+        "environmentSpecular": { "type": "number", "minimum": 0.0, "maximum": 2.0 },
+        "evidence": { "$ref": "#/$defs/evidence" }
       }
     },
     "referenceTint": {
@@ -92,9 +135,9 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "color": { "$ref": "#/$defs/color" },
-        "colorEvidence": { "enum": ["material-parameter", "calibration", "retail-runtime"] },
+        "colorEvidence": { "$ref": "#/$defs/evidence" },
         "widthMillimeters": { "type": "number", "exclusiveMinimum": 0.0, "maximum": 100.0 },
-        "widthStatus": { "enum": ["unresolved", "calibration", "validated"] }
+        "widthStatus": { "$ref": "#/$defs/evidence" }
       }
     },
     "painterApply": {
@@ -142,6 +185,20 @@
     }
   },
   "$defs": {
+    "evidence": {
+      "enum": [
+        "confirmed-pipeline-runtime",
+        "confirmed-static-retail",
+        "calibrated-approximation",
+        "blocked-unresolved"
+      ]
+    },
+    "direction": {
+      "type": "array",
+      "items": { "type": "number", "minimum": -1.0, "maximum": 1.0 },
+      "minItems": 3,
+      "maxItems": 3
+    },
     "color": {
       "type": "array",
       "items": { "type": "number", "minimum": 0.0 },

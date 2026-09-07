@@ -36,6 +36,11 @@ Assert-True (-not $plugin.Contains('alg.shaders.updateShaderInstance')) 'Apply m
 Assert-True $plugin.Contains('heroMatches[heroMatches.length - 1]') 'Apply must configure the mapped replacement when Painter retains an unused earlier instance.'
 Assert-True $plugin.Contains('output.name[:8]') 'Retail preview resource identity must include the cache digest.'
 Assert-True $plugin.Contains('Deadlimit View') 'Painter dock must provide shader-native solo previews for Painter 9.1.'
+Assert-True $plugin.Contains('Lighting Inputs') 'Painter dock must switch deterministically between neutral diagnostic and material inputs.'
+Assert-True $plugin.Contains('NPR Lighting Composite') 'Painter dock must expose the final lighting skeleton independently of material color.'
+Assert-True $plugin.Contains('Painter PBR Baseline') 'Painter dock must expose the same-scene PBR comparison.'
+Assert-True $plugin.Contains('dl_lighting_input_mode: inputMode') 'Diagnostic input selection must reach every hero and retail shader instance.'
+Assert-True $plugin.Contains('hasOwnProperty.call(parameters, "dl_lighting_input_mode")') 'Diagnostic switching must ignore stale unused Painter shader instances from earlier embedded revisions.'
 Assert-True $plugin.Contains('application.allWidgets()') 'Deadlimit View must restore every visible 2D/3D viewport selector to Material.'
 Assert-True $plugin.Contains('F_VERTEX_COLOR') 'Retail preview must honor VMAT vertex-color materials such as Ivy eyes.'
 Assert-True $plugin.Contains('dl_vertex_color_multiply: binding.vertexColorMultiply') 'Retail VMAT vertex-color strength must reach the shader instance.'
@@ -48,6 +53,8 @@ $heroShader = Get-Content -LiteralPath (Join-Path $shadeRoot 'shaders\Deadlock_H
 Assert-True $outlineShader.Contains('emissiveColorOutput(outlineColor)') 'Outline Material view must expose the resolved profile color.'
 Assert-True $outlineShader.Contains('albedoOutput(outlineColor)') 'Outline Base Color view must match the resolved Material-view color.'
 Assert-True ($heroShader.IndexOf('baseColor *= mix(vec3(1.0), vertexColor, dl_vertex_color_multiply);') -lt $heroShader.IndexOf('if (dl_debug_view == 1)')) 'Resolved Base Color must include VMAT vertex-color multiplication in both preview modes.'
+Assert-True $heroShader.Contains('directSpecular.contribution +') 'Hero shaded composition must include the independently evaluated direct specular term.'
+Assert-True $heroShader.Contains('ambientOcclusion * rim.contribution') 'Hero shaded composition must include the independently evaluated rim term.'
 
 $nativeBackend = Get-Content -LiteralPath $nativeBackendPath -Raw
 Assert-True $nativeBackend.Contains('ApplyDmxVertexColors') 'The mesh backend must transfer extracted DMX color0 data.'

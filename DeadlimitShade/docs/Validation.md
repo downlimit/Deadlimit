@@ -453,3 +453,73 @@ one second; Painter mesh reload and shader assignment brought the measured
 button-to-result time to 5.5 seconds. A progress bar, named phase and live
 elapsed time remained visible during reload. The resulting 211.8 MB project
 reopened with the same eight Texture Sets and three Shader Instances.
+
+## Milestone B — fixed Ivy lighting skeleton — 2026-09-07
+
+### Deterministic scene contract
+
+The validation used one disposable copy of the existing Ivy Painter project.
+The source SPP, source FBX, retail files and CSDK were left unchanged.
+
+| Setting | Fixed value |
+| --- | --- |
+| Painter | 9.1.0, OpenGL |
+| Project copy | `subs_ivy_builder_deadlimit_milestone_b.spp` |
+| Preview mesh | `ivy-32ef438380f2c18c.fbx` |
+| Preview mesh SHA-256 | `A1CF9CE528BFA05483EB28385788154F3CD53F903528F8317191DC79307F8B53` |
+| Pose | unchanged pose and detached weapon component from the source Ivy scene |
+| Camera | perspective, FOV 50 degrees, Painter `Frame All` |
+| Environment | `resource://viewer/panorama?version=df0d611fe5a4c86ca5a36bcc11fc06b363478e03.image` |
+| PBR exposure | 0.6600000262260437 |
+| Display | Material |
+| Character profile | Ivy, stable ID 1 |
+| Outline | existing 1.0 mm inverted hull, RGB 0.164706/0.054902/0.054902 |
+| External visual reference | `https://deadlocklabs.gg/heroes/renders/Ivy.webp` |
+
+The public Ivy render is a fixed character-style reference with different
+camera and lighting. It calibrates the broad diffuse separation, restrained
+highlight and cool edge hierarchy only. It cannot establish engine runtime
+constants or pixel parity.
+
+### Diagnostic-first visual gate
+
+All captures used the scene above without camera, environment or exposure
+changes. The first five used `Diagnostic Neutral`; the final capture restored
+`Material / Retail`.
+
+```text
+NPR direct diffuse: VISUAL PASS — broad quantized light/shadow break
+Controlled specular: VISUAL PASS — isolated stepped highlight patches
+Rim contribution: VISUAL PASS — isolated cool silhouette response
+NPR composite: VISUAL PASS — all three terms present together
+Painter PBR baseline: CAPTURED — same mesh/camera/environment/exposure
+NPR composite vs Painter PBR: VISUAL PASS — obvious reproducible delta
+Retail shaded: VISUAL PASS — retail maps, eye color and outline retained
+Sampler artifacts: PASS — no cyan/blue/checker output
+Computer Use viewport capture: PASS — actual Painter window captured
+```
+
+Capture hashes are evidence identifiers only; the PNGs remain in `.scratch`
+and are excluded from Git.
+
+| Capture | SHA-256 |
+| --- | --- |
+| Direct diffuse | `671B5F394EB2D97A4B98C2A8C154E990A7636F01F3F1E2658064CC75CD70BC4C` |
+| Direct specular | `30AB5D8E243F0E85C533D018E8A79C03F1FBBD60C3E4BE25C536FAF2198D3008` |
+| Rim | `E96AB0AFD9A580617C15D4E4F4E55218977103E232169A6DEBB940B73B9C558B` |
+| NPR composite | `C66FCEB48AF8E5E316A1379E1D024FD80EF16D1A369F35DECD8C9E2EECA391D7` |
+| Painter PBR | `67DABADD0F16DB3A549490537855A19AF776A162D03C0CCC48FF09F0033922AD` |
+| Retail shaded | `DCDD49282D6BF1B348C43F39EE7F9C888B6487EBD4DFD0742EB30380DD1CD5A1` |
+| Contact sheet | `E0A9D5320ADB95F639A2F3EA5E2124B1C9D8D6C33C99A7C1FE2D1501F809CD4C` |
+
+### Evidence classification
+
+| Result or value | Classification |
+| --- | --- |
+| Painter shader compilation, live parameters, shader-instance assignment and saved disposable SPP | Confirmed by pipeline/runtime |
+| Retail texture/material identities, eye `color$0` dependency and outline color | Confirmed by static retail evidence |
+| Key direction/color/intensity, environment weights, diffuse controls, specular controls, rim controls and 1.0 mm outline width | Calibrated approximation |
+| Exact engine light globals, probe response, camera-relative retail setup, runtime specular/rim equations and pixel parity | Blocked/unresolved |
+
+The visual PASS is supplied by the actual viewport captures. Compilation,
+parameter assignment and project saving remain supporting runtime evidence.

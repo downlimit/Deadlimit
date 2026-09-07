@@ -30,6 +30,22 @@ struct DLCharacterProfile
   float directDiffusePbrBlend;
   float directDiffuseWrap;
   float directDiffuseNormalization;
+  bool directSpecularEnabled;
+  float directSpecularIntensity;
+  float directSpecularRoughnessScale;
+  float directSpecularThreshold;
+  float directSpecularSoftness;
+  bool rimLightingEnabled;
+  vec3 rimLightingColor;
+  float rimLightingIntensity;
+  float rimLightingPower;
+  float rimLightingThreshold;
+  float rimLightingSoftness;
+  vec3 keyLightDirection;
+  vec3 keyLightColor;
+  float keyLightIntensity;
+  float environmentDiffuse;
+  float environmentSpecular;
   vec3 referenceTint;
   bool outlineEnabled;
   vec3 outlineColor;
@@ -39,10 +55,26 @@ DLCharacterProfile dlCharacterProfileIvy()
 {
   DLCharacterProfile profile;
   profile.directDiffuseEnabled = true;
-  profile.directDiffuseStepSharpness = 0.75;
-  profile.directDiffusePbrBlend = 0.25;
-  profile.directDiffuseWrap = 0.5;
-  profile.directDiffuseNormalization = 1.0;
+  profile.directDiffuseStepSharpness = 0.78;
+  profile.directDiffusePbrBlend = 0.08;
+  profile.directDiffuseWrap = 0.52;
+  profile.directDiffuseNormalization = 0.95;
+  profile.directSpecularEnabled = true;
+  profile.directSpecularIntensity = 0.55;
+  profile.directSpecularRoughnessScale = 0.65;
+  profile.directSpecularThreshold = 0.18;
+  profile.directSpecularSoftness = 0.06;
+  profile.rimLightingEnabled = true;
+  profile.rimLightingColor = vec3(0.44, 0.58, 0.78);
+  profile.rimLightingIntensity = 0.38;
+  profile.rimLightingPower = 2.4;
+  profile.rimLightingThreshold = 0.32;
+  profile.rimLightingSoftness = 0.12;
+  profile.keyLightDirection = vec3(0.35, 0.6, 0.72);
+  profile.keyLightColor = vec3(1.0, 0.88, 0.72);
+  profile.keyLightIntensity = 1.15;
+  profile.environmentDiffuse = 0.22;
+  profile.environmentSpecular = 0.28;
   profile.referenceTint = vec3(0.321569, 0.388235, 0.176471);
   profile.outlineEnabled = true;
   profile.outlineColor = vec3(0.164706, 0.054902, 0.054902);
@@ -159,6 +191,42 @@ uniform float dl_npr_direct_light_wrap;
 //: }
 uniform float dl_npr_direct_light_normalization;
 
+// The direct-specular and rim controls below are Painter calibration values.
+// Static retail evidence confirms separate NPR paths, while their runtime
+// control values remain unresolved.
+//: param custom { "default": true, "label": "NPR Direct Specular", "group": "Deadlimit NPR Calibration" }
+uniform bool dl_npr_direct_specular;
+
+//: param custom { "default": 0.55, "label": "Direct Specular Intensity", "min": 0.0, "max": 4.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_direct_specular_intensity;
+
+//: param custom { "default": 0.65, "label": "Specular Roughness Scale", "min": 0.0, "max": 2.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_direct_specular_roughness_scale;
+
+//: param custom { "default": 0.18, "label": "Specular Step Threshold", "min": 0.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_direct_specular_threshold;
+
+//: param custom { "default": 0.06, "label": "Specular Step Softness", "min": 0.001, "max": 0.5, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_direct_specular_softness;
+
+//: param custom { "default": true, "label": "NPR Rim Lighting", "group": "Deadlimit NPR Calibration" }
+uniform bool dl_npr_rim_lighting;
+
+//: param custom { "default": [0.44, 0.58, 0.78], "label": "Rim Color", "widget": "color", "group": "Deadlimit NPR Calibration" }
+uniform vec3 dl_npr_rim_color;
+
+//: param custom { "default": 0.38, "label": "Rim Intensity", "min": 0.0, "max": 4.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_rim_intensity;
+
+//: param custom { "default": 2.4, "label": "Rim Power", "min": 0.1, "max": 12.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_rim_power;
+
+//: param custom { "default": 0.32, "label": "Rim Step Threshold", "min": 0.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_rim_threshold;
+
+//: param custom { "default": 0.12, "label": "Rim Step Softness", "min": 0.001, "max": 0.5, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_rim_softness;
+
 //: param custom {
 //:   "default": [0.35, 0.6, 0.72],
 //:   "label": "Key Light Direction",
@@ -196,6 +264,15 @@ uniform float dl_key_light_intensity;
 uniform float dl_environment_diffuse;
 
 //: param custom {
+//:   "default": 0.28,
+//:   "label": "Environment Specular",
+//:   "min": 0.0,
+//:   "max": 2.0,
+//:   "group": "Deadlimit Preview Lighting"
+//: }
+uniform float dl_environment_specular;
+
+//: param custom {
 //:   "default": 0.0,
 //:   "label": "Vertex Color Multiply",
 //:   "min": 0.0,
@@ -204,6 +281,18 @@ uniform float dl_environment_diffuse;
 //:   "description": "VMAT-driven color0 multiplication. Apply Deadlimit configures this from F_VERTEX_COLOR and g_fVertexColorStrength1."
 //: }
 uniform float dl_vertex_color_multiply;
+
+//: param custom {
+//:   "default": 0,
+//:   "label": "Lighting Inputs",
+//:   "widget": "combobox",
+//:   "values": {
+//:     "Material / Retail": 0,
+//:     "Diagnostic Neutral": 1
+//:   },
+//:   "group": "Deadlimit Diagnostics"
+//: }
+uniform int dl_lighting_input_mode;
 
 //: param custom {
 //:   "default": 0,
@@ -221,7 +310,11 @@ uniform float dl_vertex_color_multiply;
 //:     "Wrapped Direct Diffuse": 8,
 //:     "Quantized Direct Diffuse": 9,
 //:     "Final Direct Diffuse": 10,
-//:     "Character Profile": 11
+//:     "Character Profile": 11,
+//:     "Direct Specular": 12,
+//:     "Rim Contribution": 13,
+//:     "NPR Lighting Composite": 14,
+//:     "Painter PBR Baseline": 15
 //:   },
 //:   "group": "Deadlimit Diagnostics"
 //: }
@@ -236,6 +329,20 @@ struct DLDirectDiffuseSample
   float finalValue;
 };
 
+struct DLDirectSpecularSample
+{
+  float rawLobe;
+  float steppedLobe;
+  vec3 contribution;
+};
+
+struct DLRimSample
+{
+  float rawRim;
+  float steppedRim;
+  vec3 contribution;
+};
+
 DLCharacterProfile dlCustomCharacterProfile()
 {
   DLCharacterProfile profile;
@@ -244,6 +351,22 @@ DLCharacterProfile dlCustomCharacterProfile()
   profile.directDiffusePbrBlend = dl_npr_diffuse_pbr_blend;
   profile.directDiffuseWrap = dl_npr_direct_light_wrap;
   profile.directDiffuseNormalization = dl_npr_direct_light_normalization;
+  profile.directSpecularEnabled = dl_npr_direct_specular;
+  profile.directSpecularIntensity = dl_npr_direct_specular_intensity;
+  profile.directSpecularRoughnessScale = dl_npr_direct_specular_roughness_scale;
+  profile.directSpecularThreshold = dl_npr_direct_specular_threshold;
+  profile.directSpecularSoftness = dl_npr_direct_specular_softness;
+  profile.rimLightingEnabled = dl_npr_rim_lighting;
+  profile.rimLightingColor = dl_npr_rim_color;
+  profile.rimLightingIntensity = dl_npr_rim_intensity;
+  profile.rimLightingPower = dl_npr_rim_power;
+  profile.rimLightingThreshold = dl_npr_rim_threshold;
+  profile.rimLightingSoftness = dl_npr_rim_softness;
+  profile.keyLightDirection = dl_key_light_direction;
+  profile.keyLightColor = dl_key_light_color;
+  profile.keyLightIntensity = dl_key_light_intensity;
+  profile.environmentDiffuse = dl_environment_diffuse;
+  profile.environmentSpecular = dl_environment_specular;
   profile.referenceTint = vec3(0.18);
   profile.outlineEnabled = true;
   profile.outlineColor = vec3(0.08, 0.02, 0.02);
@@ -274,13 +397,18 @@ float dlNprQuantize(float value, float sharpness)
   return base + (fraction > 0.5 ? 1.0 - shapedWing : shapedWing);
 }
 
+vec3 dlKeyLightDirection(DLCharacterProfile profile)
+{
+  float lightLengthSquared = dot(profile.keyLightDirection, profile.keyLightDirection);
+  return lightLengthSquared > 0.000001
+    ? normalize(profile.keyLightDirection)
+    : vec3(0.0, 1.0, 0.0);
+}
+
 DLDirectDiffuseSample dlEvaluateDirectDiffuse(vec3 normal, DLCharacterProfile profile)
 {
   DLDirectDiffuseSample sample;
-  float lightLengthSquared = dot(dl_key_light_direction, dl_key_light_direction);
-  vec3 lightDirection = lightLengthSquared > 0.000001
-    ? normalize(dl_key_light_direction)
-    : vec3(0.0, 1.0, 0.0);
+  vec3 lightDirection = dlKeyLightDirection(profile);
 
   sample.ndotl = dot(normal, lightDirection);
   sample.lambert = max(sample.ndotl, 0.0);
@@ -296,6 +424,61 @@ DLDirectDiffuseSample dlEvaluateDirectDiffuse(vec3 normal, DLCharacterProfile pr
   sample.finalValue = profile.directDiffuseEnabled
     ? mix(nprResponse, sample.lambert, clamp(profile.directDiffusePbrBlend, 0.0, 1.0))
     : sample.lambert;
+  return sample;
+}
+
+DLDirectSpecularSample dlEvaluateDirectSpecular(
+  vec3 normal,
+  vec3 viewDirection,
+  float roughness,
+  vec3 specularColor,
+  DLCharacterProfile profile)
+{
+  DLDirectSpecularSample sample;
+  vec3 lightDirection = dlKeyLightDirection(profile);
+  vec3 halfVectorInput = lightDirection + viewDirection;
+  vec3 halfVector = dot(halfVectorInput, halfVectorInput) > 0.000001
+    ? normalize(halfVectorInput)
+    : normal;
+  float adjustedRoughness = clamp(
+    roughness * profile.directSpecularRoughnessScale,
+    0.04,
+    1.0);
+  float exponent = clamp(2.0 / (adjustedRoughness * adjustedRoughness) - 2.0, 2.0, 128.0);
+  float ndoth = max(dot(normal, halfVector), 0.0);
+  float ndotl = max(dot(normal, lightDirection), 0.0);
+  sample.rawLobe = pow(ndoth, exponent) * ndotl;
+  float softness = max(profile.directSpecularSoftness, 0.001);
+  sample.steppedLobe = smoothstep(
+    profile.directSpecularThreshold - softness,
+    profile.directSpecularThreshold + softness,
+    sample.rawLobe);
+  vec3 reflectanceTint = mix(vec3(1.0), specularColor, 0.55);
+  sample.contribution = profile.directSpecularEnabled
+    ? profile.keyLightIntensity * profile.keyLightColor *
+      profile.directSpecularIntensity * sample.steppedLobe * reflectanceTint
+    : vec3(0.0);
+  return sample;
+}
+
+DLRimSample dlEvaluateRim(
+  vec3 normal,
+  vec3 viewDirection,
+  DLCharacterProfile profile)
+{
+  DLRimSample sample;
+  float viewFacing = clamp(dot(normal, viewDirection), 0.0, 1.0);
+  sample.rawRim = pow(1.0 - viewFacing, max(profile.rimLightingPower, 0.1));
+  float softness = max(profile.rimLightingSoftness, 0.001);
+  sample.steppedRim = smoothstep(
+    profile.rimLightingThreshold - softness,
+    profile.rimLightingThreshold + softness,
+    sample.rawRim);
+  float awayFromKey = 1.0 - max(dot(normal, dlKeyLightDirection(profile)), 0.0);
+  sample.contribution = profile.rimLightingEnabled
+    ? profile.rimLightingColor * profile.rimLightingIntensity *
+      sample.steppedRim * mix(0.45, 1.0, awayFromKey)
+    : vec3(0.0);
   return sample;
 }
 
@@ -335,9 +518,20 @@ void shade(V2F inputs)
   vec3 vertexColor = clamp(inputs.color[0].rgb, vec3(0.0), vec3(1.0));
   float vertexAlpha = clamp(inputs.color[0].a, 0.0, 1.0);
   DLCharacterProfile characterProfile = dlActiveCharacterProfile();
-  LocalVectors vectors = dl_use_retail_inputs
+  bool diagnosticInputs = dl_lighting_input_mode == 1;
+  LocalVectors vectors = dl_use_retail_inputs && !diagnosticInputs
     ? computeLocalFrame(inputs, tangentSpaceToWorldSpace(retailNormal, inputs), 0.0)
     : computeLocalFrame(inputs);
+
+  if (diagnosticInputs)
+  {
+    baseColor = vec3(0.42, 0.46, 0.52);
+    roughness = 0.48;
+    metallic = 0.0;
+    specularLevel = 0.5;
+    ambientOcclusion = 1.0;
+  }
+
   DLDirectDiffuseSample directDiffuse = dlEvaluateDirectDiffuse(
     vectors.normal,
     characterProfile);
@@ -345,7 +539,10 @@ void shade(V2F inputs)
   // VMAT vertex color is part of the resolved material Base Color. Apply it
   // before diagnostics so Deadlimit View -> Base Color and shaded rendering
   // show the same eyes and other vertex-colored slots.
-  baseColor *= mix(vec3(1.0), vertexColor, dl_vertex_color_multiply);
+  if (!diagnosticInputs)
+  {
+    baseColor *= mix(vec3(1.0), vertexColor, dl_vertex_color_multiply);
+  }
 
   if (dl_debug_view == 1)
   {
@@ -405,17 +602,63 @@ void shade(V2F inputs)
 
   vec3 diffColor = generateDiffuseColor(baseColor, metallic);
   vec3 specColor = generateSpecularColor(specularLevel, baseColor, metallic);
+  vec3 viewDirection = normalize(getEyeVec(inputs.position));
+  DLDirectSpecularSample directSpecular = dlEvaluateDirectSpecular(
+    vectors.normal,
+    viewDirection,
+    roughness,
+    specColor,
+    characterProfile);
+  DLRimSample rim = dlEvaluateRim(
+    vectors.normal,
+    viewDirection,
+    characterProfile);
 
   float occlusion = ambientOcclusion * getShadowFactor();
   float specOcclusion = specularOcclusionCorrection(occlusion, metallic, roughness);
 
   vec3 diffuseLighting =
-    dl_environment_diffuse * envIrradiance(vectors.normal) +
-    dl_key_light_intensity * dl_key_light_color * directDiffuse.finalValue;
+    characterProfile.environmentDiffuse * envIrradiance(vectors.normal) +
+    characterProfile.keyLightIntensity * characterProfile.keyLightColor * directDiffuse.finalValue;
+  vec3 environmentSpecular = characterProfile.environmentSpecular *
+    pbrComputeSpecular(vectors, specColor, roughness);
+  vec3 nprLightingComposite =
+    diffColor * occlusion * diffuseLighting +
+    specOcclusion * environmentSpecular +
+    directSpecular.contribution +
+    ambientOcclusion * rim.contribution;
+
+  if (dl_debug_view == 12)
+  {
+    dlDebugOutput(directSpecular.contribution);
+    return;
+  }
+  if (dl_debug_view == 13)
+  {
+    dlDebugOutput(rim.contribution);
+    return;
+  }
+  if (dl_debug_view == 14)
+  {
+    dlDebugOutput(nprLightingComposite);
+    return;
+  }
+  if (dl_debug_view == 15)
+  {
+    emissiveColorOutput(pbrComputeEmissive(emissive_tex, inputs.sparse_coord));
+    albedoOutput(diffColor);
+    diffuseShadingOutput(occlusion * envIrradiance(vectors.normal));
+    specularShadingOutput(specOcclusion * pbrComputeSpecular(vectors, specColor, roughness));
+    sssCoefficientsOutput(getSSSCoefficients(inputs.sparse_coord));
+    return;
+  }
 
   emissiveColorOutput(pbrComputeEmissive(emissive_tex, inputs.sparse_coord));
   albedoOutput(diffColor);
   diffuseShadingOutput(occlusion * diffuseLighting);
-  specularShadingOutput(specOcclusion * pbrComputeSpecular(vectors, specColor, roughness));
+  specularShadingOutput(
+    specOcclusion * environmentSpecular +
+    directSpecular.contribution +
+    ambientOcclusion * rim.contribution);
   sssCoefficientsOutput(getSSSCoefficients(inputs.sparse_coord));
 }

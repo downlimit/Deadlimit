@@ -265,11 +265,17 @@ glTF without modifying the selected source file.
 
 ## Evidence rules
 
-Every reconstructed feature is recorded as one of:
+Every reconstructed feature or value is recorded as one of:
 
-- **Confirmed by retail / our pipeline** — reproduced from current original resources and verified in retail Deadlock or through the already working Deadlimit pipeline.
-- **Confirmed by current external source** — supported by current Painter, Source 2, ValveResourceFormat or related documentation/code but not yet proven in our live Deadlock path.
-- **Hypothesis** — inferred from names, resource structure or observed rendering and awaiting controlled proof.
+- **Confirmed by pipeline/runtime** — observed through repository tooling or a
+  live supported runtime operation.
+- **Confirmed by static retail evidence** — recovered from current retail
+  resources without observing a live draw.
+- **Calibrated approximation** — selected against a controlled visual reference.
+- **Blocked/unresolved** — required evidence is unavailable or the mechanism has
+  not yet been isolated.
+
+Calibrated values are never described as retail runtime values.
 
 A hero-specific observation stays hero-specific until another material proves the same mechanism or the shader/resource definition establishes that it is generic.
 
@@ -728,6 +734,18 @@ acceptance result.
   simulated fresh plugin session;
 - format-native offline conversion preserves physical bounds for FBX, GLB and
   glTF. GLB/glTF millimetres use metre-based units and no repeated root scaling.
+- the Milestone B lighting skeleton now contributes quantized NPR direct
+  diffuse, stepped direct specular and cool rim lighting to the final shaded
+  composition;
+- `Lighting Inputs -> Diagnostic Neutral` plus Direct Diffuse, Direct Specular,
+  Rim, NPR Composite and Painter PBR Baseline views isolate the three terms
+  without retail-map variation;
+- a fixed Painter 9.1.0 Ivy scene visually passed through Computer Use: the
+  neutral composite differs clearly from the same-scene Painter PBR baseline,
+  and Material/Retail mode retains retail textures, restored eye color and the
+  accepted inverted-hull outline;
+- all new Ivy lighting values remain calibrated approximations pending
+  Milestone D comparison across several controlled Deadlock views.
 
 The successful 2026-09-06 validation used Painter 9.1.0. Its remote server bound
 to IPv6 loopback (`::1:60041`), so the automation probes IPv4, IPv6 and

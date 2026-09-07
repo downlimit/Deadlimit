@@ -60,6 +60,13 @@ foreach ($profileFile in $profileFiles) {
     $profiles += $profileText | ConvertFrom-Json
 }
 
+foreach ($profile in $profiles) {
+    Assert-True ($profile.directDiffuse.evidence -eq 'calibrated-approximation') 'Uncaptured direct-diffuse values must be classified as calibrated approximations.'
+    Assert-True ($profile.directSpecular.evidence -eq 'calibrated-approximation') 'Uncaptured direct-specular values must be classified as calibrated approximations.'
+    Assert-True ($profile.rimLighting.evidence -eq 'calibrated-approximation') 'Uncaptured rim values must be classified as calibrated approximations.'
+    Assert-True ($profile.previewLighting.evidence -eq 'calibrated-approximation') 'Painter preview lighting must be classified as a calibrated approximation.'
+}
+
 Assert-True (($profiles | Group-Object id | Where-Object Count -gt 1).Count -eq 0) 'Character profile IDs must be unique.'
 Assert-True (($profiles | Group-Object key | Where-Object Count -gt 1).Count -eq 0) 'Character profile keys must be unique.'
 Assert-True (($profiles | Where-Object id -eq 0).Count -eq 0) 'Character profile ID 0 is reserved for Custom.'
@@ -95,6 +102,13 @@ Assert-True ($heroShader.Contains('"N dot L (Signed)": 7')) 'Hero shader is miss
 Assert-True ($heroShader.Contains('"Wrapped Direct Diffuse": 8')) 'Hero shader is missing the wrapped debug view.'
 Assert-True ($heroShader.Contains('"Quantized Direct Diffuse": 9')) 'Hero shader is missing the quantized debug view.'
 Assert-True ($heroShader.Contains('"Final Direct Diffuse": 10')) 'Hero shader is missing the final diffuse debug view.'
+Assert-True ($heroShader.Contains('"Direct Specular": 12')) 'Hero shader is missing the direct-specular isolation view.'
+Assert-True ($heroShader.Contains('"Rim Contribution": 13')) 'Hero shader is missing the rim isolation view.'
+Assert-True ($heroShader.Contains('"NPR Lighting Composite": 14')) 'Hero shader is missing the lighting-composite isolation view.'
+Assert-True ($heroShader.Contains('"Painter PBR Baseline": 15')) 'Hero shader is missing the controlled Painter PBR comparison view.'
+Assert-True ($heroShader.Contains('dl_lighting_input_mode == 1')) 'Hero shader is missing deterministic neutral diagnostic inputs.'
+Assert-True ($heroShader.Contains('DLDirectSpecularSample dlEvaluateDirectSpecular(')) 'Hero shader is missing the controlled direct-specular contribution.'
+Assert-True ($heroShader.Contains('DLRimSample dlEvaluateRim(')) 'Hero shader is missing the controlled rim contribution.'
 
 foreach ($value in @(0.0, 0.125, 0.25, 0.5, 0.75, 0.875, 1.0)) {
     Assert-Near (Invoke-NprQuantize $value 0.0) $value 0.0000001 'Sharpness 0 must preserve the input.'

@@ -1,7 +1,7 @@
 # Deadlock-look investigation and continuation brief
 
-Status: investigation handoff; the Deadlock-look viewport milestone is not
-accepted.
+Status: Milestone B lighting skeleton visually passed in Painter; retail-look
+calibration remains open.
 
 Updated: 2026-09-07.
 
@@ -164,28 +164,47 @@ evidence requires it.
 Done when character selection changes data rather than relying on Ivy-specific
 branches in the common shader.
 
+## Milestone B result — 2026-09-07
+
+The failed six-file lighting/sampler experiment was preserved as stash evidence
+before implementation resumed from the accepted `e865f17` behavior. It was not
+used as the new execution baseline.
+
+`Deadlock_Hero.glsl` now composes three independently visible terms in the final
+shaded path: quantized NPR direct diffuse, stepped direct specular and a cool
+view-dependent rim. `Lighting Inputs -> Diagnostic Neutral` removes retail-map
+variation while the new Direct Diffuse, Direct Specular, Rim, NPR Composite and
+Painter PBR Baseline views isolate the lighting skeleton. The same shader path
+then reconnects Base Color, Normal, Roughness, Metallic, AO, eye vertex color
+and the four retail material bindings in `Material / Retail` mode.
+
+Painter 9.1.0 compiled the embedded shader and exposed the new parameters on
+every live Deadlimit Hero/Retail Shader Instance. A fixed-camera Computer Use
+capture showed the retail-textured Ivy, restored eyes and existing inverted-hull
+outline together. The diagnostic contact sheet showed each lighting term in
+isolation and an obvious same-scene delta between the NPR composite and Painter
+PBR baseline. No cyan/blue/checker sampler failure was present.
+
+The exact scene and capture hashes are recorded in `docs/Validation.md`. The Ivy
+lighting values remain **calibrated approximation** values. This result proves
+the composition and authoring usefulness; it does not claim retail runtime
+constants or full Deadlock parity.
+
 ## Brief for the next Codex session
 
-Continue Deadlimit Shade from this document and `docs/ROADMAP.md`.
+Continue with Milestones C and D from this document:
 
-1. Read `DeadlimitShade/AGENTS.md`, this handoff and `docs/MaterialModel.md`.
-2. Inspect the dirty worktree. Treat the six post-`e865f17` source changes as a
-   failed lighting experiment, preserve their useful evidence, and do not build
-   new work on them blindly.
-3. Re-establish the known-good `e865f17` Apply/outline/retail-input behavior in a
-   disposable copy of the Ivy SPP. Do not modify retail, CSDK or the source FBX.
-4. Freeze one deterministic visual comparison setup and record the reference
-   image/camera/environment/exposure contract.
-5. Implement Milestone B as the next code slice. Start with term-isolation
-   diagnostics and obtain a real Painter viewport screenshot before expanding
-   the implementation.
-6. Stop if the shader compiles but produces no visible delta, if sampler output
-   becomes invalid, or if two attempts repeat the same result. Diagnose the
-   failing boundary before adding more terms.
-7. Keep `.scratch`, SPP/FBX/DMX, decoded textures and Valve assets out of Git.
-8. Commit only after static tests pass and visual evidence satisfies the current
-   milestone. Report compilation/API evidence separately from visual evidence.
+1. keep the fixed Ivy validation scene unchanged;
+2. compare several orientations/crops against the recorded Deadlock Ivy
+   reference instead of tuning a single attractive surface;
+3. replace calibration values only when stronger static or runtime evidence is
+   available;
+4. investigate retail masks or material-family exceptions one mechanism at a
+   time, using the existing term-isolation views;
+5. stop repeated no-progress approaches at the diagnosed boundary;
+6. keep retail assets, SPP/FBX/DMX, decoded textures, `.scratch` and `.worktrees`
+   outside commits.
 
-The immediate deliverable is a visibly stylized Ivy lighting skeleton in the
-Painter viewport under a fixed comparison setup. Full retail parity and further
-Apply automation come after that visual checkpoint.
+The next visual goal is recognisable Deadlock-style calibration across Ivy's
+skin, clothing, eyes, wings and accessories. Milestone B is the stable lighting
+skeleton underneath that work.

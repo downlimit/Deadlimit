@@ -198,7 +198,11 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None):
   if (!heroInstance || !outlineInstance) {
     throw new Error("Deadlimit shader instances were not created");
   }
-  alg.shaders.setParameters(heroInstance.id, {dl_character: CHARACTER_ID, dl_debug_view: 0});
+  alg.shaders.setParameters(heroInstance.id, {
+    dl_character: CHARACTER_ID,
+    dl_debug_view: 0,
+    dl_lighting_input_mode: 0
+  });
   alg.shaders.setParameters(outlineInstance.id, {
     dl_outline_character: CHARACTER_ID,
     dl_outline_use_character_color: true
@@ -218,6 +222,7 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None):
     alg.shaders.setParameters(instance.id, {
       dl_character: CHARACTER_ID,
       dl_debug_view: 0,
+      dl_lighting_input_mode: 0,
       dl_use_retail_inputs: true,
       dl_vertex_color_multiply: binding.vertexColorMultiply,
       dl_retail_color: binding.color,
@@ -266,9 +271,20 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
                 ("Base Color", 1),
                 ("Roughness", 2),
                 ("Metallic", 3),
-                ("Ambient Occlusion", 4)):
+                ("Ambient Occlusion", 4),
+                ("Direct Diffuse", 10),
+                ("Direct Specular", 12),
+                ("Rim Contribution", 13),
+                ("NPR Lighting Composite", 14),
+                ("Painter PBR Baseline", 15)):
             self.preview_combo.addItem(label, value)
         self.preview_combo.currentIndexChanged.connect(self._set_preview_view)
+
+        self.lighting_input_combo = QtWidgets.QComboBox(self)
+        self.lighting_input_combo.setObjectName("DeadlimitLightingInputs")
+        self.lighting_input_combo.addItem("Material / Retail", 0)
+        self.lighting_input_combo.addItem("Diagnostic Neutral", 1)
+        self.lighting_input_combo.currentIndexChanged.connect(self._set_preview_view)
 
         self.apply_button = QtWidgets.QPushButton("Apply Deadlimit", self)
         self.apply_button.setObjectName("ApplyDeadlimit")
@@ -284,6 +300,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
 
         form = QtWidgets.QFormLayout()
         form.addRow("Character", self.character_combo)
+        form.addRow("Lighting Inputs", self.lighting_input_combo)
         form.addRow("Deadlimit View", self.preview_combo)
         layout = QtWidgets.QVBoxLayout(self)
         layout.addLayout(form)
@@ -294,6 +311,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
 
     def _set_busy(self, busy, text):
         self.character_combo.setEnabled(not busy)
+        self.lighting_input_combo.setEnabled(not busy)
         self.preview_combo.setEnabled(not busy)
         self.apply_button.setEnabled(not busy)
         self.progress.setVisible(busy)
@@ -303,6 +321,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         if not substance_painter.project.is_open() or self._process is not None:
             return
         mode = int(self.preview_combo.currentData())
+        input_mode = int(self.lighting_input_combo.currentData())
         try:
             # Painter 9.1 channel-solo views bypass custom shader samplers. Keep
             # the viewport in Material mode and use Deadlimit's shader-native
@@ -318,16 +337,24 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
             script = r"""
 (function() {
   var mode = VIEW_MODE;
+  var inputMode = INPUT_MODE;
   var changed = 0;
   alg.shaders.instances().forEach(function(instance) {
     if (instance.label === "Deadlimit Hero" || instance.label.indexOf("Deadlimit Retail ") === 0) {
-      alg.shaders.setParameters(instance.id, {dl_debug_view: mode});
+      var parameters = alg.shaders.parameters(instance.id);
+      if (!Object.prototype.hasOwnProperty.call(parameters, "dl_lighting_input_mode")) {
+        return;
+      }
+      alg.shaders.setParameters(instance.id, {
+        dl_debug_view: mode,
+        dl_lighting_input_mode: inputMode
+      });
       changed += 1;
     }
   });
   return changed;
 })()
-""".replace("VIEW_MODE", str(mode))
+""".replace("VIEW_MODE", str(mode)).replace("INPUT_MODE", str(input_mode))
             changed = substance_painter.js.evaluate(script)
             if int(changed) > 0:
                 self.status_label.setText("Deadlimit View: {}".format(self.preview_combo.currentText()))
@@ -400,6 +427,9 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self.preview_combo.blockSignals(True)
         self.preview_combo.setCurrentIndex(0)
         self.preview_combo.blockSignals(False)
+        self.lighting_input_combo.blockSignals(True)
+        self.lighting_input_combo.setCurrentIndex(0)
+        self.lighting_input_combo.blockSignals(False)
 
         current_mesh = Path(substance_painter.project.last_imported_mesh_path())
         if self._source_mesh is None:
