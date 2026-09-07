@@ -2,7 +2,11 @@
 
 Status: implementation started.
 
-Updated: 2026-09-06.
+Updated: 2026-09-07.
+
+The current Deadlock-look investigation status, rejected lighting experiment,
+milestone gates and next-session brief are recorded in
+[`DEADLOCK_LOOK_HANDOFF.md`](DEADLOCK_LOOK_HANDOFF.md).
 
 ## Product contract
 
