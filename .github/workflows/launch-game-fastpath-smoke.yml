@@ -17,6 +17,9 @@ jobs:
       - name: Verify launch-game fastpath contract
         shell: pwsh
         run: internal/tests/launch-game-fastpath-smoke.ps1
+      - name: Verify window switching contract
+        shell: pwsh
+        run: internal/tests/window-shell-visibility-smoke.ps1
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
