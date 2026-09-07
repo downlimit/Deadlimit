@@ -18,7 +18,7 @@ function Run-Git([string]$workingDirectory, [Parameter(ValueFromRemainingArgumen
 
 function Run-Updater([string]$workingDirectory) {
     $bootstrap = Join-Path $workingDirectory 'DeadlimitUpdater.bat'
-    $output = & cmd.exe /d /c "`"$bootstrap`" -NoWait" 2>&1
+    $output = & cmd.exe /d /c "`"$bootstrap`" -NoWait -NoLaunch" 2>&1
     $exitCode = $LASTEXITCODE
     foreach ($line in $output) {
         Write-Host $line
@@ -89,7 +89,7 @@ try {
 
     $headBeforeOverlap = (& git.exe -C $work rev-parse HEAD).Trim()
     $bootstrap = Join-Path $work 'DeadlimitUpdater.bat'
-    $overlapOutput = & cmd.exe /d /c "`"$bootstrap`" -NoWait" 2>&1
+    $overlapOutput = & cmd.exe /d /c "`"$bootstrap`" -NoWait -NoLaunch" 2>&1
     if ($LASTEXITCODE -eq 0) {
         throw 'Updater accepted an incoming update that overlaps local tracked work.'
     }
