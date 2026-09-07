@@ -102,6 +102,7 @@ internal static class Program
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
+        WindowShellVisibilityFeature.Attach();
 
         if (startupSmoke)
         {
@@ -147,6 +148,7 @@ internal static class Program
             MaximumSize = MainWindowSize,
             FormBorderStyle = FormBorderStyle.FixedSingle,
             MaximizeBox = false,
+            ShowInTaskbar = true,
         };
 
         UpdateStartup(startup, 46, UiText.T("Initializing CSDK actions...", "Инициализация действий CSDK..."));
@@ -323,8 +325,15 @@ internal static class Program
                     continue;
                 }
 
-                ShowWindow(process.MainWindowHandle, SwRestore);
-                SetForegroundWindow(process.MainWindowHandle);
+                var targetWindow = process.MainWindowHandle;
+                var popupWindow = GetLastActivePopup(targetWindow);
+                if (popupWindow != IntPtr.Zero && IsWindowVisible(popupWindow))
+                {
+                    targetWindow = popupWindow;
+                }
+
+                ShowWindow(targetWindow, SwRestore);
+                SetForegroundWindow(targetWindow);
                 return;
             }
         }
@@ -333,6 +342,13 @@ internal static class Program
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ShowWindow(IntPtr windowHandle, int command);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetLastActivePopup(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr windowHandle);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
