@@ -9,6 +9,7 @@ internal static class SettingsShiftShortcutFeature
 
     private const string CsdkPageUrl = "https://deadlockmodding.pages.dev/modding-tools/csdk-12";
     private const string DeadlockToolsPageUrl = "https://github.com/dotryen/DeadlockTools/releases/latest";
+    private const string DeadlimitProjectUrl = "https://github.com/downlimit/Deadlimit";
 
     private static readonly ShiftShortcutMessageFilter MessageFilter = new();
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<SettingsForm, object> PreparedForms = new();
@@ -75,7 +76,7 @@ internal static class SettingsShiftShortcutFeature
             preparedShortcuts++;
         }
 
-        if (expectedShortcuts == 3 && preparedShortcuts == expectedShortcuts)
+        if (expectedShortcuts == 4 && preparedShortcuts == expectedShortcuts)
         {
             PreparedForms.Add(form, new object());
         }
@@ -107,6 +108,13 @@ internal static class SettingsShiftShortcutFeature
         var target = ResolveTarget(grid, position.Row);
         switch (target)
         {
+            case ShortcutTarget.DeadlimitManager:
+                OpenBrowser(
+                    button,
+                    DeadlimitProjectUrl,
+                    UiText.T("Could not open Deadlimit project page", "Не удалось открыть страницу проекта Deadlimit"));
+                return true;
+
             case ShortcutTarget.Csdk:
                 OpenBrowser(
                     button,
@@ -138,6 +146,11 @@ internal static class SettingsShiftShortcutFeature
             .TrimEnd(':')
             .Trim();
 
+        if (string.Equals(caption, "Deadlimit Manager", StringComparison.Ordinal))
+        {
+            return ShortcutTarget.DeadlimitManager;
+        }
+
         if (string.Equals(caption, "Reduced CSDK", StringComparison.Ordinal))
         {
             return ShortcutTarget.Csdk;
@@ -159,6 +172,9 @@ internal static class SettingsShiftShortcutFeature
 
     private static string ShortcutHint(ShortcutTarget target) => target switch
     {
+        ShortcutTarget.DeadlimitManager => UiText.T(
+            "SHIFT+click: open the Deadlimit project page on GitHub.",
+            "SHIFT-клик: открыть страницу проекта Deadlimit на GitHub."),
         ShortcutTarget.Csdk => UiText.T(
             "SHIFT+click: open the Reduced CSDK download page in your browser.",
             "SHIFT-клик: открыть страницу загрузки Reduced CSDK в браузере."),
@@ -320,6 +336,7 @@ internal static class SettingsShiftShortcutFeature
     private enum ShortcutTarget
     {
         None,
+        DeadlimitManager,
         Csdk,
         DeadlockTools,
         DeadlockVpk,
