@@ -1,6 +1,7 @@
 param(
     [switch]$ResolveRootOnly,
-    [switch]$NoWait
+    [switch]$NoWait,
+    [switch]$NoLaunch
 )
 
 $ErrorActionPreference = "Stop"
@@ -166,18 +167,23 @@ try {
         }
     }
 
-    $managerShortcut = Join-Path $rootPath "Deadlimit Manager.lnk"
-    if (-not (Test-Path -LiteralPath $managerShortcut -PathType Leaf)) {
-        throw "Deadlimit Manager shortcut was not found after update."
-    }
-
     Write-Host ""
-    Write-Host "Update complete. Restarting Deadlimit Manager..."
-    $startInfo = [Diagnostics.ProcessStartInfo]::new()
-    $startInfo.FileName = $managerShortcut
-    $startInfo.WorkingDirectory = $rootPath
-    $startInfo.UseShellExecute = $true
-    [Diagnostics.Process]::Start($startInfo) | Out-Null
+    if ($NoLaunch) {
+        Write-Host "Update complete."
+    }
+    else {
+        $managerShortcut = Join-Path $rootPath "Deadlimit Manager.lnk"
+        if (-not (Test-Path -LiteralPath $managerShortcut -PathType Leaf)) {
+            throw "Deadlimit Manager shortcut was not found after update."
+        }
+
+        Write-Host "Update complete. Restarting Deadlimit Manager..."
+        $startInfo = [Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = $managerShortcut
+        $startInfo.WorkingDirectory = $rootPath
+        $startInfo.UseShellExecute = $true
+        [Diagnostics.Process]::Start($startInfo) | Out-Null
+    }
     Wait-ForAnyKey
     exit 0
 }
