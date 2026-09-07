@@ -1,0 +1,26 @@
+name: Retail SearchPaths regression
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  retail-searchpaths-regression:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
+      - name: Build Deadlimit Manager
+        run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+      - name: Retail SearchPaths regression smoke
+        shell: pwsh
+        run: internal/tests/retail-mod-loading-searchpaths-smoke.ps1
