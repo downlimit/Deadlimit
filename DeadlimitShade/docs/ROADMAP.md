@@ -104,6 +104,7 @@ Responsibilities:
 
 - render the outline shell as flat unlit color;
 - expose `Outline Color`;
+- emit the same resolved color in Painter's Material and Base Color views;
 - use the face-culling convention required by the generated reversed-winding shell.
 
 `Outline Width` is not a shader parameter. Width changes modify preview geometry and therefore belong to the preview-mesh generator.
@@ -188,8 +189,32 @@ Each profile owns only character/material configuration:
 - material-family exceptions that have been confirmed for that character.
 
 Profiles do not embed or redistribute retail textures, meshes, VPK/VCS files
-or other Valve assets. Texture resources continue to come from the artist's
-Painter project and the documented extraction/import workflow.
+or other Valve assets. For an artist-authored skin, texture resources continue
+to come from the ordinary Painter project. A supported character's optional
+default-retail preview first reuses exact extracted resources from the
+Deadlimit project `0source` folder, then decodes missing dependencies read-only
+from the `RetailSourceVpk` recorded by `EXTRACT SOURCES`. Generated preview PNGs
+remain in a disposable local cache and are excluded from the repository.
+The retail VMAT feature/scalar parameters travel with that cache manifest.
+Ivy's Max-authored FBX does not contain the `color$0` stream used by its eye
+material. Apply restores that stream from the exact extracted
+`models/heroes_wip/ivy/ivy_ivy.dmx`, matching triangle corners by position and
+rejecting any topology mismatch. `F_VERTEX_COLOR` and
+`g_fVertexColorStrength1` then select the same color multiplication for the eye
+shader instance. The generated outline shell preserves the restored stream.
+
+Painter 9.1 channel-solo modes read the authored Texture Set stack and bypass
+textures supplied directly to a custom shader. The dock therefore exposes
+`Deadlimit View` modes for Shaded, Base Color, Roughness, Metallic and AO. They
+run through the Deadlimit shader in Painter's Material viewport and keep both
+ordinary Painter channels and optional retail preview maps visible. Native
+Painter channel-stack injection becomes available through the official Layer
+Stack API in supported Painter 10+ integrations.
+Apply embeds content-addressed copies of both Deadlimit shaders in the SPP and
+updates every live shader instance to those resources. This prevents Painter's
+installed-shelf cache from retaining an earlier GLSL revision. Retail sampler
+access is marked `nonlocal` so inactive Texture Sets do not show Painter's
+local-sampling cyan/blue diagnostic tiles.
 
 The canonical profile data should live in small reviewable text manifests,
 for example:
@@ -682,8 +707,20 @@ acceptance result.
   progress, added one outline Texture Set, assigned `Deadlimit Hero` only to
   `ivy_builder_arms/body/head`, and retained `Main shader` on all four Valve
   Texture Sets;
+- the optional Ivy default-retail preview reuses `0source` first and fills only
+  missing maps from the read-only retail VPK. Four dedicated shader instances
+  were assigned in 8.3 seconds, with no launch of Deadlock and no source-file
+  modification;
+- current `materials/dev/vertcolor_pbr_basic.vmat_c` inspection records
+  `F_VERTEX_COLOR=1` and `g_fVertexColorStrength1=1`. The exact extracted
+  `ivy_ivy.dmx` contains the corresponding `color$0` stream, while the source
+  FBX does not. Apply transferred all 7,896 eye-corner colors onto the matching
+  FBX mesh and retained them on its outline copy;
+- `Deadlimit View -> Base Color` applies the VMAT vertex-color multiply before
+  emitting its diagnostic output, so the resolved eye color is identical in
+  Base Color and shaded preview modes;
 - `subs_ivy_builder_deadlimit.spp` reopened with the same eight Texture Sets and
-  three Shader Instances. A cache manifest restored the original FBX after a
+  six Shader Instances. A cache manifest restored the original FBX after a
   simulated fresh plugin session;
 - format-native offline conversion preserves physical bounds for FBX, GLB and
   glTF. GLB/glTF millimetres use metre-based units and no repeated root scaling.

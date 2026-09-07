@@ -1,7 +1,10 @@
 using Assimp;
+using Datamodel.Codecs;
 using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
+using DmxDocument = Datamodel.Datamodel;
+using DmxElement = Datamodel.Element;
 
 static string RequireOption(Dictionary<string, string> options, string name)
 {
@@ -41,6 +44,14 @@ static Mesh CreateOutlineMesh(Mesh source, float width)
         for (var index = 0; index < source.VertexCount; index++)
             outline.TextureCoordinateChannels[0].Add(new Vector3());
     outline.UVComponentCount[0] = 2;
+
+    // Preserve authored vertex-color data on the generated shell. Some
+    // Deadlock materials use color0 as part of their appearance contract, and
+    // dropping it makes those slots render black after the preview FBX is
+    // re-imported by Painter.
+    for (var channel = 0; channel < source.VertexColorChannels.Length; channel++)
+        if (source.HasVertexColors(channel))
+            outline.VertexColorChannels[channel].AddRange(source.VertexColorChannels[channel]);
 
     foreach (var face in source.Faces)
     {
@@ -86,6 +97,115 @@ static object GetWorldBounds(Scene scene)
         size = new[] { maximum.X - minimum.X, maximum.Y - minimum.Y, maximum.Z - minimum.Z },
         vertexCount
     };
+}
+
+static string CanonicalMaterial(string value) =>
+    value.Replace('\\', '/').Trim().ToLowerInvariant().Replace(".vmat_c", ".vmat");
+
+static int ApplyDmxVertexColors(Scene scene, string path)
+{
+    using var document = DmxDocument.Load(path, DeferredMode.Automatic);
+    var transfers = 0;
+    foreach (var element in document.AllElements.Where(element => element.ClassName == "DmeMesh"))
+    {
+        var vertexState = element.ContainsKey("currentState") && element["currentState"] is DmxElement
+            ? element.Get<DmxElement>("currentState")
+            : element.ContainsKey("bindState") && element["bindState"] is DmxElement
+                ? element.Get<DmxElement>("bindState")
+                : null;
+        if (vertexState is null || !vertexState.ContainsKey("color$0") ||
+            !vertexState.ContainsKey("color$0Indices") || !element.ContainsKey("faceSets"))
+            continue;
+
+        var positions = vertexState.GetArray<Vector3>("position$0") ?? Array.Empty<Vector3>();
+        var positionIndices = vertexState.GetArray<int>("position$0Indices") ?? Array.Empty<int>();
+        var colors = vertexState.GetArray<Vector4>("color$0") ?? Array.Empty<Vector4>();
+        var colorIndices = vertexState.GetArray<int>("color$0Indices") ?? Array.Empty<int>();
+        var faceSets = element.GetArray<DmxElement>("faceSets") ?? Array.Empty<DmxElement>();
+        if (positions.Count == 0 || positionIndices.Count == 0 || colors.Count == 0 || colorIndices.Count == 0)
+            continue;
+
+        foreach (var faceSet in faceSets)
+        {
+            var materialElement = faceSet.Get<DmxElement>("material") ?? throw new InvalidDataException(
+                "DMX face set has no material element.");
+            var materialName = materialElement.Get<string>("mtlName") ?? throw new InvalidDataException(
+                "DMX face set material has no mtlName.");
+            var material = CanonicalMaterial(materialName);
+            var faceEntries = faceSet.GetArray<int>("faces") ?? Array.Empty<int>();
+            var dmxFaces = new List<int[]>();
+            var pending = new List<int>(3);
+            foreach (var entry in faceEntries)
+            {
+                if (entry >= 0)
+                {
+                    pending.Add(entry);
+                    continue;
+                }
+                if (pending.Count != 3)
+                    throw new InvalidDataException($"DMX material '{material}' contains a non-triangle face.");
+                dmxFaces.Add(pending.ToArray());
+                pending.Clear();
+            }
+            if (pending.Count != 0)
+                throw new InvalidDataException($"DMX material '{material}' has an unterminated face.");
+
+            var candidates = scene.Meshes.Where(mesh =>
+                    CanonicalMaterial(scene.Materials[mesh.MaterialIndex].Name) == material &&
+                    mesh.Faces.Count == dmxFaces.Count)
+                .ToArray();
+            if (candidates.Length != 1)
+                throw new InvalidDataException(
+                    $"DMX vertex colors for '{material}' matched {candidates.Length} FBX meshes; expected exactly one.");
+            var target = candidates[0];
+            var transferred = Enumerable.Repeat(new Vector4(float.NaN), target.VertexCount).ToArray();
+            const float positionToleranceSquared = 1e-6f;
+
+            for (var faceIndex = 0; faceIndex < dmxFaces.Count; faceIndex++)
+            {
+                var targetFace = target.Faces[faceIndex];
+                if (targetFace.IndexCount != 3)
+                    throw new InvalidDataException($"FBX material '{material}' contains a non-triangle face.");
+                var dmxFace = dmxFaces[faceIndex];
+                var matchedDmxCorners = new bool[3];
+                for (var targetCorner = 0; targetCorner < 3; targetCorner++)
+                {
+                    var targetVertexIndex = targetFace.Indices[targetCorner];
+                    var targetPosition = target.Vertices[targetVertexIndex];
+                    var matchingCorner = -1;
+                    for (var dmxCorner = 0; dmxCorner < 3; dmxCorner++)
+                    {
+                        if (matchedDmxCorners[dmxCorner])
+                            continue;
+                        var streamIndex = dmxFace[dmxCorner];
+                        var position = positions[positionIndices[streamIndex]];
+                        if (Vector3.DistanceSquared(position, targetPosition) <= positionToleranceSquared)
+                        {
+                            matchingCorner = dmxCorner;
+                            break;
+                        }
+                    }
+                    if (matchingCorner < 0)
+                        throw new InvalidDataException(
+                            $"DMX vertex-color topology for '{material}' diverges at face {faceIndex}.");
+                    matchedDmxCorners[matchingCorner] = true;
+                    var matchedStreamIndex = dmxFace[matchingCorner];
+                    var color = colors[colorIndices[matchedStreamIndex]];
+                    if (!float.IsNaN(transferred[targetVertexIndex].X) &&
+                        Vector4.DistanceSquared(transferred[targetVertexIndex], color) > 1e-8f)
+                        throw new InvalidDataException(
+                            $"DMX vertex-color seam for '{material}' cannot be represented by the FBX topology.");
+                    transferred[targetVertexIndex] = color;
+                }
+            }
+            if (transferred.Any(color => float.IsNaN(color.X)))
+                throw new InvalidDataException($"DMX vertex-color transfer for '{material}' left vertices unassigned.");
+            target.VertexColorChannels[0].Clear();
+            target.VertexColorChannels[0].AddRange(transferred);
+            transfers++;
+        }
+    }
+    return transfers;
 }
 
 try
@@ -134,6 +254,35 @@ try
                     vertices = scene.Meshes[meshIndex].VertexCount,
                     materialIndex = scene.Meshes[meshIndex].MaterialIndex,
                     material = scene.Materials[scene.Meshes[meshIndex].MaterialIndex].Name,
+                    firstVertex = scene.Meshes[meshIndex].Vertices.Count > 0
+                        ? new[]
+                        {
+                            scene.Meshes[meshIndex].Vertices[0].X,
+                            scene.Meshes[meshIndex].Vertices[0].Y,
+                            scene.Meshes[meshIndex].Vertices[0].Z
+                        }
+                        : null,
+                    vertexColorChannels = Enumerable.Range(0, scene.Meshes[meshIndex].VertexColorChannels.Length)
+                        .Where(scene.Meshes[meshIndex].HasVertexColors)
+                        .Select(channel => new
+                        {
+                            channel,
+                            values = scene.Meshes[meshIndex].VertexColorChannels[channel].Count,
+                            minimum = new[]
+                            {
+                                scene.Meshes[meshIndex].VertexColorChannels[channel].Min(color => color.X),
+                                scene.Meshes[meshIndex].VertexColorChannels[channel].Min(color => color.Y),
+                                scene.Meshes[meshIndex].VertexColorChannels[channel].Min(color => color.Z),
+                                scene.Meshes[meshIndex].VertexColorChannels[channel].Min(color => color.W)
+                            },
+                            maximum = new[]
+                            {
+                                scene.Meshes[meshIndex].VertexColorChannels[channel].Max(color => color.X),
+                                scene.Meshes[meshIndex].VertexColorChannels[channel].Max(color => color.Y),
+                                scene.Meshes[meshIndex].VertexColorChannels[channel].Max(color => color.Z),
+                                scene.Meshes[meshIndex].VertexColorChannels[channel].Max(color => color.W)
+                            }
+                        }).ToArray(),
                     normalLengthMinimum = scene.Meshes[meshIndex].HasNormals
                         ? scene.Meshes[meshIndex].Normals.Min(normal => normal.Length())
                         : (float?)null,
@@ -153,6 +302,17 @@ try
             meshNodes
         }));
         return 0;
+    }
+
+    var vertexColorTransfers = 0;
+    if (options.TryGetValue("vertex-color-dmx", out var vertexColorDmx))
+    {
+        var resolvedDmx = Path.GetFullPath(vertexColorDmx);
+        if (!File.Exists(resolvedDmx))
+            throw new FileNotFoundException("Vertex-color DMX was not found.", resolvedDmx);
+        vertexColorTransfers = ApplyDmxVertexColors(scene, resolvedDmx);
+        if (vertexColorTransfers == 0)
+            throw new InvalidDataException("Vertex-color DMX contained no transferable color streams.");
     }
 
     var outlineMaterial = new Material { Name = "__deadlimit_outline" };
@@ -210,6 +370,7 @@ try
         outlinedNodes,
         outlinedMeshes,
         widthMillimeters,
+        vertexColorTransfers,
         sourceBounds
     }));
     return 0;

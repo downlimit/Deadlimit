@@ -41,6 +41,28 @@
       "ivy_builder_arms",
       "ivy_builder_body",
       "ivy_builder_head"
-    ]
+    ],
+    "retailPreview": {
+      "sourcePolicy": "project-0source-then-retail-vpk",
+      "vertexColorSource": "models/heroes_wip/ivy/ivy_ivy.dmx",
+      "materialBindings": [
+        {
+          "textureSet": "models_heroes_staging_tengu_tengu_v2_materials_ivy_bodyv3.vmat",
+          "material": "models/heroes_staging/tengu/tengu_v2/materials/ivy_bodyv3.vmat_c"
+        },
+        {
+          "textureSet": "models_heroes_staging_tengu_tengu_v2_materials_ivy_gearv3.vmat",
+          "material": "models/heroes_staging/tengu/tengu_v2/materials/ivy_gearv3.vmat_c"
+        },
+        {
+          "textureSet": "models_heroes_staging_tengu_tengu_v2_materials_ivy_wingsv3.vmat",
+          "material": "models/heroes_staging/tengu/tengu_v2/materials/ivy_wingsv3.vmat_c"
+        },
+        {
+          "textureSet": "materials_dev_vertcolor_pbr_basic.vmat",
+          "material": "materials/dev/vertcolor_pbr_basic.vmat_c"
+        }
+      ]
+    }
   }
 }

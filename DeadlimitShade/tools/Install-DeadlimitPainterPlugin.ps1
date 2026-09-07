@@ -9,9 +9,10 @@ $pluginRoot = Join-Path $DocumentsPath 'Adobe\Adobe Substance 3D Painter\python\
 $runtimeRoot = Join-Path $pluginRoot 'deadlimit_apply_runtime'
 $runtimeProfiles = Join-Path $runtimeRoot 'profiles'
 $runtimeTools = Join-Path $runtimeRoot 'tools'
+$runtimeShaders = Join-Path $runtimeRoot 'shaders'
 $shaderRoot = Join-Path $DocumentsPath 'Adobe\Adobe Substance 3D Painter\assets\shaders\DeadlimitShade'
 
-foreach ($directory in @($pluginRoot, $runtimeRoot, $runtimeProfiles, $runtimeTools, $shaderRoot)) {
+foreach ($directory in @($pluginRoot, $runtimeRoot, $runtimeProfiles, $runtimeTools, $runtimeShaders, $shaderRoot)) {
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
 }
 
@@ -35,14 +36,15 @@ Copy-Item -LiteralPath (Join-Path $shadeRoot 'profiles\ivy.json') `
 Copy-Item -LiteralPath (Join-Path $shadeRoot 'profiles\schema.json') `
     -Destination (Join-Path $runtimeProfiles 'schema.json') -Force
 foreach ($shaderName in @('Deadlock_Hero.glsl', 'Deadlock_Outline.glsl')) {
-    Copy-Item -LiteralPath (Join-Path $shadeRoot "shaders\$shaderName") `
-        -Destination (Join-Path $shaderRoot $shaderName) -Force
+    $sourceShader = Join-Path $shadeRoot "shaders\$shaderName"
+    Copy-Item -LiteralPath $sourceShader -Destination (Join-Path $shaderRoot $shaderName) -Force
+    Copy-Item -LiteralPath $sourceShader -Destination (Join-Path $runtimeShaders $shaderName) -Force
 }
 foreach ($toolName in @(
     'Deadlimit.MeshPreview.exe',
     'assimp.dll'
 )) {
-    $publishRoot = Join-Path $shadeRoot 'tools\Deadlimit.MeshPreview\bin\Release\net8.0\win-x64\publish'
+    $publishRoot = Join-Path $shadeRoot 'tools\Deadlimit.MeshPreview\bin\Release\net10.0\win-x64\publish'
     $sourceTool = Join-Path $publishRoot $toolName
     if (-not (Test-Path -LiteralPath $sourceTool -PathType Leaf)) {
         throw "Missing published Painter runtime '$sourceTool'. Run dotnet publish first."
@@ -50,6 +52,12 @@ foreach ($toolName in @(
     Copy-Item -LiteralPath $sourceTool `
         -Destination (Join-Path $runtimeTools $toolName) -Force
 }
+$retailPublishRoot = Join-Path $shadeRoot 'tools\Deadlimit.RetailTextures\bin\Release\net10.0\win-x64\publish'
+$retailTool = Join-Path $retailPublishRoot 'Deadlimit.RetailTextures.exe'
+if (-not (Test-Path -LiteralPath $retailTool -PathType Leaf)) {
+    throw "Missing published Painter runtime '$retailTool'. Run dotnet publish first."
+}
+Copy-Item -LiteralPath $retailTool -Destination (Join-Path $runtimeTools 'Deadlimit.RetailTextures.exe') -Force
 Copy-Item -LiteralPath (Join-Path $shadeRoot 'third_party\AssimpNetter-LICENSE.txt') `
     -Destination (Join-Path $runtimeTools 'AssimpNetter-License.txt') -Force
 

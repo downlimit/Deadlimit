@@ -4,18 +4,14 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>Deadlimit.RetailTextures</AssemblyName>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="AssimpNetter" Version="6.0.5" />
-    <PackageReference Include="KeyValues2" Version="0.8.0" />
-    <Content Include="$(NuGetPackageRoot)assimpnetter\6.0.5\runtimes\win-x64\native\assimp.dll"
-             Link="assimp.dll"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest"
-             ExcludeFromSingleFile="true" />
+    <PackageReference Include="ValveResourceFormat" Version="20.0.6980" />
   </ItemGroup>
 </Project>

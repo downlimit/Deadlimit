@@ -10,6 +10,7 @@ from PySide2 import QtCore, QtWidgets
 
 import substance_painter.js
 import substance_painter.project
+import substance_painter.resource
 import substance_painter.ui
 
 
@@ -43,8 +44,8 @@ def _profiles():
 def _converter_path():
     candidates = [
         _shade_root() / "tools" / "Deadlimit.MeshPreview.exe",
-        _shade_root() / "tools" / "Deadlimit.MeshPreview" / "bin" / "Release" / "net8.0" / "win-x64" / "publish" / "Deadlimit.MeshPreview.exe",
-        _shade_root() / "tools" / "Deadlimit.MeshPreview" / "bin" / "Release" / "net8.0" / "win-x64" / "Deadlimit.MeshPreview.exe",
+        _shade_root() / "tools" / "Deadlimit.MeshPreview" / "bin" / "Release" / "net10.0" / "win-x64" / "publish" / "Deadlimit.MeshPreview.exe",
+        _shade_root() / "tools" / "Deadlimit.MeshPreview" / "bin" / "Release" / "net10.0" / "win-x64" / "Deadlimit.MeshPreview.exe",
     ]
     for candidate in candidates:
         if candidate.is_file():
@@ -52,9 +53,67 @@ def _converter_path():
     raise RuntimeError("Deadlimit.MeshPreview.exe was not found in the plugin runtime")
 
 
-def _shader_assignment_script(profile):
+def _retail_converter_path():
+    candidates = [
+        _shade_root() / "tools" / "Deadlimit.RetailTextures.exe",
+        _shade_root() / "tools" / "Deadlimit.RetailTextures" / "bin" / "Release" / "net10.0" / "win-x64" / "publish" / "Deadlimit.RetailTextures.exe",
+        _shade_root() / "tools" / "Deadlimit.RetailTextures" / "bin" / "Release" / "net10.0" / "Deadlimit.RetailTextures.exe",
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise RuntimeError("Deadlimit.RetailTextures.exe was not found in the plugin runtime")
+
+
+def _project_context(source_mesh):
+    for directory in [source_mesh.parent] + list(source_mesh.parents):
+        manifest_path = directory / ".deadlimit" / "project.json"
+        if not manifest_path.is_file():
+            continue
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+        retail_vpk = manifest.get("RetailSourceVpk")
+        if retail_vpk:
+            return {
+                "projectRoot": directory,
+                "sourceRoot": directory / manifest.get("SourceDumpFolderName", "0source"),
+                "retailVpk": Path(retail_vpk),
+            }
+    return None
+
+
+def _import_or_reuse_project_texture(path, name):
+    identifier = substance_painter.resource.ResourceID.from_project(name)
+    existing = substance_painter.resource.Resource.retrieve(identifier)
+    if existing:
+        return existing[0]
+    return substance_painter.resource.import_project_resource(
+        str(path),
+        substance_painter.resource.Usage.TEXTURE,
+        name=name,
+        group="Deadlimit Retail Preview")
+
+
+def _import_or_reuse_project_shader(path, role):
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+    name = "Deadlimit_{}_{}".format(role, digest)
+    identifier = substance_painter.resource.ResourceID.from_project(name)
+    existing = substance_painter.resource.Resource.retrieve(identifier)
+    if existing:
+        resource = existing[0]
+    else:
+        resource = substance_painter.resource.import_project_resource(
+            str(path),
+            substance_painter.resource.Usage.SHADER,
+            name=name,
+            group="Deadlimit Shade")
+    return {"name": name, "url": resource.identifier().url()}
+
+
+def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None):
     character_id = int(profile["id"])
     hero_texture_sets = json.dumps(profile["painterApply"]["heroTextureSets"])
+    retail_bindings_json = json.dumps(retail_bindings or {})
+    shader_urls_json = json.dumps(shader_urls or {})
     return r"""
 (function() {
   alg.resources.refreshShelves();
@@ -70,6 +129,8 @@ def _shader_assignment_script(profile):
     throw new Error("Painter project has no source shader instance");
   }
   var heroTextureSets = HERO_TEXTURE_SETS;
+  var retailBindings = RETAIL_BINDINGS;
+  var shaderResources = SHADER_RESOURCES;
   var sourceLabel = null;
   heroTextureSets.some(function(name) {
     if (current.texturesets[name]) {
@@ -80,11 +141,11 @@ def _shader_assignment_script(profile):
   });
   var source = current.shaders[sourceLabel] || current.shaders[names[0]];
   var hero = JSON.parse(JSON.stringify(source));
-  hero.shader = "Deadlock_Hero";
+  hero.shader = shaderResources.hero.name;
   hero.shaderInstance = "Deadlimit Hero";
   hero.parameters = {};
   var outline = JSON.parse(JSON.stringify(source));
-  outline.shader = "Deadlock_Outline";
+  outline.shader = shaderResources.outline.name;
   outline.shaderInstance = "Deadlimit Outline";
   outline.parameters = {};
 
@@ -93,7 +154,9 @@ def _shader_assignment_script(profile):
     textureSets[name] = {
       shader: name === "__deadlimit_outline"
         ? "Deadlimit Outline"
-        : (heroTextureSets.indexOf(name) >= 0 ? "Deadlimit Hero" : current.texturesets[name].shader)
+        : (retailBindings[name]
+          ? retailBindings[name].instance
+          : (heroTextureSets.indexOf(name) >= 0 ? "Deadlimit Hero" : current.texturesets[name].shader))
     };
   });
   if (!textureSets.__deadlimit_outline || Object.keys(textureSets).length < 2) {
@@ -103,18 +166,35 @@ def _shader_assignment_script(profile):
   var shaders = JSON.parse(JSON.stringify(current.shaders));
   shaders["Deadlimit Hero"] = hero;
   shaders["Deadlimit Outline"] = outline;
+  Object.keys(retailBindings).forEach(function(textureSetName) {
+    if (!current.texturesets[textureSetName]) {
+      return;
+    }
+    var binding = retailBindings[textureSetName];
+    var originalLabel = current.texturesets[textureSetName].shader;
+    var retail = JSON.parse(JSON.stringify(current.shaders[originalLabel] || source));
+    retail.shader = shaderResources.hero.name;
+    retail.shaderInstance = binding.instance;
+    retail.parameters = {};
+    shaders[binding.instance] = retail;
+  });
   alg.shaders.shaderInstancesFromObject({
     format: current.format,
     shaders: shaders,
     texturesets: textureSets
   });
   var instances = alg.shaders.instances();
-  var heroInstance = instances.filter(function(item) {
+  var heroMatches = instances.filter(function(item) {
     return item.label === "Deadlimit Hero";
-  })[0];
-  var outlineInstance = instances.filter(function(item) {
+  });
+  var outlineMatches = instances.filter(function(item) {
     return item.label === "Deadlimit Outline";
-  })[0];
+  });
+  // Painter 9.1 can retain an unused earlier instance with the same label
+  // until the project is reopened. shaderInstancesFromObject appends the
+  // mapped replacement, so configure the final matching instance.
+  var heroInstance = heroMatches[heroMatches.length - 1];
+  var outlineInstance = outlineMatches[outlineMatches.length - 1];
   if (!heroInstance || !outlineInstance) {
     throw new Error("Deadlimit shader instances were not created");
   }
@@ -123,6 +203,28 @@ def _shader_assignment_script(profile):
     dl_outline_character: CHARACTER_ID,
     dl_outline_use_character_color: true
   });
+  Object.keys(retailBindings).forEach(function(textureSetName) {
+    if (!current.texturesets[textureSetName]) {
+      return;
+    }
+    var binding = retailBindings[textureSetName];
+    var matches = instances.filter(function(item) {
+      return item.label === binding.instance;
+    });
+    var instance = matches[matches.length - 1];
+    if (!instance) {
+      throw new Error("Retail shader instance was not created for " + textureSetName);
+    }
+    alg.shaders.setParameters(instance.id, {
+      dl_character: CHARACTER_ID,
+      dl_debug_view: 0,
+      dl_use_retail_inputs: true,
+      dl_vertex_color_multiply: binding.vertexColorMultiply,
+      dl_retail_color: binding.color,
+      dl_retail_normal_roughness: binding.normalRoughness,
+      dl_retail_ambient_occlusion: binding.ambientOcclusion
+    });
+  });
   return JSON.stringify({
     characterId: CHARACTER_ID,
     heroShader: heroInstance.shader,
@@ -130,7 +232,7 @@ def _shader_assignment_script(profile):
     textureSets: Object.keys(textureSets).sort()
   });
 })()
-""".replace("CHARACTER_ID", str(character_id)).replace("HERO_TEXTURE_SETS", hero_texture_sets)
+""".replace("CHARACTER_ID", str(character_id)).replace("HERO_TEXTURE_SETS", hero_texture_sets).replace("RETAIL_BINDINGS", retail_bindings_json).replace("SHADER_RESOURCES", shader_urls_json)
 
 
 class DeadlimitApplyDock(QtWidgets.QWidget):
@@ -142,6 +244,10 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self._generated_mesh = None
         self._source_mesh = None
         self._selected_profile = None
+        self._retail_queue = []
+        self._retail_outputs = []
+        self._retail_bindings = {}
+        self._retail_current = None
         self._phase = ""
         self._elapsed = QtCore.QElapsedTimer()
         self._status_timer = QtCore.QTimer(self)
@@ -152,6 +258,17 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self.character_combo.setObjectName("DeadlimitCharacter")
         for profile in _profiles():
             self.character_combo.addItem(profile["displayName"], profile)
+
+        self.preview_combo = QtWidgets.QComboBox(self)
+        self.preview_combo.setObjectName("DeadlimitPreviewView")
+        for label, value in (
+                ("Shaded", 0),
+                ("Base Color", 1),
+                ("Roughness", 2),
+                ("Metallic", 3),
+                ("Ambient Occlusion", 4)):
+            self.preview_combo.addItem(label, value)
+        self.preview_combo.currentIndexChanged.connect(self._set_preview_view)
 
         self.apply_button = QtWidgets.QPushButton("Apply Deadlimit", self)
         self.apply_button.setObjectName("ApplyDeadlimit")
@@ -167,6 +284,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
 
         form = QtWidgets.QFormLayout()
         form.addRow("Character", self.character_combo)
+        form.addRow("Deadlimit View", self.preview_combo)
         layout = QtWidgets.QVBoxLayout(self)
         layout.addLayout(form)
         layout.addWidget(self.apply_button)
@@ -176,9 +294,45 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
 
     def _set_busy(self, busy, text):
         self.character_combo.setEnabled(not busy)
+        self.preview_combo.setEnabled(not busy)
         self.apply_button.setEnabled(not busy)
         self.progress.setVisible(busy)
         self.status_label.setText(text)
+
+    def _set_preview_view(self, _index):
+        if not substance_painter.project.is_open() or self._process is not None:
+            return
+        mode = int(self.preview_combo.currentData())
+        try:
+            # Painter 9.1 channel-solo views bypass custom shader samplers. Keep
+            # the viewport in Material mode and use Deadlimit's shader-native
+            # diagnostics so retail inputs remain visible.
+            application = QtWidgets.QApplication.instance()
+            for combo in application.allWidgets():
+                if not isinstance(combo, QtWidgets.QComboBox):
+                    continue
+                material_index = combo.findText("Material", QtCore.Qt.MatchExactly)
+                base_color_index = combo.findText("Base color", QtCore.Qt.MatchExactly)
+                if combo.isVisible() and material_index >= 0 and base_color_index >= 0:
+                    combo.setCurrentIndex(material_index)
+            script = r"""
+(function() {
+  var mode = VIEW_MODE;
+  var changed = 0;
+  alg.shaders.instances().forEach(function(instance) {
+    if (instance.label === "Deadlimit Hero" || instance.label.indexOf("Deadlimit Retail ") === 0) {
+      alg.shaders.setParameters(instance.id, {dl_debug_view: mode});
+      changed += 1;
+    }
+  });
+  return changed;
+})()
+""".replace("VIEW_MODE", str(mode))
+            changed = substance_painter.js.evaluate(script)
+            if int(changed) > 0:
+                self.status_label.setText("Deadlimit View: {}".format(self.preview_combo.currentText()))
+        except Exception as exc:
+            self.status_label.setText("Deadlimit View failed: {}".format(exc))
 
     def _cache_path(self, source_mesh, profile):
         digest = hashlib.sha256()
@@ -188,9 +342,30 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         digest.update(str(source_stat.st_mtime_ns).encode("ascii"))
         digest.update(json.dumps(profile, sort_keys=True).encode("utf-8"))
         digest.update(_converter_path().read_bytes())
+        vertex_color_dmx = self._vertex_color_dmx(source_mesh, profile)
+        if vertex_color_dmx:
+            dmx_stat = vertex_color_dmx.stat()
+            digest.update(str(vertex_color_dmx.resolve()).encode("utf-8"))
+            digest.update(str(dmx_stat.st_size).encode("ascii"))
+            digest.update(str(dmx_stat.st_mtime_ns).encode("ascii"))
         cache_dir = Path(tempfile.gettempdir()) / "deadlimit-shade-preview-cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
         return cache_dir / "{}-{}.fbx".format(profile["key"], digest.hexdigest()[:16])
+
+    def _vertex_color_dmx(self, source_mesh, profile):
+        recipe = profile.get("painterApply", {}).get("retailPreview", {})
+        relative = recipe.get("vertexColorSource")
+        if not relative:
+            return None
+        context = _project_context(source_mesh)
+        if not context:
+            raise RuntimeError(
+                "The character profile needs extracted DMX vertex colors. Open this mesh from a Deadlimit project.")
+        path = context["sourceRoot"] / Path(relative.replace("/", os.sep))
+        if not path.is_file():
+            raise RuntimeError(
+                "Extract hero sources in Deadlimit first; vertex-color source is missing: {}".format(path))
+        return path
 
     def _update_generation_status(self):
         seconds = self._elapsed.elapsed() / 1000.0
@@ -222,6 +397,10 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
             self.status_label.setText("Open a Painter project first.")
             return
 
+        self.preview_combo.blockSignals(True)
+        self.preview_combo.setCurrentIndex(0)
+        self.preview_combo.blockSignals(False)
+
         current_mesh = Path(substance_painter.project.last_imported_mesh_path())
         if self._source_mesh is None:
             if current_mesh.parent.name == "deadlimit-shade-preview-cache":
@@ -237,9 +416,10 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
             return
 
         profile = self.character_combo.currentData()
-        output = self._cache_path(source_mesh, profile).with_suffix(source_mesh.suffix.lower())
         try:
             converter = _converter_path()
+            vertex_color_dmx = self._vertex_color_dmx(source_mesh, profile)
+            output = self._cache_path(source_mesh, profile).with_suffix(source_mesh.suffix.lower())
         except Exception as exc:
             self.status_label.setText(str(exc))
             return
@@ -258,11 +438,14 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self._process = QtCore.QProcess(self)
         self._process.setProgram(str(converter))
         self._process.setWorkingDirectory(str(converter.parent))
-        self._process.setArguments([
+        arguments = [
             "--input", str(source_mesh),
             "--output", str(output),
             "--width-mm", str(profile["outline"]["widthMillimeters"]),
-        ])
+        ]
+        if vertex_color_dmx:
+            arguments.extend(["--vertex-color-dmx", str(vertex_color_dmx)])
+        self._process.setArguments(arguments)
         self._process.finished.connect(self._generation_finished)
         self._process.errorOccurred.connect(self._generation_error)
         self._phase = "Step 1/3 · Preparing preview mesh"
@@ -305,13 +488,133 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
             self._status_timer.stop()
             self._set_busy(False, "Painter mesh reload failed: {}".format(status_text))
             return
-        self._phase = "Step 3/3 · Assigning Hero and Outline shaders"
-        self.status_label.setText(self._phase)
-        QtCore.QTimer.singleShot(1000, self._apply_shaders)
+        QtCore.QTimer.singleShot(500, self._prepare_retail_preview)
+
+    def _prepare_retail_preview(self):
+        recipe = self._selected_profile.get("painterApply", {}).get("retailPreview")
+        context = _project_context(self._source_mesh)
+        self._retail_bindings = {}
+        self._retail_outputs = []
+        self._retail_queue = []
+        self._retail_current = None
+        if not recipe or not context or not context["retailVpk"].is_file():
+            self._phase = "Step 3/3 · Assigning Hero and Outline shaders"
+            self.status_label.setText(self._phase)
+            self._apply_shaders()
+            return
+
+        try:
+            converter = _retail_converter_path()
+        except Exception as exc:
+            self._status_timer.stop()
+            self._set_busy(False, "Default retail preview unavailable: {}".format(exc))
+            return
+
+        vpk_stat = context["retailVpk"].stat()
+        cache_root = Path(tempfile.gettempdir()) / "deadlimit-shade-retail-cache"
+        for index, binding in enumerate(recipe["materialBindings"]):
+            digest = hashlib.sha256()
+            digest.update(binding["material"].encode("utf-8"))
+            digest.update(str(vpk_stat.st_size).encode("ascii"))
+            digest.update(str(vpk_stat.st_mtime_ns).encode("ascii"))
+            digest.update(converter.read_bytes())
+            output = cache_root / self._selected_profile["key"] / digest.hexdigest()[:16]
+            self._retail_queue.append((index, binding, output, context, converter))
+        self._phase = "Step 3/4 · Preparing default retail textures"
+        self._run_next_retail_extract()
+
+    def _run_next_retail_extract(self):
+        if not self._retail_queue:
+            self._import_retail_resources()
+            return
+        index, binding, output, context, converter = self._retail_queue.pop(0)
+        self._retail_current = (index, binding, output)
+        manifest = output / "manifest.json"
+        if manifest.is_file():
+            self._retail_outputs.append((index, binding, output))
+            self._run_next_retail_extract()
+            return
+        output.mkdir(parents=True, exist_ok=True)
+        self.status_label.setText("{} · {}/{}\nUsing project 0source, with read-only retail fallback.".format(
+            self._phase, index + 1, len(self._retail_outputs) + len(self._retail_queue) + 1))
+        self._process = QtCore.QProcess(self)
+        self._process.setProgram(str(converter))
+        self._process.setWorkingDirectory(str(converter.parent))
+        arguments = [
+            "--vpk", str(context["retailVpk"]),
+            "--material", binding["material"],
+            "--output", str(output),
+        ]
+        if context["sourceRoot"].is_dir():
+            arguments.extend(["--source-root", str(context["sourceRoot"])])
+        self._process.setArguments(arguments)
+        self._process.finished.connect(self._retail_process_finished)
+        self._process.errorOccurred.connect(self._generation_error)
+        self._process.start()
+
+    def _retail_process_finished(self, exit_code, exit_status):
+        item = self._retail_current
+        self._retail_current = None
+        self._retail_extract_finished(exit_code, exit_status, item)
+
+    def _retail_extract_finished(self, exit_code, _exit_status, item):
+        process = self._process
+        self._process = None
+        stdout = bytes(process.readAllStandardOutput()).decode("utf-8", "replace").strip()
+        stderr = bytes(process.readAllStandardError()).decode("utf-8", "replace").strip()
+        process.deleteLater()
+        if exit_code != 0 or not (item[2] / "manifest.json").is_file():
+            self._status_timer.stop()
+            self._set_busy(False, "Default retail texture extraction failed: {}".format(
+                stderr or stdout or "unknown backend error"))
+            return
+        self._retail_outputs.append(item)
+        self._run_next_retail_extract()
+
+    def _import_retail_resources(self):
+        try:
+            for index, binding, output in sorted(self._retail_outputs):
+                manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+                urls = {}
+                for texture in manifest["textures"]:
+                    parameter = texture["parameter"]
+                    if parameter not in ("g_tColor", "g_tNormalRoughness", "g_tAmbientOcclusion"):
+                        continue
+                    resource_name = "Deadlimit_{}_{}_{}_{}".format(
+                        self._selected_profile["key"], index, output.name[:8], parameter)
+                    resource = _import_or_reuse_project_texture(
+                        output / texture["file"], resource_name)
+                    urls[parameter] = resource.identifier().url()
+                required = ("g_tColor", "g_tNormalRoughness", "g_tAmbientOcclusion")
+                if any(name not in urls for name in required):
+                    raise RuntimeError("retail material is missing a required preview input")
+                self._retail_bindings[binding["textureSet"]] = {
+                    "instance": "Deadlimit Retail {}".format(index + 1),
+                    "vertexColorMultiply": float(manifest.get("floatParams", {}).get(
+                        "g_fVertexColorStrength1", 0.0))
+                        if int(manifest.get("intParams", {}).get("F_VERTEX_COLOR", 0)) else 0.0,
+                    "color": urls["g_tColor"],
+                    "normalRoughness": urls["g_tNormalRoughness"],
+                    "ambientOcclusion": urls["g_tAmbientOcclusion"],
+                }
+            self._phase = "Step 4/4 · Assigning Hero, retail and Outline shaders"
+            self.status_label.setText(self._phase)
+            self._apply_shaders()
+        except Exception as exc:
+            self._status_timer.stop()
+            self._set_busy(False, "Default retail texture import failed: {}".format(exc))
 
     def _apply_shaders(self):
         try:
-            result = substance_painter.js.evaluate(_shader_assignment_script(self._selected_profile))
+            shader_root = _shade_root() / "shaders"
+            shader_urls = {
+                "hero": _import_or_reuse_project_shader(
+                    shader_root / "Deadlock_Hero.glsl", "Hero"),
+                "outline": _import_or_reuse_project_shader(
+                    shader_root / "Deadlock_Outline.glsl", "Outline"),
+            }
+            result = substance_painter.js.evaluate(_shader_assignment_script(
+                self._selected_profile, self._retail_bindings, shader_urls))
             summary = json.loads(result)
             profile = self._selected_profile
             color = profile["outline"]["color"]

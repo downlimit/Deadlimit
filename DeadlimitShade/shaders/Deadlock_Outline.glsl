@@ -94,9 +94,10 @@ void shade(V2F inputs)
     outlineColor = dlBuiltInCharacterProfile(dl_outline_character).outlineColor;
   }
 
-  // Painter's Base Color solo mode displays the authored texture channel.
-  // Profile color belongs to the final Material view through emissive output.
-  albedoOutput(vec3(0.0));
+  // Keep Painter's Base Color solo view consistent with the flat color used by
+  // the material viewport. The outline Texture Set is preview-only, so this
+  // output never enters the authored hero texture export.
+  albedoOutput(outlineColor);
   diffuseShadingOutput(vec3(0.0));
   specularShadingOutput(vec3(0.0));
   emissiveColorOutput(outlineColor);
