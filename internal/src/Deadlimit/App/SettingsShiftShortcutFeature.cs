@@ -12,6 +12,7 @@ internal static class SettingsShiftShortcutFeature
 
     private static readonly ShiftShortcutMessageFilter MessageFilter = new();
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<SettingsForm, object> PreparedForms = new();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Button, object> PreparedButtons = new();
     private static int _attached;
 
     public static void Attach()
@@ -63,13 +64,14 @@ internal static class SettingsShiftShortcutFeature
                 continue;
             }
 
-            var hint = ShortcutHint(target);
-            if (!RichToolTip.TryAppendToolTip(primaryButton, hint))
+            if (!PreparedButtons.TryGetValue(primaryButton, out _))
             {
-                continue;
+                var shortcutTarget = target;
+                primaryButton.MouseEnter += (_, _) => EnsureShortcutHint(primaryButton, shortcutTarget);
+                PreparedButtons.Add(primaryButton, new object());
             }
 
-            AppendAccessibleDescription(primaryButton, hint);
+            EnsureShortcutHint(primaryButton, target);
             preparedShortcuts++;
         }
 
@@ -77,6 +79,13 @@ internal static class SettingsShiftShortcutFeature
         {
             PreparedForms.Add(form, new object());
         }
+    }
+
+    private static void EnsureShortcutHint(Button button, ShortcutTarget target)
+    {
+        var hint = ShortcutHint(target);
+        RichToolTip.TryAppendToolTip(button, hint);
+        AppendAccessibleDescription(button, hint);
     }
 
     private static bool TryHandleShiftShortcut(Control? control)
