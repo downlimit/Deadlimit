@@ -173,7 +173,11 @@ try {
 
     Write-Host ""
     Write-Host "Update complete. Restarting Deadlimit Manager..."
-    Start-Process -FilePath $managerShortcut -WorkingDirectory $rootPath
+    $startInfo = [Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $managerShortcut
+    $startInfo.WorkingDirectory = $rootPath
+    $startInfo.UseShellExecute = $true
+    [Diagnostics.Process]::Start($startInfo) | Out-Null
     Wait-ForAnyKey
     exit 0
 }
