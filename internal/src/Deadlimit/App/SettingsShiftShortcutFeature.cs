@@ -14,6 +14,7 @@ internal static class SettingsShiftShortcutFeature
     private static readonly ShiftShortcutMessageFilter MessageFilter = new();
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<SettingsForm, object> PreparedForms = new();
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Button, object> PreparedButtons = new();
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Button, RichToolTip> FallbackToolTips = new();
     private static int _attached;
 
     public static void Attach()
@@ -85,9 +86,28 @@ internal static class SettingsShiftShortcutFeature
     private static void EnsureShortcutHint(Button button, ShortcutTarget target)
     {
         var hint = ShortcutHint(target);
-        RichToolTip.TryAppendToolTip(button, hint);
+        if (!RichToolTip.TryAppendToolTip(button, hint) && target == ShortcutTarget.DeadlimitManager)
+        {
+            // The Manager row is injected by SettingsVersionFeature and therefore is
+            // not registered with SettingsForm's shared tooltip instance. Give it a
+            // real tooltip owner instead of silently failing to append the shortcut.
+            if (!FallbackToolTips.TryGetValue(button, out var toolTip))
+            {
+                toolTip = new RichToolTip();
+                FallbackToolTips.Add(button, toolTip);
+                var ownedToolTip = toolTip;
+                button.Disposed += (_, _) => ownedToolTip.Dispose();
+            }
+
+            toolTip.SetToolTip(button, ManagerToolTip());
+        }
+
         AppendAccessibleDescription(button, hint);
     }
+
+    private static string ManagerToolTip() => UiText.T(
+        "**CHECK** checks whether Deadlimit Manager is up to date.\n\n**UPDATE…** installs the latest Deadlimit Manager build and restarts the program.\n\nSHIFT+click: open the Deadlimit project page on GitHub.",
+        "**ПРОВЕРИТЬ** проверяет актуальность Deadlimit Manager.\n\n**ОБНОВИТЬ…** устанавливает последнюю сборку Deadlimit Manager и перезапускает программу.\n\nSHIFT-клик: открыть страницу проекта Deadlimit на GitHub.");
 
     private static bool TryHandleShiftShortcut(Control? control)
     {
