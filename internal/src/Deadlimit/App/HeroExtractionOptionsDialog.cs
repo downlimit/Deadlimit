@@ -30,7 +30,7 @@ internal static class HeroExtractionOptionsDialog
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
-            RowCount = 4,
+            RowCount = 5,
             Margin = Padding.Empty,
             Padding = new Padding(18),
         };
@@ -60,6 +60,14 @@ internal static class HeroExtractionOptionsDialog
         var extractAbilitiesCheck = new CheckBox
         {
             Text = UiText.T("Extract abilities", "Извлекать способности"),
+            AutoSize = true,
+            Anchor = AnchorStyles.Left,
+            Margin = new Padding(0, 3, 0, 5),
+        };
+
+        var extractPortraitsAndUiCheck = new CheckBox
+        {
+            Text = UiText.T("Extract portraits and UI", "Извлекать портреты и UI"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 3, 0, 16),
@@ -105,7 +113,8 @@ internal static class HeroExtractionOptionsDialog
         root.Controls.Add(message, 0, 0);
         root.Controls.Add(extractTexturesCheck, 0, 1);
         root.Controls.Add(extractAbilitiesCheck, 0, 2);
-        root.Controls.Add(buttonRow, 0, 3);
+        root.Controls.Add(extractPortraitsAndUiCheck, 0, 3);
+        root.Controls.Add(buttonRow, 0, 4);
         dialog.Controls.Add(root);
 
         dialog.AcceptButton = yesButton;
@@ -119,6 +128,7 @@ internal static class HeroExtractionOptionsDialog
             removeBackupAfterSuccess,
             new HeroExtractionOptions(
                 extractTexturesCheck.Checked,
-                extractAbilitiesCheck.Checked));
+                extractAbilitiesCheck.Checked,
+                extractPortraitsAndUiCheck.Checked));
     }
 }

@@ -6,6 +6,9 @@ internal sealed record HeroAbilityVdataSelection(
     IReadOnlyList<string> AbilityNames,
     IReadOnlyList<string> VisualResourcePaths);
 
+internal sealed record HeroUiVdataSelection(
+    IReadOnlyList<string> ImageResourcePaths);
+
 internal static class HeroAbilityVdataParser
 {
     private static readonly Regex TopLevelBlockRegex = new(
@@ -25,6 +28,16 @@ internal static class HeroAbilityVdataParser
         "m_strMainOnlyModelName",
         "m_strModelName",
         "m_strWIPModelName",
+    ];
+
+    private static readonly string[] HeroUiImagePropertyNames =
+    [
+        "m_strIconImageSmall",
+        "m_strIconHeroCard",
+        "m_strIconHeroCardCritical",
+        "m_strIconHeroCardGloat",
+        "m_strMinimapImage",
+        "m_strTopBarVertical",
     ];
 
     private static readonly string[] VisualRootExtensions =
@@ -50,23 +63,7 @@ internal static class HeroAbilityVdataParser
         ArgumentException.ThrowIfNullOrWhiteSpace(abilitiesText);
         ArgumentException.ThrowIfNullOrWhiteSpace(mainModelResourcePath);
 
-        var heroBlocks = ParseTopLevelBlocks(heroesText);
-        var expectedModelPath = ToSourceResourcePath(mainModelResourcePath);
-        var heroBlock = heroBlocks.Values.FirstOrDefault(block =>
-            ModelPropertyNames
-                .Select(propertyName => GetStringProperty(block, propertyName))
-                .Where(value => !string.IsNullOrWhiteSpace(value))
-                .Any(value => string.Equals(
-                    NormalizeResourcePath(value!),
-                    expectedModelPath,
-                    StringComparison.OrdinalIgnoreCase)));
-
-        if (heroBlock is null)
-        {
-            throw new InvalidDataException(
-                $"Could not match the selected hero model '{mainModelResourcePath}' to a heroes.vdata entry.");
-        }
-
+        var heroBlock = ResolveHeroBlock(heroesText, mainModelResourcePath);
         var boundAbilitiesBlock = GetObjectProperty(heroBlock, "m_mapBoundAbilities");
         if (boundAbilitiesBlock is null)
         {
@@ -126,6 +123,50 @@ internal static class HeroAbilityVdataParser
         return new HeroAbilityVdataSelection(
             selectedNames.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToArray(),
             visualRoots.OrderBy(value => value, StringComparer.OrdinalIgnoreCase).ToArray());
+    }
+
+    internal static HeroUiVdataSelection ResolveUiImages(
+        string heroesText,
+        string mainModelResourcePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(heroesText);
+        ArgumentException.ThrowIfNullOrWhiteSpace(mainModelResourcePath);
+
+        var heroBlock = ResolveHeroBlock(heroesText, mainModelResourcePath);
+        var imagePaths = HeroUiImagePropertyNames
+            .Select(propertyName => GetStringProperty(heroBlock, propertyName))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .Select(value => TryNormalizePanoramaImage(value, out var resourcePath) ? resourcePath : null)
+            .Where(path => !string.IsNullOrWhiteSpace(path))
+            .Select(path => path!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return new HeroUiVdataSelection(imagePaths);
+    }
+
+    private static string ResolveHeroBlock(string heroesText, string mainModelResourcePath)
+    {
+        var heroBlocks = ParseTopLevelBlocks(heroesText);
+        var expectedModelPath = ToSourceResourcePath(mainModelResourcePath);
+        var heroBlock = heroBlocks.Values.FirstOrDefault(block =>
+            ModelPropertyNames
+                .Select(propertyName => GetStringProperty(block, propertyName))
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Any(value => string.Equals(
+                    NormalizeResourcePath(value!),
+                    expectedModelPath,
+                    StringComparison.OrdinalIgnoreCase)));
+
+        if (heroBlock is null)
+        {
+            throw new InvalidDataException(
+                $"Could not match the selected hero model '{mainModelResourcePath}' to a heroes.vdata entry.");
+        }
+
+        return heroBlock;
     }
 
     private static Dictionary<string, string> ParseTopLevelBlocks(string text)
@@ -245,6 +286,60 @@ internal static class HeroAbilityVdataParser
         }
 
         resourcePath = normalized;
+        return true;
+    }
+
+    private static bool TryNormalizePanoramaImage(string rawValue, out string resourcePath)
+    {
+        resourcePath = string.Empty;
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            return false;
+        }
+
+        var normalized = rawValue.Trim();
+        const string resourcePrefix = "s2r://";
+        const string fileImagesPrefix = "file://{images}/";
+        const string imagesPrefix = "{images}/";
+
+        if (normalized.StartsWith(resourcePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized[resourcePrefix.Length..];
+        }
+        else if (normalized.StartsWith(fileImagesPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = "panorama/images/" + normalized[fileImagesPrefix.Length..];
+        }
+        else if (normalized.StartsWith(imagesPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = "panorama/images/" + normalized[imagesPrefix.Length..];
+        }
+
+        normalized = NormalizeResourcePath(normalized);
+        if (normalized.EndsWith("_c", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized[..^2];
+        }
+
+        if (normalized.EndsWith(".vtex", StringComparison.OrdinalIgnoreCase))
+        {
+            resourcePath = normalized;
+            return true;
+        }
+
+        var extensionIndex = normalized.LastIndexOf('.');
+        if (extensionIndex <= normalized.LastIndexOf('/'))
+        {
+            return false;
+        }
+
+        var sourceExtension = normalized[(extensionIndex + 1)..];
+        if (sourceExtension is not ("png" or "tga" or "jpg" or "jpeg" or "webp" or "psd"))
+        {
+            return false;
+        }
+
+        resourcePath = $"{normalized[..extensionIndex]}_{sourceExtension}.vtex";
         return true;
     }
 

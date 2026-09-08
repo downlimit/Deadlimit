@@ -118,6 +118,16 @@ public sealed partial class HeroExtractionService
                     cancellationToken);
             }
 
+            if (options.ExtractPortraitsAndUi)
+            {
+                ExtractHeroUiResources(
+                    vpkPaths,
+                    candidate,
+                    stagingFolder,
+                    progress,
+                    cancellationToken);
+            }
+
             var extractedFileCount = Directory.EnumerateFiles(stagingFolder, "*", SearchOption.AllDirectories).Count();
             if (extractedFileCount == 0)
             {

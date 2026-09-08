@@ -27,6 +27,9 @@ jobs:
       - name: Hero ability extraction contract smoke
         shell: pwsh
         run: internal/tests/hero-ability-extraction-contract-smoke.ps1
+      - name: Hero portrait and UI extraction contract smoke
+        shell: pwsh
+        run: internal/tests/hero-ui-extraction-contract-smoke.ps1
       - name: Retail texture override resolution smoke
         shell: pwsh
         run: internal/tests/retail-texture-override-resolution-smoke.ps1
