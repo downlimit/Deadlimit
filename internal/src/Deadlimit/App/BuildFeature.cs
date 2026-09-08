@@ -8,8 +8,10 @@ internal static class BuildFeature
     {
         var topBar = FindDescendants<FlowLayoutPanel>(form)
             .FirstOrDefault(panel => panel.Controls.OfType<Button>()
-                .Any(button => string.Equals(button.Text, "EXTRACT HERO SOURCE", StringComparison.Ordinal)
-                    || string.Equals(button.Text, "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ", StringComparison.Ordinal)));
+                .Any(button => string.Equals(
+                    button.Name,
+                    UiControlNames.ExtractHeroSourceButton,
+                    StringComparison.Ordinal)));
 
         if (topBar is null)
         {

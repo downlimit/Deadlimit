@@ -56,4 +56,19 @@ foreach ($forbidden in @('Width = 94', 'Height = 26')) {
     }
 }
 
+
+
+$mainForm = Get-Content -LiteralPath (Join-Path $repoRoot 'internal\src\Deadlimit\App\MainForm.cs') -Raw
+$buildFeature = Get-Content -LiteralPath (Join-Path $repoRoot 'internal\src\Deadlimit\App\BuildFeature.cs') -Raw
+if (-not $mainForm.Contains('Name = UiControlNames.ExtractHeroSourceButton')) {
+    throw 'Hero source extraction button must expose its stable semantic control name.'
+}
+if (-not $buildFeature.Contains('UiControlNames.ExtractHeroSourceButton')) {
+    throw 'BuildFeature must locate the hero extraction top bar through the stable control name.'
+}
+if ($buildFeature.Contains('button.Text, "EXTRACT HERO SOURCE"') -or
+    $buildFeature.Contains('button.Text, "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ"')) {
+    throw 'BuildFeature must not depend on localized hero extraction button copy.'
+}
+
 Write-Host 'UI agent contract smoke passed.'
