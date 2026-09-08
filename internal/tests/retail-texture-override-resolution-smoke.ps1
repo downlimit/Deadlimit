@@ -5,6 +5,28 @@ $assembly = [Reflection.Assembly]::LoadFrom($assemblyPath)
 $service = $assembly.GetType('Deadlimit.Core.RetailTextureOverrideService', $true)
 $manifestType = $assembly.GetType('Deadlimit.Core.ProjectManifest', $true)
 
+function Test-InvocationRefused {
+    param(
+        [Parameter(Mandatory = $true)][scriptblock] $Action,
+        [Parameter(Mandatory = $true)][string] $MessagePattern
+    )
+
+    try {
+        & $Action
+        return $false
+    }
+    catch {
+        $current = $_.Exception
+        while ($null -ne $current) {
+            if ($current -is [InvalidOperationException] -and $current.Message -match $MessagePattern) {
+                return $true
+            }
+            $current = $current.InnerException
+        }
+        throw
+    }
+}
+
 $temp = Join-Path ([IO.Path]::GetTempPath()) ('deadlimit-retail-texture-override-' + [Guid]::NewGuid().ToString('N'))
 $projectRoot = Join-Path $temp 'project'
 $sourceRoot = Join-Path $projectRoot '0source'
@@ -57,18 +79,8 @@ Layer0
     Remove-Item -LiteralPath $artistColor -Force
     $wrongExtension = Join-Path $projectRoot 'body_color.tga'
     [IO.File]::WriteAllBytes($wrongExtension, [byte[]](1,2,3,4))
-    $extensionRefused = $false
-    try {
+    $extensionRefused = Test-InvocationRefused -MessagePattern 'different source extension' -Action {
         $null = $service.GetMethod('ResolveProjectRootOverrides').Invoke($null, @($manifest, $targets))
-    }
-    catch [Reflection.TargetInvocationException] {
-        if ($_.Exception.InnerException -is [InvalidOperationException] -and
-            $_.Exception.InnerException.Message -match 'different source extension') {
-            $extensionRefused = $true
-        }
-        else {
-            throw
-        }
     }
     if (-not $extensionRefused) { throw 'Retail texture source-extension mismatch was not refused.' }
 
@@ -86,20 +98,9 @@ Layer0
     Set-Content -LiteralPath (Join-Path $ambiguousMaterialRoot 'alternate.vmat') -Value $ambiguous -Encoding utf8NoBOM
 
     $ambiguousTargets = $service.GetMethod('BuildTargetIndex').Invoke($null, @([string]$sourceRoot))
-    $refused = $false
-    try {
+    $refused = Test-InvocationRefused -MessagePattern 'matches more than one retail texture resource' -Action {
         $null = $service.GetMethod('ResolveProjectRootOverrides').Invoke($null, @($manifest, $ambiguousTargets))
     }
-    catch [Reflection.TargetInvocationException] {
-        if ($_.Exception.InnerException -is [InvalidOperationException] -and
-            $_.Exception.InnerException.Message -match 'matches more than one retail texture resource') {
-            $refused = $true
-        }
-        else {
-            throw
-        }
-    }
-
     if (-not $refused) { throw 'Ambiguous retail texture filename was not refused.' }
 }
 finally {
