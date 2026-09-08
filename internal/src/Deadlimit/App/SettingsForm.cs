@@ -42,6 +42,12 @@ internal sealed class SettingsForm : Form
         Anchor = AnchorStyles.Left,
     };
 
+    private readonly CheckBox _exportExtractedTexturesAsTgaCheck = new()
+    {
+        AutoSize = true,
+        Anchor = AnchorStyles.Left,
+    };
+
     private readonly RichToolTip _toolTip = new();
     private readonly ToolchainDependencyService _toolchain = new();
     private readonly bool _allowUnverifiedToolchainAutomation = ReleaseChannelPolicy.AllowsUnverifiedToolchainAutomation;
@@ -53,6 +59,7 @@ internal sealed class SettingsForm : Form
     private readonly string _initialLanguage;
     private readonly string _initialTheme;
     private readonly bool _initialExtractHeroTextures;
+    private readonly bool _initialExportExtractedTexturesAsTga;
 
     private ToolchainStatus _csdkStatus = new(ToolchainStatusKind.NotSpecified);
     private ToolchainStatus _deadlockToolsStatus = new(ToolchainStatusKind.NotSpecified);
@@ -74,6 +81,7 @@ internal sealed class SettingsForm : Form
         _initialLanguage = settings.UiLanguage;
         _initialTheme = settings.UiTheme;
         _initialExtractHeroTextures = settings.ExtractHeroTextures;
+        _initialExportExtractedTexturesAsTga = settings.ExportExtractedTexturesAsTga;
 
         Text = UiText.T("Deadlimit Manager Settings", "Настройки Deadlimit Manager");
         Icon = LoadAppIcon();
@@ -89,6 +97,7 @@ internal sealed class SettingsForm : Form
         _retailDeadlockRootText.Text = settings.RetailDeadlockRoot;
         _projectsRootText.Text = settings.ProjectsRoot;
         _extractHeroTexturesCheck.Checked = settings.ExtractHeroTextures;
+        _exportExtractedTexturesAsTgaCheck.Checked = settings.ExportExtractedTexturesAsTga;
 
         _languageCombo.Items.Add(new LanguageItem("en", "English"));
         _languageCombo.Items.Add(new LanguageItem("ru", "Русский"));
@@ -118,6 +127,7 @@ internal sealed class SettingsForm : Form
             UpdateSettingsActionState();
         };
         _extractHeroTexturesCheck.CheckedChanged += (_, _) => UpdateSettingsActionState();
+        _exportExtractedTexturesAsTgaCheck.CheckedChanged += (_, _) => UpdateSettingsActionState();
         _projectsRootText.TextChanged += (_, _) => UpdateSettingsActionState();
         _csdkRootText.TextChanged += (_, _) => UpdateSettingsActionState();
         _deadlockToolsRootText.TextChanged += (_, _) => UpdateSettingsActionState();
@@ -188,7 +198,7 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 2,
-            RowCount = 5,
+            RowCount = 6,
             Margin = new Padding(0, 10, 0, 0),
         };
         preferencesGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
@@ -196,8 +206,9 @@ internal sealed class SettingsForm : Form
         AddLanguageRow(preferencesGrid, 0);
         AddThemeRow(preferencesGrid, 1);
         AddHeroTextureExtractionRow(preferencesGrid, 2);
-        AddCsdkCacheToolRow(preferencesGrid, 3);
-        AddScriptsFolderRow(preferencesGrid, 4);
+        AddExtractedTextureTgaRow(preferencesGrid, 3);
+        AddCsdkCacheToolRow(preferencesGrid, 4);
+        AddScriptsFolderRow(preferencesGrid, 5);
         content.Controls.Add(preferencesGrid);
         root.Controls.Add(content, 0, 0);
 
@@ -264,7 +275,8 @@ internal sealed class SettingsForm : Form
             || !SettingEquals(_initialRetailDeadlockRoot, _retailDeadlockRootText.Text)
             || !string.Equals(_initialLanguage, selectedLanguage, StringComparison.OrdinalIgnoreCase)
             || !string.Equals(_initialTheme, selectedTheme, StringComparison.OrdinalIgnoreCase)
-            || _initialExtractHeroTextures != _extractHeroTexturesCheck.Checked;
+            || _initialExtractHeroTextures != _extractHeroTexturesCheck.Checked
+            || _initialExportExtractedTexturesAsTga != _exportExtractedTexturesAsTgaCheck.Checked;
     }
 
     private void UpdateSettingsActionState()
@@ -355,7 +367,7 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 7,
-            RowCount = 5,
+            RowCount = 6,
             Margin = Padding.Empty,
             Width = 910,
         };
@@ -568,6 +580,19 @@ internal sealed class SettingsForm : Form
         grid.Controls.Add(_extractHeroTexturesCheck, 1, row);
     }
 
+    private void AddExtractedTextureTgaRow(TableLayoutPanel grid, int row)
+    {
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        grid.Controls.Add(CreatePreferenceCaption(UiText.T("Extracted texture copies", "Копии извлечённых текстур")), 0, row);
+        _exportExtractedTexturesAsTgaCheck.Text = UiText.T("Create TGA copies", "Создавать TGA-копии");
+        _exportExtractedTexturesAsTgaCheck.Margin = new Padding(0, 7, 8, 7);
+        _toolTip.SetToolTip(
+            _exportExtractedTexturesAsTgaCheck,
+            UiText.T(
+                "When enabled, EXTRACT HERO SOURCE creates a same-name 32-bit TGA beside every extracted PNG texture in 0source. Alpha is preserved. HDR/EXR textures are left unchanged. These TGA files are generated reference data and do not affect PREPARE.",
+                "Если включено, ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ создаёт рядом с каждой извлечённой PNG-текстурой в 0source одноимённую 32-битную TGA-копию. Альфа сохраняется. HDR/EXR остаются без изменений. Эти TGA — справочные сгенерированные файлы и не влияют на ПОДГОТОВКУ."));
+        grid.Controls.Add(_exportExtractedTexturesAsTgaCheck, 1, row);
+    }
     private void AddScriptsFolderRow(TableLayoutPanel grid, int row)
     {
         grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -877,6 +902,7 @@ internal sealed class SettingsForm : Form
         _languageCombo.Enabled = !_busy;
         _themeCombo.Enabled = !_busy;
         _extractHeroTexturesCheck.Enabled = !_busy;
+        _exportExtractedTexturesAsTgaCheck.Enabled = !_busy;
 
         _csdkPrimaryButton.Refresh();
         _deadlockToolsPrimaryButton.Refresh();
@@ -1421,6 +1447,7 @@ internal sealed class SettingsForm : Form
             UiLanguage = selectedLanguage,
             UiTheme = selectedTheme,
             ExtractHeroTextures = _extractHeroTexturesCheck.Checked,
+            ExportExtractedTexturesAsTga = _exportExtractedTexturesAsTgaCheck.Checked,
         };
 
         if (!ValidatePaths(candidate, out var error))
@@ -1620,3 +1647,4 @@ internal sealed class SettingsForm : Form
         public override string ToString() => Label;
     }
 }
+
