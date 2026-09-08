@@ -367,7 +367,7 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 7,
-            RowCount = 6,
+            RowCount = 5,
             Margin = Padding.Empty,
             Width = 910,
         };
@@ -1647,4 +1647,5 @@ internal sealed class SettingsForm : Form
         public override string ToString() => Label;
     }
 }
+
 
