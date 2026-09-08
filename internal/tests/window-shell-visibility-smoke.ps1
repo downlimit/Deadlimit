@@ -1,70 +1,85 @@
 $ErrorActionPreference = 'Stop'
 
+$appDir = 'internal/src/Deadlimit/App'
 $programPath = 'internal/src/Deadlimit/Program.cs'
-$featurePath = 'internal/src/Deadlimit/App/WindowShellVisibilityFeature.cs'
+$startupPath = Join-Path $appDir 'StartupProgressForm.cs'
 
-if (-not (Test-Path -LiteralPath $featurePath)) {
-    throw "Window shell visibility feature is missing: $featurePath"
+$appFiles = Get-ChildItem -LiteralPath $appDir -Filter '*.cs' -File
+foreach ($file in $appFiles) {
+    $text = Get-Content -LiteralPath $file.FullName -Raw
+    if ($file.Name -ne 'StartupProgressForm.cs' -and
+        $text.Contains('ShowInTaskbar = false', [StringComparison]::Ordinal)) {
+        throw "Interactive window is shell-hidden before first show: $($file.Name)"
+    }
+}
+
+$startup = Get-Content -LiteralPath $startupPath -Raw
+if (-not $startup.Contains('ShowInTaskbar = false;', [StringComparison]::Ordinal)) {
+    throw 'StartupProgressForm must remain the only deliberately shell-hidden window.'
+}
+
+$requiredShellVisible = @(
+    'MessageBox.cs',
+    'SettingsForm.cs',
+    'BuildTestSuccessDialog.cs',
+    'ProjectCreationChoiceFeature.cs',
+    'ProjectLibraryFeature.cs'
+)
+foreach ($name in $requiredShellVisible) {
+    $path = Join-Path $appDir $name
+    $text = Get-Content -LiteralPath $path -Raw
+    if (-not $text.Contains('ShowInTaskbar = true', [StringComparison]::Ordinal)) {
+        throw "User-facing dialog is not shell-visible before first show: $name"
+    }
+}
+
+$legacyPolicyPath = Join-Path $appDir 'WindowShellVisibilityFeature.cs'
+if (Test-Path -LiteralPath $legacyPolicyPath) {
+    throw 'Late Application.Idle taskbar mutation must not return.'
 }
 
 $program = Get-Content -LiteralPath $programPath -Raw
-$feature = Get-Content -LiteralPath $featurePath -Raw
+if ($program.Contains('WindowShellVisibilityFeature.Attach();', [StringComparison]::Ordinal)) {
+    throw 'Program still attaches the legacy late taskbar mutation.'
+}
 
-$requiredProgramPatterns = @(
-    'WindowShellVisibilityFeature.Attach();',
-    'ShowInTaskbar = true,',
-    'GetLastActivePopup(targetWindow)',
-    'IsWindowVisible(popupWindow)',
-    'SetForegroundWindow(targetWindow)'
-)
+$settings = Get-Content -LiteralPath (Join-Path $appDir 'SettingsForm.cs') -Raw
+if (-not $settings.Contains('dialog.ShowDialog(this)', [StringComparison]::Ordinal)) {
+    throw 'Settings FolderBrowserDialog must have SettingsForm as its owner.'
+}
 
-foreach ($pattern in $requiredProgramPatterns) {
-    if (-not $program.Contains($pattern, [StringComparison]::Ordinal)) {
-        throw "Window switching contract is missing from Program.cs: $pattern"
+$version = Get-Content -LiteralPath (Join-Path $appDir 'SettingsVersionFeature.cs') -Raw
+if ($version.Contains('new FolderBrowserDialog', [StringComparison]::Ordinal) -and
+    -not $version.Contains('dialog.ShowDialog(owner)', [StringComparison]::Ordinal)) {
+    throw 'Settings relocation FolderBrowserDialog must have an owner.'
+}
+
+$creation = Get-Content -LiteralPath (Join-Path $appDir 'ProjectCreationChoiceFeature.cs') -Raw
+if ($creation.Contains('new OpenFileDialog', [StringComparison]::Ordinal) -and
+    -not $creation.Contains('dialog.ShowDialog(form)', [StringComparison]::Ordinal)) {
+    throw 'VPK OpenFileDialog must have MainForm as its owner.'
+}
+
+$ownerlessCommonDialogs = @()
+foreach ($file in $appFiles) {
+    $text = Get-Content -LiteralPath $file.FullName -Raw
+    if ($text -match '\b(?:OpenFileDialog|SaveFileDialog|FolderBrowserDialog)\b' -and
+        $text -match '\.ShowDialog\(\)') {
+        $ownerlessCommonDialogs += $file.Name
     }
 }
-
-$requiredFeaturePatterns = @(
-    'Application.Idle += OnApplicationIdle;',
-    'Application.OpenForms.Cast<Form>().ToArray()',
-    'form is StartupProgressForm',
-    'form.ShowInTaskbar = true;'
-)
-
-foreach ($pattern in $requiredFeaturePatterns) {
-    if (-not $feature.Contains($pattern, [StringComparison]::Ordinal)) {
-        throw "Window shell visibility contract is missing: $pattern"
-    }
+if ($ownerlessCommonDialogs.Count -gt 0) {
+    throw "Ownerless native common dialog(s): $($ownerlessCommonDialogs -join ', ')"
 }
 
-if ($feature.Contains('StartupProgressForm.ShowInTaskbar = true', [StringComparison]::Ordinal)) {
-    throw 'Startup progress window must remain excluded from the taskbar policy.'
+$ownerlessCustom = @()
+foreach ($file in $appFiles) {
+    if ($file.Name -eq 'MessageBox.cs') { continue }
+    $matches = Select-String -LiteralPath $file.FullName -Pattern '\.ShowDialog\(\)' -AllMatches
+    if ($matches) { $ownerlessCustom += $file.Name }
+}
+if ($ownerlessCustom.Count -gt 0) {
+    throw "Ownerless modal dialog call(s) require review: $($ownerlessCustom -join ', ')"
 }
 
-$projectChoicePath = 'internal/src/Deadlimit/App/ProjectCreationChoiceFeature.cs'
-$projectLibraryPath = 'internal/src/Deadlimit/App/ProjectLibraryFeature.cs'
-$projectChoice = Get-Content -LiteralPath $projectChoicePath -Raw
-$projectLibrary = Get-Content -LiteralPath $projectLibraryPath -Raw
-
-if ($projectChoice.Contains('ShowInTaskbar = false;', [StringComparison]::Ordinal) -or
-    $projectLibrary.Contains('ShowInTaskbar = false;', [StringComparison]::Ordinal)) {
-    throw 'Project dialogs must be shell-visible before their first ShowDialog call.'
-}
-
-$requiredProjectDialogPatterns = @(
-    'ShowInTaskbar = true;',
-    'form.BeginInvoke((Action)(() =>',
-    'form.Activate();',
-    'ContinueAfterChoice(() => SelectVpkImportSource(form));'
-)
-foreach ($pattern in $requiredProjectDialogPatterns) {
-    if (-not $projectChoice.Contains($pattern, [StringComparison]::Ordinal)) {
-        throw "Project dialog focus contract is missing: $pattern"
-    }
-}
-
-if (([regex]::Matches($projectLibrary, 'ShowInTaskbar = true;')).Count -lt 3) {
-    throw 'New/Rename/Delete project dialogs must be shell-visible before first show.'
-}
-
-Write-Host 'Window shell visibility contract OK.'
+Write-Host 'Dialog ownership and shell-visibility contract OK.'

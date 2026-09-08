@@ -74,7 +74,7 @@ internal sealed class SettingsForm : Form
         ClientSize = new Size(940, 510);
         MaximizeBox = false;
         MinimizeBox = false;
-        ShowInTaskbar = false;
+        ShowInTaskbar = true;
 
         _csdkRootText.Text = settings.CsdkRoot;
         _deadlockToolsRootText.Text = settings.DeadlockToolsRoot;
@@ -1554,7 +1554,7 @@ internal sealed class SettingsForm : Form
         Margin = new Padding(0, 8, 10, 8),
     };
 
-    private static string? ChooseFolder(
+    private string? ChooseFolder(
         string description,
         string currentPath,
         bool showNewFolderButton,
@@ -1571,7 +1571,7 @@ internal sealed class SettingsForm : Form
             ShowNewFolderButton = showNewFolderButton,
             InitialDirectory = initialDirectory,
         };
-        return dialog.ShowDialog() == DialogResult.OK ? dialog.SelectedPath : null;
+        return dialog.ShowDialog(this) == DialogResult.OK ? dialog.SelectedPath : null;
     }
 
     private enum StatusContext
@@ -1592,3 +1592,6 @@ internal sealed class SettingsForm : Form
         public override string ToString() => Label;
     }
 }
+
+
+
