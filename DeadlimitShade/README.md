@@ -127,6 +127,8 @@ DeadlimitShade/
   separate opacity/metalness channel layout.
 - `docs/SHEEN_DELTA.md` isolates the dedicated direct and probe/environment
   sheen lobes plus their energy compensation.
+- `docs/TRANSLUCENT_DELTA.md` records premultiplied opacity, fog and dual-target
+  depth routing for basic translucency.
 
 ## v1 target
 

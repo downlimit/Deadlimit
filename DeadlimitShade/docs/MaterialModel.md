@@ -9,6 +9,7 @@ The optional status-material modifier is isolated in
 `docs/STATUS_PROXY_DELTA.md`.
 Alpha-test and sheen family changes are maintained in
 `docs/ALPHA_TEST_DELTA.md` and `docs/SHEEN_DELTA.md`.
+Basic translucency is isolated in `docs/TRANSLUCENT_DELTA.md`.
 The alpha-tested channel layout and discard equation are isolated in
 `docs/ALPHA_TEST_DELTA.md`.
 

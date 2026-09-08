@@ -589,6 +589,21 @@ controls. The recovered coverage equation uses vertex alpha, color alpha,
 view-angle correction and distance boost before discard. No Painter visual or
 calibrated alpha value is claimed by this gate.
 
+## Uber-shader decomposition stage 6 — translucency static gate — 2026-09-08
+
+Retail static combo 88 reports `S_TRANSLUCENT=1`, `S_USE_NPR_LIGHTING=1` and
+`S_USE_STATUS_EFFECTS_PROXY=1`, with 16 dynamic states and 8 shader files. Its
+dynamic-0 program is 83,276-byte SPIR-V with SHA-256
+`30a240e4b713eb6150bd86404857ef21d249753401a04e28825970ce63163dfa`.
+
+The inspector now expands all eight render-target blend slots instead of
+serializing VRF's indexed state wrappers as empty objects. Dynamic 0 reports
+premultiplied color factors `One` / `InvSrcAlpha` and alpha factors
+`InvDestAlpha` / `One`; its explicit depth-stencil descriptor is absent. Static
+trace confirms angle-corrected opacity, separate metalness, two depth-routed
+outputs, fog/sky composition, ordinary NPR lighting, and no refraction or
+depth-rim branch. No Painter approximation is claimed by this gate.
+
 ## Uber-shader decomposition stage 5 — sheen static gate — 2026-09-08
 
 Retail static combo 152 reports `S_SHEEN=1`, `S_USE_NPR_LIGHTING=1` and

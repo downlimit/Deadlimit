@@ -78,4 +78,4 @@ the current Ivy opaque preview by this stage.
 - **Blocked/unresolved:** live sheen textures/tint matrices, probe-buffer source
   names, compatible Painter environment radiance and pixel parity.
 
-The next material-family target is translucency.
+Basic translucency is documented in `TRANSLUCENT_DELTA.md`; glass follows.

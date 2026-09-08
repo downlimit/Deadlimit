@@ -130,7 +130,11 @@ var report = new
     selectedCombos,
 };
 
-var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+var jsonOptions = new JsonSerializerOptions
+{
+    WriteIndented = true,
+    IncludeFields = true,
+};
 var reportPath = Path.Combine(outputPath, "report.json");
 File.WriteAllText(reportPath, JsonSerializer.Serialize(report, jsonOptions));
 Console.WriteLine(reportPath);
@@ -156,9 +160,34 @@ static object? DescribeRenderState(VfxRenderStateInfo state) =>
         {
             pixel.RasterizerStateDesc,
             pixel.DepthStencilStateDesc,
-            pixel.BlendStateDesc,
+            BlendStateDesc = DescribeBlendState(pixel.BlendStateDesc),
         }
         : null;
+
+static object? DescribeBlendState(RsBlendStateDesc? state)
+{
+    if (state is null)
+    {
+        return null;
+    }
+
+    var value = state.Value;
+    var targets = Enumerable.Range(0, 8).ToArray();
+    return new
+    {
+        value.AlphaToCoverageEnable,
+        value.IndependentBlendEnable,
+        BlendEnable = targets.Select(index => value.BlendEnable[index]).ToArray(),
+        SrgbWriteEnable = targets.Select(index => value.SrgbWriteEnable[index]).ToArray(),
+        SrcBlend = targets.Select(index => value.SrcBlend[index].ToString()).ToArray(),
+        DestBlend = targets.Select(index => value.DestBlend[index].ToString()).ToArray(),
+        SrcBlendAlpha = targets.Select(index => value.SrcBlendAlpha[index].ToString()).ToArray(),
+        DestBlendAlpha = targets.Select(index => value.DestBlendAlpha[index].ToString()).ToArray(),
+        BlendOp = targets.Select(index => value.BlendOp[index].ToString()).ToArray(),
+        BlendOpAlpha = targets.Select(index => value.BlendOpAlpha[index].ToString()).ToArray(),
+        RenderTargetWriteMask = targets.Select(index => value.RenderTargetWriteMask[index].ToString()).ToArray(),
+    };
+}
 
 static IReadOnlyDictionary<string, int> DecodeCombo(long comboId, IReadOnlyList<VfxCombo> definitions)
 {

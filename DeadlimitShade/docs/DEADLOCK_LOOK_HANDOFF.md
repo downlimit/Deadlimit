@@ -2,7 +2,8 @@
 
 Status: Milestone B lighting skeleton passed the fixed-scene Painter visual
 gate. The opaque combo-24 ordinary graph and optional dynamic-2 status delta
-plus alpha-test and sheen family deltas are complete; translucency is next.
+plus alpha-test, sheen and basic-translucency deltas are complete; glass is
+next.
 
 Updated: 2026-09-08.
 
@@ -256,12 +257,20 @@ additional lobe in both direct-light loops and the probe/environment path,
 while attenuating ordinary diffuse/specular for energy compensation. The
 direct sheen lobe stays outside the NPR specular quantizer.
 
+## Uber-shader decomposition stage 6 — 2026-09-08
+
+`docs/TRANSLUCENT_DELTA.md` identifies combo 88 as premultiplied basic
+translucency. `g_tColor.a` is angle-corrected opacity, metalness uses a separate
+texture, and the lit/fogged color is routed between two outputs by scene depth.
+The family keeps ordinary NPR lighting, omits depth-occluded rim and contains no
+scene-color refraction branch.
+
 ## Brief for the next Codex session
 
 Complete the static decomposition before further visual calibration:
 
 1. keep the fixed Ivy validation scene unchanged;
-2. reduce translucent, glass and advanced translucency to
+2. reduce glass and advanced translucency to
    material-family deltas in the recorded priority order;
 3. keep compatible environment/local-probe specular as an explicit missing
    base-look component until its inputs can be reproduced in Painter;
