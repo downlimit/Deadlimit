@@ -171,4 +171,5 @@ isolated in `docs/STATUS_PROXY_DELTA.md`. The next material-family delta is
 alpha test, documented in `docs/ALPHA_TEST_DELTA.md`; sheen is documented in
 `docs/SHEEN_DELTA.md`; basic translucency is documented in
 `docs/TRANSLUCENT_DELTA.md`; glass is documented in `docs/GLASS_DELTA.md`.
-Advanced translucency follows.
+Advanced translucency is documented in `docs/ADVANCED_TRANSLUCENCY_DELTA.md`.
+The prioritized pixel-family delta map is complete.

@@ -131,6 +131,8 @@ DeadlimitShade/
   depth routing for basic translucency.
 - `docs/GLASS_DELTA.md` traces screen-space glass transmission, depth validation
   and framebuffer blur.
+- `docs/ADVANCED_TRANSLUCENCY_DELTA.md` reduces advanced translucency to its
+  animated dual-mask cutout contract.
 
 ## v1 target
 

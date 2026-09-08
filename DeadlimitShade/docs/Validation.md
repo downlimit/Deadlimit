@@ -627,3 +627,16 @@ depth-stencil descriptor is absent. Static trace confirms `g_tGlass.r`
 transmission, retained opaque metalness, relative-depth rejection, nine
 depth-validated framebuffer taps, angle tint, diffuse attenuation and fog
 placement. No Painter approximation is claimed by this gate.
+
+## Uber-shader decomposition stage 8 — advanced-translucency static gate — 2026-09-08
+
+Retail static combo 32824 reports `S_ADVANCED_TRANSLUCENCY=1`,
+`S_ALPHA_TEST=1`, `S_USE_NPR_LIGHTING=1` and
+`S_USE_STATUS_EFFECTS_PROXY=1`, with 96 dynamic states and 64 shader files. Its
+dynamic-0 program is 80,056-byte SPIR-V with SHA-256
+`f96bcabb2e4303efa4beb6f661805d1bdc74d37e0b3db94fa399cc2bb1f78d71`.
+Depth and normalized blend state match alpha-test combo 56. Static comparison
+found eight added fields: a second mask, two UV selectors, two scroll speeds,
+two scroll quantizers and a blend mode. The recovered multiply/add/subtract
+mask result feeds the ordinary alpha-test gate and shared opaque NPR graph. No
+Painter approximation is claimed by this gate.

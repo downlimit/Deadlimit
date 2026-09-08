@@ -18,7 +18,9 @@ the optional dynamic-2 material modifier. `ALPHA_TEST_DELTA.md` captures the
 cutout/channel-layout delta and `SHEEN_DELTA.md` isolates the dedicated sheen
 lobes. `TRANSLUCENT_DELTA.md` records basic premultiplied translucency. The next
 family, screen-space glass, is documented in `GLASS_DELTA.md`. Advanced
-translucency is the final prioritized static target.
+translucency is documented in `ADVANCED_TRANSLUCENCY_DELTA.md`. The prioritized
+pixel-family map is complete; compatible environment/probe specular is the next
+base-look implementation target.
 
 ## Product contract
 

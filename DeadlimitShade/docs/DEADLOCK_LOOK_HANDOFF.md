@@ -2,8 +2,8 @@
 
 Status: Milestone B lighting skeleton passed the fixed-scene Painter visual
 gate. The opaque combo-24 ordinary graph and optional dynamic-2 status delta
-plus alpha-test, sheen and basic-translucency deltas are complete; glass is
-also complete. Advanced translucency is next.
+plus alpha-test, sheen, basic-translucency, glass and advanced-translucency
+deltas are complete. The prioritized pixel-family decomposition is complete.
 
 Updated: 2026-09-08.
 
@@ -274,20 +274,31 @@ adds the transmitted background to the ordinary NPR-lit surface before fog.
 This path depends on render-pass inputs unavailable to a Painter surface
 shader.
 
+## Uber-shader decomposition stage 8 — 2026-09-08
+
+`docs/ADVANCED_TRANSLUCENCY_DELTA.md` closes the prioritized family map. Combo
+32824 is an animated dual-mask cutout: independently scrolled `Color.A` and
+`AltTranslucency.R` combine by multiply, add or subtract, then feed the ordinary
+alpha-test gate. Surviving pixels use the shared opaque NPR graph. This selected
+family contains no framebuffer refraction or basic-translucent fog routing.
+
 ## Brief for the next Codex session
 
-Complete the static decomposition before further visual calibration:
+Resume visual reconstruction from the completed prioritized static map:
 
 1. keep the fixed Ivy validation scene unchanged;
-2. reduce advanced translucency to
-   material-family deltas in the recorded priority order;
-3. keep compatible environment/local-probe specular as an explicit missing
-   base-look component until its inputs can be reproduced in Painter;
-4. resume Milestone D visual calibration from the recovered graph and avoid
+2. reconstruct compatible environment/local-probe specular as an explicit
+   base-look term using controlled diagnostic inputs;
+3. validate that term independently under the fixed scene before reconnecting
+   retail maps;
+4. add optional alpha-test and sheen Painter families only when selected Ivy
+   materials or a captured reference requires them;
+5. keep advanced translucency, glass and status effects outside ordinary Ivy
+   calibration unless a matching material/reference activates them;
+6. resume Milestone D visual calibration from the recovered graph and avoid
    further unbounded lighting terms;
-5. keep retail assets, reflected shader source, SPP/FBX/DMX, decoded textures,
-   `.scratch` and `.worktrees`
-   outside commits.
+7. keep retail assets, reflected shader source, SPP/FBX/DMX, decoded textures,
+   `.scratch` and `.worktrees` outside commits.
 
 The next visual goal is recognisable Deadlock-style calibration across Ivy's
 skin, clothing, eyes, wings and accessories. Milestone B is the stable lighting

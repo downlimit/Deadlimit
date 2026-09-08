@@ -91,4 +91,4 @@ as a calibrated approximation and kept out of opaque Ivy parity claims.
 - **Blocked/unresolved:** live glass/cloak controls, framebuffer/depth binding
   semantics, exact render-pass ordering, fog inputs and Painter equivalence.
 
-The final prioritized material-family target is advanced translucency.
+Advanced translucency is documented in `ADVANCED_TRANSLUCENCY_DELTA.md`.
