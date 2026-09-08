@@ -1,0 +1,19 @@
+name: UI agent contract smoke
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  ui-agent-contract:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check repository-wide UI contract
+        shell: pwsh
+        run: internal/tests/ui-agent-contract-smoke.ps1
