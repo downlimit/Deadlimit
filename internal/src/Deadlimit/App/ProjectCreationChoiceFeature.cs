@@ -123,17 +123,39 @@ internal static class ProjectCreationChoiceFeature
             return;
         }
 
+        void ContinueAfterChoice(Action continuation)
+        {
+            if (form.IsDisposed || !form.IsHandleCreated)
+            {
+                return;
+            }
+
+            form.BeginInvoke((Action)(() =>
+            {
+                if (form.IsDisposed)
+                {
+                    return;
+                }
+
+                form.Activate();
+                continuation();
+            }));
+        }
+
         switch (dialog.Choice)
         {
             case ProjectEntryChoice.CreateProject:
-                foreach (var handler in createProjectHandlers)
+                ContinueAfterChoice(() =>
                 {
-                    handler(sender, EventArgs.Empty);
-                }
+                    foreach (var handler in createProjectHandlers)
+                    {
+                        handler(sender, EventArgs.Empty);
+                    }
+                });
                 break;
 
             case ProjectEntryChoice.ImportVpk:
-                SelectVpkImportSource(form);
+                ContinueAfterChoice(() => SelectVpkImportSource(form));
                 break;
         }
     }
@@ -285,7 +307,7 @@ internal static class ProjectCreationChoiceFeature
             ClientSize = new Size(470, 128);
             MaximizeBox = false;
             MinimizeBox = false;
-            ShowInTaskbar = false;
+            ShowInTaskbar = true;
             ShowIcon = false;
 
             BuildUi();
@@ -363,3 +385,5 @@ internal static class ProjectCreationChoiceFeature
         }
     }
 }
+
+

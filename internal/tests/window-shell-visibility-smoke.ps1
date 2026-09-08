@@ -41,4 +41,30 @@ if ($feature.Contains('StartupProgressForm.ShowInTaskbar = true', [StringCompari
     throw 'Startup progress window must remain excluded from the taskbar policy.'
 }
 
+$projectChoicePath = 'internal/src/Deadlimit/App/ProjectCreationChoiceFeature.cs'
+$projectLibraryPath = 'internal/src/Deadlimit/App/ProjectLibraryFeature.cs'
+$projectChoice = Get-Content -LiteralPath $projectChoicePath -Raw
+$projectLibrary = Get-Content -LiteralPath $projectLibraryPath -Raw
+
+if ($projectChoice.Contains('ShowInTaskbar = false;', [StringComparison]::Ordinal) -or
+    $projectLibrary.Contains('ShowInTaskbar = false;', [StringComparison]::Ordinal)) {
+    throw 'Project dialogs must be shell-visible before their first ShowDialog call.'
+}
+
+$requiredProjectDialogPatterns = @(
+    'ShowInTaskbar = true;',
+    'form.BeginInvoke((Action)(() =>',
+    'form.Activate();',
+    'ContinueAfterChoice(() => SelectVpkImportSource(form));'
+)
+foreach ($pattern in $requiredProjectDialogPatterns) {
+    if (-not $projectChoice.Contains($pattern, [StringComparison]::Ordinal)) {
+        throw "Project dialog focus contract is missing: $pattern"
+    }
+}
+
+if (([regex]::Matches($projectLibrary, 'ShowInTaskbar = true;')).Count -lt 3) {
+    throw 'New/Rename/Delete project dialogs must be shell-visible before first show.'
+}
+
 Write-Host 'Window shell visibility contract OK.'

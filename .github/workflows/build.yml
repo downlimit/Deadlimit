@@ -45,6 +45,9 @@ jobs:
       - name: UI localization smoke
         shell: pwsh
         run: internal/tests/ui-localization-smoke.ps1
+      - name: Window shell visibility smoke
+        shell: pwsh
+        run: internal/tests/window-shell-visibility-smoke.ps1
       - name: Verify Manager and updater contract
         shell: pwsh
         run: |
@@ -289,3 +292,4 @@ jobs:
           }
 
           if ($LASTEXITCODE -ne 0) { throw 'Rolling Deadlimit publication failed.' }
+
