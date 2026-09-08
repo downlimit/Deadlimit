@@ -84,6 +84,7 @@ public static class ProjectStore
     public static void Save(ProjectManifest manifest)
     {
         CanonicalizeProjectIdentity(manifest, manifest.ProjectFolder);
+        manifest.SchemaVersion = Math.Max(manifest.SchemaVersion, 4);
 
         var metadataFolder = GetMetadataFolder(manifest.ProjectFolder);
         Directory.CreateDirectory(metadataFolder);
@@ -208,6 +209,12 @@ public static class ProjectStore
         manifest.SourceDumpFolderName = SafePath.NormalizeRelative(
             string.IsNullOrWhiteSpace(manifest.SourceDumpFolderName) ? "0source" : manifest.SourceDumpFolderName,
             "Project source-dump folder");
+
+        if (manifest.Mode == ProjectMode.ImportedVpk && manifest.ImportedVpk is null)
+        {
+            throw new InvalidDataException(
+                "ImportedVpk project metadata is missing its imported VPK source contract.");
+        }
     }
 
     private static LocalSettings LoadSettings()
