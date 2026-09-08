@@ -28,7 +28,7 @@ internal sealed class BuildTestSuccessDialog : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
-        ShowInTaskbar = false;
+        ShowInTaskbar = true;
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
         Padding = Padding.Empty;
@@ -93,3 +93,4 @@ internal sealed class BuildTestSuccessDialog : Form
         CancelButton = okButton;
     }
 }
+

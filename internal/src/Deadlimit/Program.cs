@@ -102,7 +102,6 @@ internal static class Program
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        WindowShellVisibilityFeature.Attach();
 
         if (startupSmoke)
         {
@@ -413,3 +412,4 @@ internal static class Program
         return (Icon)source.Clone();
     }
 }
+
