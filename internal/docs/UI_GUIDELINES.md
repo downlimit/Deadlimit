@@ -1,5 +1,26 @@
 # Deadlimit UI guidelines
 
+## Shared controls
+
+Deadlimit Manager UI must look like one product, not a collection of one-off WinForms controls.
+
+- Reuse an existing shared control factory/component before constructing a one-off control with local dimensions or margins.
+- Normal Settings-row action buttons use `SettingsUiFactory.CreateActionButton()`.
+- Do not create a bare `new Button` for a normal Settings action unless the control is intentionally a different semantic class and the difference is documented.
+- Do not hard-code a second copy of an existing button size/margin/style in another feature file. Put reusable visual rules in a shared helper.
+- Adjacent controls with the same semantic role must use the same size, spacing, theme behavior and interaction states.
+
+## Dialogs and window ownership
+
+Interactive Deadlimit windows must have predictable ownership, z-order and taskbar behavior.
+
+- Modal windows must be shown with an explicit owner (`ShowDialog(owner)` or the equivalent owned custom dialog API).
+- New dialog forms use `StartPosition = FormStartPosition.CenterParent` unless there is a documented reason not to.
+- Interactive dialogs must not use `ShowInTaskbar = false`. The startup splash is the intentional exception.
+- Do not change `ShowInTaskbar`, ownership or other shell-presence flags after the window has already been shown; doing so can recreate handles and break z-order/focus.
+- If one modal flow closes one dialog and immediately opens another, schedule the next dialog after the first has fully closed and reactivate the owner first when needed.
+- Reuse the shared Deadlimit `MessageBox`/dialog patterns rather than introducing a visually independent confirmation window.
+
 ## Tooltips
 
 Tooltips must be readable as compact help, not rendered as one long sentence.
