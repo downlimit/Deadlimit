@@ -24,7 +24,7 @@ jobs:
             Write-Host 'TGA Settings UI is already present.'
             exit 0
           }
-          $nl = [Environment]::NewLine
+          $nl = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
           function Insert-After([string]$Anchor, [string[]]$Lines) {
             if (-not $script:text.Contains($Anchor)) { throw "Missing SettingsForm anchor: $Anchor" }
             $script:text = $script:text.Replace($Anchor, $Anchor + $nl + ($Lines -join $nl))
