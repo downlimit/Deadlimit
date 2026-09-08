@@ -535,7 +535,10 @@ internal sealed class OnlinePreparationSession : IDisposable
                 continue;
             }
 
-            var textureTarget = Path.Combine(_textureTargetFolder, Path.GetFileName(sourcePath));
+            var textureTarget = RetailTextureOverrideService.ResolveOnlineTextureTarget(
+                _projectFolder,
+                sourcePath,
+                _textureTargetFolder);
             CopyStable(sourcePath, textureTarget);
             _sourceHashes[sourcePath] = hash;
             RaiseUpdated(
