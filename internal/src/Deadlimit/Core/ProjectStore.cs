@@ -11,6 +11,7 @@ public sealed class ToolPathSettings
     public string UiLanguage { get; set; } = "en";
     public string UiTheme { get; set; } = "system";
     public bool ExtractHeroTextures { get; set; }
+    public bool ExportExtractedTexturesAsTga { get; set; }
 }
 
 public static class ProjectStore
@@ -141,6 +142,7 @@ public static class ProjectStore
             UiLanguage = NormalizeUiLanguage(settings.UiLanguage),
             UiTheme = NormalizeUiTheme(settings.UiTheme),
             ExtractHeroTextures = settings.ExtractHeroTextures,
+            ExportExtractedTexturesAsTga = settings.ExportExtractedTexturesAsTga,
         };
     }
 
@@ -154,6 +156,7 @@ public static class ProjectStore
         settings.UiLanguage = NormalizeUiLanguage(toolPaths.UiLanguage);
         settings.UiTheme = NormalizeUiTheme(toolPaths.UiTheme);
         settings.ExtractHeroTextures = toolPaths.ExtractHeroTextures;
+        settings.ExportExtractedTexturesAsTga = toolPaths.ExportExtractedTexturesAsTga;
         SaveSettings(settings);
     }
 
@@ -280,5 +283,6 @@ public static class ProjectStore
         public string UiLanguage { get; set; } = "en";
         public string UiTheme { get; set; } = "system";
         public bool ExtractHeroTextures { get; set; }
+        public bool ExportExtractedTexturesAsTga { get; set; }
     }
 }
