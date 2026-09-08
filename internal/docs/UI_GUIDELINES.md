@@ -9,6 +9,7 @@ Deadlimit Manager UI must look like one product, not a collection of one-off Win
 - Do not create a bare `new Button` for a normal Settings action unless the control is intentionally a different semantic class and the difference is documented.
 - Do not hard-code a second copy of an existing button size/margin/style in another feature file. Put reusable visual rules in a shared helper.
 - Adjacent controls with the same semantic role must use the same size, spacing, theme behavior and interaction states.
+- A button whose primary action is to open a dialog/options step before any operation starts must end with an ellipsis (`…`) in every localized label. Direct actions that execute immediately must not gain an ellipsis.
 
 ## Dialogs and window ownership
 
