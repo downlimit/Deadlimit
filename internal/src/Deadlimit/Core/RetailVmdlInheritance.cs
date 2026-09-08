@@ -62,6 +62,7 @@ public static class RetailVmdlInheritance
         ".exr",
         ".vtex",
     };
+
     public static string? FindRetailVmdl(ProjectManifest manifest)
     {
         var sourceRoot = SafePath.ResolveUnderRoot(
@@ -137,6 +138,17 @@ public static class RetailVmdlInheritance
             sourceFolder,
             sourceRoot,
             addonContentRoot);
+
+        if (ProjectStore.GetToolPathSettings().ExtractHeroTextures)
+        {
+            var textureTargets = RetailTextureOverrideService.BuildTargetIndex(sourceRoot);
+            var textureOverrides = RetailTextureOverrideService.ResolveProjectRootOverrides(
+                manifest,
+                textureTargets);
+            copied += RetailTextureOverrideService.StageProjectRootOverrides(
+                addonContentRoot,
+                textureOverrides);
+        }
 
         var destinationVmdl = Path.Combine(destinationFolder, Path.GetFileName(sourceVmdl));
         if (!File.Exists(destinationVmdl))
@@ -216,6 +228,7 @@ public static class RetailVmdlInheritance
         var normalizedPath = Path.GetFullPath(path);
         return normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
     }
+
     public static IReadOnlyList<RetailRenderMeshEntry> ReadRenderMeshes(string vmdlPath)
     {
         var text = File.ReadAllText(vmdlPath);
@@ -486,7 +499,7 @@ public static class RetailVmdlInheritance
             + insertion
             + materialGroupNode[arrayEnd..];
 
-        return new MaterialMergeResult(merged, existing.Length, 0 + additions.Length);
+        return new MaterialMergeResult(merged, existing.Length, additions.Length);
     }
 
     private static string CreateMaterialGroupList(IReadOnlyList<VmdlMaterialRemap> remaps)
