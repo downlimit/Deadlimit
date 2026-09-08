@@ -12,9 +12,9 @@ The full character uber-shader decomposition now has a reproducible first-stage
 permutation inventory in [`UBER_SHADER_PERMUTATION_MAP.md`](UBER_SHADER_PERMUTATION_MAP.md):
 16 static axes, 323 permitted static entries, 16 dynamic axes, and the
 prioritized opaque, alpha-test, sheen, translucent, glass and
-advanced-translucency families. `OPAQUE_OUTPUT_GRAPH.md` now traces the complete
-combo-24/dynamic-0 contribution topology; the next static delta is the optional
-dynamic-2 status proxy.
+advanced-translucency families. `OPAQUE_OUTPUT_GRAPH.md` traces the complete
+combo-24/dynamic-0 contribution topology and `STATUS_PROXY_DELTA.md` isolates
+the optional dynamic-2 material modifier. The next static target is alpha test.
 
 ## Product contract
 

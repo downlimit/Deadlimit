@@ -121,6 +121,8 @@ DeadlimitShade/
 - `docs/OPAQUE_OUTPUT_GRAPH.md` traces every final RGB contribution in the
   ordinary Ivy combo-24/dynamic-0 pixel program and records current Painter
   coverage.
+- `docs/STATUS_PROXY_DELTA.md` isolates the optional dynamic-2 status material
+  modifier from that ordinary opaque graph.
 
 ## v1 target
 

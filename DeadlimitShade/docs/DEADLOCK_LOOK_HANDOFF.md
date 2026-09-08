@@ -1,8 +1,8 @@
 # Deadlock-look investigation and continuation brief
 
 Status: Milestone B lighting skeleton passed the fixed-scene Painter visual
-gate. Uber-shader permutation mapping and the combo-24/dynamic-0 output graph
-are complete; the optional dynamic-2 status delta is next.
+gate. The opaque combo-24 ordinary graph and optional dynamic-2 status delta
+are complete; the alpha-test material-family delta is next.
 
 Updated: 2026-09-08.
 
@@ -230,20 +230,28 @@ identical after clamp for the fixed validation scene, so the prior visual PASS
 is unchanged. The correction prevents divergence in future higher-wrap
 profiles.
 
+## Uber-shader decomposition stage 3 — 2026-09-08
+
+`docs/STATUS_PROXY_DELTA.md` compares combo 24 dynamic 0 and 2. The status
+program changes prepared color, normal, metalness, roughness and self
+illumination through independently weighted UV/triplanar maps before rejoining
+the shared opaque lighting graph. It adds no status-specific light, specular
+lobe, rim lobe or final post-process term. Ordinary Ivy preview therefore keeps
+dynamic-0 semantics; implementing gameplay statuses is optional and requires
+effect-specific captures and inputs.
+
 ## Brief for the next Codex session
 
 Complete the static decomposition before further visual calibration:
 
 1. keep the fixed Ivy validation scene unchanged;
-2. compare combo-24 dynamic 2 against the completed dynamic-0 graph and isolate
-   status-only inputs/outputs;
-3. reduce alpha-test, sheen, translucent, glass and advanced translucency to
+2. reduce alpha-test, sheen, translucent, glass and advanced translucency to
    material-family deltas in the recorded priority order;
-4. keep compatible environment/local-probe specular as an explicit missing
+3. keep compatible environment/local-probe specular as an explicit missing
    base-look component until its inputs can be reproduced in Painter;
-5. resume Milestone D visual calibration from the recovered graph and avoid
+4. resume Milestone D visual calibration from the recovered graph and avoid
    further unbounded lighting terms;
-6. keep retail assets, reflected shader source, SPP/FBX/DMX, decoded textures,
+5. keep retail assets, reflected shader source, SPP/FBX/DMX, decoded textures,
    `.scratch` and `.worktrees`
    outside commits.
 

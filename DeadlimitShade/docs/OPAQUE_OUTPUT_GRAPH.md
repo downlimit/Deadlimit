@@ -247,6 +247,7 @@ own controlled reconstruction before it can return to Deadlimit Shaded.
   semantics, live shadow/probe/light resources, depth rim, compatible
   environment specular, tone mapping and pixel parity.
 
-The next static task is the dynamic-2 status-proxy delta. It must remain
-separate from the ordinary-look implementation unless a captured reference
-actually activates it.
+The dynamic-2 status-proxy delta is isolated in `STATUS_PROXY_DELTA.md`. It
+remains separate from the ordinary-look implementation unless a captured
+reference actually activates it. The next material-family target is alpha
+test.

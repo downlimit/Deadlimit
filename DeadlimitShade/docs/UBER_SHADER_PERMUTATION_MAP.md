@@ -166,5 +166,6 @@ Painter character preview.
   reduced to equations.
 
 The combo-24/dynamic-0 contribution topology is continued in
-`docs/OPAQUE_OUTPUT_GRAPH.md`. The next static delta is combo 24 / dynamic 2,
-kept separate from the ordinary character look.
+`docs/OPAQUE_OUTPUT_GRAPH.md`; its optional dynamic-2 material modifier is
+isolated in `docs/STATUS_PROXY_DELTA.md`. The next material-family delta is
+alpha test.

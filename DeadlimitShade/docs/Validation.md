@@ -564,3 +564,15 @@ Selected combo 24/26 reflected-source files written: 104
 This is a **confirmed by pipeline/runtime** inspector result over
 **confirmed static retail evidence**. It does not identify the dynamic state
 selected by a live game draw and introduces no calibrated values.
+
+## Uber-shader decomposition stage 3 — status static gate — 2026-09-08
+
+The current retail combo-24 dynamic programs were compared from inspector
+output. Dynamic 0 resolves to file 0 (76,732-byte SPIR-V, SHA-256
+`03af15c800051c118177d27a99b6cbfdd39b7b491e6fc2216611030afd490229`);
+dynamic 2 resolves to file 1 (88,520-byte SPIR-V, SHA-256
+`ea7d0bdb7d89b07422366dcd64fbaa0ec25acd427039b0774668dab86ecc71b0`).
+Their pixel render states are identical. The status program adds exactly 26
+named `_Globals_` fields and two interpolants, modifies prepared material
+properties, then rejoins the ordinary lighting graph. No visual approximation
+or Painter status mode was introduced.
