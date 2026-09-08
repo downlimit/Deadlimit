@@ -5,8 +5,9 @@ $agentsPath = Join-Path $repoRoot 'AGENTS.md'
 $guidelinesPath = Join-Path $repoRoot 'internal\docs\UI_GUIDELINES.md'
 $feedbackPath = Join-Path $repoRoot 'internal\src\Deadlimit\App\SettingsFeedbackFeature.cs'
 $factoryPath = Join-Path $repoRoot 'internal\src\Deadlimit\App\SettingsUiFactory.cs'
+$mainFormPath = Join-Path $repoRoot 'internal\src\Deadlimit\App\MainForm.cs'
 
-foreach ($path in @($agentsPath, $guidelinesPath, $feedbackPath, $factoryPath)) {
+foreach ($path in @($agentsPath, $guidelinesPath, $feedbackPath, $factoryPath, $mainFormPath)) {
     if (-not (Test-Path -LiteralPath $path)) {
         throw "Required UI contract file is missing: $path"
     }
@@ -17,6 +18,16 @@ foreach ($required in @('internal/docs/UI_GUIDELINES.md', 'SettingsUiFactory', '
     if (-not $agents.Contains($required)) {
         throw "AGENTS.md is missing required UI guidance token: $required"
     }
+}
+
+$guidelines = Get-Content -LiteralPath $guidelinesPath -Raw
+if (-not $guidelines.Contains('must end with an ellipsis (`…`)')) {
+    throw 'UI guidelines must document the dialog-action ellipsis convention.'
+}
+
+$mainForm = Get-Content -LiteralPath $mainFormPath -Raw
+if (-not $mainForm.Contains('UiText.T("EXTRACT HERO SOURCE…", "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ…")')) {
+    throw 'EXTRACT HERO SOURCE must keep the dialog-action ellipsis in both locales.'
 }
 
 $feedback = Get-Content -LiteralPath $feedbackPath -Raw
