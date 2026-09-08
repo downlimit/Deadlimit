@@ -26,6 +26,35 @@ program.Read(resourcePath, stream);
 var staticDefinitions = program.StaticComboArray.Select((definition, index) => DescribeDefinition(definition, index)).ToArray();
 var dynamicDefinitions = program.DynamicComboArray.Select((definition, index) => DescribeDefinition(definition, index)).ToArray();
 var availableStaticComboIds = program.StaticComboEntries.Keys.ToArray();
+var variables = program.VariableDescriptions.Select(variable => new
+{
+    variable.Name,
+    variableSource = variable.VariableSource.ToString(),
+    variableType = variable.VfxType.ToString(),
+    registerType = variable.RegisterType.ToString(),
+    variable.RegisterOffset,
+    variable.DescriptorSet,
+    variable.RegisterElements,
+    variable.ExtConstantBufferId,
+    variable.IntDefs,
+    variable.FloatDefs,
+}).ToArray();
+var externalConstantBuffers = program.ExtConstantBufferDescriptions.Select(buffer => new
+{
+    buffer.BlockIndex,
+    buffer.Name,
+    buffer.BufferSize,
+    buffer.Type,
+    buffer.BlockCrc,
+    variables = buffer.Variables.Select(variable => new
+    {
+        variable.Name,
+        variable.Offset,
+        variable.VectorSize,
+        variable.Depth,
+        variable.Length,
+    }).ToArray(),
+}).ToArray();
 
 var selectedCombos = new List<object>();
 foreach (var staticComboId in staticComboIds)
@@ -94,6 +123,8 @@ var report = new
     },
     staticDefinitions,
     dynamicDefinitions,
+    variables,
+    externalConstantBuffers,
     availableStaticComboCount = availableStaticComboIds.Length,
     availableStaticComboIds,
     selectedCombos,

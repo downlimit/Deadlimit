@@ -165,6 +165,6 @@ Painter character preview.
   probe, light and shadow buffers; post-processing; material families not yet
   reduced to equations.
 
-The next decomposition artifact is a complete combo-24/dynamic-0 output graph:
-every color contribution, gate, texture, buffer and final add/multiply ordered
-from material decode to pixel output.
+The combo-24/dynamic-0 contribution topology is continued in
+`docs/OPAQUE_OUTPUT_GRAPH.md`. The next static delta is combo 24 / dynamic 2,
+kept separate from the ordinary character look.

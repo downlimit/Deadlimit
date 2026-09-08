@@ -118,6 +118,9 @@ DeadlimitShade/
 - `docs/UBER_SHADER_PERMUTATION_MAP.md` records the current retail pixel-family
   map and the evidence-backed order for completing the uber-shader
   decomposition.
+- `docs/OPAQUE_OUTPUT_GRAPH.md` traces every final RGB contribution in the
+  ordinary Ivy combo-24/dynamic-0 pixel program and records current Painter
+  coverage.
 
 ## v1 target
 

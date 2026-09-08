@@ -68,7 +68,7 @@ Assert-True $heroShader.Contains('lightingBeforeRim * sample.steppedRim') 'Rim m
 Assert-True $heroShader.Contains('vec3(dot(baseColor, luminanceWeights))') 'Direct specular tint must derive from retail base color rather than Painter specular color.'
 Assert-True $heroShader.Contains('profile.directSpecularSteps') 'Direct specular must use the recovered stepped-specular control family.'
 Assert-True $heroShader.Contains('dlNprQuantizeWithExponent') 'Direct specular must quantize the GGX response instead of drawing a thresholded Phong highlight.'
-Assert-True $heroShader.Contains('(profile.directDiffuseWrap - 0.5) + sample.ndotl - 0.5') 'Wrapped direct diffuse must consume signed N dot L as recovered from retail.'
+Assert-True $heroShader.Contains('(profile.directDiffuseWrap - 0.5) + sample.lambert - 0.5') 'Wrapped direct diffuse must consume saturated N dot L as recovered from retail.'
 Assert-True (-not $heroShader.Contains('directSpecularThreshold')) 'The removed thresholded highlight approximation must not return.'
 Assert-True (-not $heroShader.Contains('rimLightingColor')) 'The removed independently colored rim approximation must not return.'
 Assert-True $heroShader.Contains('profile.rimLightingStrength * ambientOcclusion * rimMask') 'Hero rim lighting must use the retail AO and packed-rim-mask gates.'

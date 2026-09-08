@@ -1,8 +1,8 @@
 # Deadlock-look investigation and continuation brief
 
 Status: Milestone B lighting skeleton passed the fixed-scene Painter visual
-gate. Uber-shader decomposition stage 1 (permutation map) is complete; the
-combo-24/dynamic-0 output graph is next.
+gate. Uber-shader permutation mapping and the combo-24/dynamic-0 output graph
+are complete; the optional dynamic-2 status delta is next.
 
 Updated: 2026-09-08.
 
@@ -215,18 +215,34 @@ alpha-test, sheen, translucent, glass and advanced-translucency families have
 also been resolved and prioritized. No new visual approximation was introduced
 by this stage.
 
+## Uber-shader decomposition stage 2 — 2026-09-08
+
+`docs/OPAQUE_OUTPUT_GRAPH.md` traces every final RGB contribution in static 24,
+dynamic 0. It establishes the material preparation order, six-direction NPR
+bounce, sun and barn-light loops, shadows/cookies, direct diffuse/specular,
+rim, self illumination, standard environment/local-probe specular and final
+composition.
+
+The reverse trace corrected one earlier detail: retail saturates `dot(N,L)`
+before the direct-diffuse wrap in both light loops. Deadlimit now follows that
+operation. Ivy's calibrated `wrap = 0.48` makes the signed and saturated forms
+identical after clamp for the fixed validation scene, so the prior visual PASS
+is unchanged. The correction prevents divergence in future higher-wrap
+profiles.
+
 ## Brief for the next Codex session
 
 Complete the static decomposition before further visual calibration:
 
 1. keep the fixed Ivy validation scene unchanged;
-2. build the complete combo-24/dynamic-0 output graph from material decode to
-   final pixel output;
-3. label every texture, uniform-buffer field and light/probe/shadow dependency;
-4. compare dynamic 2 only after the ordinary graph is bounded, then proceed to
-   alpha-test, sheen, translucent, glass and advanced translucency;
-5. resume Milestone D visual calibration from the recovered graph rather than
-   adding further approximate lighting terms;
+2. compare combo-24 dynamic 2 against the completed dynamic-0 graph and isolate
+   status-only inputs/outputs;
+3. reduce alpha-test, sheen, translucent, glass and advanced translucency to
+   material-family deltas in the recorded priority order;
+4. keep compatible environment/local-probe specular as an explicit missing
+   base-look component until its inputs can be reproduced in Painter;
+5. resume Milestone D visual calibration from the recovered graph and avoid
+   further unbounded lighting terms;
 6. keep retail assets, reflected shader source, SPP/FBX/DMX, decoded textures,
    `.scratch` and `.worktrees`
    outside commits.

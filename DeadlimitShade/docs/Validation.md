@@ -262,8 +262,8 @@ normal directions. Keep Base Color, Metallic, Roughness and AO constant.
 6. Increase sharpness and confirm the transition contracts toward a step while
    remaining continuous at the midpoint.
 7. Set `Diffuse PBR Blend = 1`; final direct diffuse must return to clamped
-   Lambert response. The wrapped branch itself must continue to consume the
-   signed `N dot L` diagnostic, including its negative hemisphere.
+   Lambert response. The wrapped branch must consume that saturated Lambert
+   value, matching both recovered direct-light loops.
 8. Select Ivy with `Use Custom Calibration` disabled and record the resulting
    profile response.
 
@@ -533,6 +533,13 @@ Painter-light yaw and an obvious same-scene delta from Painter PBR. The earlier
 dual-highlight composition was discarded: ordinary Shaded now contains only
 Deadlimit direct diffuse, bounce, direct specular, rim and emissive. The current
 Ivy values remain calibrated approximations and do not claim pixel parity.
+
+The subsequent combo-24 output trace corrected the direct wrap input from raw
+signed `N dot L` to retail's saturated `N dot L`. An exhaustive 0.001-step
+sweep over `[-1,1]` at Ivy's calibrated `wrap = 0.48` produced maximum wrapped-
+response delta `0`; the fixed-scene visual result is therefore unchanged. The
+contract correction affects future profiles whose wrap allows a negative-
+hemisphere response.
 
 ## Uber-shader decomposition stage 1 — retail static gate — 2026-09-08
 

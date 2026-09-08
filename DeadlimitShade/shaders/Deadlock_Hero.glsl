@@ -529,7 +529,7 @@ DLDirectDiffuseSample dlEvaluateDirectDiffuse(
   sample.ndotl = dot(normal, lightDirection);
   sample.lambert = max(sample.ndotl, 0.0);
   sample.wrapped = clamp(
-    0.5 + 2.0 * ((profile.directDiffuseWrap - 0.5) + sample.ndotl - 0.5),
+    0.5 + 2.0 * ((profile.directDiffuseWrap - 0.5) + sample.lambert - 0.5),
     0.0,
     1.0);
   sample.quantized = dlNprQuantize(

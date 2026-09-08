@@ -3,6 +3,8 @@
 The cross-family static/dynamic inventory is maintained in
 `docs/UBER_SHADER_PERMUTATION_MAP.md`. This document continues to own the
 selected Ivy combo-24 equations and buffer evidence.
+The final ordinary contribution order is maintained in
+`docs/OPAQUE_OUTPUT_GRAPH.md`.
 
 This note records the first code-backed Deadlock material slice for issue #133.
 It is a recovery document, not a claim of a final Painter match.
@@ -131,15 +133,16 @@ p          = 1 / (1 - sharp)
 Q(x,sharp) = floor(x) + (f > 0.5 ? 1 - pow(0.5,1-p)*pow(wing,p)
                                      :     pow(0.5,1-p)*pow(wing,p))
 
-nRaw       = sat(0.5 + 2 * ((directWrap - 0.5) + NdotL - 0.5))
+lambert    = sat(dot(N, L))
+nRaw       = sat(0.5 + 2 * ((directWrap - 0.5) + lambert - 0.5))
 nNpr       = Q(nRaw, diffuseStepSharpness)
 directDiff = mix(ooDirectLightNormalization * nNpr,
-                 NdotL,
+                 lambert,
                  NPRDiffusePbrBlend)
 ```
 
 The direct branch uses `directDiff` only when both the per-view NPR gate and
-`g_bNPRDirectDiffuse` are true; otherwise it uses `NdotL`. The bounce branch
+`g_bNPRDirectDiffuse` are true; otherwise it uses saturated `NdotL`. The bounce branch
 has this confirmed structure:
 
 ```text
