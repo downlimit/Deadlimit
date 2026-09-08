@@ -53,7 +53,9 @@ public sealed class HeroExtractionService
 
         var vrfVersion = typeof(Resource).Assembly.GetName().Version?.ToString();
         var vpkPaths = GetVpkPaths(retailGameRoot);
-        var extractTextures = ProjectStore.GetToolPathSettings().ExtractHeroTextures;
+        var settings = ProjectStore.GetToolPathSettings();
+        var extractTextures = settings.ExtractHeroTextures;
+        var exportTgaCopies = settings.ExportExtractedTexturesAsTga;
 
         progress?.Report(new HeroExtractionProgress("Locating current retail hero model..."));
         var candidate = FindMainModel(vpkPaths, hero, progress, cancellationToken);
@@ -94,6 +96,13 @@ public sealed class HeroExtractionService
                     stagingFolder,
                     progress,
                     cancellationToken);
+            }
+
+            if (exportTgaCopies)
+            {
+                progress?.Report(new HeroExtractionProgress("Creating TGA copies of extracted PNG textures..."));
+                var tgaCopies = ExtractedTextureTgaService.CreateCopies(stagingFolder, cancellationToken);
+                progress?.Report(new HeroExtractionProgress($"Created {tgaCopies} TGA texture copy/copies."));
             }
 
             var extractedFileCount = Directory.EnumerateFiles(stagingFolder, "*", SearchOption.AllDirectories).Count();
