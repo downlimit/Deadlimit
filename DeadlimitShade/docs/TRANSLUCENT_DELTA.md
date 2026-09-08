@@ -85,4 +85,4 @@ must remain explicit pipeline gaps.
 - **Blocked/unresolved:** live opacity/angle values, exact dual-target consumer,
   unnamed fog/depth buffer fields and Painter equivalents.
 
-The next material-family target is glass.
+Glass is documented in `GLASS_DELTA.md`; advanced translucency follows.

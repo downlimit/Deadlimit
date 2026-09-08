@@ -615,3 +615,15 @@ named fields. Dataflow confirms a packed RGB+roughness sheen texture, direct
 sun/barn sheen, ordinary-lobe energy attenuation, BRDF-LUT layer 2 and a
 separate final probe/environment sheen contribution. No Painter sheen
 approximation or calibrated value is claimed by this gate.
+
+## Uber-shader decomposition stage 7 — glass static gate — 2026-09-08
+
+Retail static combo 280 reports `S_GLASS=1`, `S_USE_NPR_LIGHTING=1` and
+`S_USE_STATUS_EFFECTS_PROXY=1`, with 48 dynamic states and 24 shader files. Its
+dynamic-0 program is 94,040-byte SPIR-V with SHA-256
+`759df1583f2412853cf16e6e15ee62b9dbea034a61ae8fd8f334fb16616cfd0c`.
+Normalized blend factors match the premultiplied configuration and the explicit
+depth-stencil descriptor is absent. Static trace confirms `g_tGlass.r`
+transmission, retained opaque metalness, relative-depth rejection, nine
+depth-validated framebuffer taps, angle tint, diffuse attenuation and fog
+placement. No Painter approximation is claimed by this gate.

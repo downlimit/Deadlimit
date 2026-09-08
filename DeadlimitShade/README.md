@@ -129,6 +129,8 @@ DeadlimitShade/
   sheen lobes plus their energy compensation.
 - `docs/TRANSLUCENT_DELTA.md` records premultiplied opacity, fog and dual-target
   depth routing for basic translucency.
+- `docs/GLASS_DELTA.md` traces screen-space glass transmission, depth validation
+  and framebuffer blur.
 
 ## v1 target
 

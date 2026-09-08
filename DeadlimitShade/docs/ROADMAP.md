@@ -17,7 +17,8 @@ combo-24/dynamic-0 contribution topology and `STATUS_PROXY_DELTA.md` isolates
 the optional dynamic-2 material modifier. `ALPHA_TEST_DELTA.md` captures the
 cutout/channel-layout delta and `SHEEN_DELTA.md` isolates the dedicated sheen
 lobes. `TRANSLUCENT_DELTA.md` records basic premultiplied translucency. The next
-static target is glass.
+family, screen-space glass, is documented in `GLASS_DELTA.md`. Advanced
+translucency is the final prioritized static target.
 
 ## Product contract
 

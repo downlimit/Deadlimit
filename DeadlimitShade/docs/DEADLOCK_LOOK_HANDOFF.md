@@ -3,7 +3,7 @@
 Status: Milestone B lighting skeleton passed the fixed-scene Painter visual
 gate. The opaque combo-24 ordinary graph and optional dynamic-2 status delta
 plus alpha-test, sheen and basic-translucency deltas are complete; glass is
-next.
+also complete. Advanced translucency is next.
 
 Updated: 2026-09-08.
 
@@ -265,12 +265,21 @@ texture, and the lit/fogged color is routed between two outputs by scene depth.
 The family keeps ordinary NPR lighting, omits depth-occluded rim and contains no
 scene-color refraction branch.
 
+## Uber-shader decomposition stage 7 — 2026-09-08
+
+`docs/GLASS_DELTA.md` reduces combo 280 to a screen-space transmission family.
+`g_tGlass.r` attenuates ordinary diffuse and weights an angle-tinted framebuffer
+copy. Retail validates scene depth, gathers a center plus eight blur taps, then
+adds the transmitted background to the ordinary NPR-lit surface before fog.
+This path depends on render-pass inputs unavailable to a Painter surface
+shader.
+
 ## Brief for the next Codex session
 
 Complete the static decomposition before further visual calibration:
 
 1. keep the fixed Ivy validation scene unchanged;
-2. reduce glass and advanced translucency to
+2. reduce advanced translucency to
    material-family deltas in the recorded priority order;
 3. keep compatible environment/local-probe specular as an explicit missing
    base-look component until its inputs can be reproduced in Painter;
