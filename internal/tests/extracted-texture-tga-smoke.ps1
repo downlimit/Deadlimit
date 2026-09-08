@@ -2,10 +2,17 @@ $ErrorActionPreference = 'Stop'
 
 $assemblyPath = (Resolve-Path 'internal/src/Deadlimit/bin/Release/net10.0-windows/DeadlimitManager.dll').Path
 $outputRoot = Split-Path -Parent $assemblyPath
+$runtimeRid = switch ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture) {
+    ([Runtime.InteropServices.Architecture]::X64) { 'win-x64' }
+    ([Runtime.InteropServices.Architecture]::X86) { 'win-x86' }
+    ([Runtime.InteropServices.Architecture]::Arm64) { 'win-arm64' }
+    default { throw "Unsupported smoke-test process architecture: $([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture)" }
+}
 $nativeSkia = Get-ChildItem -LiteralPath $outputRoot -Filter 'libSkiaSharp.dll' -File -Recurse |
+    Where-Object { $_.FullName -match [Regex]::Escape("runtimes\$runtimeRid\native") } |
     Select-Object -First 1
 if ($null -eq $nativeSkia) {
-    throw "Packaged libSkiaSharp.dll was not found under build output: $outputRoot"
+    throw "Packaged $runtimeRid libSkiaSharp.dll was not found under build output: $outputRoot"
 }
 
 $nativeDir = Split-Path -Parent $nativeSkia.FullName
