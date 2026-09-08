@@ -1,0 +1,156 @@
+name: TGA Settings patch
+
+on:
+  push:
+    branches: [ feature/hero-texture-extraction ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-settings:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feature/hero-texture-extraction
+          fetch-depth: 0
+      - name: Patch SettingsForm
+        shell: pwsh
+        run: |
+          $path = 'internal/src/Deadlimit/App/SettingsForm.cs'
+          $text = Get-Content -LiteralPath $path -Raw
+          if ($text.Contains('_exportExtractedTexturesAsTgaCheck')) {
+            Write-Host 'TGA Settings UI is already present.'
+            exit 0
+          }
+
+          function Replace-Required([string]$Old, [string]$New) {
+            if (-not $script:text.Contains($Old)) {
+              throw "Required SettingsForm patch anchor was not found:`n$Old"
+            }
+            $script:text = $script:text.Replace($Old, $New)
+          }
+
+          Replace-Required @'
+    private readonly CheckBox _extractHeroTexturesCheck = new()
+    {
+        AutoSize = true,
+        Anchor = AnchorStyles.Left,
+    };
+'@ @'
+    private readonly CheckBox _extractHeroTexturesCheck = new()
+    {
+        AutoSize = true,
+        Anchor = AnchorStyles.Left,
+    };
+
+    private readonly CheckBox _exportExtractedTexturesAsTgaCheck = new()
+    {
+        AutoSize = true,
+        Anchor = AnchorStyles.Left,
+    };
+'@
+
+          Replace-Required @'
+    private readonly bool _initialExtractHeroTextures;
+'@ @'
+    private readonly bool _initialExtractHeroTextures;
+    private readonly bool _initialExportExtractedTexturesAsTga;
+'@
+
+          Replace-Required @'
+        _initialExtractHeroTextures = settings.ExtractHeroTextures;
+'@ @'
+        _initialExtractHeroTextures = settings.ExtractHeroTextures;
+        _initialExportExtractedTexturesAsTga = settings.ExportExtractedTexturesAsTga;
+'@
+
+          Replace-Required @'
+        _extractHeroTexturesCheck.Checked = settings.ExtractHeroTextures;
+'@ @'
+        _extractHeroTexturesCheck.Checked = settings.ExtractHeroTextures;
+        _exportExtractedTexturesAsTgaCheck.Checked = settings.ExportExtractedTexturesAsTga;
+'@
+
+          Replace-Required @'
+        _extractHeroTexturesCheck.CheckedChanged += (_, _) => UpdateSettingsActionState();
+'@ @'
+        _extractHeroTexturesCheck.CheckedChanged += (_, _) => UpdateSettingsActionState();
+        _exportExtractedTexturesAsTgaCheck.CheckedChanged += (_, _) => UpdateSettingsActionState();
+'@
+
+          Replace-Required @'
+            RowCount = 5,
+'@ @'
+            RowCount = 6,
+'@
+
+          Replace-Required @'
+        AddHeroTextureExtractionRow(preferencesGrid, 2);
+        AddCsdkCacheToolRow(preferencesGrid, 3);
+        AddScriptsFolderRow(preferencesGrid, 4);
+'@ @'
+        AddHeroTextureExtractionRow(preferencesGrid, 2);
+        AddExtractedTextureTgaRow(preferencesGrid, 3);
+        AddCsdkCacheToolRow(preferencesGrid, 4);
+        AddScriptsFolderRow(preferencesGrid, 5);
+'@
+
+          Replace-Required @'
+            || !string.Equals(_initialTheme, selectedTheme, StringComparison.OrdinalIgnoreCase)
+            || _initialExtractHeroTextures != _extractHeroTexturesCheck.Checked;
+'@ @'
+            || !string.Equals(_initialTheme, selectedTheme, StringComparison.OrdinalIgnoreCase)
+            || _initialExtractHeroTextures != _extractHeroTexturesCheck.Checked
+            || _initialExportExtractedTexturesAsTga != _exportExtractedTexturesAsTgaCheck.Checked;
+'@
+
+          $rowAnchor = @'
+    private void AddScriptsFolderRow(TableLayoutPanel grid, int row)
+'@
+          $rowMethod = @'
+    private void AddExtractedTextureTgaRow(TableLayoutPanel grid, int row)
+    {
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        grid.Controls.Add(CreatePreferenceCaption(UiText.T("Extracted texture copies", "Копии извлечённых текстур")), 0, row);
+        _exportExtractedTexturesAsTgaCheck.Text = UiText.T("Create TGA copies", "Создавать TGA-копии");
+        _exportExtractedTexturesAsTgaCheck.Margin = new Padding(0, 7, 8, 7);
+        _toolTip.SetToolTip(
+            _exportExtractedTexturesAsTgaCheck,
+            UiText.T(
+                "When enabled, EXTRACT HERO SOURCE creates a same-name 32-bit TGA beside every extracted PNG texture in 0source. Alpha is preserved. HDR/EXR textures are left unchanged. These TGA files are generated reference data and do not affect PREPARE.",
+                "Если включено, ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ создаёт рядом с каждой извлечённой PNG-текстурой в 0source одноимённую 32-битную TGA-копию. Альфа сохраняется. HDR/EXR остаются без изменений. Эти TGA — справочные сгенерированные файлы и не влияют на ПОДГОТОВКУ."));
+        grid.Controls.Add(_exportExtractedTexturesAsTgaCheck, 1, row);
+    }
+
+'@
+          Replace-Required $rowAnchor ($rowMethod + $rowAnchor)
+
+          Replace-Required @'
+        _extractHeroTexturesCheck.Enabled = !_busy;
+'@ @'
+        _extractHeroTexturesCheck.Enabled = !_busy;
+        _exportExtractedTexturesAsTgaCheck.Enabled = !_busy;
+'@
+
+          Replace-Required @'
+            UiTheme = selectedTheme,
+            ExtractHeroTextures = _extractHeroTexturesCheck.Checked,
+'@ @'
+            UiTheme = selectedTheme,
+            ExtractHeroTextures = _extractHeroTexturesCheck.Checked,
+            ExportExtractedTexturesAsTga = _exportExtractedTexturesAsTgaCheck.Checked,
+'@
+
+          Set-Content -LiteralPath $path -Value $text -Encoding utf8NoBOM
+
+          git config user.name 'Oleg Knyazev'
+          git config user.email 'down.limit@gmail.com'
+          git add -- $path
+          if (git diff --cached --quiet) {
+            Write-Host 'No SettingsForm changes were required.'
+            exit 0
+          }
+          git commit -s -m 'Expose optional TGA copies in Settings'
+          git push origin HEAD:feature/hero-texture-extraction
