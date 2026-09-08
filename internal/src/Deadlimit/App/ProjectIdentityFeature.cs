@@ -4,6 +4,11 @@ namespace Deadlimit.App;
 
 internal static class ProjectIdentityFeature
 {
+    private const int ProjectActionIconWidth = 34;
+    private const int ProjectActionHeight = 24;
+    private const int ProjectActionTextWidth = 148;
+    private const int ProjectActionGap = 6;
+
     public static void Attach(MainForm form)
     {
         var projectNameLabel = FindDescendants<Label>(form)
@@ -54,9 +59,10 @@ internal static class ProjectIdentityFeature
                 string.Equals(button.Text, "OPEN FOLDER", StringComparison.Ordinal)
                 || string.Equals(button.Text, "ОТКРЫТЬ ПАПКУ", StringComparison.Ordinal));
         var extractButton = FindDescendants<Button>(form)
-            .FirstOrDefault(button =>
-                string.Equals(button.Text, "EXTRACT HERO SOURCE", StringComparison.Ordinal)
-                || string.Equals(button.Text, "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ", StringComparison.Ordinal));
+            .FirstOrDefault(button => string.Equals(
+                button.Name,
+                UiControlNames.ExtractHeroSourceButton,
+                StringComparison.Ordinal));
         if (openFolderButton is null || extractButton is null)
         {
             return;
@@ -67,16 +73,18 @@ internal static class ProjectIdentityFeature
 
         openFolderButton.Text = "📂";
         openFolderButton.AutoSize = false;
-        openFolderButton.Width = 34;
-        openFolderButton.Height = 24;
+        openFolderButton.Width = ProjectActionIconWidth;
+        openFolderButton.Height = ProjectActionHeight;
         openFolderButton.Font = new Font("Segoe UI Emoji", 11F, FontStyle.Regular, GraphicsUnit.Point);
         openFolderButton.TextAlign = ContentAlignment.MiddleCenter;
-        openFolderButton.Margin = new Padding(0, 4, 6, 4);
+        openFolderButton.Margin = new Padding(0, 4, ProjectActionGap, 4);
         openFolderButton.Anchor = AnchorStyles.Left;
         openFolderButton.TabStop = false;
 
-        extractButton.Text = UiText.T("EXTRACT SOURCE", "ИЗВЛЕЧЬ ИСХОДНИКИ");
-        extractButton.AutoSize = true;
+        extractButton.Text = UiText.T("EXTRACT SOURCE…", "ИЗВЛЕЧЬ ИСХОДНИКИ…");
+        extractButton.AutoSize = false;
+        extractButton.Width = ProjectActionTextWidth;
+        extractButton.Height = ProjectActionHeight;
         extractButton.Margin = new Padding(0, 4, 0, 4);
         extractButton.Anchor = AnchorStyles.Left;
 
@@ -103,8 +111,8 @@ internal static class ProjectIdentityFeature
         toolTip.SetToolTip(
             extractButton,
             UiText.T(
-                "Save the project and extract the selected hero's current source resources from Deadlock game client into 0source.\n\nIf 0source already contains files, Deadlimit Manager asks whether to refresh it while keeping the previous copy as a hidden backup or to refresh without retaining that backup.",
-                "Сохранить проект и извлечь актуальные исходные ресурсы выбранного героя из игрового клиента Deadlock в 0source.\n\nЕсли в 0source уже есть файлы, Deadlimit Manager предложит обновить их с сохранением предыдущей копии в скрытый backup или обновить без сохранения backup."));
+                "Open extraction options for the selected hero, then extract the chosen current retail resources into 0source.\n\nThe dialog lets you choose textures, abilities / VFX, portraits and UI, and whether an existing 0source refresh keeps a backup.",
+                "Открыть параметры извлечения выбранного героя, затем извлечь выбранные актуальные retail-ресурсы в 0source.\n\nВ диалоге можно выбрать текстуры, способности / VFX, портреты и UI, а также сохранять ли backup при обновлении существующего 0source."));
     }
 
     private static void MoveSaveButtonUnderHeroRefresh(TableLayoutPanel grid)

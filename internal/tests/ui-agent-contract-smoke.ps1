@@ -6,8 +6,9 @@ $guidelinesPath = Join-Path $repoRoot 'internal\docs\UI_GUIDELINES.md'
 $feedbackPath = Join-Path $repoRoot 'internal\src\Deadlimit\App\SettingsFeedbackFeature.cs'
 $factoryPath = Join-Path $repoRoot 'internal\src\Deadlimit\App\SettingsUiFactory.cs'
 $mainFormPath = Join-Path $repoRoot 'internal\src\Deadlimit\App\MainForm.cs'
+$projectIdentityPath = Join-Path $repoRoot 'internal\src\Deadlimit\App\ProjectIdentityFeature.cs'
 
-foreach ($path in @($agentsPath, $guidelinesPath, $feedbackPath, $factoryPath, $mainFormPath)) {
+foreach ($path in @($agentsPath, $guidelinesPath, $feedbackPath, $factoryPath, $mainFormPath, $projectIdentityPath)) {
     if (-not (Test-Path -LiteralPath $path)) {
         throw "Required UI contract file is missing: $path"
     }
@@ -56,9 +57,6 @@ foreach ($forbidden in @('Width = 94', 'Height = 26')) {
     }
 }
 
-
-
-$mainForm = Get-Content -LiteralPath (Join-Path $repoRoot 'internal\src\Deadlimit\App\MainForm.cs') -Raw
 $buildFeature = Get-Content -LiteralPath (Join-Path $repoRoot 'internal\src\Deadlimit\App\BuildFeature.cs') -Raw
 if (-not $mainForm.Contains('Name = UiControlNames.ExtractHeroSourceButton')) {
     throw 'Hero source extraction button must expose its stable semantic control name.'
@@ -69,6 +67,25 @@ if (-not $buildFeature.Contains('UiControlNames.ExtractHeroSourceButton')) {
 if ($buildFeature.Contains('button.Text, "EXTRACT HERO SOURCE"') -or
     $buildFeature.Contains('button.Text, "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ"')) {
     throw 'BuildFeature must not depend on localized hero extraction button copy.'
+}
+
+$projectIdentity = Get-Content -LiteralPath $projectIdentityPath -Raw
+foreach ($required in @(
+    'UiControlNames.ExtractHeroSourceButton',
+    'UiText.T("EXTRACT SOURCE…", "ИЗВЛЕЧЬ ИСХОДНИКИ…")',
+    'ProjectActionIconWidth = 34',
+    'ProjectActionHeight = 24',
+    'ProjectActionTextWidth = 148',
+    'ProjectActionGap = 6',
+    'actions.Controls.Add(openFolderButton)',
+    'actions.Controls.Add(extractButton)')) {
+    if (-not $projectIdentity.Contains($required)) {
+        throw "Project action layout lost required contract token: $required"
+    }
+}
+if ($projectIdentity.Contains('string.Equals(button.Text, "EXTRACT HERO SOURCE"') -or
+    $projectIdentity.Contains('string.Equals(button.Text, "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ"')) {
+    throw 'ProjectIdentityFeature must not locate extraction by localized button copy.'
 }
 
 Write-Host 'UI agent contract smoke passed.'
