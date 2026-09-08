@@ -9,7 +9,7 @@ Read `internal/docs/UI_GUIDELINES.md` before creating or modifying Deadlimit Man
 ## UI invariants
 
 - Reuse existing shared UI factories/components before creating a one-off WinForms control. Do not introduce a visually unique button, tooltip, modal window, spacing rule, color, or font when a neighboring shared pattern already exists.
-- Settings action buttons must use the shared Settings action-button factory. Do not create a bare `new Button` for a normal Settings row action.
+- Settings action buttons must use `SettingsUiFactory.CreateActionButton()` (or another documented shared Settings factory for a different semantic button class). Do not create a bare `new Button` for a normal Settings row action.
 - Main-window and Settings tooltips must use `RichToolTip`. Do not add a native WinForms `ToolTip` for these surfaces.
 - Tooltip copy must follow the same information order: primary action first, modifier/alternate action second, warnings or side effects last. Keep paragraphs short and separate distinct ideas with blank lines. Localize both English and Russian copy through the existing UI text helpers.
 - New modal/dialog windows must follow the existing Deadlimit dialog contract: explicit owner, `StartPosition = CenterParent`, consistent theme/style, and normal taskbar/z-order behavior. Do not open ownerless `ShowDialog()` calls for interactive Deadlimit windows. Do not change taskbar/ownership flags after the window has already been shown.
