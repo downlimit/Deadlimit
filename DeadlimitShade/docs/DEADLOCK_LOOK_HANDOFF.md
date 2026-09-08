@@ -1,7 +1,8 @@
 # Deadlock-look investigation and continuation brief
 
 Status: Milestone B lighting skeleton passed the fixed-scene Painter visual
-gate; broader Ivy look calibration remains open for Milestone D.
+gate. Uber-shader decomposition stage 1 (permutation map) is complete; the
+combo-24/dynamic-0 output graph is next.
 
 Updated: 2026-09-08.
 
@@ -199,19 +200,35 @@ changed the signed `N dot L` diagnostic, confirming the Dota-style
 `Deadlimit_Hero_a445aa3e6dcd`; retail maps, restored eyes and the inverted-hull
 outline remained present.
 
+## Uber-shader decomposition stage 1 — 2026-09-08
+
+`docs/UBER_SHADER_PERMUTATION_MAP.md` now records the current retail PS
+topology with a reproducible read-only inspector. The VCS exposes 16 static
+axes, 323 permitted static entries and 16 dynamic axes. Ivy body, wings and
+gear all resolve to the ordinary opaque NPR/status family at static combo 24.
+That family contains 104 permitted dynamic states backed by 72 unique SPIR-V
+files.
+
+The map separates ordinary shading, status, distance-field occlusion,
+solid-outline, forward-normal and transient effect programs. Representative
+alpha-test, sheen, translucent, glass and advanced-translucency families have
+also been resolved and prioritized. No new visual approximation was introduced
+by this stage.
+
 ## Brief for the next Codex session
 
-Continue with Milestones C and D from this document:
+Complete the static decomposition before further visual calibration:
 
 1. keep the fixed Ivy validation scene unchanged;
-2. compare several orientations/crops against the recorded Deadlock Ivy
-   reference instead of tuning a single attractive surface;
-3. replace calibration values only when stronger static or runtime evidence is
-   available;
-4. investigate retail masks or material-family exceptions one mechanism at a
-   time, using the existing term-isolation views;
-5. stop repeated no-progress approaches at the diagnosed boundary;
-6. keep retail assets, SPP/FBX/DMX, decoded textures, `.scratch` and `.worktrees`
+2. build the complete combo-24/dynamic-0 output graph from material decode to
+   final pixel output;
+3. label every texture, uniform-buffer field and light/probe/shadow dependency;
+4. compare dynamic 2 only after the ordinary graph is bounded, then proceed to
+   alpha-test, sheen, translucent, glass and advanced translucency;
+5. resume Milestone D visual calibration from the recovered graph rather than
+   adding further approximate lighting terms;
+6. keep retail assets, reflected shader source, SPP/FBX/DMX, decoded textures,
+   `.scratch` and `.worktrees`
    outside commits.
 
 The next visual goal is recognisable Deadlock-style calibration across Ivy's

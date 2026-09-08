@@ -533,3 +533,27 @@ Painter-light yaw and an obvious same-scene delta from Painter PBR. The earlier
 dual-highlight composition was discarded: ordinary Shaded now contains only
 Deadlimit direct diffuse, bounce, direct specular, rim and emissive. The current
 Ivy values remain calibrated approximations and do not claim pixel parity.
+
+## Uber-shader decomposition stage 1 — retail static gate — 2026-09-08
+
+The read-only `Deadlimit.ShaderInspector` was run against current retail build
+`25173285` and `pbr_vulkan_60_ps.vcs` SHA-256
+`eceff13193baccd5310db90ac9b3dd36928d941753c98494e349fa9e29826930`.
+The generated report and reflected source were written below `.scratch`.
+
+Assertions passed:
+
+```text
+Static definitions: 16
+Permitted static entries: 323
+Dynamic definitions: 16
+Combo 24: 104 dynamic states / 72 shader files
+Combo 26: 32 dynamic states / 32 shader files
+Combo 24 dynamic 0 and 512: same PS file and render state
+Combo 26 dynamic 4 solid outline: 1,600-byte SPIR-V
+Selected combo 24/26 reflected-source files written: 104
+```
+
+This is a **confirmed by pipeline/runtime** inspector result over
+**confirmed static retail evidence**. It does not identify the dynamic state
+selected by a live game draw and introduces no calibrated values.

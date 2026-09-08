@@ -1,5 +1,9 @@
 # Reference Identity
 
+The cross-family static/dynamic inventory is maintained in
+`docs/UBER_SHADER_PERMUTATION_MAP.md`. This document continues to own the
+selected Ivy combo-24 equations and buffer evidence.
+
 This note records the first code-backed Deadlock material slice for issue #133.
 It is a recovery document, not a claim of a final Painter match.
 

@@ -28,6 +28,8 @@ DeadlimitShade/
 
     tools/
         Deadlimit.MeshPreview/
+        Deadlimit.RetailTextures/
+        Deadlimit.ShaderInspector/
         Generate-CharacterProfiles.ps1
         Install-DeadlimitPainterPlugin.ps1
         New-OutlinePreviewMesh.ps1
@@ -65,6 +67,12 @@ DeadlimitShade/
   reversed-winding shell for every mesh and writes the same format selected by
   the artist. FBX centimetres and glTF metres receive format-specific outline
   units. No separately installed DCC is used.
+- `tools/Deadlimit.RetailTextures` resolves one VMAT from the read-only retail
+  VPK, decodes its authoring inputs into a disposable cache and records the
+  exact material/texture provenance used by Painter Apply.
+- `tools/Deadlimit.ShaderInspector` reproducibly enumerates VCS static/dynamic
+  permutation metadata and selected SPIR-V identities from a read-only retail
+  VPK. Optional reflected source belongs in `.scratch` and stays outside Git.
 - `tools/New-OutlinePreviewMesh.ps1` appends a derived outline shell to an
   imported OBJ while retaining every source line, source material assignment,
   UV reference and vertex-color component. Its literal inverted-hull default
@@ -107,6 +115,9 @@ DeadlimitShade/
   open textured project to the Deadlock preview.
 - `docs/DOTA_PAINTER_SHADER_STUDY.md` records the local comparative shader
   evidence and its adoption boundary.
+- `docs/UBER_SHADER_PERMUTATION_MAP.md` records the current retail pixel-family
+  map and the evidence-backed order for completing the uber-shader
+  decomposition.
 
 ## v1 target
 

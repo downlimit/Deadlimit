@@ -8,6 +8,13 @@ The current Deadlock-look investigation status, rejected lighting experiment,
 milestone gates and next-session brief are recorded in
 [`DEADLOCK_LOOK_HANDOFF.md`](DEADLOCK_LOOK_HANDOFF.md).
 
+The full character uber-shader decomposition now has a reproducible first-stage
+permutation inventory in [`UBER_SHADER_PERMUTATION_MAP.md`](UBER_SHADER_PERMUTATION_MAP.md):
+16 static axes, 323 permitted static entries, 16 dynamic axes, and the
+prioritized opaque, alpha-test, sheen, translucent, glass and
+advanced-translucency families. The next decomposition stage is the complete
+combo-24/dynamic-0 output graph.
+
 ## Product contract
 
 Deadlimit Shade is the Deadlock material-authoring product under the Deadlimit umbrella. Its purpose is to make Substance 3D Painter a reliable preview and texture-authoring environment for current retail Deadlock character materials.
