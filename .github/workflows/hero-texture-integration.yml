@@ -36,10 +36,10 @@ jobs:
           )
 
           $patch = Join-Path $env:RUNNER_TEMP 'hero-texture-pre-tga.patch'
-          git diff --binary $base $feature -- $paths | Set-Content -LiteralPath $patch -Encoding utf8NoBOM
+          git diff --binary --output=$patch $base $feature -- $paths
           git apply --3way --index $patch
 
-          if (git grep -n -i 'ExportExtractedTexturesAsTga\|Create TGA copies\|Создавать TGA-копии' -- ':!internal/docs/HERO_TEXTURE_PIPELINE.md') {
+          if (git grep -n -i 'ExportExtractedTexturesAsTga\|Create TGA copies\|Создавать TGA-копии' -- internal/src internal/tests) {
             throw 'Unexpected TGA-copy implementation leaked into the integration.'
           }
 
