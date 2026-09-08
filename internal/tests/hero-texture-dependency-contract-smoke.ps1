@@ -47,4 +47,33 @@ if ($settings.ExtractHeroTextures) {
     throw 'ExtractHeroTextures must default to false.'
 }
 
-Write-Host 'Hero texture dependency contract smoke passed.'
+$settingsFormType = $assembly.GetType('Deadlimit.App.SettingsForm', $true)
+$instanceFlags = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance
+if ($null -eq $settingsFormType.GetField('_extractHeroTexturesCheck', $instanceFlags)) {
+    throw 'Settings hero texture checkbox is missing.'
+}
+if ($null -eq $settingsFormType.GetField('_initialExtractHeroTextures', $instanceFlags)) {
+    throw 'Settings initial hero texture state is missing.'
+}
+if ($null -eq $settingsFormType.GetMethod('AddHeroTextureExtractionRow', $instanceFlags)) {
+    throw 'Settings hero texture row builder is missing.'
+}
+
+$inheritance = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/RetailVmdlInheritance.cs' -Raw
+$online = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/OnlinePreparationSession.cs' -Raw
+$requiredInheritance = @(
+    'ProjectStore.GetToolPathSettings().ExtractHeroTextures',
+    'RetailTextureOverrideService.BuildTargetIndex(sourceRoot)',
+    'RetailTextureOverrideService.ResolveProjectRootOverrides(',
+    'RetailTextureOverrideService.StageProjectRootOverrides('
+)
+foreach ($pattern in $requiredInheritance) {
+    if (-not $inheritance.Contains($pattern, [StringComparison]::Ordinal)) {
+        throw "PREPARE retail texture wiring is missing: $pattern"
+    }
+}
+if (-not $online.Contains('RetailTextureOverrideService.ResolveOnlineTextureTarget(', [StringComparison]::Ordinal)) {
+    throw 'ONLINE PREPARATION retail texture target routing is missing.'
+}
+
+Write-Host 'Hero texture dependency and pipeline contract smoke passed.'
