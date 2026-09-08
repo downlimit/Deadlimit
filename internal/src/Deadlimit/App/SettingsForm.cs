@@ -36,6 +36,12 @@ internal sealed class SettingsForm : Form
         Width = 170,
     };
 
+    private readonly CheckBox _extractHeroTexturesCheck = new()
+    {
+        AutoSize = true,
+        Anchor = AnchorStyles.Left,
+    };
+
     private readonly RichToolTip _toolTip = new();
     private readonly ToolchainDependencyService _toolchain = new();
     private readonly bool _allowUnverifiedToolchainAutomation = ReleaseChannelPolicy.AllowsUnverifiedToolchainAutomation;
@@ -46,6 +52,7 @@ internal sealed class SettingsForm : Form
     private readonly string _initialRetailDeadlockRoot;
     private readonly string _initialLanguage;
     private readonly string _initialTheme;
+    private readonly bool _initialExtractHeroTextures;
 
     private ToolchainStatus _csdkStatus = new(ToolchainStatusKind.NotSpecified);
     private ToolchainStatus _deadlockToolsStatus = new(ToolchainStatusKind.NotSpecified);
@@ -66,6 +73,7 @@ internal sealed class SettingsForm : Form
         _initialRetailDeadlockRoot = settings.RetailDeadlockRoot.Trim();
         _initialLanguage = settings.UiLanguage;
         _initialTheme = settings.UiTheme;
+        _initialExtractHeroTextures = settings.ExtractHeroTextures;
 
         Text = UiText.T("Deadlimit Manager Settings", "Настройки Deadlimit Manager");
         Icon = LoadAppIcon();
@@ -80,6 +88,7 @@ internal sealed class SettingsForm : Form
         _deadlockToolsRootText.Text = settings.DeadlockToolsRoot;
         _retailDeadlockRootText.Text = settings.RetailDeadlockRoot;
         _projectsRootText.Text = settings.ProjectsRoot;
+        _extractHeroTexturesCheck.Checked = settings.ExtractHeroTextures;
 
         _languageCombo.Items.Add(new LanguageItem("en", "English"));
         _languageCombo.Items.Add(new LanguageItem("ru", "Русский"));
@@ -108,6 +117,7 @@ internal sealed class SettingsForm : Form
             PreviewTheme();
             UpdateSettingsActionState();
         };
+        _extractHeroTexturesCheck.CheckedChanged += (_, _) => UpdateSettingsActionState();
         _projectsRootText.TextChanged += (_, _) => UpdateSettingsActionState();
         _csdkRootText.TextChanged += (_, _) => UpdateSettingsActionState();
         _deadlockToolsRootText.TextChanged += (_, _) => UpdateSettingsActionState();
@@ -178,15 +188,16 @@ internal sealed class SettingsForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 2,
-            RowCount = 4,
+            RowCount = 5,
             Margin = new Padding(0, 10, 0, 0),
         };
         preferencesGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 200));
         preferencesGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
         AddLanguageRow(preferencesGrid, 0);
         AddThemeRow(preferencesGrid, 1);
-        AddCsdkCacheToolRow(preferencesGrid, 2);
-        AddScriptsFolderRow(preferencesGrid, 3);
+        AddHeroTextureExtractionRow(preferencesGrid, 2);
+        AddCsdkCacheToolRow(preferencesGrid, 3);
+        AddScriptsFolderRow(preferencesGrid, 4);
         content.Controls.Add(preferencesGrid);
         root.Controls.Add(content, 0, 0);
 
@@ -252,7 +263,8 @@ internal sealed class SettingsForm : Form
             || !SettingEquals(_initialDeadlockToolsRoot, _deadlockToolsRootText.Text)
             || !SettingEquals(_initialRetailDeadlockRoot, _retailDeadlockRootText.Text)
             || !string.Equals(_initialLanguage, selectedLanguage, StringComparison.OrdinalIgnoreCase)
-            || !string.Equals(_initialTheme, selectedTheme, StringComparison.OrdinalIgnoreCase);
+            || !string.Equals(_initialTheme, selectedTheme, StringComparison.OrdinalIgnoreCase)
+            || _initialExtractHeroTextures != _extractHeroTexturesCheck.Checked;
     }
 
     private void UpdateSettingsActionState()
@@ -540,6 +552,20 @@ internal sealed class SettingsForm : Form
         grid.Controls.Add(CreatePreferenceCaption(UiText.T("Interface theme", "Тема интерфейса")), 0, row);
         _themeCombo.Margin = new Padding(0, 4, 8, 4);
         grid.Controls.Add(_themeCombo, 1, row);
+    }
+
+    private void AddHeroTextureExtractionRow(TableLayoutPanel grid, int row)
+    {
+        grid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        grid.Controls.Add(CreatePreferenceCaption(UiText.T("Hero source extraction", "Извлечение исходников героя")), 0, row);
+        _extractHeroTexturesCheck.Text = UiText.T("Extract hero textures", "Извлекать текстуры персонажа");
+        _extractHeroTexturesCheck.Margin = new Padding(0, 7, 8, 7);
+        _toolTip.SetToolTip(
+            _extractHeroTexturesCheck,
+            UiText.T(
+                "When enabled, EXTRACT HERO SOURCE also follows the selected hero's retail material dependencies and extracts referenced textures into 0source. Project-root texture files with the original retail filename can then replace those textures during PREPARE.",
+                "Если включено, ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ также проходит по retail-материалам выбранного героя и извлекает связанные текстуры в 0source. После этого текстура в корне проекта с исходным retail-именем может заменить её при ПОДГОТОВКЕ."));
+        grid.Controls.Add(_extractHeroTexturesCheck, 1, row);
     }
 
     private void AddScriptsFolderRow(TableLayoutPanel grid, int row)
@@ -850,6 +876,7 @@ internal sealed class SettingsForm : Form
         }
         _languageCombo.Enabled = !_busy;
         _themeCombo.Enabled = !_busy;
+        _extractHeroTexturesCheck.Enabled = !_busy;
 
         _csdkPrimaryButton.Refresh();
         _deadlockToolsPrimaryButton.Refresh();
@@ -1393,6 +1420,7 @@ internal sealed class SettingsForm : Form
             RetailDeadlockRoot = _retailDeadlockRootText.Text.Trim(),
             UiLanguage = selectedLanguage,
             UiTheme = selectedTheme,
+            ExtractHeroTextures = _extractHeroTexturesCheck.Checked,
         };
 
         if (!ValidatePaths(candidate, out var error))

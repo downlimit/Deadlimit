@@ -1,0 +1,29 @@
+name: Hero texture pipeline smoke
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  hero-texture-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
+      - name: Build Deadlimit Manager
+        run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+      - name: Hero texture dependency and wiring smoke
+        shell: pwsh
+        run: internal/tests/hero-texture-dependency-contract-smoke.ps1
+      - name: Retail texture override resolution smoke
+        shell: pwsh
+        run: internal/tests/retail-texture-override-resolution-smoke.ps1
