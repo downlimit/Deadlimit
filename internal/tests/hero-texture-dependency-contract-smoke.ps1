@@ -5,11 +5,25 @@ $assembly = [Reflection.Assembly]::LoadFrom($assemblyPath)
 $type = $assembly.GetType('Deadlimit.Core.HeroExtractionService', $true)
 $flags = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Static
 
+$isBridge = $type.GetMethod('IsTextureDependencyBridgeReference', $flags)
 $isMaterial = $type.GetMethod('IsMaterialReference', $flags)
 $isTexture = $type.GetMethod('IsTextureReference', $flags)
 $toCompiled = $type.GetMethod('ToCompiledResourcePath', $flags)
-if ($null -eq $isMaterial -or $null -eq $isTexture -or $null -eq $toCompiled) {
+if ($null -eq $isBridge -or $null -eq $isMaterial -or $null -eq $isTexture -or $null -eq $toCompiled) {
     throw 'Hero extraction dependency helpers were not found.'
+}
+
+if (-not [bool]$isBridge.Invoke($null, @('models/heroes/ivy/ivy.vmdl'))) {
+    throw 'VMDL dependency bridge was not recognized.'
+}
+if (-not [bool]$isBridge.Invoke($null, @('models/heroes/ivy/ivy_model.vmesh'))) {
+    throw 'VMesh dependency bridge was not recognized.'
+}
+if (-not [bool]$isBridge.Invoke($null, @('models/heroes/ivy/ivy_model.vmesh_c'))) {
+    throw 'Compiled VMesh dependency bridge was not recognized.'
+}
+if ([bool]$isBridge.Invoke($null, @('models/heroes/ivy/asset_sequences.vagrp'))) {
+    throw 'Animation group was incorrectly classified as a texture dependency bridge.'
 }
 
 if (-not [bool]$isMaterial.Invoke($null, @('models/heroes/ivy/body.vmat'))) {
@@ -57,6 +71,11 @@ if ($null -eq $settingsFormType.GetField('_initialExtractHeroTextures', $instanc
 }
 if ($null -eq $settingsFormType.GetMethod('AddHeroTextureExtractionRow', $instanceFlags)) {
     throw 'Settings hero texture row builder is missing.'
+}
+
+$extraction = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/HeroExtractionService.cs' -Raw
+if (-not $extraction.Contains('CollectTextureDependencyReferences(', [StringComparison]::Ordinal)) {
+    throw 'Hero extraction does not traverse model/mesh bridges before material resolution.'
 }
 
 $inheritance = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/RetailVmdlInheritance.cs' -Raw
