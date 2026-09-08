@@ -4,10 +4,8 @@ internal static class SettingsUiFactory
 {
     internal static Button CreateActionButton() => new()
     {
-        AutoSize = false,
-        Width = 94,
-        Height = 26,
+        AutoSize = true,
         Anchor = AnchorStyles.Left,
-        Margin = new Padding(0, 3, 5, 3),
+        Margin = new Padding(0, 4, 0, 4),
     };
 }

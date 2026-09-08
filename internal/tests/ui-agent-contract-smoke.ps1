@@ -34,9 +34,14 @@ if ($feedback -match 'new\s+ToolTip\b') {
 }
 
 $factory = Get-Content -LiteralPath $factoryPath -Raw
-foreach ($required in @('Width = 94', 'Height = 26', 'Margin = new Padding(0, 3, 5, 3)')) {
+foreach ($required in @('AutoSize = true', 'Anchor = AnchorStyles.Left', 'Margin = new Padding(0, 4, 0, 4)')) {
     if (-not $factory.Contains($required)) {
         throw "Settings action-button factory lost expected shared style token: $required"
+    }
+}
+foreach ($forbidden in @('Width = 94', 'Height = 26')) {
+    if ($factory.Contains($forbidden)) {
+        throw "Settings action-button factory reintroduced the old fixed-size style: $forbidden"
     }
 }
 
