@@ -8,7 +8,26 @@ internal static class TgaImageEncoder
     {
         ArgumentNullException.ThrowIfNull(imageBytes);
 
-        using var bitmap = SKBitmap.Decode(imageBytes)
+        using var data = SKData.CreateCopy(imageBytes);
+        using var codec = SKCodec.Create(data)
+            ?? throw new InvalidDataException("The extracted image could not be decoded for TGA export.");
+
+        var sourceInfo = codec.Info;
+        if (sourceInfo.Width <= 0 || sourceInfo.Height <= 0)
+        {
+            throw new InvalidDataException("The decoded texture has invalid dimensions for TGA export.");
+        }
+
+        var alphaType = sourceInfo.AlphaType == SKAlphaType.Opaque
+            ? SKAlphaType.Opaque
+            : SKAlphaType.Unpremul;
+        var decodeInfo = new SKImageInfo(
+            sourceInfo.Width,
+            sourceInfo.Height,
+            SKColorType.Rgba8888,
+            alphaType);
+
+        using var bitmap = SKBitmap.Decode(codec, decodeInfo)
             ?? throw new InvalidDataException("The extracted image could not be decoded for TGA export.");
 
         return EncodeBitmap(bitmap);
