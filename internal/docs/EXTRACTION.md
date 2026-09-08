@@ -10,7 +10,7 @@ The artist-facing destination is:
 <ProjectFolder>\0source\
 ```
 
-The project root remains the artist-owned handoff area for edited DMX and PNG files. Extraction must never modify those root assets.
+The project root remains the artist-owned handoff area for edited DMX and texture files. Extraction must never modify those root assets.
 
 ## Current external evidence — 2026-08-22
 
@@ -21,12 +21,11 @@ Official ValveResourceFormat/Source 2 Viewer documentation distinguishes two pro
 
 The CLI documentation explicitly states that command-line arguments and behavior are not guaranteed to remain stable across releases.
 
-The current NuGet package checked on 2026-08-22 is:
+The current pinned NuGet package is:
 
 ```text
 ValveResourceFormat 20.0.6980
 Target: .NET 10
-Published: 2026-08-17
 ```
 
 ValveResourceFormat exposes the VPK/resource parsing and decompilation primitives directly as a .NET library, including ValvePak `Package`, `Resource`, `GameFileLoader`, `FileExtract`, and texture extraction.
@@ -47,17 +46,31 @@ Consequences:
 ```text
 saved Deadlimit Manager project
 → EXTRACT HERO SOURCE
+→ choose per-run extraction options
 → open current retail VPK(s) through ValveResourceFormat/ValvePak
 → discover a hero .vmdl_c candidate
 → decompile its resource folder into hidden staging
+→ optionally resolve hero material/texture dependencies
+→ optionally resolve the selected hero's ability visual dependencies
 → verify that files were actually produced
 → publish staging as 0source
-→ persist discovered retail paths/version/timestamp/count
+→ persist discovered retail paths/version/timestamp/count and the extraction options used
 ```
 
-Deadlimit uses the configured Deadlock location. The **Find** action in Settings
-can discover Steam library locations through the registry,
-`libraryfolders.vdf`, and common fixed-drive layouts. A typical candidate is:
+The extraction options are intentionally **not global Settings**. Every extraction opens the same dialog with:
+
+- `Extract textures` / `Извлекать текстуры`;
+- `Extract abilities` / `Извлекать способности`.
+
+The action buttons keep the existing refresh semantics:
+
+- `YES / ДА` — run extraction and preserve the previous `0source` as the hidden backup;
+- `YES, NO BACKUP / ДА, БЕЗ БЭКАПА` — run the same extraction, then delete the previous backup only after the new extraction succeeds;
+- `NO / НЕТ` — cancel.
+
+The dialog is shown even when `0source` does not exist yet. In that case the no-backup action is disabled because there is no previous extraction to discard.
+
+Deadlimit uses the configured Deadlock location. The **Find** action in Settings can discover Steam library locations through the registry, `libraryfolders.vdf`, and common fixed-drive layouts. A typical candidate is:
 
 ```text
 <SteamLibrary>\steamapps\common\Project8Staging\game\citadel\pak01_dir.vpk
@@ -75,15 +88,48 @@ models/heroes_staging/
 
 An exact normalized hero-model filename receives the strongest score. This remains discovery logic rather than a hardcoded hero path.
 
-## Resource decompilation
+## Base resource decompilation
 
-For each VPK entry in the discovered hero resource folder:
+For each selected VPK entry in the discovered hero resource folder:
 
 - uncompiled files are copied as raw bytes;
 - compiled Source 2 resources are read as `Resource`;
 - generic supported resources are decompiled through `FileExtract`;
-- textures use `TextureExtract`;
+- textures use `TextureExtract` only when `Extract textures` is enabled;
 - additional and sub-files emitted by the decompiler are preserved.
+
+When `Extract textures` is off, `.vtex/.vtex_c` entries physically located inside the hero resource folder are skipped as well. The checkbox therefore controls actual texture extraction, not only the external dependency pass.
+
+## Texture option
+
+When `Extract textures` is enabled, Deadlimit additionally follows the selected hero model/mesh dependency chain to referenced VMAT resources and then to referenced VTEX resources across the current retail VPK set.
+
+The resulting decoded texture content and the referenced materials are written into `0source` at their resource-relative paths. The last successful extraction records that textures were included. Downstream retail-texture override routing uses this project fact rather than a global application preference.
+
+This is a targeted model/material/texture closure. It is not a claim that every possible Source 2 dependency type has been traversed.
+
+## Ability option
+
+When `Extract abilities` is enabled, Deadlimit resolves the selected hero through the current retail VData instead of guessing ability folders by hero name:
+
+```text
+selected retail hero model
+→ scripts/heroes.vdata
+→ m_mapBoundAbilities
+→ scripts/abilities.vdata
+→ bound ability definitions
+→ _base / _multibase inheritance
+→ visual resource references
+→ recursive Source 2 visual dependencies
+```
+
+The current visual dependency scope includes particle systems, models, meshes, materials, snapshots/physics resources and animation-related resources used by those ability definitions.
+
+If `Extract abilities` is enabled while `Extract textures` is off, VTEX resources are excluded from both direct ability roots and recursive ability dependency traversal.
+
+If **both checkboxes are enabled**, ability VTEX references and texture dependencies are included as well. Duplicate dependencies shared by the hero model and an ability are naturally deduplicated by resource path during resolution/writing.
+
+This ability resolver is deliberately based on `m_mapBoundAbilities` for the selected hero. It must not broaden into all abilities or all resources whose path happens to contain the hero name.
 
 ## Local validation — 2026-08-22
 
@@ -96,9 +142,7 @@ Observed result:
 - the output visibly included the main `.vmdl` plus many `.dmx` files, including animation-related DMX resources;
 - no separate `Source2Viewer-CLI.exe` was required.
 
-This confirms that the in-process ValveResourceFormat path can discover the selected retail hero and produce a substantial decompiled source package in the expected destination.
-
-This observation does **not** yet prove complete dependency closure. The screenshot validates the hero model folder and its decompiled files, but does not by itself prove that every required material, texture, shared mesh, skeleton, or other dependency outside that folder has been included.
+This confirms the base in-process ValveResourceFormat extraction path. The newly added per-run texture/ability selection and hero-bound ability dependency closure still require live retail validation before being treated as practically confirmed for all heroes.
 
 ## Refresh safety
 
@@ -110,9 +154,10 @@ Refresh uses a publish-after-success rule:
 2. require at least one output file;
 3. move the current `0source` to hidden `.deadlimit\0source.previous`;
 4. move staging into `0source`;
-5. if the final move fails, attempt to restore the previous extraction.
+5. if the final move fails, attempt to restore the previous extraction;
+6. only after a successful publish, `YES, NO BACKUP` may delete `.deadlimit\0source.previous`.
 
-The artist's root DMX/PNG files remain outside this transaction.
+The artist's root assets remain outside this transaction.
 
 ## Persisted extraction facts
 
@@ -122,9 +167,11 @@ The artist's root DMX/PNG files remain outside this transaction.
 - source VPK path;
 - last extraction timestamp;
 - pinned/runtime ValveResourceFormat version string (the property currently retains the historical `Source2ViewerVersion` name);
-- extracted file count.
+- extracted file count;
+- whether the last successful extraction included textures;
+- whether the last successful extraction included abilities.
 
-The field name should be migrated later when schema migration work exists; preserving compatibility is more important than renaming it during this first extraction validation.
+These last-run flags are project facts, not persistent defaults for the next extraction dialog.
 
 ## Evidence status
 
@@ -132,19 +179,22 @@ The field name should be migrated later when schema migration work exists; prese
 
 - Source 2 Viewer GUI and Source2Viewer-CLI are separate binaries;
 - CLI argument stability is not guaranteed;
-- ValveResourceFormat 20.0.6980 is available as a .NET 10 NuGet package and exposes in-process extraction APIs.
+- ValveResourceFormat exposes in-process extraction APIs used by Deadlimit;
+- current Deadlock hero data exposes hero-bound abilities through `m_mapBoundAbilities`.
 
 ### Confirmed by our pipeline
 
-- embedded ValveResourceFormat extraction runs without requiring Source2Viewer-CLI;
+- embedded ValveResourceFormat base extraction runs without requiring Source2Viewer-CLI;
 - current retail VPK discovery found the selected hero source;
 - `0source` was populated successfully with the decompiled hero model folder;
 - the resulting hero folder included a main VMDL and many DMX files.
 
-### Hypotheses requiring validation
+### Implemented, awaiting live retail validation
 
-- hero discovery scoring selects the intended current retail main model across other heroes, not only the current tested project;
-- decompiling only the discovered hero resource folder includes every material/texture/shared dependency needed by the full authoring workflow;
-- shared dependencies outside that folder can be identified and added generically if later stages prove they are missing.
+- per-run texture and ability extraction options;
+- skipping all hero-folder VTEX resources when textures are disabled;
+- selected-hero `m_mapBoundAbilities` resolution through `abilities.vdata`;
+- recursive visual dependency extraction for selected abilities;
+- inclusion of ability textures only when both ability and texture extraction are enabled.
 
-Do not generalize dependency closure until those dependencies are exercised by Prepare/authoring or inspected explicitly.
+Do not generalize the new ability/dependency closure across heroes until it has been exercised against current retail data.

@@ -24,6 +24,9 @@ jobs:
       - name: Hero texture dependency and wiring smoke
         shell: pwsh
         run: internal/tests/hero-texture-dependency-contract-smoke.ps1
+      - name: Hero ability extraction contract smoke
+        shell: pwsh
+        run: internal/tests/hero-ability-extraction-contract-smoke.ps1
       - name: Retail texture override resolution smoke
         shell: pwsh
         run: internal/tests/retail-texture-override-resolution-smoke.ps1

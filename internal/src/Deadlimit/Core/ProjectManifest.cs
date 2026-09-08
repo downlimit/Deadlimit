@@ -49,6 +49,8 @@ public sealed class ProjectManifest
     public DateTimeOffset? LastSourceExtractionUtc { get; set; }
     public string? Source2ViewerVersion { get; set; }
     public int? ExtractedSourceFileCount { get; set; }
+    public bool LastSourceExtractionIncludedTextures { get; set; }
+    public bool LastSourceExtractionIncludedAbilities { get; set; }
 
     public string? SourceVmdl { get; set; }
     public string? CompiledVmdl { get; set; }

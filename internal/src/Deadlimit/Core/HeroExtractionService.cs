@@ -14,7 +14,7 @@ public sealed record HeroExtractionResult(
     int ExtractedFileCount,
     string? Source2ViewerVersion);
 
-public sealed class HeroExtractionService
+public sealed partial class HeroExtractionService
 {
     private readonly DeadlimitPaths _paths;
 
@@ -27,10 +27,21 @@ public sealed class HeroExtractionService
         ProjectManifest manifest,
         IProgress<HeroExtractionProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
-        Task.Run(() => Extract(manifest, progress, cancellationToken), cancellationToken);
+        ExtractAsync(manifest, HeroExtractionOptions.SourceOnly, progress, cancellationToken);
+
+    public Task<HeroExtractionResult> ExtractAsync(
+        ProjectManifest manifest,
+        HeroExtractionOptions options,
+        IProgress<HeroExtractionProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return Task.Run(() => Extract(manifest, options, progress, cancellationToken), cancellationToken);
+    }
 
     private HeroExtractionResult Extract(
         ProjectManifest manifest,
+        HeroExtractionOptions options,
         IProgress<HeroExtractionProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -53,7 +64,6 @@ public sealed class HeroExtractionService
 
         var vrfVersion = typeof(Resource).Assembly.GetName().Version?.ToString();
         var vpkPaths = GetVpkPaths(retailGameRoot);
-        var extractTextures = ProjectStore.GetToolPathSettings().ExtractHeroTextures;
 
         progress?.Report(new HeroExtractionProgress("Locating current retail hero model..."));
         var candidate = FindMainModel(vpkPaths, hero, progress, cancellationToken);
@@ -83,15 +93,27 @@ public sealed class HeroExtractionService
                 candidate.VpkPath,
                 resourceFolder,
                 stagingFolder,
+                options.ExtractTextures,
                 progress,
                 cancellationToken);
 
-            if (extractTextures)
+            if (options.ExtractTextures)
             {
                 ExtractHeroTextureDependencies(
                     vpkPaths,
                     candidate,
                     stagingFolder,
+                    progress,
+                    cancellationToken);
+            }
+
+            if (options.ExtractAbilities)
+            {
+                ExtractHeroAbilityDependencies(
+                    vpkPaths,
+                    candidate,
+                    stagingFolder,
+                    options.ExtractTextures,
                     progress,
                     cancellationToken);
             }
@@ -116,12 +138,18 @@ public sealed class HeroExtractionService
             manifest.LastSourceExtractionUtc = DateTimeOffset.UtcNow;
             manifest.Source2ViewerVersion = vrfVersion is null ? "ValveResourceFormat" : $"ValveResourceFormat {vrfVersion}";
             manifest.ExtractedSourceFileCount = extractedFileCount;
+            manifest.LastSourceExtractionIncludedTextures = options.ExtractTextures;
+            manifest.LastSourceExtractionIncludedAbilities = options.ExtractAbilities;
             ProjectStore.Save(manifest);
 
-            progress?.Report(new HeroExtractionProgress(
-                extractTextures
-                    ? "Hero source and texture extraction complete."
-                    : "Hero source extraction complete."));
+            var completionMessage = (options.ExtractTextures, options.ExtractAbilities) switch
+            {
+                (true, true) => "Hero source, textures and abilities extraction complete.",
+                (true, false) => "Hero source and texture extraction complete.",
+                (false, true) => "Hero source and abilities extraction complete.",
+                _ => "Hero source extraction complete.",
+            };
+            progress?.Report(new HeroExtractionProgress(completionMessage));
 
             return new HeroExtractionResult(
                 candidate.ResourcePath,
@@ -571,6 +599,7 @@ public sealed class HeroExtractionService
         string vpkPath,
         string resourceFolder,
         string outputRoot,
+        bool includeTextures,
         IProgress<HeroExtractionProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -584,6 +613,7 @@ public sealed class HeroExtractionService
             .SelectMany(group => group.Value)
             .Select(entry => (Entry: entry, Path: NormalizeResourcePath(entry.GetFullPath())))
             .Where(item => item.Path.StartsWith(resourceFolder, StringComparison.OrdinalIgnoreCase))
+            .Where(item => includeTextures || !IsTextureReference(item.Path))
             .OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 

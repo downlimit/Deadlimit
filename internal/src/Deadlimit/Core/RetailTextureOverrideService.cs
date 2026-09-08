@@ -61,7 +61,9 @@ public static class RetailTextureOverrideService
         ProjectManifest manifest,
         IReadOnlyList<RetailTextureTarget> targets)
     {
-        if (!Directory.Exists(manifest.ProjectFolder) || targets.Count == 0)
+        if (!manifest.LastSourceExtractionIncludedTextures
+            || !Directory.Exists(manifest.ProjectFolder)
+            || targets.Count == 0)
         {
             return Array.Empty<RetailTextureOverride>();
         }
@@ -159,13 +161,8 @@ public static class RetailTextureOverrideService
         string defaultTextureTargetFolder)
     {
         var defaultTarget = Path.Combine(defaultTextureTargetFolder, Path.GetFileName(artistSourcePath));
-        if (!ProjectStore.GetToolPathSettings().ExtractHeroTextures)
-        {
-            return defaultTarget;
-        }
-
         var manifest = ProjectStore.TryLoad(projectFolder);
-        if (manifest is null)
+        if (manifest is null || !manifest.LastSourceExtractionIncludedTextures)
         {
             return defaultTarget;
         }
