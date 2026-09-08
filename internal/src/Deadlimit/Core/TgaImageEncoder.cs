@@ -4,10 +4,12 @@ namespace Deadlimit.Core;
 
 internal static class TgaImageEncoder
 {
-    public static byte[] EncodePng(byte[] pngBytes)
+    public static byte[] EncodeImage(byte[] imageBytes)
     {
-        using var bitmap = SKBitmap.Decode(pngBytes)
-            ?? throw new InvalidDataException("The extracted PNG could not be decoded for TGA export.");
+        ArgumentNullException.ThrowIfNull(imageBytes);
+
+        using var bitmap = SKBitmap.Decode(imageBytes)
+            ?? throw new InvalidDataException("The extracted image could not be decoded for TGA export.");
 
         return EncodeBitmap(bitmap);
     }
