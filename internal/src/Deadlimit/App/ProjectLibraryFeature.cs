@@ -1032,7 +1032,7 @@ internal static class ProjectLibraryFeature
             ClientSize = new Size(430, 132);
             MaximizeBox = false;
             MinimizeBox = false;
-            ShowInTaskbar = false;
+            ShowInTaskbar = true;
             ShowIcon = false;
 
             BuildUi();
@@ -1180,7 +1180,7 @@ internal static class ProjectLibraryFeature
             ClientSize = new Size(430, 132);
             MaximizeBox = false;
             MinimizeBox = false;
-            ShowInTaskbar = false;
+            ShowInTaskbar = true;
             ShowIcon = false;
 
             BuildUi();
@@ -1386,7 +1386,7 @@ internal static class ProjectLibraryFeature
             ClientSize = new Size(500, 190);
             MaximizeBox = false;
             MinimizeBox = false;
-            ShowInTaskbar = false;
+            ShowInTaskbar = true;
             ShowIcon = false;
 
             BuildUi();
@@ -1524,3 +1524,4 @@ internal static class ProjectLibraryFeature
         return true;
     }
 }
+
