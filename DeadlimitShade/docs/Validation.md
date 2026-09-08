@@ -588,3 +588,15 @@ six added `_Globals_` fields: a separate metalness texture and five cutout
 controls. The recovered coverage equation uses vertex alpha, color alpha,
 view-angle correction and distance boost before discard. No Painter visual or
 calibrated alpha value is claimed by this gate.
+
+## Uber-shader decomposition stage 5 — sheen static gate — 2026-09-08
+
+Retail static combo 152 reports `S_SHEEN=1`, `S_USE_NPR_LIGHTING=1` and
+`S_USE_STATUS_EFFECTS_PROXY=1`, with 104 dynamic states and 72 shader files.
+Its dynamic-0 program is 81,856-byte SPIR-V with SHA-256
+`2566cb636c7a76a79d690497786ce14ce7fd7cafd5d87ecc266745fb7b0e73a0`;
+its render state matches ordinary combo 24. Static comparison found five added
+named fields. Dataflow confirms a packed RGB+roughness sheen texture, direct
+sun/barn sheen, ordinary-lobe energy attenuation, BRDF-LUT layer 2 and a
+separate final probe/environment sheen contribution. No Painter sheen
+approximation or calibrated value is claimed by this gate.

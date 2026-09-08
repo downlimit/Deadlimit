@@ -15,7 +15,8 @@ prioritized opaque, alpha-test, sheen, translucent, glass and
 advanced-translucency families. `OPAQUE_OUTPUT_GRAPH.md` traces the complete
 combo-24/dynamic-0 contribution topology and `STATUS_PROXY_DELTA.md` isolates
 the optional dynamic-2 material modifier. `ALPHA_TEST_DELTA.md` captures the
-cutout/channel-layout delta. The next static target is sheen.
+cutout/channel-layout delta and `SHEEN_DELTA.md` isolates the dedicated sheen
+lobes. The next static target is translucency.
 
 ## Product contract
 

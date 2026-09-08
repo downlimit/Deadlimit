@@ -2,7 +2,7 @@
 
 Status: Milestone B lighting skeleton passed the fixed-scene Painter visual
 gate. The opaque combo-24 ordinary graph and optional dynamic-2 status delta
-and alpha-test family delta are complete; the sheen family is next.
+plus alpha-test and sheen family deltas are complete; translucency is next.
 
 Updated: 2026-09-08.
 
@@ -248,12 +248,20 @@ opacity and reads metalness from `g_tMetalness.r`. Coverage combines texture
 alpha, vertex alpha, a view-angle term and a distance boost before discard;
 surviving pixels rejoin the ordinary opaque lighting graph.
 
+## Uber-shader decomposition stage 5 — 2026-09-08
+
+`docs/SHEEN_DELTA.md` proves combo 152 is a dedicated sheen BRDF family. Its
+packed texture provides RGB color and alpha roughness. Retail evaluates the
+additional lobe in both direct-light loops and the probe/environment path,
+while attenuating ordinary diffuse/specular for energy compensation. The
+direct sheen lobe stays outside the NPR specular quantizer.
+
 ## Brief for the next Codex session
 
 Complete the static decomposition before further visual calibration:
 
 1. keep the fixed Ivy validation scene unchanged;
-2. reduce sheen, translucent, glass and advanced translucency to
+2. reduce translucent, glass and advanced translucency to
    material-family deltas in the recorded priority order;
 3. keep compatible environment/local-probe specular as an explicit missing
    base-look component until its inputs can be reproduced in Painter;

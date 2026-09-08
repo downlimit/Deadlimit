@@ -125,6 +125,8 @@ DeadlimitShade/
   modifier from that ordinary opaque graph.
 - `docs/ALPHA_TEST_DELTA.md` records the alpha-test discard equation and its
   separate opacity/metalness channel layout.
+- `docs/SHEEN_DELTA.md` isolates the dedicated direct and probe/environment
+  sheen lobes plus their energy compensation.
 
 ## v1 target
 

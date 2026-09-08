@@ -7,6 +7,8 @@ The final ordinary contribution order is maintained in
 `docs/OPAQUE_OUTPUT_GRAPH.md`.
 The optional status-material modifier is isolated in
 `docs/STATUS_PROXY_DELTA.md`.
+Alpha-test and sheen family changes are maintained in
+`docs/ALPHA_TEST_DELTA.md` and `docs/SHEEN_DELTA.md`.
 The alpha-tested channel layout and discard equation are isolated in
 `docs/ALPHA_TEST_DELTA.md`.
 

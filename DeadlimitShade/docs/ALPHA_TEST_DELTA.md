@@ -106,4 +106,4 @@ stage.
 - **Blocked/unresolved:** live threshold/angle/distance values, generic per-view
   source names, material-by-material alpha-test usage and visual parity.
 
-The next material-family target is sheen.
+The sheen family is continued in `SHEEN_DELTA.md`; translucency follows.
