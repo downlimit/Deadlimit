@@ -60,6 +60,9 @@ $settings = [Activator]::CreateInstance($settingsType)
 if ($settings.ExtractHeroTextures) {
     throw 'ExtractHeroTextures must default to false.'
 }
+if ($settings.ExportExtractedTexturesAsTga) {
+    throw 'ExportExtractedTexturesAsTga must default to false.'
+}
 
 $settingsFormType = $assembly.GetType('Deadlimit.App.SettingsForm', $true)
 $instanceFlags = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance
@@ -72,10 +75,22 @@ if ($null -eq $settingsFormType.GetField('_initialExtractHeroTextures', $instanc
 if ($null -eq $settingsFormType.GetMethod('AddHeroTextureExtractionRow', $instanceFlags)) {
     throw 'Settings hero texture row builder is missing.'
 }
+if ($null -eq $settingsFormType.GetField('_exportExtractedTexturesAsTgaCheck', $instanceFlags)) {
+    throw 'Settings extracted texture TGA checkbox is missing.'
+}
+if ($null -eq $settingsFormType.GetField('_initialExportExtractedTexturesAsTga', $instanceFlags)) {
+    throw 'Settings initial extracted texture TGA state is missing.'
+}
+if ($null -eq $settingsFormType.GetMethod('AddExtractedTextureTgaRow', $instanceFlags)) {
+    throw 'Settings extracted texture TGA row builder is missing.'
+}
 
 $extraction = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/HeroExtractionService.cs' -Raw
 if (-not $extraction.Contains('CollectTextureDependencyReferences(', [StringComparison]::Ordinal)) {
     throw 'Hero extraction does not traverse model/mesh bridges before material resolution.'
+}
+if (-not $extraction.Contains('ExtractedTextureTgaService.CreateCopies(', [StringComparison]::Ordinal)) {
+    throw 'Hero extraction does not create optional TGA copies inside the extraction transaction.'
 }
 
 $inheritance = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/RetailVmdlInheritance.cs' -Raw
