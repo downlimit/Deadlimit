@@ -153,6 +153,49 @@ public static class RetailTextureOverrideService
         return staged;
     }
 
+    public static string ResolveOnlineTextureTarget(
+        string projectFolder,
+        string artistSourcePath,
+        string defaultTextureTargetFolder)
+    {
+        var defaultTarget = Path.Combine(defaultTextureTargetFolder, Path.GetFileName(artistSourcePath));
+        if (!ProjectStore.GetToolPathSettings().ExtractHeroTextures)
+        {
+            return defaultTarget;
+        }
+
+        var manifest = ProjectStore.TryLoad(projectFolder);
+        if (manifest is null)
+        {
+            return defaultTarget;
+        }
+
+        var sourceRoot = SafePath.ResolveUnderRoot(
+            manifest.ProjectFolder,
+            manifest.SourceDumpFolderName,
+            "Project source-dump folder");
+        var overrides = ResolveProjectRootOverrides(manifest, BuildTargetIndex(sourceRoot));
+        var fullArtistSourcePath = Path.GetFullPath(artistSourcePath);
+        var replacement = overrides.FirstOrDefault(candidate => string.Equals(
+            Path.GetFullPath(candidate.ArtistSourcePath),
+            fullArtistSourcePath,
+            StringComparison.OrdinalIgnoreCase));
+        if (replacement is null)
+        {
+            return defaultTarget;
+        }
+
+        var addonContentRoot = new DirectoryInfo(defaultTextureTargetFolder)
+            .Parent?.Parent?.Parent?.FullName
+            ?? throw new InvalidOperationException(
+                $"Online texture target folder is not under an addon content root: {defaultTextureTargetFolder}");
+
+        return SafePath.ResolveUnderRoot(
+            addonContentRoot,
+            replacement.StagedSourceResourcePath.Replace('/', Path.DirectorySeparatorChar),
+            "Online retail texture override destination");
+    }
+
     private static bool IsRetailTextureSourceReference(string resourcePath)
     {
         if (resourcePath.Length == 0 || resourcePath.Contains(':', StringComparison.Ordinal))
