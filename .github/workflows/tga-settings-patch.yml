@@ -34,7 +34,6 @@ jobs:
             $script:text = $script:text.Replace($Old, $New)
           }
 
-          Insert-After '    private readonly CheckBox _extractHeroTexturesCheck = new()' @()
           $fieldAnchor = '    private readonly CheckBox _extractHeroTexturesCheck = new()' + $nl + '    {' + $nl + '        AutoSize = true,' + $nl + '        Anchor = AnchorStyles.Left,' + $nl + '    };'
           Replace-One $fieldAnchor ($fieldAnchor + $nl + $nl + (@(
             '    private readonly CheckBox _exportExtractedTexturesAsTgaCheck = new()'
