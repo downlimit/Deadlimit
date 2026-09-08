@@ -1,9 +1,9 @@
 # Deadlock-look investigation and continuation brief
 
-Status: Milestone B lighting skeleton visually passed in Painter; retail-look
-calibration remains open.
+Status: Milestone B lighting skeleton passed the fixed-scene Painter visual
+gate; broader Ivy look calibration remains open for Milestone D.
 
-Updated: 2026-09-07.
+Updated: 2026-09-08.
 
 ## Purpose
 
@@ -164,15 +164,15 @@ evidence requires it.
 Done when character selection changes data rather than relying on Ivy-specific
 branches in the common shader.
 
-## Milestone B result — 2026-09-07
+## Milestone B result — 2026-09-08
 
 The failed six-file lighting/sampler experiment was preserved as stash evidence
 before implementation resumed from the accepted `e865f17` behavior. It was not
 used as the new execution baseline.
 
 `Deadlock_Hero.glsl` now composes three independently visible terms in the final
-shaded path: quantized NPR direct diffuse, stepped direct specular and a cool
-view-dependent rim. `Lighting Inputs -> Diagnostic Neutral` removes retail-map
+shaded path: quantized NPR direct diffuse, stepped direct specular and a
+retail-mask-gated view-dependent rim. `Lighting Inputs -> Diagnostic Neutral` removes retail-map
 variation while the new Direct Diffuse, Direct Specular, Rim, NPR Composite and
 Painter PBR Baseline views isolate the lighting skeleton. The same shader path
 then reconnects Base Color, Normal, Roughness, Metallic, AO, eye vertex color
@@ -185,10 +185,19 @@ outline together. The diagnostic contact sheet showed each lighting term in
 isolation and an obvious same-scene delta between the NPR composite and Painter
 PBR baseline. No cyan/blue/checker sampler failure was present.
 
-The exact scene and capture hashes are recorded in `docs/Validation.md`. The Ivy
-lighting values remain **calibrated approximation** values. This result proves
-the composition and authoring usefulness; it does not claim retail runtime
-constants or full Deadlock parity.
+The exact scene is recorded in `docs/Validation.md`. The Ivy lighting values
+remain **calibrated approximation** values. The failed dual-highlight result
+was traced to simultaneous Painter environment specular and Deadlimit direct
+specular. Painter IBL specular is now excluded from ordinary Shaded.
+
+A fresh Computer Use A/B on 2026-09-08 used the same explicit camera,
+environment and exposure. It showed readable retail color, a broad NPR diffuse
+break, restrained stepped copper highlights, a masked rim and an obvious delta
+from Painter PBR. Rotating the Painter environment from 145 to 235 degrees
+changed the signed `N dot L` diagnostic, confirming the Dota-style
+`uniform_main_light` yaw path. The final embedded runtime shader was
+`Deadlimit_Hero_a445aa3e6dcd`; retail maps, restored eyes and the inverted-hull
+outline remained present.
 
 ## Brief for the next Codex session
 

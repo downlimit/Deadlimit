@@ -117,12 +117,6 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None):
     return r"""
 (function() {
   alg.resources.refreshShelves();
-  var heroResources = alg.resources.findResources("*", "*Deadlock_Hero*");
-  var outlineResources = alg.resources.findResources("*", "*Deadlock_Outline*");
-  if (heroResources.length !== 1 || outlineResources.length !== 1) {
-    throw new Error("Deadlimit Hero/Outline shader resources must each resolve once");
-  }
-
   var current = alg.shaders.shaderInstancesToObject();
   var names = Object.keys(current.shaders);
   if (names.length === 0) {
@@ -227,7 +221,9 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None):
       dl_vertex_color_multiply: binding.vertexColorMultiply,
       dl_retail_color: binding.color,
       dl_retail_normal_roughness: binding.normalRoughness,
-      dl_retail_ambient_occlusion: binding.ambientOcclusion
+      dl_retail_ambient_occlusion: binding.ambientOcclusion,
+      dl_retail_tint_rim: binding.tintRim,
+      dl_retail_npr_transmissive: binding.nprTransmissive
     });
   });
   return JSON.stringify({
@@ -263,6 +259,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self.character_combo.setObjectName("DeadlimitCharacter")
         for profile in _profiles():
             self.character_combo.addItem(profile["displayName"], profile)
+        self.character_combo.currentIndexChanged.connect(self._update_preview_button)
 
         self.preview_combo = QtWidgets.QComboBox(self)
         self.preview_combo.setObjectName("DeadlimitPreviewView")
@@ -276,7 +273,10 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
                 ("Direct Specular", 12),
                 ("Rim Contribution", 13),
                 ("NPR Lighting Composite", 14),
-                ("Painter PBR Baseline", 15)):
+                ("Painter PBR Baseline", 15),
+                ("Retail Rim Mask", 16),
+                ("NPR Bounce", 17),
+                ("Retail NPR Transmissive", 18)):
             self.preview_combo.addItem(label, value)
         self.preview_combo.currentIndexChanged.connect(self._set_preview_view)
 
@@ -286,7 +286,14 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self.lighting_input_combo.addItem("Diagnostic Neutral", 1)
         self.lighting_input_combo.currentIndexChanged.connect(self._set_preview_view)
 
-        self.apply_button = QtWidgets.QPushButton("Apply Deadlimit", self)
+        self.instructions_label = QtWidgets.QLabel(
+            "Open a textured FBX, GLB or glTF project, choose a character, then "
+            "click Preview as Deadlock. Source meshes and retail files stay unchanged.",
+            self)
+        self.instructions_label.setObjectName("DeadlimitQuickStart")
+        self.instructions_label.setWordWrap(True)
+
+        self.apply_button = QtWidgets.QPushButton("Preview as Deadlock", self)
         self.apply_button.setObjectName("ApplyDeadlimit")
         self.apply_button.setMinimumHeight(36)
         self.apply_button.clicked.connect(self.apply_deadlimit)
@@ -294,7 +301,8 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self.progress.setRange(0, 0)
         self.progress.setVisible(False)
         self.progress.setTextVisible(False)
-        self.status_label = QtWidgets.QLabel("Ready", self)
+        self.status_label = QtWidgets.QLabel(
+            "Ready — one click builds a disposable Deadlock preview.", self)
         self.status_label.setObjectName("DeadlimitApplyStatus")
         self.status_label.setWordWrap(True)
 
@@ -303,11 +311,17 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         form.addRow("Lighting Inputs", self.lighting_input_combo)
         form.addRow("Deadlimit View", self.preview_combo)
         layout = QtWidgets.QVBoxLayout(self)
+        layout.addWidget(self.instructions_label)
         layout.addLayout(form)
         layout.addWidget(self.apply_button)
         layout.addWidget(self.progress)
         layout.addWidget(self.status_label)
         layout.addStretch(1)
+        self._update_preview_button()
+
+    def _update_preview_button(self, _index=None):
+        character = self.character_combo.currentText() or "character"
+        self.apply_button.setText("Preview {} as Deadlock".format(character))
 
     def _set_busy(self, busy, text):
         self.character_combo.setEnabled(not busy)
@@ -442,7 +456,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
                 self._source_mesh = current_mesh
         source_mesh = self._source_mesh
         if source_mesh.suffix.lower() not in (".fbx", ".glb", ".gltf"):
-            self.status_label.setText("Apply Deadlimit requires an FBX, GLB or glTF project mesh.")
+            self.status_label.setText("Deadlock preview requires an FBX, GLB or glTF project mesh.")
             return
 
         profile = self.character_combo.currentData()
@@ -608,14 +622,24 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
                 urls = {}
                 for texture in manifest["textures"]:
                     parameter = texture["parameter"]
-                    if parameter not in ("g_tColor", "g_tNormalRoughness", "g_tAmbientOcclusion"):
+                    if parameter not in (
+                            "g_tColor",
+                            "g_tNormalRoughness",
+                            "g_tAmbientOcclusion",
+                            "g_tTintMaskRimLightMask",
+                            "g_tNprTransmissiveColor"):
                         continue
                     resource_name = "Deadlimit_{}_{}_{}_{}".format(
                         self._selected_profile["key"], index, output.name[:8], parameter)
                     resource = _import_or_reuse_project_texture(
                         output / texture["file"], resource_name)
                     urls[parameter] = resource.identifier().url()
-                required = ("g_tColor", "g_tNormalRoughness", "g_tAmbientOcclusion")
+                required = (
+                    "g_tColor",
+                    "g_tNormalRoughness",
+                    "g_tAmbientOcclusion",
+                    "g_tTintMaskRimLightMask",
+                    "g_tNprTransmissiveColor")
                 if any(name not in urls for name in required):
                     raise RuntimeError("retail material is missing a required preview input")
                 self._retail_bindings[binding["textureSet"]] = {
@@ -626,6 +650,8 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
                     "color": urls["g_tColor"],
                     "normalRoughness": urls["g_tNormalRoughness"],
                     "ambientOcclusion": urls["g_tAmbientOcclusion"],
+                    "tintRim": urls["g_tTintMaskRimLightMask"],
+                    "nprTransmissive": urls["g_tNprTransmissiveColor"],
                 }
             self._phase = "Step 4/4 · Assigning Hero, retail and Outline shaders"
             self.status_label.setText(self._phase)
@@ -647,13 +673,11 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
                 self._selected_profile, self._retail_bindings, shader_urls))
             summary = json.loads(result)
             profile = self._selected_profile
-            color = profile["outline"]["color"]
             elapsed_seconds = self._elapsed.elapsed() / 1000.0
             self._status_timer.stop()
-            self._set_busy(False, "Applied {} in {:.1f} s · {:.1f} mm · RGB {:.3f}, {:.3f}, {:.3f}".format(
-                profile["displayName"], elapsed_seconds,
-                profile["outline"]["widthMillimeters"],
-                color[0], color[1], color[2]))
+            self._set_busy(False, "Deadlock preview active for {} · {:.1f} s · calibrated Painter approximation\n"
+                                  "Use Deadlimit View for diffuse, specular, rim and bounce diagnostics.".format(
+                profile["displayName"], elapsed_seconds))
             self.setProperty("deadlimitLastApply", json.dumps(summary))
         except Exception as exc:
             self._status_timer.stop()

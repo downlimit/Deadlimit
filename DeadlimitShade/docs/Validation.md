@@ -262,7 +262,8 @@ normal directions. Keep Base Color, Metallic, Roughness and AO constant.
 6. Increase sharpness and confirm the transition contracts toward a step while
    remaining continuous at the midpoint.
 7. Set `Diffuse PBR Blend = 1`; final direct diffuse must return to clamped
-   Lambert response.
+   Lambert response. The wrapped branch itself must continue to consume the
+   signed `N dot L` diagnostic, including its negative hemisphere.
 8. Select Ivy with `Use Custom Calibration` disabled and record the resulting
    profile response.
 
@@ -454,7 +455,7 @@ button-to-result time to 5.5 seconds. A progress bar, named phase and live
 elapsed time remained visible during reload. The resulting 211.8 MB project
 reopened with the same eight Texture Sets and three Shader Instances.
 
-## Milestone B — fixed Ivy lighting skeleton — 2026-09-07
+## Milestone B — fixed Ivy lighting skeleton — 2026-09-08
 
 ### Deterministic scene contract
 
@@ -464,22 +465,24 @@ The source SPP, source FBX, retail files and CSDK were left unchanged.
 | Setting | Fixed value |
 | --- | --- |
 | Painter | 9.1.0, OpenGL |
-| Project copy | `subs_ivy_builder_deadlimit_milestone_b.spp` |
-| Preview mesh | `ivy-32ef438380f2c18c.fbx` |
-| Preview mesh SHA-256 | `A1CF9CE528BFA05483EB28385788154F3CD53F903528F8317191DC79307F8B53` |
+| Project copy | `subs_ivy_builder_signed_ndotl.spp` (temporary; excluded from Git) |
+| Preview mesh | `ivy-c549a9a7a47ff2ef.fbx` |
 | Pose | unchanged pose and detached weapon component from the source Ivy scene |
-| Camera | perspective, FOV 50 degrees, Painter `Frame All` |
+| Camera position | `149.768860, 50.999405, 15.292190` |
+| Camera rotation | `140.143265, 99.880875, -140.561340` degrees |
+| Camera projection | perspective, FOV 50 degrees |
 | Environment | `resource://viewer/panorama?version=df0d611fe5a4c86ca5a36bcc11fc06b363478e03.image` |
-| PBR exposure | 0.6600000262260437 |
+| Environment rotation | 145 degrees |
+| PBR exposure | 0.66 EV |
+| Environment exposure | 1.0 EV |
 | Display | Material |
 | Character profile | Ivy, stable ID 1 |
 | Outline | existing 1.0 mm inverted hull, RGB 0.164706/0.054902/0.054902 |
-| External visual reference | `https://deadlocklabs.gg/heroes/renders/Ivy.webp` |
+| Controlled visual reference | user-supplied Deadlock Tools Ivy capture, `Lighting Preview -> Default` |
 
-The public Ivy render is a fixed character-style reference with different
-camera and lighting. It calibrates the broad diffuse separation, restrained
-highlight and cool edge hierarchy only. It cannot establish engine runtime
-constants or pixel parity.
+The Deadlock Tools capture has different framing and renderer support, so it
+calibrates broad diffuse separation, restrained highlights and edge hierarchy.
+It cannot establish engine runtime constants or pixel parity.
 
 ### Diagnostic-first visual gate
 
@@ -490,11 +493,14 @@ changes. The first five used `Diagnostic Neutral`; the final capture restored
 ```text
 NPR direct diffuse: VISUAL PASS — broad quantized light/shadow break
 Controlled specular: VISUAL PASS — isolated stepped highlight patches
-Rim contribution: VISUAL PASS — isolated cool silhouette response
+Rim contribution: VISUAL PASS — retail-mask-gated silhouette response
 NPR composite: VISUAL PASS — all three terms present together
 Painter PBR baseline: CAPTURED — same mesh/camera/environment/exposure
 NPR composite vs Painter PBR: VISUAL PASS — obvious reproducible delta
-Retail shaded: VISUAL PASS — retail maps, eye color and outline retained
+Retail shaded integrity: PASS — retail maps, eye color and outline retained
+Retail Deadlock-style lighting skeleton: VISUAL PASS — readable matte diffuse,
+restrained stepped copper highlights and no simultaneous Painter HDRI specular
+Painter light rotation: VISUAL PASS — signed N dot L changes at 145/235 degrees
 Sampler artifacts: PASS — no cyan/blue/checker output
 Computer Use viewport capture: PASS — actual Painter window captured
 ```
@@ -519,7 +525,11 @@ and are excluded from Git.
 | Painter shader compilation, live parameters, shader-instance assignment and saved disposable SPP | Confirmed by pipeline/runtime |
 | Retail texture/material identities, eye `color$0` dependency and outline color | Confirmed by static retail evidence |
 | Key direction/color/intensity, environment weights, diffuse controls, specular controls, rim controls and 1.0 mm outline width | Calibrated approximation |
-| Exact engine light globals, probe response, camera-relative retail setup, runtime specular/rim equations and pixel parity | Blocked/unresolved |
+| Recovered direct-diffuse, stepped-specular and non-depth rim equations | Confirmed by static retail evidence |
+| Exact engine light globals and bound specular/rim values, six-direction probe response, camera-relative retail setup and pixel parity | Blocked/unresolved |
 
-The visual PASS is supplied by the actual viewport captures. Compilation,
-parameter assignment and project saving remain supporting runtime evidence.
+The fresh 2026-09-08 captures prove term isolation, asset integrity, live
+Painter-light yaw and an obvious same-scene delta from Painter PBR. The earlier
+dual-highlight composition was discarded: ordinary Shaded now contains only
+Deadlimit direct diffuse, bounce, direct specular, rim and emissive. The current
+Ivy values remain calibrated approximations and do not claim pixel parity.

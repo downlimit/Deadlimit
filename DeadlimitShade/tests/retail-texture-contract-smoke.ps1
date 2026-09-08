@@ -2,6 +2,7 @@ $ErrorActionPreference = 'Stop'
 $shadeRoot = Split-Path -Parent $PSScriptRoot
 $profile = Get-Content -LiteralPath (Join-Path $shadeRoot 'profiles\ivy.json') -Raw | ConvertFrom-Json
 $backend = Get-Content -LiteralPath (Join-Path $shadeRoot 'tools\Deadlimit.RetailTextures\Program.cs') -Raw
+$plugin = Get-Content -LiteralPath (Join-Path $shadeRoot 'painter_plugins\deadlimit_apply.py') -Raw
 
 function Assert-True([bool] $Condition, [string] $Message) {
     if (-not $Condition) { throw $Message }
@@ -17,6 +18,8 @@ Assert-True ($preview.vertexColorSource -eq 'models/heroes_wip/ivy/ivy_ivy.dmx')
 Assert-True $backend.Contains('FindExactExtractedSource(sourceRoot, texturePath)') 'Retail extraction must check 0source before decoding a VPK texture.'
 Assert-True $backend.Contains('origin = "0source"') 'The cache manifest must record reused 0source inputs.'
 Assert-True $backend.Contains('origin = "retail-vpk"') 'The cache manifest must record retail VPK fallbacks.'
+Assert-True $plugin.Contains('"g_tTintMaskRimLightMask"') 'Painter Apply must consume the retail tint/rim texture already emitted by the cache manifest.'
+Assert-True $plugin.Contains('"g_tNprTransmissiveColor"') 'Painter Apply must consume each material-local retail NPR transmissive texture.'
 Assert-True $backend.Contains('TextureExtract.ToPngImage') 'Retail texture fallback must use ValveResourceFormat decoding.'
 Assert-True $backend.Contains('intParams = material.IntParams') 'Retail manifest must preserve VMAT feature switches.'
 Assert-True $backend.Contains('floatParams = material.FloatParams') 'Retail manifest must preserve VMAT scalar parameters.'

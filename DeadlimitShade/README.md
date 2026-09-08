@@ -46,9 +46,10 @@ DeadlimitShade/
         Validation.md
 ```
 
-- `shaders/Deadlock_Hero.glsl` combines the Painter metal/rough baseline with
-  the statically recovered NPR direct-diffuse response, calibration controls,
-  character profiles and focused diagnostic views.
+- `shaders/Deadlock_Hero.glsl` resolves a self-composed Deadlock preview from
+  statically recovered NPR direct diffuse, bounce, stepped direct specular,
+  masked rim, character profiles and focused diagnostic views. Painter PBR
+  remains available only as the same-scene comparison view.
 - `shaders/Deadlock_Outline.glsl` is the preview-only flat shader for the
   dedicated inverted-hull shell Texture Set and consumes the same character
   profile IDs as the hero shader.
@@ -80,22 +81,32 @@ DeadlimitShade/
   two-material mode creates independent hero/outline Shader Instances and
   applies one synchronized character profile.
 - `painter_plugins/deadlimit_apply.py` adds a `Deadlimit Shade` dock with one
-  character selector and one `Apply Deadlimit` button. Apply reads outline
+  character selector and one `Preview <character> as Deadlock` button. Preview reads outline
   width/color from the selected profile, builds a format-preserving disposable preview mesh,
   reloads it with stroke preservation and assigns both shader instances with
   the same stable character ID. It retains the original source path in a cache
   manifest so Apply continues to work after Painter restarts.
-- `tools/Install-DeadlimitPainterPlugin.ps1` installs the dock plus its minimal
-  runtime and both GLSL resources into the current user's Painter directories.
-  On first installation, enable `Python > deadlimit_apply` once; Painter stores
-  its `launch_at_start` preference for later sessions.
-- The intended artist workflow is a normal Painter `File > New` using the
-  `Deadlimit Shade` template. Preview mesh generation, shader assignment,
-  profile synchronization and temporary-cache management are integration
-  responsibilities; artists do not need a separate DCC.
+- `tools/Install-DeadlimitPainterPlugin.ps1` installs the dock as a Painter
+  `python/startup` module plus its minimal runtime and both GLSL resources.
+  If Painter is already open and remote scripting is available, the installer
+  opens the dock immediately. Otherwise restart Painter once. The dock then
+  appears automatically in every compatible project; no Python-menu activation
+  is required.
+- In any compatible textured project, open the `Deadlimit Shade` dock, select
+  the character and click `Preview <character> as Deadlock`. The integration
+  generates the disposable preview mesh, resolves retail inputs, restores the
+  required vertex colors, assigns hero and outline shaders and activates the
+  `Shaded / Material` view. No manual shader or texture assignment is required.
+- If an older optional-plugin build was installed, the installer removes only
+  its owned `python/plugins/deadlimit_apply.py` copy before installing the
+  automatic startup module.
 - `docs/ROADMAP.md` is the authoritative implementation sequence.
 - `docs/Outline.md` records the geometry-shell architecture and production-isolation requirements.
 - `docs/Validation.md` defines the first Painter smoke tests and subsequent retail validation protocol.
+- `docs/PAINTER_QUICK_START.md` is the reproducible artist-facing route from an
+  open textured project to the Deadlock preview.
+- `docs/DOTA_PAINTER_SHADER_STUDY.md` records the local comparative shader
+  evidence and its adoption boundary.
 
 ## v1 target
 

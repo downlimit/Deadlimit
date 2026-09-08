@@ -13,47 +13,68 @@
   },
   "directDiffuse": {
     "enabled": true,
-    "stepSharpness": 0.78,
-    "pbrBlend": 0.08,
-    "wrap": 0.52,
-    "normalization": 0.95,
+    "stepSharpness": 0.18,
+    "pbrBlend": 0.72,
+    "wrap": 0.48,
+    "normalization": 0.85,
+    "evidence": "calibrated-approximation"
+  },
+  "bounceLighting": {
+    "enabled": true,
+    "ambientFloor": 0.18,
+    "transmissiveStrength": 0.0,
+    "aoStrength": 0.55,
     "evidence": "calibrated-approximation"
   },
   "directSpecular": {
     "enabled": true,
-    "intensity": 0.55,
-    "roughnessScale": 0.65,
-    "threshold": 0.18,
-    "softness": 0.06,
+    "steps": 3.0,
+    "stepSharpness": 0.55,
+    "tint": 0.35,
+    "roughnessBias": 0.18,
+    "reflectance": 0.025,
     "evidence": "calibrated-approximation"
   },
   "rimLighting": {
     "enabled": true,
-    "color": [
-      0.44,
-      0.58,
-      0.78
+    "wrap": 1.0,
+    "falloff": 2.0,
+    "strength": 0.75,
+    "upRamp": [
+      -0.25,
+      0.7
     ],
-    "intensity": 0.38,
-    "power": 2.4,
-    "threshold": 0.32,
-    "softness": 0.12,
     "evidence": "calibrated-approximation"
   },
   "previewLighting": {
     "keyDirection": [
-      0.35,
-      0.6,
-      0.72
+      0.494,
+      0.766,
+      -0.411
     ],
     "keyColor": [
       1.0,
-      0.88,
-      0.72
+      1.0,
+      1.0
     ],
     "keyIntensity": 1.15,
+    "fillDirection": [
+      -0.693,
+      0.071,
+      0.719
+    ],
+    "fillColor": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "fillIntensity": 0.4,
+    "environmentColor": [
+      0.827451,
+      0.886275,
+      0.972549
+    ],
     "environmentDiffuse": 0.22,
-    "environmentSpecular": 0.28,
     "evidence": "calibrated-approximation"
   },
   "referenceTint": [

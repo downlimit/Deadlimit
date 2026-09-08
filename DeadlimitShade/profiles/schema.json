@@ -12,6 +12,7 @@
     "status",
     "retailReference",
     "directDiffuse",
+    "bounceLighting",
     "directSpecular",
     "rimLighting",
     "previewLighting",
@@ -82,40 +83,60 @@
     "directSpecular": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "intensity", "roughnessScale", "threshold", "softness", "evidence"],
+      "required": ["enabled", "steps", "stepSharpness", "tint", "roughnessBias", "reflectance", "evidence"],
       "properties": {
         "enabled": { "type": "boolean" },
-        "intensity": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
-        "roughnessScale": { "type": "number", "minimum": 0.0, "maximum": 2.0 },
-        "threshold": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
-        "softness": { "type": "number", "minimum": 0.001, "maximum": 0.5 },
+        "steps": { "type": "number", "minimum": 1.0, "maximum": 16.0 },
+        "stepSharpness": { "type": "number", "minimum": 0.0, "maximum": 0.99 },
+        "tint": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "roughnessBias": { "type": "number", "minimum": 0.0, "maximum": 0.95 },
+        "reflectance": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "bounceLighting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "ambientFloor", "transmissiveStrength", "aoStrength", "evidence"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "ambientFloor": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "transmissiveStrength": { "type": "number", "minimum": 0.0, "maximum": 2.0 },
+        "aoStrength": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
         "evidence": { "$ref": "#/$defs/evidence" }
       }
     },
     "rimLighting": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "color", "intensity", "power", "threshold", "softness", "evidence"],
+      "required": ["enabled", "wrap", "falloff", "strength", "upRamp", "evidence"],
       "properties": {
         "enabled": { "type": "boolean" },
-        "color": { "$ref": "#/$defs/color" },
-        "intensity": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
-        "power": { "type": "number", "minimum": 0.1, "maximum": 12.0 },
-        "threshold": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
-        "softness": { "type": "number", "minimum": 0.001, "maximum": 0.5 },
+        "wrap": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
+        "falloff": { "type": "number", "minimum": 0.1, "maximum": 12.0 },
+        "strength": { "type": "number", "minimum": 0.0, "maximum": 8.0 },
+        "upRamp": {
+          "type": "array",
+          "items": { "type": "number", "minimum": -1.0, "maximum": 1.0 },
+          "minItems": 2,
+          "maxItems": 2
+        },
         "evidence": { "$ref": "#/$defs/evidence" }
       }
     },
     "previewLighting": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["keyDirection", "keyColor", "keyIntensity", "environmentDiffuse", "environmentSpecular", "evidence"],
+      "required": ["keyDirection", "keyColor", "keyIntensity", "fillDirection", "fillColor", "fillIntensity", "environmentColor", "environmentDiffuse", "evidence"],
       "properties": {
         "keyDirection": { "$ref": "#/$defs/direction" },
         "keyColor": { "$ref": "#/$defs/color" },
         "keyIntensity": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
+        "fillDirection": { "$ref": "#/$defs/direction" },
+        "fillColor": { "$ref": "#/$defs/color" },
+        "fillIntensity": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
+        "environmentColor": { "$ref": "#/$defs/color" },
         "environmentDiffuse": { "type": "number", "minimum": 0.0, "maximum": 2.0 },
-        "environmentSpecular": { "type": "number", "minimum": 0.0, "maximum": 2.0 },
         "evidence": { "$ref": "#/$defs/evidence" }
       }
     },

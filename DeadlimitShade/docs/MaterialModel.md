@@ -508,3 +508,96 @@ The direct-diffuse slice remains **not implementation-ready**. The exact retail
 PS has only static-file verification; runtime identity, combo/layout, gate
 state, numeric controls, and two-draw stability evidence are unavailable. GLSL
 files remain unchanged.
+
+# Milestone B Static-Code Recovery — 2026-09-08
+
+The current retail pixel module was read directly from the retail Vulkan VPK
+and static combo `24`, dynamic combo `0`, shader file `0` was decompiled in a
+local scratch directory. Its SHA-256 still matches the reference identity
+above. This advances the earlier gate: the direct-specular and non-depth rim
+operations below are now **confirmed by static retail evidence**. Their bound
+runtime values remain **blocked/unresolved**.
+
+The direct-specular branch is a stepped GGX-like response. In compact form:
+
+```text
+r0       = roughness * (1 - roughnessBias)
+a2       = r0 * r0
+D        = a2*a2 / (NdotH*NdotH*(a2*a2 - 1) + 1)^2
+V        = 0.5 / (NdotL*(NdotV*(1-a2)+a2) +
+                  NdotV*(NdotL*(1-a2)+a2))
+rawSpec  = sat(D * V * NdotL)
+p        = 1 / (0.01 + roughness*(0.99-stepSharpness))
+stepped  = triangularQuantize(rawSpec*steps, p) / steps
+tintBase = mix(luminance(baseColor), baseColor, specularTint)
+tintNorm = tintBase * reflectance / luminance(tintBase)
+matTint  = mix(tintNorm, baseColor, metalness)
+directSpecular = stepped * (0.5 / (1-exp2(-3.32192993*r0*r0))) * matTint
+```
+
+The recovered rim branch uses the camera-to-pixel direction, surface-up ramp,
+AO, packed rim mask, and lighting accumulated before rim:
+
+```text
+wrappedView = sat((dot(N, cameraToPixel) + wrap) / (1 + wrap)^2)
+upRamp      = sat((Nup - upRampMin) / (upRampMax - upRampMin))
+rimFactor   = pow(wrappedView, falloff) * upRamp * strength * AO * rimMask
+rimColor    = lightingBeforeRim * rimFactor
+```
+
+Before final material modulation, retail applies this color-dependent response
+to bounce lighting only (`x = materialAO * screenDfAO`):
+
+```text
+nprResponse = (baseColor*2.0404 - 0.3324)*x^3
+            - (baseColor*4.7951 - 0.6417)*x^2
+            + (baseColor*2.7552 + 0.6903)*x
+bounceResponse = mix(1, nprResponse, diffusePbrBlend)
+```
+
+The Painter slice uses `screenDfAO = 1` because the matching engine buffer is
+unavailable. That substitution is a **calibrated approximation**; the
+polynomial and its placement are **confirmed by static retail evidence**.
+
+Painter uses Y as surface-up in this implementation and exposes a
+surface-to-camera vector, so the corresponding terms are `N.y` and
+`dot(N, -viewDirection)`. The final Deadlimit shaded path adds `rimColor`
+directly. It has no independent artistic rim color and no Painter environment
+specular term. Those two constraints prevent the previously observed pair of
+competing highlights.
+
+The Ivy profile values for steps, sharpness, tint, roughness bias, reflectance,
+wrap, falloff, strength, and up-ramp are **calibrated approximations**. They
+must not be described as retail runtime values. The recovered equations and
+buffer field identities are static evidence; a matching runtime draw is still
+required to replace the calibrated values.
+
+## Default tool-preview rig boundary
+
+The installed retail client advanced to build `25173285` during this work. A
+fresh read of `shaders/vfx/pbr_vulkan_60_ps.vcs` returned the same
+`eceff131...6926930` SHA-256, static combo `24`, dynamic combo `0`, and shader
+file `0`; the NPR code recovery above therefore remains current.
+
+The Reduced CSDK `Default` tool-scene source used by the controlled engine
+reference contains two enabled white `light_environment` entities:
+
+| Role | Source angles | Brightness | Shadows |
+|---|---:|---:|---|
+| key | `49.999992 219.71344 0` | `1.6` | yes |
+| fill | `4.0832458 45.96491 -22.931953` | `0.55` | no |
+
+It also contains a cool sky color `211 226 248`, sky intensity `0.960784`,
+`env_sky` brightness `0.22`, and a fixed post-process exposure of `1`. These
+are **confirmed static CSDK/tool-preview evidence** and do not establish
+retail gameplay runtime values. The current retail `Default` light-rig entry
+points at `toolscene_lighting_studio_small_9.vmap`, whose map payload is not
+present in the inspected retail packages.
+
+The reproducible Painter profile preserves the CSDK key/fill brightness ratio
+as `1.0 : 0.34375`, converts their directions to Painter's Y-up preview space,
+uses `0.22` cool environment diffuse, and rotates both lights together from
+Painter `uniform_main_light`. Those converted directions and normalized
+intensities are **calibrated approximations**. Both lights use the same
+recovered direct-diffuse/direct-specular equations; Painter HDRI specular stays
+excluded from the Deadlimit shaded output.

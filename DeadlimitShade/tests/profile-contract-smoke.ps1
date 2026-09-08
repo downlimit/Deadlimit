@@ -62,6 +62,7 @@ foreach ($profileFile in $profileFiles) {
 
 foreach ($profile in $profiles) {
     Assert-True ($profile.directDiffuse.evidence -eq 'calibrated-approximation') 'Uncaptured direct-diffuse values must be classified as calibrated approximations.'
+    Assert-True ($profile.bounceLighting.evidence -eq 'calibrated-approximation') 'Painter bounce values must be classified as calibrated approximations.'
     Assert-True ($profile.directSpecular.evidence -eq 'calibrated-approximation') 'Uncaptured direct-specular values must be classified as calibrated approximations.'
     Assert-True ($profile.rimLighting.evidence -eq 'calibrated-approximation') 'Uncaptured rim values must be classified as calibrated approximations.'
     Assert-True ($profile.previewLighting.evidence -eq 'calibrated-approximation') 'Painter preview lighting must be classified as a calibrated approximation.'
@@ -107,8 +108,22 @@ Assert-True ($heroShader.Contains('"Rim Contribution": 13')) 'Hero shader is mis
 Assert-True ($heroShader.Contains('"NPR Lighting Composite": 14')) 'Hero shader is missing the lighting-composite isolation view.'
 Assert-True ($heroShader.Contains('"Painter PBR Baseline": 15')) 'Hero shader is missing the controlled Painter PBR comparison view.'
 Assert-True ($heroShader.Contains('dl_lighting_input_mode == 1')) 'Hero shader is missing deterministic neutral diagnostic inputs.'
+Assert-True ($heroShader.Contains('//: param auto main_light')) 'Hero shader must bind Painter main-light rotation for Shift+RMB lighting control.'
+Assert-True ($heroShader.Contains('dlPainterYawAdjustedDirection(characterProfile.keyLightDirection)')) 'Material/Retail mode must rotate the Deadlimit key from Painter main_light.'
+Assert-True ($heroShader.Contains('dlPainterYawAdjustedDirection(characterProfile.fillLightDirection)')) 'Material/Retail mode must rotate the Deadlimit fill from Painter main_light.'
+Assert-True ($heroShader.Contains('characterProfile.fillLightIntensity')) 'The fixed Ivy preview rig must include its independently controlled fill light.'
+Assert-True ($heroShader.Contains('profile.environmentColor * profile.environmentDiffuse')) 'The fixed Ivy preview rig must retain its cool environment color.'
 Assert-True ($heroShader.Contains('DLDirectSpecularSample dlEvaluateDirectSpecular(')) 'Hero shader is missing the controlled direct-specular contribution.'
 Assert-True ($heroShader.Contains('DLRimSample dlEvaluateRim(')) 'Hero shader is missing the controlled rim contribution.'
+Assert-True ($heroShader.Contains('DLBounceSample dlEvaluateBounce(')) 'Hero shader is missing the Deadlock-structured bounce approximation.'
+Assert-True ($heroShader.Contains('sample.transmissive = upwardProbe * transmissiveColor *')) 'Bounce approximation must use the material-local NPR transmissive color.'
+Assert-True ($heroShader.Contains('"Retail Rim Mask": 16')) 'Hero shader is missing the retail rim-mask diagnostic.'
+Assert-True ($heroShader.Contains('"NPR Bounce": 17')) 'Hero shader is missing the bounce diagnostic.'
+Assert-True ($heroShader.Contains('"Retail NPR Transmissive": 18')) 'Hero shader is missing the material-local transmissive diagnostic.'
+Assert-True (($heroShader.Split('pbrComputeSpecular(').Count - 1) -eq 1) 'Painter environment specular must remain confined to the explicit PBR baseline view.'
+Assert-True (($heroShader.Split('envIrradiance(').Count - 1) -eq 1) 'Painter panorama irradiance must remain confined to the explicit PBR baseline view.'
+Assert-True (-not $heroShader.Contains('environmentSpecular')) 'Deadlimit shaded composition must not expose the removed Painter environment-specular control.'
+Assert-True ($heroShader -match 'diffuseShadingOutput\(\s*nprLightingComposite \+') 'Shaded output must use the self-composed Deadlimit color path.'
 
 foreach ($value in @(0.0, 0.125, 0.25, 0.5, 0.75, 0.875, 1.0)) {
     Assert-Near (Invoke-NprQuantize $value 0.0) $value 0.0000001 'Sharpness 0 must preserve the input.'

@@ -2,7 +2,7 @@
 
 Status: implementation started.
 
-Updated: 2026-09-07.
+Updated: 2026-09-08.
 
 The current Deadlock-look investigation status, rejected lighting experiment,
 milestone gates and next-session brief are recorded in
@@ -735,15 +735,27 @@ acceptance result.
 - format-native offline conversion preserves physical bounds for FBX, GLB and
   glTF. GLB/glTF millimetres use metre-based units and no repeated root scaling.
 - the Milestone B lighting skeleton now contributes quantized NPR direct
-  diffuse, stepped direct specular and cool rim lighting to the final shaded
+  diffuse, stepped direct specular and retail-mask-gated rim lighting to the final shaded
   composition;
 - `Lighting Inputs -> Diagnostic Neutral` plus Direct Diffuse, Direct Specular,
   Rim, NPR Composite and Painter PBR Baseline views isolate the three terms
   without retail-map variation;
-- a fixed Painter 9.1.0 Ivy scene visually passed through Computer Use: the
-  neutral composite differs clearly from the same-scene Painter PBR baseline,
-  and Material/Retail mode retains retail textures, restored eye color and the
-  accepted inverted-hull outline;
+- a fixed Painter 9.1.0 Ivy scene proved that the neutral composite differs
+  clearly from the same-scene Painter PBR baseline and that Material/Retail mode
+  retains retail textures, restored eye color and the inverted-hull outline;
+- the first retail composition failed the likeness gate because its lighting
+  was muddy, its outline dominated the image and two highlight systems were
+  visible at once;
+- environment rotation identified the concrete boundary: Painter PBR
+  environment specular and Deadlimit direct specular produced incompatible
+  highlights. Painter environment specular was removed from Shaded;
+- a fresh fixed-camera Painter 9.1.0 A/B passed the Milestone B visual gate:
+  direct diffuse, stepped specular and masked rim are independently visible,
+  the combined result differs clearly from Painter PBR, and retail textures,
+  restored eyes and inverted-hull outline remain intact;
+- the `uniform_main_light` yaw contract was verified by changing environment
+  rotation from 145 to 235 degrees and observing the signed `N dot L`
+  diagnostic move across the model;
 - all new Ivy lighting values remain calibrated approximations pending
   Milestone D comparison across several controlled Deadlock views.
 

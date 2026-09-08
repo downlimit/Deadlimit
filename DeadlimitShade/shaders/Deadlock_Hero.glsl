@@ -10,6 +10,10 @@ import lib-emissive.glsl
 import lib-pom.glsl
 import lib-utils.glsl
 
+// Painter updates main_light while the user rotates lighting with Shift+RMB.
+//: param auto main_light
+uniform vec4 uniform_main_light;
+
 // Retail preview textures use ordinary sampler2D resources and must remain
 // valid for the whole mesh while Painter is painting another Texture Set.
 // Painter otherwise applies its local sampling optimization and can display
@@ -30,22 +34,29 @@ struct DLCharacterProfile
   float directDiffusePbrBlend;
   float directDiffuseWrap;
   float directDiffuseNormalization;
+  bool bounceLightingEnabled;
+  float bounceAmbientFloor;
+  float bounceTransmissiveStrength;
+  float bounceAoStrength;
   bool directSpecularEnabled;
-  float directSpecularIntensity;
-  float directSpecularRoughnessScale;
-  float directSpecularThreshold;
-  float directSpecularSoftness;
+  float directSpecularSteps;
+  float directSpecularStepSharpness;
+  float directSpecularTint;
+  float directSpecularRoughnessBias;
+  float directSpecularReflectance;
   bool rimLightingEnabled;
-  vec3 rimLightingColor;
-  float rimLightingIntensity;
-  float rimLightingPower;
-  float rimLightingThreshold;
-  float rimLightingSoftness;
+  float rimLightingWrap;
+  float rimLightingFalloff;
+  float rimLightingStrength;
+  vec2 rimLightingUpRamp;
   vec3 keyLightDirection;
   vec3 keyLightColor;
   float keyLightIntensity;
+  vec3 fillLightDirection;
+  vec3 fillLightColor;
+  float fillLightIntensity;
+  vec3 environmentColor;
   float environmentDiffuse;
-  float environmentSpecular;
   vec3 referenceTint;
   bool outlineEnabled;
   vec3 outlineColor;
@@ -55,26 +66,33 @@ DLCharacterProfile dlCharacterProfileIvy()
 {
   DLCharacterProfile profile;
   profile.directDiffuseEnabled = true;
-  profile.directDiffuseStepSharpness = 0.78;
-  profile.directDiffusePbrBlend = 0.08;
-  profile.directDiffuseWrap = 0.52;
-  profile.directDiffuseNormalization = 0.95;
+  profile.directDiffuseStepSharpness = 0.18;
+  profile.directDiffusePbrBlend = 0.72;
+  profile.directDiffuseWrap = 0.48;
+  profile.directDiffuseNormalization = 0.85;
+  profile.bounceLightingEnabled = true;
+  profile.bounceAmbientFloor = 0.18;
+  profile.bounceTransmissiveStrength = 0.0;
+  profile.bounceAoStrength = 0.55;
   profile.directSpecularEnabled = true;
-  profile.directSpecularIntensity = 0.55;
-  profile.directSpecularRoughnessScale = 0.65;
-  profile.directSpecularThreshold = 0.18;
-  profile.directSpecularSoftness = 0.06;
+  profile.directSpecularSteps = 3.0;
+  profile.directSpecularStepSharpness = 0.55;
+  profile.directSpecularTint = 0.35;
+  profile.directSpecularRoughnessBias = 0.18;
+  profile.directSpecularReflectance = 0.025;
   profile.rimLightingEnabled = true;
-  profile.rimLightingColor = vec3(0.44, 0.58, 0.78);
-  profile.rimLightingIntensity = 0.38;
-  profile.rimLightingPower = 2.4;
-  profile.rimLightingThreshold = 0.32;
-  profile.rimLightingSoftness = 0.12;
-  profile.keyLightDirection = vec3(0.35, 0.6, 0.72);
-  profile.keyLightColor = vec3(1.0, 0.88, 0.72);
+  profile.rimLightingWrap = 1.0;
+  profile.rimLightingFalloff = 2.0;
+  profile.rimLightingStrength = 0.75;
+  profile.rimLightingUpRamp = vec2(-0.25, 0.7);
+  profile.keyLightDirection = vec3(0.494, 0.766, -0.411);
+  profile.keyLightColor = vec3(1.0, 1.0, 1.0);
   profile.keyLightIntensity = 1.15;
+  profile.fillLightDirection = vec3(-0.693, 0.071, 0.719);
+  profile.fillLightColor = vec3(1.0, 1.0, 1.0);
+  profile.fillLightIntensity = 0.4;
+  profile.environmentColor = vec3(0.827451, 0.886275, 0.972549);
   profile.environmentDiffuse = 0.22;
-  profile.environmentSpecular = 0.28;
   profile.referenceTint = vec3(0.321569, 0.388235, 0.176471);
   profile.outlineEnabled = true;
   profile.outlineColor = vec3(0.164706, 0.054902, 0.054902);
@@ -125,6 +143,14 @@ uniform sampler2D dl_retail_normal_roughness;
 
 //: param custom { "default": "", "default_color": [1.0, 1.0, 1.0, 1.0], "label": "Ambient Occlusion", "usage": "texture", "group": "Deadlimit Retail Preview" }
 uniform sampler2D dl_retail_ambient_occlusion;
+
+// Retail R is tint mask and G is the selective rim-light mask.
+//: param custom { "default": "", "default_color": [1.0, 1.0, 1.0, 1.0], "label": "Tint + Rim Mask", "usage": "texture", "group": "Deadlimit Retail Preview" }
+uniform sampler2D dl_retail_tint_rim;
+
+// Material-local constant/texture used by Deadlock's NPR indirect branch.
+//: param custom { "default": "", "default_color": [0.18, 0.18, 0.18, 1.0], "label": "NPR Transmissive Color", "usage": "texture", "group": "Deadlimit Retail Preview" }
+uniform sampler2D dl_retail_npr_transmissive;
 
 //: param custom {
 //:   "default": 0,
@@ -191,44 +217,62 @@ uniform float dl_npr_direct_light_wrap;
 //: }
 uniform float dl_npr_direct_light_normalization;
 
-// The direct-specular and rim controls below are Painter calibration values.
-// Static retail evidence confirms separate NPR paths, while their runtime
-// control values remain unresolved.
+// Painter has no Deadlock light-probe volume. This calibrated approximation
+// preserves the retail branch structure: directional environment fill, AO
+// weighting and the statically confirmed transmissive color contribution.
+//: param custom { "default": true, "label": "NPR Bounce Lighting", "group": "Deadlimit NPR Calibration" }
+uniform bool dl_npr_bounce_lighting;
+
+//: param custom { "default": 0.18, "label": "Bounce Ambient Floor", "min": 0.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_bounce_ambient_floor;
+
+//: param custom { "default": 0.12, "label": "Bounce Transmissive Strength", "min": 0.0, "max": 2.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_bounce_transmissive_strength;
+
+//: param custom { "default": 0.55, "label": "Bounce AO Strength", "min": 0.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_bounce_ao_strength;
+
+// The direct-specular and rim equations below follow the reflected retail
+// static-combo-24/dynamic-0 instruction graph. These exposed numeric values
+// remain Painter calibration values until a runtime constants capture exists.
 //: param custom { "default": true, "label": "NPR Direct Specular", "group": "Deadlimit NPR Calibration" }
 uniform bool dl_npr_direct_specular;
 
-//: param custom { "default": 0.55, "label": "Direct Specular Intensity", "min": 0.0, "max": 4.0, "group": "Deadlimit NPR Calibration" }
-uniform float dl_npr_direct_specular_intensity;
+//: param custom { "default": 3.0, "label": "Specular Steps", "min": 1.0, "max": 16.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_direct_specular_steps;
 
-//: param custom { "default": 0.65, "label": "Specular Roughness Scale", "min": 0.0, "max": 2.0, "group": "Deadlimit NPR Calibration" }
-uniform float dl_npr_direct_specular_roughness_scale;
+//: param custom { "default": 0.55, "label": "Specular Step Sharpness", "min": 0.0, "max": 0.99, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_direct_specular_step_sharpness;
 
-//: param custom { "default": 0.18, "label": "Specular Step Threshold", "min": 0.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
-uniform float dl_npr_direct_specular_threshold;
+//: param custom { "default": 0.35, "label": "Specular Tint", "min": 0.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_direct_specular_tint;
 
-//: param custom { "default": 0.06, "label": "Specular Step Softness", "min": 0.001, "max": 0.5, "group": "Deadlimit NPR Calibration" }
-uniform float dl_npr_direct_specular_softness;
+//: param custom { "default": 0.18, "label": "Specular Roughness Bias", "min": 0.0, "max": 0.95, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_direct_specular_roughness_bias;
+
+//: param custom { "default": 0.055, "label": "Specular Reflectance", "min": 0.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_direct_specular_reflectance;
 
 //: param custom { "default": true, "label": "NPR Rim Lighting", "group": "Deadlimit NPR Calibration" }
 uniform bool dl_npr_rim_lighting;
 
-//: param custom { "default": [0.44, 0.58, 0.78], "label": "Rim Color", "widget": "color", "group": "Deadlimit NPR Calibration" }
-uniform vec3 dl_npr_rim_color;
+//: param custom { "default": 1.0, "label": "Rim Wrap", "min": 0.0, "max": 4.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_rim_wrap;
 
-//: param custom { "default": 0.38, "label": "Rim Intensity", "min": 0.0, "max": 4.0, "group": "Deadlimit NPR Calibration" }
-uniform float dl_npr_rim_intensity;
+//: param custom { "default": 2.0, "label": "Rim Falloff", "min": 0.1, "max": 12.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_rim_falloff;
 
-//: param custom { "default": 2.4, "label": "Rim Power", "min": 0.1, "max": 12.0, "group": "Deadlimit NPR Calibration" }
-uniform float dl_npr_rim_power;
+//: param custom { "default": 1.1, "label": "Rim Strength", "min": 0.0, "max": 8.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_rim_strength;
 
-//: param custom { "default": 0.32, "label": "Rim Step Threshold", "min": 0.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
-uniform float dl_npr_rim_threshold;
+//: param custom { "default": -0.25, "label": "Rim Up Ramp Start", "min": -1.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_rim_up_ramp_start;
 
-//: param custom { "default": 0.12, "label": "Rim Step Softness", "min": 0.001, "max": 0.5, "group": "Deadlimit NPR Calibration" }
-uniform float dl_npr_rim_softness;
+//: param custom { "default": 0.7, "label": "Rim Up Ramp End", "min": -1.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_rim_up_ramp_end;
 
 //: param custom {
-//:   "default": [0.35, 0.6, 0.72],
+//:   "default": [0.25, 0.55, 0.8],
 //:   "label": "Key Light Direction",
 //:   "min": -1.0,
 //:   "max": 1.0,
@@ -238,7 +282,7 @@ uniform float dl_npr_rim_softness;
 uniform vec3 dl_key_light_direction;
 
 //: param custom {
-//:   "default": [1.0, 0.95, 0.9],
+//:   "default": [1.0, 0.93, 0.82],
 //:   "label": "Key Light Color",
 //:   "widget": "color",
 //:   "group": "Deadlimit Preview Lighting"
@@ -246,7 +290,7 @@ uniform vec3 dl_key_light_direction;
 uniform vec3 dl_key_light_color;
 
 //: param custom {
-//:   "default": 0.75,
+//:   "default": 0.62,
 //:   "label": "Key Light Intensity",
 //:   "min": 0.0,
 //:   "max": 4.0,
@@ -255,22 +299,45 @@ uniform vec3 dl_key_light_color;
 uniform float dl_key_light_intensity;
 
 //: param custom {
-//:   "default": 0.65,
+//:   "default": [-0.693, 0.071, 0.719],
+//:   "label": "Fill Light Direction",
+//:   "group": "Deadlimit Preview Lighting"
+//: }
+uniform vec3 dl_fill_light_direction;
+
+//: param custom {
+//:   "default": [1.0, 1.0, 1.0],
+//:   "label": "Fill Light Color",
+//:   "widget": "color",
+//:   "group": "Deadlimit Preview Lighting"
+//: }
+uniform vec3 dl_fill_light_color;
+
+//: param custom {
+//:   "default": 0.34375,
+//:   "label": "Fill Light Intensity",
+//:   "min": 0.0,
+//:   "max": 4.0,
+//:   "group": "Deadlimit Preview Lighting"
+//: }
+uniform float dl_fill_light_intensity;
+
+//: param custom {
+//:   "default": [0.827451, 0.886275, 0.972549],
+//:   "label": "Environment Color",
+//:   "widget": "color",
+//:   "group": "Deadlimit Preview Lighting"
+//: }
+uniform vec3 dl_environment_color;
+
+//: param custom {
+//:   "default": 0.22,
 //:   "label": "Environment Diffuse",
 //:   "min": 0.0,
 //:   "max": 2.0,
 //:   "group": "Deadlimit Preview Lighting"
 //: }
 uniform float dl_environment_diffuse;
-
-//: param custom {
-//:   "default": 0.28,
-//:   "label": "Environment Specular",
-//:   "min": 0.0,
-//:   "max": 2.0,
-//:   "group": "Deadlimit Preview Lighting"
-//: }
-uniform float dl_environment_specular;
 
 //: param custom {
 //:   "default": 0.0,
@@ -314,7 +381,10 @@ uniform int dl_lighting_input_mode;
 //:     "Direct Specular": 12,
 //:     "Rim Contribution": 13,
 //:     "NPR Lighting Composite": 14,
-//:     "Painter PBR Baseline": 15
+//:     "Painter PBR Baseline": 15,
+//:     "Retail Rim Mask": 16,
+//:     "NPR Bounce": 17,
+//:     "Retail NPR Transmissive": 18
 //:   },
 //:   "group": "Deadlimit Diagnostics"
 //: }
@@ -336,6 +406,13 @@ struct DLDirectSpecularSample
   vec3 contribution;
 };
 
+struct DLBounceSample
+{
+  vec3 directionalProbe;
+  vec3 transmissive;
+  vec3 contribution;
+};
+
 struct DLRimSample
 {
   float rawRim;
@@ -351,22 +428,29 @@ DLCharacterProfile dlCustomCharacterProfile()
   profile.directDiffusePbrBlend = dl_npr_diffuse_pbr_blend;
   profile.directDiffuseWrap = dl_npr_direct_light_wrap;
   profile.directDiffuseNormalization = dl_npr_direct_light_normalization;
+  profile.bounceLightingEnabled = dl_npr_bounce_lighting;
+  profile.bounceAmbientFloor = dl_npr_bounce_ambient_floor;
+  profile.bounceTransmissiveStrength = dl_npr_bounce_transmissive_strength;
+  profile.bounceAoStrength = dl_npr_bounce_ao_strength;
   profile.directSpecularEnabled = dl_npr_direct_specular;
-  profile.directSpecularIntensity = dl_npr_direct_specular_intensity;
-  profile.directSpecularRoughnessScale = dl_npr_direct_specular_roughness_scale;
-  profile.directSpecularThreshold = dl_npr_direct_specular_threshold;
-  profile.directSpecularSoftness = dl_npr_direct_specular_softness;
+  profile.directSpecularSteps = dl_npr_direct_specular_steps;
+  profile.directSpecularStepSharpness = dl_npr_direct_specular_step_sharpness;
+  profile.directSpecularTint = dl_npr_direct_specular_tint;
+  profile.directSpecularRoughnessBias = dl_npr_direct_specular_roughness_bias;
+  profile.directSpecularReflectance = dl_npr_direct_specular_reflectance;
   profile.rimLightingEnabled = dl_npr_rim_lighting;
-  profile.rimLightingColor = dl_npr_rim_color;
-  profile.rimLightingIntensity = dl_npr_rim_intensity;
-  profile.rimLightingPower = dl_npr_rim_power;
-  profile.rimLightingThreshold = dl_npr_rim_threshold;
-  profile.rimLightingSoftness = dl_npr_rim_softness;
+  profile.rimLightingWrap = dl_npr_rim_wrap;
+  profile.rimLightingFalloff = dl_npr_rim_falloff;
+  profile.rimLightingStrength = dl_npr_rim_strength;
+  profile.rimLightingUpRamp = vec2(dl_npr_rim_up_ramp_start, dl_npr_rim_up_ramp_end);
   profile.keyLightDirection = dl_key_light_direction;
   profile.keyLightColor = dl_key_light_color;
   profile.keyLightIntensity = dl_key_light_intensity;
+  profile.fillLightDirection = dl_fill_light_direction;
+  profile.fillLightColor = dl_fill_light_color;
+  profile.fillLightIntensity = dl_fill_light_intensity;
+  profile.environmentColor = dl_environment_color;
   profile.environmentDiffuse = dl_environment_diffuse;
-  profile.environmentSpecular = dl_environment_specular;
   profile.referenceTint = vec3(0.18);
   profile.outlineEnabled = true;
   profile.outlineColor = vec3(0.08, 0.02, 0.02);
@@ -386,14 +470,20 @@ DLCharacterProfile dlActiveCharacterProfile()
 float dlNprQuantize(float value, float sharpness)
 {
   float safeSharpness = clamp(sharpness, 0.0, 0.95);
+  float exponent = 1.0 / (1.0 - safeSharpness);
   float base = floor(value);
   float fraction = fract(value);
   float wing = fraction > 0.5 ? 1.0 - fraction : fraction;
-  float exponent = 1.0 / (1.0 - safeSharpness);
-
-  // Algebraically equivalent to pow(0.5, 1.0 - exponent) * pow(wing, exponent),
-  // with stable behavior as sharpness approaches its supported upper bound.
   float shapedWing = 0.5 * pow(2.0 * wing, exponent);
+  return base + (fraction > 0.5 ? 1.0 - shapedWing : shapedWing);
+}
+
+float dlNprQuantizeWithExponent(float value, float exponent)
+{
+  float base = floor(value);
+  float fraction = fract(value);
+  float wing = fraction > 0.5 ? 1.0 - fraction : fraction;
+  float shapedWing = 0.5 * pow(2.0 * wing, max(exponent, 1.0));
   return base + (fraction > 0.5 ? 1.0 - shapedWing : shapedWing);
 }
 
@@ -405,10 +495,36 @@ vec3 dlKeyLightDirection(DLCharacterProfile profile)
     : vec3(0.0, 1.0, 0.0);
 }
 
-DLDirectDiffuseSample dlEvaluateDirectDiffuse(vec3 normal, DLCharacterProfile profile)
+vec3 dlPainterYawAdjustedDirection(vec3 inputDirection)
+{
+  float inputLengthSquared = dot(inputDirection, inputDirection);
+  vec3 baseDirection = inputLengthSquared > 0.000001
+    ? normalize(inputDirection)
+    : vec3(0.0, 1.0, 0.0);
+  vec2 painterHorizontal = -uniform_main_light.xz;
+  float painterHorizontalLength = length(painterHorizontal);
+  if (painterHorizontalLength <= 0.000001)
+  {
+    return baseDirection;
+  }
+
+  painterHorizontal /= painterHorizontalLength;
+  float painterYaw = atan(painterHorizontal.y, painterHorizontal.x);
+  float yawCos = cos(painterYaw);
+  float yawSin = sin(painterYaw);
+  return normalize(vec3(
+    yawCos * baseDirection.x - yawSin * baseDirection.z,
+    baseDirection.y,
+    yawSin * baseDirection.x + yawCos * baseDirection.z));
+}
+
+DLDirectDiffuseSample dlEvaluateDirectDiffuse(
+  vec3 normal,
+  vec3 lightDirection,
+  DLCharacterProfile profile)
 {
   DLDirectDiffuseSample sample;
-  vec3 lightDirection = dlKeyLightDirection(profile);
+  lightDirection = normalize(lightDirection);
 
   sample.ndotl = dot(normal, lightDirection);
   sample.lambert = max(sample.ndotl, 0.0);
@@ -430,54 +546,133 @@ DLDirectDiffuseSample dlEvaluateDirectDiffuse(vec3 normal, DLCharacterProfile pr
 DLDirectSpecularSample dlEvaluateDirectSpecular(
   vec3 normal,
   vec3 viewDirection,
+  vec3 lightDirection,
   float roughness,
-  vec3 specularColor,
+  vec3 baseColor,
+  float metallic,
   DLCharacterProfile profile)
 {
   DLDirectSpecularSample sample;
-  vec3 lightDirection = dlKeyLightDirection(profile);
+  lightDirection = normalize(lightDirection);
   vec3 halfVectorInput = lightDirection + viewDirection;
   vec3 halfVector = dot(halfVectorInput, halfVectorInput) > 0.000001
     ? normalize(halfVectorInput)
     : normal;
-  float adjustedRoughness = clamp(
-    roughness * profile.directSpecularRoughnessScale,
-    0.04,
-    1.0);
-  float exponent = clamp(2.0 / (adjustedRoughness * adjustedRoughness) - 2.0, 2.0, 128.0);
-  float ndoth = max(dot(normal, halfVector), 0.0);
-  float ndotl = max(dot(normal, lightDirection), 0.0);
-  sample.rawLobe = pow(ndoth, exponent) * ndotl;
-  float softness = max(profile.directSpecularSoftness, 0.001);
-  sample.steppedLobe = smoothstep(
-    profile.directSpecularThreshold - softness,
-    profile.directSpecularThreshold + softness,
-    sample.rawLobe);
-  vec3 reflectanceTint = mix(vec3(1.0), specularColor, 0.55);
+  float baseRoughness = clamp(roughness, 0.0, 1.0);
+  float adjustedRoughness = max(
+    baseRoughness * (1.0 - clamp(profile.directSpecularRoughnessBias, 0.0, 0.95)),
+    0.02);
+  float alpha2 = adjustedRoughness * adjustedRoughness;
+  float alpha4 = alpha2 * alpha2;
+  float ndoth = dot(normal, halfVector);
+  float ndotv = clamp(dot(normal, viewDirection), 0.0, 1.0);
+  float ndotl = clamp(dot(normal, lightDirection), 0.0, 1.0);
+  float distributionDenominator = 1.0 + ndoth * ndoth * (alpha4 - 1.0);
+  float visibilityDenominator = max(
+    0.00001,
+    ndotl * (ndotv * (1.0 - alpha2) + alpha2) +
+    ndotv * (ndotl * (1.0 - alpha2) + alpha2));
+  sample.rawLobe =
+    (alpha4 / max(0.00000001, distributionDenominator * distributionDenominator)) *
+    (0.5 / visibilityDenominator) * ndotl;
+
+  float steps = max(profile.directSpecularSteps, 1.0);
+  float quantizerExponent = 1.0 / max(
+    0.01,
+    0.01 + baseRoughness * (0.99 - clamp(profile.directSpecularStepSharpness, 0.0, 0.99)));
+  sample.steppedLobe = dlNprQuantizeWithExponent(
+    clamp(sample.rawLobe, 0.0, 1.0) * steps,
+    quantizerExponent) / steps;
+
+  const vec3 luminanceWeights = vec3(0.2125, 0.7154, 0.0721);
+  vec3 tintSource = mix(
+    vec3(dot(baseColor, luminanceWeights)),
+    baseColor,
+    clamp(profile.directSpecularTint, 0.0, 1.0));
+  float tintLuminance = dot(tintSource, luminanceWeights);
+  vec3 normalizedTint = tintLuminance > 0.0001
+    ? tintSource * (profile.directSpecularReflectance / tintLuminance)
+    : tintSource;
+  vec3 materialTint = mix(normalizedTint, baseColor, clamp(metallic, 0.0, 1.0));
+  float energyNormalization = 0.5 / max(
+    0.0001,
+    1.0 - exp2(-3.32192993 * alpha2));
   sample.contribution = profile.directSpecularEnabled
-    ? profile.keyLightIntensity * profile.keyLightColor *
-      profile.directSpecularIntensity * sample.steppedLobe * reflectanceTint
+    ? sample.steppedLobe * energyNormalization * materialTint
     : vec3(0.0);
   return sample;
+}
+
+DLBounceSample dlEvaluateBounce(
+  vec3 normal,
+  float ambientOcclusion,
+  vec3 transmissiveColor,
+  DLCharacterProfile profile)
+{
+  DLBounceSample sample;
+  // Painter's panorama creates a second directional lighting system beside
+  // the calibrated Deadlimit key. Keep ordinary Shaded deterministic: the
+  // environment contributes a scalar ambient approximation only. The
+  // Painter PBR Baseline diagnostic remains available for true panorama IBL.
+  sample.directionalProbe = profile.environmentColor * profile.environmentDiffuse;
+  vec3 upwardProbe = sample.directionalProbe;
+  float lowerHemisphere = 1.0 - clamp(0.5 + 0.5 * normal.y, 0.0, 1.0);
+  sample.transmissive = upwardProbe * transmissiveColor *
+    profile.bounceTransmissiveStrength * mix(0.35, 1.0, lowerHemisphere);
+  float aoWeight = mix(1.0, ambientOcclusion, profile.bounceAoStrength);
+  vec3 environmentFill = max(
+    sample.directionalProbe,
+    vec3(profile.bounceAmbientFloor));
+  sample.contribution = profile.bounceLightingEnabled
+    ? aoWeight * (environmentFill + sample.transmissive)
+    : vec3(0.0);
+  return sample;
+}
+
+vec3 dlEvaluateNprDiffuseResponse(
+  vec3 baseColor,
+  float ambientOcclusion,
+  float pbrBlend)
+{
+  // Retail multiplies material AO by screen-space DfAO before evaluating this
+  // polynomial. Painter has no matching DfAO input, so the first reproducible
+  // slice uses a neutral DfAO factor of one and keeps material AO intact.
+  float responseCoord = clamp(ambientOcclusion, 0.0, 1.0);
+  float response2 = responseCoord * responseCoord;
+  float response3 = response2 * responseCoord;
+  vec3 nprResponse =
+    ((baseColor * 2.0404 - vec3(0.3324)) * response3) -
+    ((baseColor * 4.7951 - vec3(0.6417)) * response2) +
+    ((baseColor * 2.7552 + vec3(0.6903)) * responseCoord);
+  return mix(vec3(1.0), nprResponse, vec3(clamp(pbrBlend, 0.0, 1.0)));
 }
 
 DLRimSample dlEvaluateRim(
   vec3 normal,
   vec3 viewDirection,
+  float rimMask,
+  float ambientOcclusion,
+  vec3 lightingBeforeRim,
   DLCharacterProfile profile)
 {
   DLRimSample sample;
-  float viewFacing = clamp(dot(normal, viewDirection), 0.0, 1.0);
-  sample.rawRim = pow(1.0 - viewFacing, max(profile.rimLightingPower, 0.1));
-  float softness = max(profile.rimLightingSoftness, 0.001);
-  sample.steppedRim = smoothstep(
-    profile.rimLightingThreshold - softness,
-    profile.rimLightingThreshold + softness,
-    sample.rawRim);
-  float awayFromKey = 1.0 - max(dot(normal, dlKeyLightDirection(profile)), 0.0);
+  float wrap = max(profile.rimLightingWrap, 0.0);
+  float wrappedView = clamp(
+    (dot(normal, -viewDirection) + wrap) / ((1.0 + wrap) * (1.0 + wrap)),
+    0.0,
+    1.0);
+  sample.rawRim = pow(wrappedView, max(profile.rimLightingFalloff, 0.1));
+  float rampWidth = max(
+    profile.rimLightingUpRamp.y - profile.rimLightingUpRamp.x,
+    0.001);
+  float upRamp = clamp(
+    (normal.y - profile.rimLightingUpRamp.x) / rampWidth,
+    0.0,
+    1.0);
+  sample.steppedRim = sample.rawRim * upRamp *
+    profile.rimLightingStrength * ambientOcclusion * rimMask;
   sample.contribution = profile.rimLightingEnabled
-    ? profile.rimLightingColor * profile.rimLightingIntensity *
-      sample.steppedRim * mix(0.45, 1.0, awayFromKey)
+    ? lightingBeforeRim * sample.steppedRim
     : vec3(0.0);
   return sample;
 }
@@ -503,6 +698,8 @@ void shade(V2F inputs)
   float metallic = getMetallic(metallic_tex, inputs.sparse_coord);
   float specularLevel = getSpecularLevel(specularlevel_tex, inputs.sparse_coord);
   float ambientOcclusion = getAO(inputs.sparse_coord);
+  float retailRimMask = 1.0;
+  vec3 retailTransmissiveColor = vec3(0.0);
   vec3 retailNormal = vec3(0.0, 0.0, 1.0);
   if (dl_use_retail_inputs)
   {
@@ -513,12 +710,25 @@ void shade(V2F inputs)
     retailNormal = normalUnpack(retailNormalRoughness);
     roughness = retailNormalRoughness.a;
     ambientOcclusion = texture(dl_retail_ambient_occlusion, inputs.tex_coord).r;
+    retailRimMask = texture(dl_retail_tint_rim, inputs.tex_coord).g;
+    retailTransmissiveColor = texture(dl_retail_npr_transmissive, inputs.tex_coord).rgb;
   }
 
   vec3 vertexColor = clamp(inputs.color[0].rgb, vec3(0.0), vec3(1.0));
   float vertexAlpha = clamp(inputs.color[0].a, 0.0, 1.0);
   DLCharacterProfile characterProfile = dlActiveCharacterProfile();
+  if (!dl_use_retail_inputs)
+  {
+    retailTransmissiveColor = characterProfile.referenceTint;
+  }
   bool diagnosticInputs = dl_lighting_input_mode == 1;
+  // Diagnostic Neutral replaces material inputs only. Keep Painter's light yaw
+  // live in every lighting view so Shift+RMB can verify that direct diffuse,
+  // direct specular and the lighting-derived rim all share one light rig.
+  characterProfile.keyLightDirection =
+    dlPainterYawAdjustedDirection(characterProfile.keyLightDirection);
+  characterProfile.fillLightDirection =
+    dlPainterYawAdjustedDirection(characterProfile.fillLightDirection);
   LocalVectors vectors = dl_use_retail_inputs && !diagnosticInputs
     ? computeLocalFrame(inputs, tangentSpaceToWorldSpace(retailNormal, inputs), 0.0)
     : computeLocalFrame(inputs);
@@ -530,10 +740,17 @@ void shade(V2F inputs)
     metallic = 0.0;
     specularLevel = 0.5;
     ambientOcclusion = 1.0;
+    retailRimMask = 1.0;
+    retailTransmissiveColor = characterProfile.referenceTint;
   }
 
-  DLDirectDiffuseSample directDiffuse = dlEvaluateDirectDiffuse(
+  DLDirectDiffuseSample keyDirectDiffuse = dlEvaluateDirectDiffuse(
     vectors.normal,
+    characterProfile.keyLightDirection,
+    characterProfile);
+  DLDirectDiffuseSample fillDirectDiffuse = dlEvaluateDirectDiffuse(
+    vectors.normal,
+    characterProfile.fillLightDirection,
     characterProfile);
 
   // VMAT vertex color is part of the resolved material Base Color. Apply it
@@ -576,22 +793,22 @@ void shade(V2F inputs)
   }
   if (dl_debug_view == 7)
   {
-    dlDebugOutput(vec3(0.5 + 0.5 * directDiffuse.ndotl));
+    dlDebugOutput(vec3(0.5 + 0.5 * keyDirectDiffuse.ndotl));
     return;
   }
   if (dl_debug_view == 8)
   {
-    dlDebugOutput(vec3(directDiffuse.wrapped));
+    dlDebugOutput(vec3(keyDirectDiffuse.wrapped));
     return;
   }
   if (dl_debug_view == 9)
   {
-    dlDebugOutput(vec3(directDiffuse.quantized));
+    dlDebugOutput(vec3(keyDirectDiffuse.quantized));
     return;
   }
   if (dl_debug_view == 10)
   {
-    dlDebugOutput(vec3(directDiffuse.finalValue));
+    dlDebugOutput(vec3(keyDirectDiffuse.finalValue));
     return;
   }
   if (dl_debug_view == 11)
@@ -603,34 +820,68 @@ void shade(V2F inputs)
   vec3 diffColor = generateDiffuseColor(baseColor, metallic);
   vec3 specColor = generateSpecularColor(specularLevel, baseColor, metallic);
   vec3 viewDirection = normalize(getEyeVec(inputs.position));
-  DLDirectSpecularSample directSpecular = dlEvaluateDirectSpecular(
+  DLDirectSpecularSample keyDirectSpecular = dlEvaluateDirectSpecular(
     vectors.normal,
     viewDirection,
+    characterProfile.keyLightDirection,
     roughness,
-    specColor,
+    baseColor,
+    metallic,
     characterProfile);
-  DLRimSample rim = dlEvaluateRim(
+  DLDirectSpecularSample fillDirectSpecular = dlEvaluateDirectSpecular(
     vectors.normal,
     viewDirection,
+    characterProfile.fillLightDirection,
+    roughness,
+    baseColor,
+    metallic,
+    characterProfile);
+
+  DLBounceSample bounce = dlEvaluateBounce(
+    vectors.normal,
+    ambientOcclusion,
+    retailTransmissiveColor,
     characterProfile);
 
   float occlusion = ambientOcclusion * getShadowFactor();
   float specOcclusion = specularOcclusionCorrection(occlusion, metallic, roughness);
 
-  vec3 diffuseLighting =
-    characterProfile.environmentDiffuse * envIrradiance(vectors.normal) +
-    characterProfile.keyLightIntensity * characterProfile.keyLightColor * directDiffuse.finalValue;
-  vec3 environmentSpecular = characterProfile.environmentSpecular *
-    pbrComputeSpecular(vectors, specColor, roughness);
+  float materialDirectOcclusion = mix(1.0, ambientOcclusion, 0.35);
+  float keyVisibility = materialDirectOcclusion * getShadowFactor();
+  float fillVisibility = materialDirectOcclusion;
+  vec3 keyDiffuseLighting = characterProfile.keyLightIntensity *
+    characterProfile.keyLightColor * keyDirectDiffuse.finalValue;
+  vec3 fillDiffuseLighting = characterProfile.fillLightIntensity *
+    characterProfile.fillLightColor * fillDirectDiffuse.finalValue;
+  vec3 directSpecularLighting = keyVisibility *
+    characterProfile.keyLightIntensity * characterProfile.keyLightColor *
+    keyDirectSpecular.contribution + fillVisibility *
+    characterProfile.fillLightIntensity * characterProfile.fillLightColor *
+    fillDirectSpecular.contribution;
+  vec3 directDiffuseLighting = keyVisibility * keyDiffuseLighting +
+    fillVisibility * fillDiffuseLighting;
+  vec3 lightingBeforeRim = bounce.contribution + directDiffuseLighting;
+  vec3 nprDiffuseResponse = dlEvaluateNprDiffuseResponse(
+    baseColor,
+    ambientOcclusion,
+    characterProfile.directDiffusePbrBlend);
+  vec3 diffuseLighting = directDiffuseLighting +
+    bounce.contribution * nprDiffuseResponse;
+  DLRimSample rim = dlEvaluateRim(
+    vectors.normal,
+    viewDirection,
+    retailRimMask,
+    ambientOcclusion,
+    lightingBeforeRim,
+    characterProfile);
   vec3 nprLightingComposite =
-    diffColor * occlusion * diffuseLighting +
-    specOcclusion * environmentSpecular +
-    directSpecular.contribution +
-    ambientOcclusion * rim.contribution;
+    diffColor * diffuseLighting +
+    directSpecularLighting +
+    rim.contribution;
 
   if (dl_debug_view == 12)
   {
-    dlDebugOutput(directSpecular.contribution);
+    dlDebugOutput(directSpecularLighting);
     return;
   }
   if (dl_debug_view == 13)
@@ -652,13 +903,29 @@ void shade(V2F inputs)
     sssCoefficientsOutput(getSSSCoefficients(inputs.sparse_coord));
     return;
   }
+  if (dl_debug_view == 16)
+  {
+    dlDebugOutput(vec3(retailRimMask));
+    return;
+  }
+  if (dl_debug_view == 17)
+  {
+    dlDebugOutput(bounce.contribution);
+    return;
+  }
+  if (dl_debug_view == 18)
+  {
+    dlDebugOutput(retailTransmissiveColor);
+    return;
+  }
 
-  emissiveColorOutput(pbrComputeEmissive(emissive_tex, inputs.sparse_coord));
-  albedoOutput(diffColor);
-  diffuseShadingOutput(occlusion * diffuseLighting);
-  specularShadingOutput(
-    specOcclusion * environmentSpecular +
-    directSpecular.contribution +
-    ambientOcclusion * rim.contribution);
+  // Deadlock's direct, bounce, specular and rim terms form one authored NPR
+  // composition.  Submit that resolved color through the same single-output
+  // path used by Painter's shipped Dota 2 shader; routing it back through the
+  // standard albedo/lighting split makes Painter recombine and grade the terms
+  // as a conventional PBR material.
+  diffuseShadingOutput(
+    nprLightingComposite +
+    pbrComputeEmissive(emissive_tex, inputs.sparse_coord));
   sssCoefficientsOutput(getSSSCoefficients(inputs.sparse_coord));
 }
