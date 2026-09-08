@@ -55,44 +55,64 @@ if ($alreadyCompiled -ne 'models/heroes/ivy/body_color.vtex_c') {
     throw "Compiled dependency path was modified: $alreadyCompiled"
 }
 
-$settingsType = $assembly.GetType('Deadlimit.Core.ToolPathSettings', $true)
-$settings = [Activator]::CreateInstance($settingsType)
-if ($settings.ExtractHeroTextures) {
-    throw 'ExtractHeroTextures must default to false.'
+$optionsType = $assembly.GetType('Deadlimit.Core.HeroExtractionOptions', $true)
+$sourceOnly = $optionsType.GetProperty('SourceOnly').GetValue($null)
+if ($sourceOnly.ExtractTextures -or $sourceOnly.ExtractAbilities) {
+    throw 'SourceOnly extraction options must disable both optional extraction scopes.'
+}
+
+$manifestType = $assembly.GetType('Deadlimit.Core.ProjectManifest', $true)
+$manifest = [Activator]::CreateInstance($manifestType)
+if ($manifest.LastSourceExtractionIncludedTextures -or $manifest.LastSourceExtractionIncludedAbilities) {
+    throw 'New project manifests must default optional extraction flags to false.'
 }
 
 $settingsFormType = $assembly.GetType('Deadlimit.App.SettingsForm', $true)
 $instanceFlags = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance
-if ($null -eq $settingsFormType.GetField('_extractHeroTexturesCheck', $instanceFlags)) {
-    throw 'Settings hero texture checkbox is missing.'
+if ($null -ne $settingsFormType.GetField('_extractHeroTexturesCheck', $instanceFlags)) {
+    throw 'Hero texture extraction must not be a Settings checkbox.'
 }
-if ($null -eq $settingsFormType.GetField('_initialExtractHeroTextures', $instanceFlags)) {
-    throw 'Settings initial hero texture state is missing.'
-}
-if ($null -eq $settingsFormType.GetMethod('AddHeroTextureExtractionRow', $instanceFlags)) {
-    throw 'Settings hero texture row builder is missing.'
+if ($null -ne $settingsFormType.GetMethod('AddHeroTextureExtractionRow', $instanceFlags)) {
+    throw 'Hero texture extraction must not have a Settings row.'
 }
 
 $extraction = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/HeroExtractionService.cs' -Raw
-if (-not $extraction.Contains('CollectTextureDependencyReferences(', [StringComparison]::Ordinal)) {
-    throw 'Hero extraction does not traverse model/mesh bridges before material resolution.'
-}
-
-$inheritance = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/RetailVmdlInheritance.cs' -Raw
-$online = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/OnlinePreparationSession.cs' -Raw
-$requiredInheritance = @(
-    'ProjectStore.GetToolPathSettings().ExtractHeroTextures',
-    'RetailTextureOverrideService.BuildTargetIndex(sourceRoot)',
-    'RetailTextureOverrideService.ResolveProjectRootOverrides(',
-    'RetailTextureOverrideService.StageProjectRootOverrides('
+$requiredExtraction = @(
+    'HeroExtractionOptions options',
+    'options.ExtractTextures',
+    'options.ExtractAbilities',
+    'includeTextures || !IsTextureReference(item.Path)',
+    'ExtractHeroAbilityDependencies(',
+    'LastSourceExtractionIncludedTextures = options.ExtractTextures',
+    'LastSourceExtractionIncludedAbilities = options.ExtractAbilities'
 )
-foreach ($pattern in $requiredInheritance) {
-    if (-not $inheritance.Contains($pattern, [StringComparison]::Ordinal)) {
-        throw "PREPARE retail texture wiring is missing: $pattern"
+foreach ($pattern in $requiredExtraction) {
+    if (-not $extraction.Contains($pattern, [StringComparison]::Ordinal)) {
+        throw "Per-run extraction wiring is missing: $pattern"
     }
 }
+
+$dialog = Get-Content -LiteralPath 'internal/src/Deadlimit/App/HeroExtractionOptionsDialog.cs' -Raw
+$mainForm = Get-Content -LiteralPath 'internal/src/Deadlimit/App/MainForm.cs' -Raw
+if (-not $dialog.Contains('Extract textures', [StringComparison]::Ordinal) -or
+    -not $dialog.Contains('Extract abilities', [StringComparison]::Ordinal)) {
+    throw 'Extraction dialog does not expose both per-run checkboxes.'
+}
+if (-not $mainForm.Contains('HeroExtractionOptionsDialog.Show(this, hasExistingSource)', [StringComparison]::Ordinal)) {
+    throw 'MainForm does not show the extraction options dialog for the extraction command.'
+}
+if ($mainForm.Contains('0source already contains files. Refresh it from the current Deadlock game client build?', [StringComparison]::Ordinal)) {
+    throw 'Legacy conditional refresh MessageBox is still wired in MainForm.'
+}
+
+$overrideService = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/RetailTextureOverrideService.cs' -Raw
+if (-not $overrideService.Contains('manifest.LastSourceExtractionIncludedTextures', [StringComparison]::Ordinal)) {
+    throw 'Retail texture overrides are not gated by the last actual extraction options.'
+}
+
+$online = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/OnlinePreparationSession.cs' -Raw
 if (-not $online.Contains('RetailTextureOverrideService.ResolveOnlineTextureTarget(', [StringComparison]::Ordinal)) {
     throw 'ONLINE PREPARATION retail texture target routing is missing.'
 }
 
-Write-Host 'Hero texture dependency and pipeline contract smoke passed.'
+Write-Host 'Hero texture dependency and per-run extraction contract smoke passed.'

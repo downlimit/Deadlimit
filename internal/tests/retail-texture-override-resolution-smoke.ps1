@@ -55,6 +55,12 @@ Layer0
     $manifest = [Activator]::CreateInstance($manifestType)
     $manifest.ProjectFolder = $projectRoot
 
+    $disabledOverrides = $service.GetMethod('ResolveProjectRootOverrides').Invoke($null, @($manifest, $targets))
+    if ($disabledOverrides.Count -ne 0) {
+        throw 'Retail texture overrides must stay disabled when the last extraction did not include textures.'
+    }
+
+    $manifest.LastSourceExtractionIncludedTextures = $true
     $overrides = $service.GetMethod('ResolveProjectRootOverrides').Invoke($null, @($manifest, $targets))
     if ($overrides.Count -ne 1) { throw "Expected 1 project-root retail override, got $($overrides.Count)." }
 

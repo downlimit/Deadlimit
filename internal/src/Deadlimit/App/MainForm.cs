@@ -554,6 +554,8 @@ public sealed class MainForm : Form
                 LastSourceExtractionUtc = existing?.LastSourceExtractionUtc,
                 Source2ViewerVersion = existing?.Source2ViewerVersion,
                 ExtractedSourceFileCount = existing?.ExtractedSourceFileCount,
+                LastSourceExtractionIncludedTextures = existing?.LastSourceExtractionIncludedTextures ?? false,
+                LastSourceExtractionIncludedAbilities = existing?.LastSourceExtractionIncludedAbilities ?? false,
                 SourceVmdl = existing?.SourceVmdl,
                 CompiledVmdl = existing?.CompiledVmdl,
                 AnimGraph2Refs = existing?.AnimGraph2Refs ?? [],
@@ -585,22 +587,13 @@ public sealed class MainForm : Form
         }
 
         var outputFolder = Path.Combine(_loadedManifest.ProjectFolder, _loadedManifest.SourceDumpFolderName);
-        if (Directory.Exists(outputFolder) && Directory.EnumerateFileSystemEntries(outputFolder).Any())
+        var hasExistingSource = Directory.Exists(outputFolder)
+            && Directory.EnumerateFileSystemEntries(outputFolder).Any();
+        var dialogResult = HeroExtractionOptionsDialog.Show(this, hasExistingSource);
+        if (!dialogResult.Accepted)
         {
-            var answer = MessageBox.Show(
-                this,
-                UiText.T(
-                    "0source already contains files. Refresh it from the current Deadlock game client build?\n\nThe previous 0source will be preserved as a hidden backup until the new extraction succeeds.",
-                    "0source уже содержит файлы. Обновить его из текущей установленной версии Deadlock?\n\nПредыдущий 0source будет сохранён как скрытый backup до успешного завершения нового извлечения."),
-                UiText.T("Refresh hero source", "Обновить исходники героя"),
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-
-            if (answer != DialogResult.Yes)
-            {
-                SetStatus(UiText.T("Hero source extraction cancelled.", "Извлечение исходников героя отменено."));
-                return;
-            }
+            SetStatus(UiText.T("Hero source extraction cancelled.", "Извлечение исходников героя отменено."));
+            return;
         }
 
         _extractHeroButton.Enabled = false;
@@ -608,23 +601,40 @@ public sealed class MainForm : Form
         {
             var progress = new Progress<HeroExtractionProgress>(update => SetStatus(update.Message));
             var service = new HeroExtractionService(new DeadlimitPaths());
-            var result = await service.ExtractAsync(_loadedManifest, progress);
+            var result = await service.ExtractAsync(_loadedManifest, dialogResult.Options, progress);
+
+            var backupCleanupWarning = dialogResult.RemoveBackupAfterSuccess
+                ? TryRemovePreviousHeroSourceBackup(_loadedManifest.ProjectFolder)
+                : null;
 
             RefreshScan(showStatus: false);
             SetStatus(UiText.T(
                 $"Hero source ready: {result.ExtractedFileCount} files.",
                 $"Исходники героя готовы: {result.ExtractedFileCount} файлов."));
 
+            var successMessage = UiText.T(
+                $"Hero source refreshed successfully.\n\nMain model: {result.MainModelResourcePath}\nFiles: {result.ExtractedFileCount}\nOutput: {result.OutputFolder}",
+                $"Исходники героя успешно обновлены.\n\nОсновная модель: {result.MainModelResourcePath}\nФайлов: {result.ExtractedFileCount}\nПапка: {result.OutputFolder}");
+            if (!string.IsNullOrWhiteSpace(backupCleanupWarning))
+            {
+                successMessage += UiText.T(
+                    $"\n\nBackup cleanup warning:\n{backupCleanupWarning}",
+                    $"\n\nНе удалось удалить предыдущую резервную копию:\n{backupCleanupWarning}");
+            }
+
             MessageBox.Show(
                 this,
-                UiText.T(
-                    $"Hero source refreshed successfully.\n\nMain model: {result.MainModelResourcePath}\nFiles: {result.ExtractedFileCount}\nOutput: {result.OutputFolder}",
-                    $"Исходники героя успешно обновлены.\n\nОсновная модель: {result.MainModelResourcePath}\nФайлов: {result.ExtractedFileCount}\nПапка: {result.OutputFolder}"),
+                successMessage,
                 "Deadlimit Manager",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or NotSupportedException)
+        catch (Exception ex) when (ex is IOException
+            or UnauthorizedAccessException
+            or InvalidOperationException
+            or InvalidDataException
+            or ArgumentException
+            or NotSupportedException)
         {
             SetStatus(UiText.T("Hero source extraction failed.", "Не удалось извлечь исходники героя."));
             MessageBox.Show(
@@ -637,6 +647,27 @@ public sealed class MainForm : Form
         finally
         {
             _extractHeroButton.Enabled = true;
+        }
+    }
+
+    private static string? TryRemovePreviousHeroSourceBackup(string projectFolder)
+    {
+        try
+        {
+            var previousFolder = Path.Combine(ProjectStore.GetMetadataFolder(projectFolder), "0source.previous");
+            if (Directory.Exists(previousFolder))
+            {
+                Directory.Delete(previousFolder, recursive: true);
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException
+            or UnauthorizedAccessException
+            or ArgumentException
+            or NotSupportedException)
+        {
+            return ex.Message;
         }
     }
 

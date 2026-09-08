@@ -10,7 +10,11 @@ public sealed class ToolPathSettings
     public string RetailDeadlockRoot { get; set; } = string.Empty;
     public string UiLanguage { get; set; } = "en";
     public string UiTheme { get; set; } = "system";
-    public bool ExtractHeroTextures { get; set; }
+
+    // Compatibility only for older pipeline call sites. This is not a user setting,
+    // is not persisted, and carries no extraction state. Per-run extraction state lives
+    // on ProjectManifest and HeroExtractionOptions.
+    public bool ExtractHeroTextures => true;
 }
 
 public static class ProjectStore
@@ -24,11 +28,6 @@ public static class ProjectStore
         PropertyNameCaseInsensitive = true,
     };
 
-    // Library drawing and background preparation can race with an otherwise valid
-    // project.json being temporarily unavailable to readers. Keep only the last raw
-    // JSON that was successfully parsed in this process. A real JSON parse failure is
-    // never masked by this cache, so the project library can still show its red error
-    // state for genuinely broken metadata.
     private static readonly ConcurrentDictionary<string, string> LastKnownGoodManifestJson =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -61,9 +60,6 @@ public static class ProjectStore
         }
         catch (JsonException)
         {
-            // Invalid JSON is a real project metadata error. Do not hide it behind the
-            // last-known-good snapshot; the project library can still show its red
-            // warning state for genuinely broken metadata.
             return null;
         }
         catch (IOException)
@@ -141,7 +137,6 @@ public static class ProjectStore
             RetailDeadlockRoot = settings.RetailDeadlockRoot,
             UiLanguage = NormalizeUiLanguage(settings.UiLanguage),
             UiTheme = NormalizeUiTheme(settings.UiTheme),
-            ExtractHeroTextures = settings.ExtractHeroTextures,
         };
     }
 
@@ -154,7 +149,6 @@ public static class ProjectStore
         settings.RetailDeadlockRoot = NormalizeOptionalPath(toolPaths.RetailDeadlockRoot);
         settings.UiLanguage = NormalizeUiLanguage(toolPaths.UiLanguage);
         settings.UiTheme = NormalizeUiTheme(toolPaths.UiTheme);
-        settings.ExtractHeroTextures = toolPaths.ExtractHeroTextures;
         SaveSettings(settings);
     }
 
@@ -286,6 +280,5 @@ public static class ProjectStore
         public string RetailDeadlockRoot { get; set; } = string.Empty;
         public string UiLanguage { get; set; } = "en";
         public string UiTheme { get; set; } = "system";
-        public bool ExtractHeroTextures { get; set; }
     }
 }
