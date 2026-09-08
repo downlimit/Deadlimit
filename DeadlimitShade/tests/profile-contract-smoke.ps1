@@ -120,9 +120,12 @@ Assert-True ($heroShader.Contains('sample.transmissive = upwardProbe * transmiss
 Assert-True ($heroShader.Contains('"Retail Rim Mask": 16')) 'Hero shader is missing the retail rim-mask diagnostic.'
 Assert-True ($heroShader.Contains('"NPR Bounce": 17')) 'Hero shader is missing the bounce diagnostic.'
 Assert-True ($heroShader.Contains('"Retail NPR Transmissive": 18')) 'Hero shader is missing the material-local transmissive diagnostic.'
-Assert-True (($heroShader.Split('pbrComputeSpecular(').Count - 1) -eq 1) 'Painter environment specular must remain confined to the explicit PBR baseline view.'
+Assert-True ($heroShader.Contains('"Environment Specular Raw": 19')) 'Hero shader is missing the raw environment-specular diagnostic.'
+Assert-True ($heroShader.Contains('"Environment Specular Final": 20')) 'Hero shader is missing the scaled environment-specular diagnostic.'
+Assert-True (($heroShader.Split('pbrComputeSpecular(').Count - 1) -eq 2) 'Painter environment sampling must remain confined to the Deadlimit probe substitute and explicit PBR baseline view.'
 Assert-True (($heroShader.Split('envIrradiance(').Count - 1) -eq 1) 'Painter panorama irradiance must remain confined to the explicit PBR baseline view.'
-Assert-True (-not $heroShader.Contains('environmentSpecular')) 'Deadlimit shaded composition must not expose the removed Painter environment-specular control.'
+Assert-True ($heroShader.Contains('environmentSpecular.contribution')) 'Deadlimit shaded composition must include the controlled probe-specular substitute.'
+Assert-True ($heroShader.Contains('dl_environment_specular_strength')) 'Environment specular must expose its calibrated preview strength.'
 Assert-True ($heroShader -match 'diffuseShadingOutput\(\s*nprLightingComposite \+') 'Shaded output must use the self-composed Deadlimit color path.'
 
 foreach ($value in @(0.0, 0.125, 0.25, 0.5, 0.75, 0.875, 1.0)) {

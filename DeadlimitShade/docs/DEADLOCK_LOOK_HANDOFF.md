@@ -189,8 +189,10 @@ PBR baseline. No cyan/blue/checker sampler failure was present.
 
 The exact scene is recorded in `docs/Validation.md`. The Ivy lighting values
 remain **calibrated approximation** values. The failed dual-highlight result
-was traced to simultaneous Painter environment specular and Deadlimit direct
-specular. Painter IBL specular is now excluded from ordinary Shaded.
+was traced to an unbounded Painter environment term combined with Deadlimit
+direct specular. Ordinary Shaded now contains one bounded, independently
+diagnosable panorama substitute for the separate environment/local-probe
+specular path recovered from the retail opaque output graph.
 
 A fresh Computer Use A/B on 2026-09-08 used the same explicit camera,
 environment and exposure. It showed readable retail color, a broad NPR diffuse
@@ -223,6 +225,13 @@ dynamic 0. It establishes the material preparation order, six-direction NPR
 bounce, sun and barn-light loops, shadows/cookies, direct diffuse/specular,
 rim, self illumination, standard environment/local-probe specular and final
 composition.
+
+The first output-graph reconstruction stage is visually gated in Painter:
+`Environment Specular Raw` and `Environment Specular Final` isolate the lobe,
+and a 145/180-degree environment A/B showed it move coherently in final Shaded.
+Painter panorama sampling, strength `0.18` and roughness bias `0.12` are
+calibrated approximations. Exact retail probe data and probe blending remain
+blocked/unresolved.
 
 The reverse trace corrected one earlier detail: retail saturates `dot(N,L)`
 before the direct-diffuse wrap in both light loops. Deadlimit now follows that

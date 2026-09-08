@@ -530,9 +530,8 @@ and are excluded from Git.
 
 The fresh 2026-09-08 captures prove term isolation, asset integrity, live
 Painter-light yaw and an obvious same-scene delta from Painter PBR. The earlier
-dual-highlight composition was discarded: ordinary Shaded now contains only
-Deadlimit direct diffuse, bounce, direct specular, rim and emissive. The current
-Ivy values remain calibrated approximations and do not claim pixel parity.
+unbounded dual-highlight composition was discarded. The current Ivy values
+remain calibrated approximations and do not claim pixel parity.
 
 The subsequent combo-24 output trace corrected the direct wrap input from raw
 signed `N dot L` to retail's saturated `N dot L`. An exhaustive 0.001-step
@@ -540,6 +539,32 @@ sweep over `[-1,1]` at Ivy's calibrated `wrap = 0.48` produced maximum wrapped-
 response delta `0`; the fixed-scene visual result is therefore unchanged. The
 contract correction affects future profiles whose wrap allows a negative-
 hemisphere response.
+
+### Environment/local-probe specular reconstruction — 2026-09-08
+
+The opaque retail output trace established a distinct environment/local-probe
+specular path alongside direct specular. Painter cannot reproduce the bound
+Deadlock probes, so the preview uses Painter's panorama-prefiltered
+`pbrComputeSpecular` as a bounded substitute inside the Deadlimit composition.
+It is exposed independently as `Environment Specular Raw` and `Environment
+Specular Final`; ordinary Shaded adds only the scaled final contribution.
+
+A Computer Use pass on the deterministic Ivy scene captured both diagnostics,
+then changed Environment Rotation from 145 to 180 degrees. The lobe moved over
+the copper cuffs and weapon in both the isolated pass and final Shaded. Direct
+NPR lighting continued to use the same Painter yaw bridge. The environment was
+returned to 145 degrees and 1.0 EV after the A/B.
+
+| Result or value | Classification |
+| --- | --- |
+| Separate environment/local-probe specular in opaque final RGB | Confirmed by static retail evidence |
+| Shader compilation, debug modes 19/20, moving lobe and final Shaded composition | Confirmed by pipeline/runtime |
+| Painter panorama substitute, strength `0.18` and roughness bias `0.12` | Calibrated approximation |
+| Exact Deadlock probe cubemaps, local-probe weights/parallax and runtime roughness response | Blocked/unresolved |
+
+Visual gate: **PASS for the reconstructed environment-specular stage**. It
+removes the previous fixed fake-highlight conflict and restores the missing
+view-dependent material response. Full game pixel parity remains unresolved.
 
 ## Uber-shader decomposition stage 1 — retail static gate — 2026-09-08
 

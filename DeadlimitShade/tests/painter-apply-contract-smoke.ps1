@@ -42,6 +42,8 @@ Assert-True $plugin.Contains('Deadlimit View') 'Painter dock must provide shader
 Assert-True $plugin.Contains('Lighting Inputs') 'Painter dock must switch deterministically between neutral diagnostic and material inputs.'
 Assert-True $plugin.Contains('NPR Lighting Composite') 'Painter dock must expose the final lighting skeleton independently of material color.'
 Assert-True $plugin.Contains('Painter PBR Baseline') 'Painter dock must expose the same-scene PBR comparison.'
+Assert-True $plugin.Contains('("Environment Specular Raw", 19)') 'Painter dock must expose the raw environment-specular diagnostic.'
+Assert-True $plugin.Contains('("Environment Specular Final", 20)') 'Painter dock must expose the calibrated environment-specular diagnostic.'
 Assert-True $plugin.Contains('dl_lighting_input_mode: inputMode') 'Diagnostic input selection must reach every hero and retail shader instance.'
 Assert-True $plugin.Contains('hasOwnProperty.call(parameters, "dl_lighting_input_mode")') 'Diagnostic switching must ignore stale unused Painter shader instances from earlier embedded revisions.'
 Assert-True $plugin.Contains('g_tTintMaskRimLightMask') 'Retail preview must import the packed tint/rim source.'
@@ -60,6 +62,7 @@ Assert-True $outlineShader.Contains('emissiveColorOutput(outlineColor)') 'Outlin
 Assert-True $outlineShader.Contains('albedoOutput(outlineColor)') 'Outline Base Color view must match the resolved Material-view color.'
 Assert-True ($heroShader.IndexOf('baseColor *= mix(vec3(1.0), vertexColor, dl_vertex_color_multiply);') -lt $heroShader.IndexOf('if (dl_debug_view == 1)')) 'Resolved Base Color must include VMAT vertex-color multiplication in both preview modes.'
 Assert-True $heroShader.Contains('directSpecularLighting +') 'Hero shaded composition must include the independently evaluated direct specular term.'
+Assert-True $heroShader.Contains('environmentSpecular.contribution') 'Hero shaded composition must include the independently diagnosable environment-specular term.'
 Assert-True (
     $heroShader.Contains("directSpecularLighting +`r`n    rim.contribution") -or
     $heroShader.Contains("directSpecularLighting +`n    rim.contribution")

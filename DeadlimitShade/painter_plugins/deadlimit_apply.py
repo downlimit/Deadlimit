@@ -276,7 +276,9 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
                 ("Painter PBR Baseline", 15),
                 ("Retail Rim Mask", 16),
                 ("NPR Bounce", 17),
-                ("Retail NPR Transmissive", 18)):
+                ("Retail NPR Transmissive", 18),
+                ("Environment Specular Raw", 19),
+                ("Environment Specular Final", 20)):
             self.preview_combo.addItem(label, value)
         self.preview_combo.currentIndexChanged.connect(self._set_preview_view)
 

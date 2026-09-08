@@ -339,6 +339,18 @@ uniform vec3 dl_environment_color;
 //: }
 uniform float dl_environment_diffuse;
 
+// Painter panorama radiance is the available preview substitute for Deadlock's
+// local/fallback probe radiance. These are calibrated preview controls, not
+// retail runtime values.
+//: param custom { "default": true, "label": "Environment Specular", "group": "Deadlimit Environment Specular" }
+uniform bool dl_environment_specular_enabled;
+
+//: param custom { "default": 0.18, "label": "Environment Specular Strength", "min": 0.0, "max": 2.0, "group": "Deadlimit Environment Specular" }
+uniform float dl_environment_specular_strength;
+
+//: param custom { "default": 0.12, "label": "Environment Roughness Bias", "min": 0.0, "max": 0.75, "group": "Deadlimit Environment Specular" }
+uniform float dl_environment_specular_roughness_bias;
+
 //: param custom {
 //:   "default": 0.0,
 //:   "label": "Vertex Color Multiply",
@@ -384,7 +396,9 @@ uniform int dl_lighting_input_mode;
 //:     "Painter PBR Baseline": 15,
 //:     "Retail Rim Mask": 16,
 //:     "NPR Bounce": 17,
-//:     "Retail NPR Transmissive": 18
+//:     "Retail NPR Transmissive": 18,
+//:     "Environment Specular Raw": 19,
+//:     "Environment Specular Final": 20
 //:   },
 //:   "group": "Deadlimit Diagnostics"
 //: }
@@ -412,6 +426,33 @@ struct DLBounceSample
   vec3 transmissive;
   vec3 contribution;
 };
+
+struct DLEnvironmentSpecularSample
+{
+  vec3 raw;
+  vec3 contribution;
+};
+
+DLEnvironmentSpecularSample dlEvaluateEnvironmentSpecular(
+  LocalVectors vectors,
+  vec3 specularColor,
+  float roughness,
+  float specularOcclusion)
+{
+  DLEnvironmentSpecularSample sample;
+  float previewRoughness = clamp(
+    roughness + dl_environment_specular_roughness_bias,
+    0.04,
+    1.0);
+  sample.raw = specularOcclusion * pbrComputeSpecular(
+    vectors,
+    specularColor,
+    previewRoughness);
+  sample.contribution = dl_environment_specular_enabled
+    ? sample.raw * dl_environment_specular_strength
+    : vec3(0.0);
+  return sample;
+}
 
 struct DLRimSample
 {
@@ -845,6 +886,12 @@ void shade(V2F inputs)
 
   float occlusion = ambientOcclusion * getShadowFactor();
   float specOcclusion = specularOcclusionCorrection(occlusion, metallic, roughness);
+  DLEnvironmentSpecularSample environmentSpecular =
+    dlEvaluateEnvironmentSpecular(
+      vectors,
+      specColor,
+      roughness,
+      specOcclusion);
 
   float materialDirectOcclusion = mix(1.0, ambientOcclusion, 0.35);
   float keyVisibility = materialDirectOcclusion * getShadowFactor();
@@ -877,7 +924,8 @@ void shade(V2F inputs)
   vec3 nprLightingComposite =
     diffColor * diffuseLighting +
     directSpecularLighting +
-    rim.contribution;
+    rim.contribution +
+    environmentSpecular.contribution;
 
   if (dl_debug_view == 12)
   {
@@ -916,6 +964,16 @@ void shade(V2F inputs)
   if (dl_debug_view == 18)
   {
     dlDebugOutput(retailTransmissiveColor);
+    return;
+  }
+  if (dl_debug_view == 19)
+  {
+    dlDebugOutput(environmentSpecular.raw);
+    return;
+  }
+  if (dl_debug_view == 20)
+  {
+    dlDebugOutput(environmentSpecular.contribution);
     return;
   }
 
