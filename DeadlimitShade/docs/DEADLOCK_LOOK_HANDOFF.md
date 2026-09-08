@@ -2,7 +2,7 @@
 
 Status: Milestone B lighting skeleton passed the fixed-scene Painter visual
 gate. The opaque combo-24 ordinary graph and optional dynamic-2 status delta
-are complete; the alpha-test material-family delta is next.
+and alpha-test family delta are complete; the sheen family is next.
 
 Updated: 2026-09-08.
 
@@ -240,12 +240,20 @@ lobe, rim lobe or final post-process term. Ordinary Ivy preview therefore keeps
 dynamic-0 semantics; implementing gameplay statuses is optional and requires
 effect-specific captures and inputs.
 
+## Uber-shader decomposition stage 4 — 2026-09-08
+
+`docs/ALPHA_TEST_DELTA.md` reduces combo 56 to six added fields and one discard
+equation. The family repurposes `g_tColor.a` from opaque metalness to cutout
+opacity and reads metalness from `g_tMetalness.r`. Coverage combines texture
+alpha, vertex alpha, a view-angle term and a distance boost before discard;
+surviving pixels rejoin the ordinary opaque lighting graph.
+
 ## Brief for the next Codex session
 
 Complete the static decomposition before further visual calibration:
 
 1. keep the fixed Ivy validation scene unchanged;
-2. reduce alpha-test, sheen, translucent, glass and advanced translucency to
+2. reduce sheen, translucent, glass and advanced translucency to
    material-family deltas in the recorded priority order;
 3. keep compatible environment/local-probe specular as an explicit missing
    base-look component until its inputs can be reproduced in Painter;

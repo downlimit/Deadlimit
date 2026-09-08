@@ -123,6 +123,8 @@ DeadlimitShade/
   coverage.
 - `docs/STATUS_PROXY_DELTA.md` isolates the optional dynamic-2 status material
   modifier from that ordinary opaque graph.
+- `docs/ALPHA_TEST_DELTA.md` records the alpha-test discard equation and its
+  separate opacity/metalness channel layout.
 
 ## v1 target
 

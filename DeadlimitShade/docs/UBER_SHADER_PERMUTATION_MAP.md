@@ -168,4 +168,4 @@ Painter character preview.
 The combo-24/dynamic-0 contribution topology is continued in
 `docs/OPAQUE_OUTPUT_GRAPH.md`; its optional dynamic-2 material modifier is
 isolated in `docs/STATUS_PROXY_DELTA.md`. The next material-family delta is
-alpha test.
+alpha test, documented in `docs/ALPHA_TEST_DELTA.md`; sheen follows.

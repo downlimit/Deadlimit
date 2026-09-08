@@ -115,6 +115,6 @@ effect. It is not a missing component of the ordinary Deadlock character look.
   names for the two added interpolants, effect authoring conventions and visual
   references for individual gameplay statuses.
 
-The base opaque family is now statically bounded. The next decomposition target
-is the alpha-test family delta, followed by sheen, translucent, glass and
-advanced translucency.
+The base opaque family is now statically bounded. The alpha-test family delta
+is documented in `ALPHA_TEST_DELTA.md`; sheen, translucent, glass and advanced
+translucency follow.

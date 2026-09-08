@@ -250,4 +250,4 @@ own controlled reconstruction before it can return to Deadlimit Shaded.
 The dynamic-2 status-proxy delta is isolated in `STATUS_PROXY_DELTA.md`. It
 remains separate from the ordinary-look implementation unless a captured
 reference actually activates it. The next material-family target is alpha
-test.
+test, documented in `ALPHA_TEST_DELTA.md`.

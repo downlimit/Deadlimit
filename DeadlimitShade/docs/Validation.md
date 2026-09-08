@@ -576,3 +576,15 @@ Their pixel render states are identical. The status program adds exactly 26
 named `_Globals_` fields and two interpolants, modifies prepared material
 properties, then rejoins the ordinary lighting graph. No visual approximation
 or Painter status mode was introduced.
+
+## Uber-shader decomposition stage 4 — alpha-test static gate — 2026-09-08
+
+Retail static combo 56 reports `S_ALPHA_TEST=1`, `S_USE_NPR_LIGHTING=1` and
+`S_USE_STATUS_EFFECTS_PROXY=1`, with 104 dynamic states and 72 shader files.
+Its dynamic-0 program is 78,072-byte SPIR-V with SHA-256
+`c09682f7e8e8d5f0af078c29e0e8169eb4ef9cdd3c218c4897332183106b16c6`.
+The dynamic-0 render state matches ordinary combo 24. Static comparison found
+six added `_Globals_` fields: a separate metalness texture and five cutout
+controls. The recovered coverage equation uses vertex alpha, color alpha,
+view-angle correction and distance boost before discard. No Painter visual or
+calibrated alpha value is claimed by this gate.

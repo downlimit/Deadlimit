@@ -7,6 +7,8 @@ The final ordinary contribution order is maintained in
 `docs/OPAQUE_OUTPUT_GRAPH.md`.
 The optional status-material modifier is isolated in
 `docs/STATUS_PROXY_DELTA.md`.
+The alpha-tested channel layout and discard equation are isolated in
+`docs/ALPHA_TEST_DELTA.md`.
 
 This note records the first code-backed Deadlock material slice for issue #133.
 It is a recovery document, not a claim of a final Painter match.
