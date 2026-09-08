@@ -221,21 +221,61 @@ public sealed class HeroExtractionService
         IProgress<HeroExtractionProgress>? progress,
         CancellationToken cancellationToken)
     {
-        progress?.Report(new HeroExtractionProgress("Resolving hero material and texture dependencies..."));
+        progress?.Report(new HeroExtractionProgress("Resolving hero model, material and texture dependencies..."));
 
-        var modelReferences = ReadExternalReferences(
-            new ResourceLocation(candidate.VpkPath, candidate.ResourcePath),
-            cancellationToken);
+        var pendingBridges = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var pendingMaterials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var texturePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var pendingMaterials = modelReferences
-            .Where(IsMaterialReference)
-            .Select(ToCompiledResourcePath)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        CollectTextureDependencyReferences(
+            ReadExternalReferences(
+                new ResourceLocation(candidate.VpkPath, candidate.ResourcePath),
+                cancellationToken),
+            pendingBridges,
+            pendingMaterials,
+            texturePaths);
 
-        var texturePaths = modelReferences
-            .Where(IsTextureReference)
-            .Select(ToCompiledResourcePath)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var processedBridges = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            candidate.ResourcePath,
+        };
+
+        while (pendingBridges.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var request = pendingBridges
+                .Where(path => !processedBridges.Contains(path))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            pendingBridges.Clear();
+
+            if (request.Count == 0)
+            {
+                break;
+            }
+
+            var locations = ResolveResourceLocations(vpkPaths, request, progress, cancellationToken);
+            foreach (var missing in request.Where(path => !locations.ContainsKey(path)))
+            {
+                progress?.Report(new HeroExtractionProgress(
+                    $"Referenced retail model/mesh bridge was not found: {missing}"));
+                processedBridges.Add(missing);
+            }
+
+            foreach (var location in locations.Values)
+            {
+                if (!processedBridges.Add(location.ResourcePath))
+                {
+                    continue;
+                }
+
+                CollectTextureDependencyReferences(
+                    ReadExternalReferences(location, cancellationToken),
+                    pendingBridges,
+                    pendingMaterials,
+                    texturePaths);
+            }
+        }
 
         var resolvedMaterials = new Dictionary<string, ResourceLocation>(StringComparer.OrdinalIgnoreCase);
         var processedMaterials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -313,7 +353,8 @@ public sealed class HeroExtractionService
             .ToArray();
 
         progress?.Report(new HeroExtractionProgress(
-            $"Hero texture dependencies: {resolvedMaterials.Count} material(s), {textureLocations.Count} texture resource(s)."));
+            $"Hero texture dependencies: {processedBridges.Count - 1} model/mesh bridge(s), " +
+            $"{resolvedMaterials.Count} material(s), {textureLocations.Count} texture resource(s)."));
 
         if (dependencies.Length == 0)
         {
@@ -327,6 +368,29 @@ public sealed class HeroExtractionService
             outputRoot,
             progress,
             cancellationToken);
+    }
+
+    private static void CollectTextureDependencyReferences(
+        IEnumerable<string> references,
+        HashSet<string> pendingBridges,
+        HashSet<string> pendingMaterials,
+        HashSet<string> texturePaths)
+    {
+        foreach (var reference in references)
+        {
+            if (IsTextureReference(reference))
+            {
+                texturePaths.Add(ToCompiledResourcePath(reference));
+            }
+            else if (IsMaterialReference(reference))
+            {
+                pendingMaterials.Add(ToCompiledResourcePath(reference));
+            }
+            else if (IsTextureDependencyBridgeReference(reference))
+            {
+                pendingBridges.Add(ToCompiledResourcePath(reference));
+            }
+        }
     }
 
     private static IReadOnlyDictionary<string, ResourceLocation> ResolveResourceLocations(
@@ -623,6 +687,15 @@ public sealed class HeroExtractionService
         && (path.StartsWith("models/heroes/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("models/heroes_wip/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("models/heroes_staging/", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsTextureDependencyBridgeReference(string path)
+    {
+        var normalized = NormalizeResourcePath(path);
+        return normalized.EndsWith(".vmdl", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith(".vmdl_c", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith(".vmesh", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith(".vmesh_c", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool IsMaterialReference(string path)
     {
