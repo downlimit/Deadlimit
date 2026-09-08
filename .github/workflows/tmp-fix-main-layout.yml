@@ -1,0 +1,90 @@
+name: Temporary main layout repair
+
+on:
+  push:
+    branches: [ fix/extract-ellipsis-main-layout ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Repair stable extraction control wiring
+        shell: pwsh
+        run: |
+          $mainPath = 'internal/src/Deadlimit/App/MainForm.cs'
+          $main = Get-Content -LiteralPath $mainPath -Raw
+          $mainNeedle = @'
+    private readonly Button _extractHeroButton = new()
+    {
+        Text = UiText.T("EXTRACT HERO SOURCE…", "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ…"),
+        AutoSize = true,
+    };
+'@
+          $mainReplacement = @'
+    private readonly Button _extractHeroButton = new()
+    {
+        Name = UiControlNames.ExtractHeroSourceButton,
+        Text = UiText.T("EXTRACT HERO SOURCE…", "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ…"),
+        AutoSize = true,
+    };
+'@
+          if (-not $main.Contains($mainNeedle)) { throw 'MainForm extraction button anchor not found.' }
+          $main = $main.Replace($mainNeedle, $mainReplacement)
+          [IO.File]::WriteAllText($mainPath, $main, [Text.UTF8Encoding]::new($false))
+
+          $buildPath = 'internal/src/Deadlimit/App/BuildFeature.cs'
+          $build = Get-Content -LiteralPath $buildPath -Raw
+          $buildNeedle = @'
+        var topBar = FindDescendants<FlowLayoutPanel>(form)
+            .FirstOrDefault(panel => panel.Controls.OfType<Button>()
+                .Any(button => string.Equals(button.Text, "EXTRACT HERO SOURCE", StringComparison.Ordinal)
+                    || string.Equals(button.Text, "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ", StringComparison.Ordinal)));
+'@
+          $buildReplacement = @'
+        var topBar = FindDescendants<FlowLayoutPanel>(form)
+            .FirstOrDefault(panel => panel.Controls.OfType<Button>()
+                .Any(button => string.Equals(
+                    button.Name,
+                    UiControlNames.ExtractHeroSourceButton,
+                    StringComparison.Ordinal)));
+'@
+          if (-not $build.Contains($buildNeedle)) { throw 'BuildFeature top-bar anchor not found.' }
+          $build = $build.Replace($buildNeedle, $buildReplacement)
+          [IO.File]::WriteAllText($buildPath, $build, [Text.UTF8Encoding]::new($false))
+
+          $testPath = 'internal/tests/ui-agent-contract-smoke.ps1'
+          $test = Get-Content -LiteralPath $testPath -Raw
+          if (-not $test.Contains("UiControlNames.ExtractHeroSourceButton")) {
+            $append = @'
+
+$mainForm = Get-Content -LiteralPath (Join-Path $repoRoot 'internal\src\Deadlimit\App\MainForm.cs') -Raw
+$buildFeature = Get-Content -LiteralPath (Join-Path $repoRoot 'internal\src\Deadlimit\App\BuildFeature.cs') -Raw
+if (-not $mainForm.Contains('Name = UiControlNames.ExtractHeroSourceButton')) {
+    throw 'Hero source extraction button must expose its stable semantic control name.'
+}
+if (-not $buildFeature.Contains('UiControlNames.ExtractHeroSourceButton')) {
+    throw 'BuildFeature must locate the hero extraction top bar through the stable control name.'
+}
+if ($buildFeature.Contains('button.Text, "EXTRACT HERO SOURCE"') -or
+    $buildFeature.Contains('button.Text, "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ"')) {
+    throw 'BuildFeature must not depend on localized hero extraction button copy.'
+}
+'@
+            $marker = "Write-Host 'UI agent contract smoke passed.'"
+            if (-not $test.Contains($marker)) { throw 'UI smoke completion marker not found.' }
+            $test = $test.Replace($marker, $append + "`r`n" + $marker)
+            [IO.File]::WriteAllText($testPath, $test, [Text.UTF8Encoding]::new($false))
+          }
+
+          git config user.name 'Oleg Knyazev'
+          git config user.email 'down.limit@gmail.com'
+          git add -- $mainPath $buildPath $testPath
+          if (git diff --cached --quiet) { exit 0 }
+          git commit -m "Decouple main layout from extraction button copy`n`nSigned-off-by: Oleg Knyazev <down.limit@gmail.com>"
+          git push origin HEAD:fix/extract-ellipsis-main-layout
