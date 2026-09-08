@@ -27,3 +27,6 @@ jobs:
       - name: Retail texture override resolution smoke
         shell: pwsh
         run: internal/tests/retail-texture-override-resolution-smoke.ps1
+      - name: Extracted texture TGA smoke
+        shell: pwsh
+        run: internal/tests/extracted-texture-tga-smoke.ps1
