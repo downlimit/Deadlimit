@@ -10,6 +10,7 @@ public sealed class ToolPathSettings
     public string RetailDeadlockRoot { get; set; } = string.Empty;
     public string UiLanguage { get; set; } = "en";
     public string UiTheme { get; set; } = "system";
+    public bool ExtractHeroTextures { get; set; }
 }
 
 public static class ProjectStore
@@ -61,7 +62,8 @@ public static class ProjectStore
         catch (JsonException)
         {
             // Invalid JSON is a real project metadata error. Do not hide it behind the
-            // last-known-good snapshot; the library's red warning is meaningful here.
+            // last-known-good snapshot; the project library can still show its red
+            // warning state for genuinely broken metadata.
             return null;
         }
         catch (IOException)
@@ -138,6 +140,7 @@ public static class ProjectStore
             RetailDeadlockRoot = settings.RetailDeadlockRoot,
             UiLanguage = NormalizeUiLanguage(settings.UiLanguage),
             UiTheme = NormalizeUiTheme(settings.UiTheme),
+            ExtractHeroTextures = settings.ExtractHeroTextures,
         };
     }
 
@@ -150,6 +153,7 @@ public static class ProjectStore
         settings.RetailDeadlockRoot = NormalizeOptionalPath(toolPaths.RetailDeadlockRoot);
         settings.UiLanguage = NormalizeUiLanguage(toolPaths.UiLanguage);
         settings.UiTheme = NormalizeUiTheme(toolPaths.UiTheme);
+        settings.ExtractHeroTextures = toolPaths.ExtractHeroTextures;
         SaveSettings(settings);
     }
 
@@ -275,5 +279,6 @@ public static class ProjectStore
         public string RetailDeadlockRoot { get; set; } = string.Empty;
         public string UiLanguage { get; set; } = "en";
         public string UiTheme { get; set; } = "system";
+        public bool ExtractHeroTextures { get; set; }
     }
 }
