@@ -52,6 +52,17 @@ public static class RetailTextureOverrideService
             }
         }
 
+        // The extracted source tree is provenance on its own. Portraits, minimap icons,
+        // top-bar images and other UI textures may never be referenced by a VMAT, so they
+        // must still be eligible for an exact project-root override at their retail path.
+        foreach (var sourceImage in Directory.EnumerateFiles(extractedSourceRoot, "*", SearchOption.AllDirectories)
+                     .Where(path => ArtistTextureExtensions.Contains(Path.GetExtension(path)))
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            var resourcePath = NormalizeResourcePath(Path.GetRelativePath(extractedSourceRoot, sourceImage));
+            targets.TryAdd(resourcePath, new RetailTextureTarget(resourcePath, string.Empty));
+        }
+
         return targets.Values
             .OrderBy(target => target.ResourcePath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -61,9 +72,7 @@ public static class RetailTextureOverrideService
         ProjectManifest manifest,
         IReadOnlyList<RetailTextureTarget> targets)
     {
-        if (!manifest.LastSourceExtractionIncludedTextures
-            || !Directory.Exists(manifest.ProjectFolder)
-            || targets.Count == 0)
+        if (!Directory.Exists(manifest.ProjectFolder) || targets.Count == 0)
         {
             return Array.Empty<RetailTextureOverride>();
         }
@@ -107,8 +116,8 @@ public static class RetailTextureOverrideService
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .OrderBy(name => name, StringComparer.OrdinalIgnoreCase));
                 throw new InvalidOperationException(
-                    $"Project-root texture '{artistFileName}' has the same basename as a retail texture but a different source extension. " +
-                    $"Use the original retail filename: {expectedNames}");
+                    $"Project-root texture '{artistFileName}' has the same basename as an extracted retail texture but a different source extension. " +
+                    $"Use the original extracted filename: {expectedNames}");
             }
 
             if (exactMatches.Length != 1)
@@ -117,7 +126,7 @@ public static class RetailTextureOverrideService
                     Environment.NewLine,
                     exactMatches.Select(match => $"  - {match.ResourcePath}"));
                 throw new InvalidOperationException(
-                    $"Project-root texture '{artistFileName}' matches more than one retail texture resource. " +
+                    $"Project-root texture '{artistFileName}' matches more than one extracted retail texture resource. " +
                     "Deadlimit will not guess which resource to replace." + Environment.NewLine + candidates);
             }
 
@@ -162,7 +171,7 @@ public static class RetailTextureOverrideService
     {
         var defaultTarget = Path.Combine(defaultTextureTargetFolder, Path.GetFileName(artistSourcePath));
         var manifest = ProjectStore.TryLoad(projectFolder);
-        if (manifest is null || !manifest.LastSourceExtractionIncludedTextures)
+        if (manifest is null)
         {
             return defaultTarget;
         }
