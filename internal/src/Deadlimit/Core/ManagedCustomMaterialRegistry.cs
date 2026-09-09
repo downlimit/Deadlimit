@@ -17,6 +17,8 @@ internal sealed class ManagedCustomMaterialRegistry
 internal static class ManagedCustomMaterialRegistryStore
 {
     private const string FileName = "managed-custom-materials.json";
+    private const string LegacyVertexColorMarkerPrefix = "// DEADLIMIT_VERTEXCOLOR_VMAT_V";
+    private const string PendingManagedMarker = "// DEADLIMIT_MANAGED_CUSTOM_VMAT_V5_PENDING";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -34,10 +36,12 @@ internal static class ManagedCustomMaterialRegistryStore
 
         try
         {
-            return JsonSerializer.Deserialize<ManagedCustomMaterialRegistry>(
-                       File.ReadAllText(path),
-                       JsonOptions)
-                   ?? new ManagedCustomMaterialRegistry();
+            var registry = JsonSerializer.Deserialize<ManagedCustomMaterialRegistry>(
+                               File.ReadAllText(path),
+                               JsonOptions)
+                           ?? new ManagedCustomMaterialRegistry();
+            PromoteRegistryOwnedVertexColorMarkers(manifest, registry);
+            return registry;
         }
         catch (JsonException)
         {
@@ -112,6 +116,56 @@ internal static class ManagedCustomMaterialRegistryStore
         };
 
         AtomicFile.WriteJson(GetPath(manifest), registry, JsonOptions);
+    }
+
+    private static void PromoteRegistryOwnedVertexColorMarkers(
+        ProjectManifest manifest,
+        ManagedCustomMaterialRegistry registry)
+    {
+        var addonContentRoot = TryFindAddonContentRoot(manifest.SourceVmdl);
+        if (addonContentRoot is null)
+        {
+            return;
+        }
+
+        foreach (var material in registry.Materials.Where(item => item.VertexColor))
+        {
+            string targetPath;
+            try
+            {
+                targetPath = SafePath.ResolveUnderRoot(
+                    addonContentRoot,
+                    NormalizeResourcePath(material.TargetResource).Replace('/', Path.DirectorySeparatorChar),
+                    "Managed vertex-color material target");
+            }
+            catch (InvalidOperationException)
+            {
+                continue;
+            }
+
+            if (!File.Exists(targetPath))
+            {
+                continue;
+            }
+
+            var existing = File.ReadAllText(targetPath);
+            if (!existing.StartsWith(LegacyVertexColorMarkerPrefix, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var firstNewline = existing.IndexOf('\n');
+            if (firstNewline < 0)
+            {
+                continue;
+            }
+
+            var newline = firstNewline > 0 && existing[firstNewline - 1] == '\r'
+                ? "\r\n"
+                : "\n";
+            var body = existing[(firstNewline + 1)..];
+            File.WriteAllText(targetPath, PendingManagedMarker + newline + body);
+        }
     }
 
     private static IReadOnlyList<ManagedCustomMaterialOwnership> ApplyPendingNameModifierMigrations(
