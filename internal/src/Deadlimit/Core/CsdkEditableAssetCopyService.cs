@@ -271,7 +271,11 @@ internal sealed class CsdkEditableAssetCopyService
         {
             Directory.Delete(path, recursive: true);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (IOException)
+        {
+            // Rollback storage is temporary and outside the CSDK content tree. Leaving it behind is harmless.
+        }
+        catch (UnauthorizedAccessException)
         {
             // Rollback storage is temporary and outside the CSDK content tree. Leaving it behind is harmless.
         }
