@@ -232,6 +232,43 @@ if ($mixedShapes.Contains($renderMesh.ID.ToString())) {
     throw 'A DmeDag render mesh listed in jointList must remain eligible for Vertex Color transfer.'
 }
 
+# DMX and FBX exporters may split control points differently and may write different
+# evaluated positions. Ordered polygon ownership is still a safe proof when repeated
+# DMX control points map consistently to the same FBX control points across the surface.
+$orderedTopologyType = $assembly.GetType('Deadlimit.Core.VertexColorOrderedTopologyFallbackService', $true)
+$hasOrderedTopology = $orderedTopologyType.GetMethod('HasOrderedSplitTopologyCorrespondence', $nonPublicStatic)
+if ($null -eq $hasOrderedTopology) {
+    throw 'Ordered split-topology Vertex Color fallback contract was not found.'
+}
+$targetPolygons = [int[][]]@(
+    [int[]]@(0, 1, 2),
+    [int[]]@(2, 1, 3),
+    [int[]]@(4, 3, 5),
+    [int[]]@(5, 3, 6)
+)
+$matchingSourcePolygons = [int[][]]@(
+    [int[]]@(10, 11, 12),
+    [int[]]@(12, 11, 13),
+    [int[]]@(14, 13, 15),
+    [int[]]@(15, 13, 16)
+)
+$reorderedSourcePolygons = [int[][]]@(
+    [int[]]@(10, 11, 12),
+    [int[]]@(14, 13, 15),
+    [int[]]@(12, 11, 13),
+    [int[]]@(15, 13, 16)
+)
+if (-not [bool]$hasOrderedTopology.Invoke($null, [object[]]@($targetPolygons, $matchingSourcePolygons))) {
+    throw 'Ordered split-topology correspondence rejected a valid exporter-split surface.'
+}
+if ([bool]$hasOrderedTopology.Invoke($null, [object[]]@($targetPolygons, $reorderedSourcePolygons))) {
+    throw 'Ordered split-topology correspondence accepted reordered polygon ownership.'
+}
+$guardSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/VertexColorSourceGuard.cs' -Raw
+if (([regex]::Matches($guardSource, 'VertexColorTransferService\.TryApply\(')).Count -ne 2) {
+    throw 'PREPARE validation and staged transfer must both use the safe Vertex Color transfer wrapper.'
+}
+
 & (Join-Path $PSScriptRoot 'hero-extraction-dependency-path-smoke.ps1')
 & (Join-Path $PSScriptRoot 'hero-extraction-publish-smoke.ps1')
 & (Join-Path $PSScriptRoot 'retail-external-texture-copy-smoke.ps1')
