@@ -110,12 +110,15 @@ foreach ($required in @(
     'bool HasExtractedSourceFile = false',
     'existing with { HasExtractedSourceFile = true }',
     'new RetailTextureTarget(resourcePath, string.Empty, HasExtractedSourceFile: true)',
-    'manifest.LastSourceExtractionIncludedTextures',
-    'targets.Where(target => target.HasExtractedSourceFile).ToArray()'
+    'A source-backed VMAT is enough provenance',
+    'var targetsByStem = targets'
 )) {
     if (-not $overrideService.Contains($required, [StringComparison]::Ordinal)) {
         throw "Source-backed retail texture override contract is missing: $required"
     }
+}
+if ($overrideService.Contains('targets.Where(target => target.HasExtractedSourceFile).ToArray()', [StringComparison]::Ordinal)) {
+    throw 'VMAT-backed texture overrides are still gated by extracted retail image files.'
 }
 
 $online = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/OnlinePreparationSession.cs' -Raw

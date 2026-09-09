@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using System.Text;
+using System.Text.RegularExpressions;
 
 namespace Deadlimit.Core;
 
@@ -17,6 +19,18 @@ internal sealed class CsdkEditableAssetCopyService
         ".vpcf",
         ".vsnap",
     };
+
+    private static readonly Regex CompiledTexturesHeaderRegex = new(
+        "^[ \\t]*\\\"?Compiled Textures\\\"?[ \\t]*(?:=[ \\t]*)?(?=\\{|$)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
+
+    private static readonly Regex CompiledTextureEntryRegex = new(
+        "^[ \\t]*\\\"?(?<key>[A-Za-z_$][A-Za-z0-9_$]*)\\\"?[ \\t]*(?:=[ \\t]*)?\\\"(?<path>[^\\\"\\r\\n]+)\\\"",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
+
+    private static readonly Regex ActiveTextureEntryRegex = new(
+        "^(?<prefix>[ \\t]*\\\"?(?<key>(?:Texture|g_t)[A-Za-z0-9_$]*)\\\"?[ \\t]*(?:=[ \\t]*)?(?:resource[ \\t]*:[ \\t]*)?\\\")(?<path>[^\\\"\\r\\n]+)(?<suffix>\\\")",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
 
     private readonly DeadlimitPaths _paths;
 
@@ -113,8 +127,9 @@ internal sealed class CsdkEditableAssetCopyService
                     addonContentRoot,
                     source.RelativePath.Replace('/', Path.DirectorySeparatorChar),
                     "CSDK editable asset target");
+                var preparedBytes = PrepareEditableSourceBytes(source);
 
-                if (File.Exists(target) && FilesEqual(source.Path, target))
+                if (File.Exists(target) && FilesEqual(preparedBytes, target))
                 {
                     continue;
                 }
@@ -152,7 +167,7 @@ internal sealed class CsdkEditableAssetCopyService
                 var tempTarget = target + $".deadlimit-copy-{Guid.NewGuid():N}.tmp";
                 try
                 {
-                    File.Copy(source.Path, tempTarget, overwrite: true);
+                    File.WriteAllBytes(tempTarget, preparedBytes);
                     File.Move(tempTarget, target, overwrite: true);
                 }
                 finally
@@ -218,24 +233,174 @@ internal sealed class CsdkEditableAssetCopyService
         }
     }
 
+    private static byte[] PrepareEditableSourceBytes(EditableSource source)
+    {
+        var bytes = File.ReadAllBytes(source.Path);
+        if (!source.IsMaterial)
+        {
+            return bytes;
+        }
+
+        var sourceText = Encoding.UTF8.GetString(bytes);
+        var preparedText = RestoreRetailCompiledTextureReferences(sourceText);
+        return string.Equals(sourceText, preparedText, StringComparison.Ordinal)
+            ? bytes
+            : Encoding.UTF8.GetBytes(preparedText);
+    }
+
+    internal static string RestoreRetailCompiledTextureReferences(string materialText)
+    {
+        var header = CompiledTexturesHeaderRegex.Match(materialText);
+        if (!header.Success)
+        {
+            return materialText;
+        }
+
+        var openBrace = materialText.IndexOf('{', header.Index + header.Length);
+        if (openBrace < 0)
+        {
+            return materialText;
+        }
+
+        var closeBrace = FindMatchingBrace(materialText, openBrace);
+        if (closeBrace < 0)
+        {
+            return materialText;
+        }
+
+        var compiledBlock = materialText[(openBrace + 1)..closeBrace];
+        var compiledEntries = CompiledTextureEntryRegex.Matches(compiledBlock)
+            .Cast<Match>()
+            .Select(match => new
+            {
+                Key = match.Groups["key"].Value,
+                Path = match.Groups["path"].Value,
+            })
+            .Where(item => item.Path.EndsWith(".vtex", StringComparison.OrdinalIgnoreCase))
+            .GroupBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToArray();
+
+        if (compiledEntries.Length == 0)
+        {
+            return materialText;
+        }
+
+        var compiledByKey = compiledEntries.ToDictionary(
+            item => item.Key,
+            item => item.Path,
+            StringComparer.OrdinalIgnoreCase);
+        var compiledByStem = compiledEntries
+            .GroupBy(item => GetResourceStemPath(item.Path), StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Single().Path,
+                StringComparer.OrdinalIgnoreCase);
+
+        var editablePart = materialText[..header.Index];
+        var rewrittenEditablePart = ActiveTextureEntryRegex.Replace(editablePart, match =>
+        {
+            var key = match.Groups["key"].Value;
+            var activePath = match.Groups["path"].Value;
+
+            string? retailPath = null;
+            if (!compiledByKey.TryGetValue(key, out retailPath))
+            {
+                compiledByStem.TryGetValue(GetResourceStemPath(activePath), out retailPath);
+            }
+
+            if (string.IsNullOrWhiteSpace(retailPath))
+            {
+                return match.Value;
+            }
+
+            return match.Groups["prefix"].Value
+                   + retailPath
+                   + match.Groups["suffix"].Value;
+        });
+
+        return rewrittenEditablePart + materialText[header.Index..];
+    }
+
+    private static int FindMatchingBrace(string text, int openBrace)
+    {
+        var depth = 0;
+        var inString = false;
+        var escaped = false;
+
+        for (var index = openBrace; index < text.Length; index++)
+        {
+            var value = text[index];
+            if (inString)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                    continue;
+                }
+
+                if (value == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (value == '"')
+                {
+                    inString = false;
+                }
+
+                continue;
+            }
+
+            if (value == '"')
+            {
+                inString = true;
+                continue;
+            }
+
+            if (value == '{')
+            {
+                depth++;
+            }
+            else if (value == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    return index;
+                }
+            }
+        }
+
+        return -1;
+    }
+
+    private static string GetResourceStemPath(string path)
+    {
+        var normalized = path.Replace('\\', '/').Trim();
+        var slash = normalized.LastIndexOf('/');
+        var dot = normalized.LastIndexOf('.');
+        return dot > slash ? normalized[..dot] : normalized;
+    }
+
     private static bool IsMaterial(string path) =>
         string.Equals(Path.GetExtension(path), ".vmat", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsAbilityFx(string path) =>
         AbilityFxExtensions.Contains(Path.GetExtension(path));
 
-    private static bool FilesEqual(string left, string right)
+    private static bool FilesEqual(ReadOnlySpan<byte> expected, string actualPath)
     {
-        var leftInfo = new FileInfo(left);
-        var rightInfo = new FileInfo(right);
-        if (leftInfo.Length != rightInfo.Length)
+        var actualInfo = new FileInfo(actualPath);
+        if (actualInfo.Length != expected.Length)
         {
             return false;
         }
 
-        using var leftStream = File.OpenRead(left);
-        using var rightStream = File.OpenRead(right);
-        return SHA256.HashData(leftStream).AsSpan().SequenceEqual(SHA256.HashData(rightStream));
+        using var actualStream = File.OpenRead(actualPath);
+        return SHA256.HashData(expected).AsSpan().SequenceEqual(SHA256.HashData(actualStream));
     }
 
     private static string CreateUniqueBackupRoot(string backupParent)
