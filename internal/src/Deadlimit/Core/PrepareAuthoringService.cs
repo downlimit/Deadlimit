@@ -30,6 +30,7 @@ public sealed record PrepareAuthoringResult(
 public sealed class PrepareAuthoringService
 {
     private const string GenericEyeFallbackMaterial = "materials/dev/vertcolor_pbr_basic.vmat";
+    private const string GenericEyeFallbackMaterialStem = "materials/dev/vertcolor_pbr_basic";
     private static readonly string[] ManagedVmatMarkerPrefixes =
     [
         "// DEADLIMIT_GENERATED_CUSTOM_VMAT_V",
@@ -730,12 +731,8 @@ public sealed class PrepareAuthoringService
         string hero,
         StringBuilder log)
     {
-        var hasGenericFallback = dmxMaterialReferences.Any(reference => string.Equals(
-            reference,
-            GenericEyeFallbackMaterial,
-            StringComparison.OrdinalIgnoreCase));
-
-        if (!hasGenericFallback)
+        var genericFallbackReference = dmxMaterialReferences.FirstOrDefault(IsGenericEyeFallbackReference);
+        if (genericFallbackReference is null)
         {
             log.AppendLine("Eye fallback repair: generic dev material is not referenced by the artist DMX.");
             return null;
@@ -748,10 +745,7 @@ public sealed class PrepareAuthoringService
             return null;
         }
 
-        if (existingRemaps.Any(remap => string.Equals(
-                remap.From,
-                GenericEyeFallbackMaterial,
-                StringComparison.OrdinalIgnoreCase)))
+        if (existingRemaps.Any(remap => IsGenericEyeFallbackReference(remap.From)))
         {
             log.AppendLine("Eye fallback repair: retail VMDL already contains the generic dev-material remap; no inferred repair needed.");
             return null;
@@ -768,9 +762,23 @@ public sealed class PrepareAuthoringService
         }
 
         log.AppendLine(
-            $"Eye fallback repair inferred from artist DMX material set: {GenericEyeFallbackMaterial} -> {target}");
+            $"Eye fallback repair inferred from artist DMX material set: {genericFallbackReference} -> {target}");
 
-        return new VmdlMaterialRemap(GenericEyeFallbackMaterial, target);
+        return new VmdlMaterialRemap(genericFallbackReference, target);
+    }
+
+    private static bool IsGenericEyeFallbackReference(string materialReference)
+    {
+        var normalized = materialReference.Replace('\\', '/').Trim().TrimStart('/');
+        if (normalized.EndsWith(".vmat", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized[..^".vmat".Length];
+        }
+
+        return string.Equals(
+            normalized,
+            GenericEyeFallbackMaterialStem,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool DmxContainsEyeIdentifier(string dmxPath)
