@@ -2,8 +2,11 @@ $ErrorActionPreference = 'Stop'
 
 $headerPath = 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs'
 $onlinePath = 'internal/src/Deadlimit/App/OnlinePreparationFeature.cs'
+$buildPath = 'internal/src/Deadlimit/App/BuildFeature.cs'
+$interlockPath = 'internal/src/Deadlimit/App/GameLaunchInterlockFeature.cs'
 $header = Get-Content -LiteralPath $headerPath -Raw
 $online = Get-Content -LiteralPath $onlinePath -Raw
+$build = Get-Content -LiteralPath $buildPath -Raw
 
 $requiredHeader = @(
     'if (await LaunchDeadlockAsync(form))',
@@ -35,6 +38,36 @@ foreach ($pattern in $requiredHeader) {
 }
 if ($header.Contains('DeadlockProcessService.IsRunning()')) {
     throw 'ProjectHeaderFeature must not enumerate Deadlock processes on the UI thread.'
+}
+
+$requiredBuildInterlock = @(
+    'internal static event Action<MainForm, bool>? BuildForTestStateChanged;',
+    'internal static bool IsBuildForTestRunning(MainForm form)',
+    'GameLaunchInterlockFeature.Attach(form);',
+    'SetBuildForTestRunning(form, true);',
+    'SetBuildForTestRunning(form, false);'
+)
+foreach ($pattern in $requiredBuildInterlock) {
+    if (-not $build.Contains($pattern)) {
+        throw "Missing BUILD FOR TEST lifecycle contract: $pattern"
+    }
+}
+
+if (-not (Test-Path -LiteralPath $interlockPath)) {
+    throw 'Game launch/build interlock feature is missing.'
+}
+$interlock = Get-Content -LiteralPath $interlockPath -Raw
+$requiredInterlock = @(
+    'BuildFeature.BuildForTestStateChanged += OnBuildForTestStateChanged;',
+    '_desiredLaunchEnabled = launchButton.Enabled;',
+    'launchButton.EnabledChanged += OnLaunchButtonEnabledChanged;',
+    '_desiredLaunchEnabled = _launchButton.Enabled;',
+    'SetLaunchEnabled(_buildRunning ? false : _desiredLaunchEnabled);'
+)
+foreach ($pattern in $requiredInterlock) {
+    if (-not $interlock.Contains($pattern)) {
+        throw "Missing game launch/build interlock contract: $pattern"
+    }
 }
 
 $requiredOnline = @(
