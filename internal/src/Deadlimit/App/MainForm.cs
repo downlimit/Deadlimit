@@ -46,13 +46,6 @@ public sealed class MainForm : Form
             _libraryInitialized = true;
             InitializeProjectLibrary();
         };
-        Activated += (_, _) =>
-        {
-            if (_libraryInitialized)
-            {
-                RefreshProjectLibrary(preserveSelection: true, rescanSelected: true);
-            }
-        };
     }
 
     private void BuildUi()
@@ -234,6 +227,22 @@ public sealed class MainForm : Form
             preserveSelection: false,
             rescanSelected: false,
             preferredFolder: ProjectStore.GetLastProjectFolder());
+    }
+
+    internal void RefreshExternalProjectState(bool projectLibraryChanged)
+    {
+        if (!_libraryInitialized || IsDisposed)
+        {
+            return;
+        }
+
+        if (projectLibraryChanged)
+        {
+            RefreshProjectLibrary(preserveSelection: true, rescanSelected: true);
+            return;
+        }
+
+        RefreshScan(showStatus: false);
     }
 
     private void RefreshProjectLibrary(
