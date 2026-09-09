@@ -36,3 +36,6 @@ jobs:
       - name: Retail texture override resolution smoke
         shell: pwsh
         run: internal/tests/retail-texture-override-resolution-smoke.ps1
+      - name: PREPARE retail material fallback smoke
+        shell: pwsh
+        run: internal/tests/prepare-retail-material-fallback-smoke.ps1

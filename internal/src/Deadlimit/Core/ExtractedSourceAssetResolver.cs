@@ -12,6 +12,11 @@ internal static class ExtractedSourceAssetResolver
 {
     internal const string SupportingVmdlMarker = "// DEADLIMIT_SUPPORTING_SOURCE_OVERLAY";
 
+    private static readonly HashSet<string> RetailTextureSourceExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".tga", ".jpg", ".jpeg", ".tif", ".tiff", ".exr", ".vtex",
+    };
+
     internal static string? TryResolveSourceRootForArtistPath(string artistPath)
     {
         var projectFolder = Path.GetDirectoryName(Path.GetFullPath(artistPath));
@@ -159,6 +164,11 @@ internal static class ExtractedSourceAssetResolver
             {
                 foreach (var sourceFile in Directory.EnumerateFiles(sourceFolder, "*", SearchOption.AllDirectories))
                 {
+                    if (RetailTextureSourceExtensions.Contains(Path.GetExtension(sourceFile)))
+                    {
+                        continue;
+                    }
+
                     var resourcePath = NormalizeResourcePath(Path.GetRelativePath(sourceRoot, sourceFile));
                     var destination = SafePath.ResolveUnderRoot(
                         addonContentRoot,
@@ -193,6 +203,8 @@ internal static class ExtractedSourceAssetResolver
 
             stagedOwners.Add(fullDestinationOwner);
         }
+
+        RetailTextureOverrideService.RepairMissingRetailTextureReferences(addonContentRoot);
 
         return stagedOwners
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
