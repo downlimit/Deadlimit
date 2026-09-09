@@ -3,6 +3,8 @@ $ErrorActionPreference = 'Stop'
 $appDir = 'internal/src/Deadlimit/App'
 $programPath = 'internal/src/Deadlimit/Program.cs'
 $startupPath = Join-Path $appDir 'StartupProgressForm.cs'
+$activationRecoveryPath = Join-Path $appDir 'WindowActivationRecoveryFeature.cs'
+$libraryHotfixPath = Join-Path $appDir 'ProjectLibraryHotfixFeature.cs'
 
 $appFiles = Get-ChildItem -LiteralPath $appDir -Filter '*.cs' -File
 foreach ($file in $appFiles) {
@@ -41,6 +43,29 @@ if (Test-Path -LiteralPath $legacyPolicyPath) {
 $program = Get-Content -LiteralPath $programPath -Raw
 if ($program.Contains('WindowShellVisibilityFeature.Attach();', [StringComparison]::Ordinal)) {
     throw 'Program still attaches the legacy late taskbar mutation.'
+}
+
+if (-not (Test-Path -LiteralPath $activationRecoveryPath)) {
+    throw 'Manager native activation recovery feature is missing.'
+}
+$activationRecovery = Get-Content -LiteralPath $activationRecoveryPath -Raw
+$requiredActivationPatterns = @(
+    'HcbtActivate',
+    'Control.FromHandle(wParam) is MainForm form',
+    'SendMessage(wParam, WmSetRedraw, new IntPtr(1), IntPtr.Zero)',
+    'RedrawWindow('
+)
+foreach ($pattern in $requiredActivationPatterns) {
+    if (-not $activationRecovery.Contains($pattern, [StringComparison]::Ordinal)) {
+        throw "Manager activation recovery contract is missing: $pattern"
+    }
+}
+
+$libraryHotfix = Get-Content -LiteralPath $libraryHotfixPath -Raw
+if ($libraryHotfix.Contains('_form.Deactivate +=', [StringComparison]::Ordinal) -or
+    $libraryHotfix.Contains('HoldLibraryRefresh()', [StringComparison]::Ordinal) -or
+    $libraryHotfix.Contains('_libraryRefreshHeld', [StringComparison]::Ordinal)) {
+    throw 'Project library must not remain redraw-frozen while Manager is inactive.'
 }
 
 $settings = Get-Content -LiteralPath (Join-Path $appDir 'SettingsForm.cs') -Raw
@@ -82,4 +107,4 @@ if ($ownerlessCustom.Count -gt 0) {
     throw "Ownerless modal dialog call(s) require review: $($ownerlessCustom -join ', ')"
 }
 
-Write-Host 'Dialog ownership and shell-visibility contract OK.'
+Write-Host 'Dialog ownership, shell visibility, and Manager activation contract OK.'
