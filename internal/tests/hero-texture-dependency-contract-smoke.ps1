@@ -107,16 +107,15 @@ if ($mainForm.Contains('0source already contains files. Refresh it from the curr
 
 $overrideService = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/RetailTextureOverrideService.cs' -Raw
 foreach ($required in @(
-    'Directory.EnumerateFiles(extractedSourceRoot, "*", SearchOption.AllDirectories)',
-    'targets.TryAdd(resourcePath, new RetailTextureTarget(resourcePath, string.Empty));',
-    'if (!Directory.Exists(manifest.ProjectFolder) || targets.Count == 0)'
+    'bool HasExtractedSourceFile = false',
+    'existing with { HasExtractedSourceFile = true }',
+    'new RetailTextureTarget(resourcePath, string.Empty, HasExtractedSourceFile: true)',
+    'manifest.LastSourceExtractionIncludedTextures',
+    'targets.Where(target => target.HasExtractedSourceFile).ToArray()'
 )) {
     if (-not $overrideService.Contains($required, [StringComparison]::Ordinal)) {
         throw "Source-backed retail texture override contract is missing: $required"
     }
-}
-if ($overrideService.Contains('if (!manifest.LastSourceExtractionIncludedTextures', [StringComparison]::Ordinal)) {
-    throw 'Extracted-source texture provenance must not be disabled by the general texture-extraction flag.'
 }
 
 $online = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/OnlinePreparationSession.cs' -Raw
