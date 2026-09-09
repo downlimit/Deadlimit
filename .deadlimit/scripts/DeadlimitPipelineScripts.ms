@@ -999,9 +999,10 @@ fn deadlimitVertexColorToggleLineartDisplay =
     These commands edit BoneGeometry presentation only:
     - FIT X uses average pivot-to-child-pivot distance. Leaf-length fitting can be disabled;
       when enabled a leaf uses half its distance to the parent. Optional thickness fitting sets
-      Width and Height to 40% of the resulting display length and Taper to 33%.
-      Planning happens before mutation so a multi-selection is stable.
-    - SET applies a world-space centimeter length while compensating local X scale.
+      Width and Height to the configured percentage of the resulting display length (40% by
+      default) and Taper to 33%. Planning happens before mutation so a multi-selection is stable.
+    - SET applies a world-space centimeter length while compensating local X scale. When Affect
+      Thickness is enabled it applies the same configurable Width/Height percentage and Taper.
     - FLIP X normalizes negative length and rotates objectOffsetRot 180 degrees, producing
       a convex tail while the node transform/pivot remains unchanged. Its optional suffix
       filter accepts only selected names ending exactly in _R or _r.
@@ -1024,8 +1025,9 @@ fn deadlimitVertexColorSelectedBones =
     bones
 )
 
-fn deadlimitVertexColorFitBoneLengths affectThickness:true affectLeafLengths:true =
+fn deadlimitVertexColorFitBoneLengths affectThickness:true affectLeafLengths:true thicknessPercent:40.0 =
 (
+    if affectThickness and thicknessPercent <= 0.0 then throw "Bone thickness percentage must be greater than zero."
     local bones = deadlimitVertexColorSelectedBones()
 
     -- Build the complete display plan first so every target uses the original hierarchy.
@@ -1075,7 +1077,7 @@ fn deadlimitVertexColorFitBoneLengths affectThickness:true affectLeafLengths:tru
 
         local resultingLength = if plannedLength != undefined then abs plannedLength else abs bone.length
         local plannedThickness = undefined
-        if affectThickness and resultingLength > 0.000000001 do plannedThickness = resultingLength / 2.5
+        if affectThickness and resultingLength > 0.000000001 do plannedThickness = resultingLength * (thicknessPercent / 100.0)
         append displayPlan #(bone, plannedLength, plannedThickness)
     )
 
@@ -1104,9 +1106,10 @@ fn deadlimitVertexColorFitBoneLengths affectThickness:true affectLeafLengths:tru
     #(fittedLengths, skipped, fittedThickness, leafLengthsKept)
 )
 
-fn deadlimitVertexColorSetSelectedBoneLength centimeters =
+fn deadlimitVertexColorSetSelectedBoneLength centimeters affectThickness:false thicknessPercent:40.0 =
 (
     if centimeters < 0.0 then throw "Bone display length cannot be negative. Use Flip Selected X for direction."
+    if affectThickness and thicknessPercent <= 0.0 then throw "Bone thickness percentage must be greater than zero."
     local targetWorldLength = units.decodeValue ((centimeters as string) + "cm")
     local bones = deadlimitVertexColorSelectedBones()
     local lengthPlan = #()
@@ -1118,7 +1121,10 @@ fn deadlimitVertexColorSetSelectedBoneLength centimeters =
         if localXAxisScale > 0.000000001 then
         (
             local direction = if bone.length < 0.0 then -1.0 else 1.0
-            append lengthPlan #(bone, direction * targetWorldLength / localXAxisScale)
+            local plannedLength = direction * targetWorldLength / localXAxisScale
+            local plannedThickness = undefined
+            if affectThickness and abs plannedLength > 0.000000001 do plannedThickness = abs plannedLength * (thicknessPercent / 100.0)
+            append lengthPlan #(bone, plannedLength, plannedThickness)
         )
         else
             skipped += 1
@@ -1126,7 +1132,16 @@ fn deadlimitVertexColorSetSelectedBoneLength centimeters =
 
     undo "Set Selected Bone Display Length" on
     (
-        for item in lengthPlan do item[1].length = item[2]
+        for item in lengthPlan do
+        (
+            item[1].length = item[2]
+            if item[3] != undefined do
+            (
+                item[1].width = item[3]
+                item[1].height = item[3]
+                item[1].taper = 33.0
+            )
+        )
     )
 
     redrawViews()
@@ -3418,17 +3433,18 @@ rollout deadlimitVertexColorBoneToolsRollout "BONE TOOLS"
     button fitBoneLengthsButton "Fit to Hierarchy" width:125 height:22 across:3 tooltip:"Fit selected BoneGeometry lengths to the average bone-child pivot distance. Leaf fitting and thickness fitting follow the options below."
     button flipBoneXButton "Flip X" width:58 height:22 tooltip:"Flip selected BoneGeometry display meshes along local X while preserving node transforms, pivots, hierarchy, and names."
     checkbox flipRightSuffixOnlyCheckbox "_R/_r" checked:false width:60 height:22 tooltip:"When enabled, Flip X affects only selected bones whose names end exactly in _R or _r."
-    checkbox fitBoneThicknessCheckbox "Affect Thickness" checked:true width:120 across:2 tooltip:"When Fit to Hierarchy runs, also set Width and Height to 40% of the resulting bone length and Taper to 33%."
+    checkbox fitBoneThicknessCheckbox "Affect Thickness" checked:true width:120 across:2 tooltip:"When enabled, Fit to Hierarchy and SET also set Width and Height from Thickness (%) and set Taper to 33%."
     checkbox fitLeafBoneLengthCheckbox "Affect Leaf Length" checked:true width:130 tooltip:"When Fit to Hierarchy runs, leaf bones use half the parent-pivot distance. Turn this off to keep leaf bone lengths unchanged."
     spinner boneLengthCmSpinner "Length (cm):" range:[0.0,100000.0,10.0] type:#float scale:0.1 fieldWidth:62 width:150 align:#left across:2 tooltip:"Visual length in centimeters."
-    button setBoneLengthButton "SET" width:94 height:22 tooltip:"Set selected bones to this visual length while preserving their current X direction."
+    button setBoneLengthButton "SET" width:94 height:22 tooltip:"Set selected bones to this visual length while preserving their current X direction. Affect Thickness also applies the configured Thickness (%)."
+    spinner boneThicknessPercentSpinner "Thickness (%):" range:[1.0,1000.0,40.0] type:#float scale:1.0 fieldWidth:62 width:150 align:#left tooltip:"Width and Height as a percentage of bone display length when Affect Thickness is enabled. Default: 40%."
     button restoreConvertedBonesButton "RESTORE CONVERTED BRANCH" width:244 height:22 align:#center tooltip:"Restore selected accidental 9-vertex/9-face Editable Poly bone branches to BoneGeometry. Preserves nodes, controllers, hierarchy, transforms, names, and display dimensions; one Ctrl+Z reverts the whole repair."
 
     on fitBoneLengthsButton pressed do
     (
         try
         (
-            local result = deadlimitVertexColorFitBoneLengths affectThickness:fitBoneThicknessCheckbox.checked affectLeafLengths:fitLeafBoneLengthCheckbox.checked
+            local result = deadlimitVertexColorFitBoneLengths affectThickness:fitBoneThicknessCheckbox.checked affectLeafLengths:fitLeafBoneLengthCheckbox.checked thicknessPercent:boneThicknessPercentSpinner.value
             deadlimitVertexColorFbxRollout.statusLabel.text = "Fit: " + (result[1] as string) + " length, " + (result[3] as string) + " thickness, " + (result[4] as string) + " leaf kept, " + (result[2] as string) + " skipped."
         )
         catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
@@ -3438,8 +3454,9 @@ rollout deadlimitVertexColorBoneToolsRollout "BONE TOOLS"
     (
         try
         (
-            local result = deadlimitVertexColorSetSelectedBoneLength boneLengthCmSpinner.value
-            deadlimitVertexColorFbxRollout.statusLabel.text = "Set Length: " + (result[1] as string) + " resized, " + (result[2] as string) + " skipped."
+            local result = deadlimitVertexColorSetSelectedBoneLength boneLengthCmSpinner.value affectThickness:fitBoneThicknessCheckbox.checked thicknessPercent:boneThicknessPercentSpinner.value
+            local setLabel = if fitBoneThicknessCheckbox.checked then "Set Length + Thickness: " else "Set Length: "
+            deadlimitVertexColorFbxRollout.statusLabel.text = setLabel + (result[1] as string) + " resized, " + (result[2] as string) + " skipped."
         )
         catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
     )
@@ -3470,7 +3487,7 @@ rollout deadlimitVertexColorBoneToolsRollout "BONE TOOLS"
 rollout deadlimitVertexColorInnerLineartRollout "INNER LINEART"
 (
     spinner lineartWidthMmSpinner "Width (mm):" range:[0.01,1000.0,1.0] type:#float scale:0.1 fieldWidth:58 width:160 across:2 tooltip:"Full world-space width of the generated strip in millimeters."
-    checkbox copyLineartSkinCheckbox "Copy Skin" checked:false width:105 tooltip:"Copy Skin modifiers and source-vertex weights to the separate lineart object."
+    checkbox copyLineartSkinCheckbox "Copy Skin" checked:false width:105 offset:[12,0] tooltip:"Copy Skin modifiers and source-vertex weights to the separate lineart object."
     checkbox flipLineartCheckbox "Flip Polygons" checked:true width:105 across:2 tooltip:"Reverse generated face winding."
     checkbox invertLineartNormalsCheckbox "Invert Normals" checked:true width:115 tooltip:"Reverse generated vertex normals and bake them into the Editable Poly base."
     checkbox taperLineartCheckbox "Taper Ends" checked:true width:105 across:2 tooltip:"Collapse degree-1 lineart endpoints to a single vertex."
@@ -3579,7 +3596,7 @@ rollout deadlimitVertexColorFbxRollout "EXPORT VERTEX COLOR"
 
 )
 
-deadlimitPipelineFloater = newRolloutFloater "Deadlimit Scripts" 380 410
+deadlimitPipelineFloater = newRolloutFloater "Deadlimit Scripts" 380 432
 addRollout deadlimitVertexColorBoneToolsRollout deadlimitPipelineFloater rolledUp:false
 addRollout deadlimitVertexColorToolsRollout deadlimitPipelineFloater rolledUp:false
 addRollout deadlimitVertexColorInnerLineartRollout deadlimitPipelineFloater rolledUp:false
