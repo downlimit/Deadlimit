@@ -85,15 +85,10 @@ public static class RetailTextureOverrideService
             return Array.Empty<RetailTextureOverride>();
         }
 
-        var eligibleTargets = manifest.LastSourceExtractionIncludedTextures
-            ? targets
-            : targets.Where(target => target.HasExtractedSourceFile).ToArray();
-        if (eligibleTargets.Count == 0)
-        {
-            return Array.Empty<RetailTextureOverride>();
-        }
-
-        var targetsByStem = eligibleTargets
+        // A source-backed VMAT is enough provenance to route an artist image to the same
+        // retail texture path. Extracting the stock image is only needed when the artist
+        // wants a local reference copy; it is not a prerequisite for replacing that texture.
+        var targetsByStem = targets
             .GroupBy(target => GetResourceStem(target.ResourcePath), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,

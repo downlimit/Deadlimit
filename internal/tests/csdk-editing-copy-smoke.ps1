@@ -23,7 +23,20 @@ function Write-TestFile([string]$root, [string]$relative, [string]$content) {
 }
 
 try {
-    Write-TestFile $source 'models\heroes_wip\ivy\body.vmat' 'retail body v2' | Out-Null
+    $bodyVmat = @"
+Layer0
+{
+    "shader" "hero.vfx"
+    "TextureColor" "materials/models/heroes/ivy/body_color.png"
+    "g_tSelfIllumMask" "materials/particle/projected/ground_crack_shatter_trans.png"
+    "Compiled Textures"
+    {
+        "g_tColor" "materials/models/heroes/ivy/body_color.vtex"
+        "g_tSelfIllumMask" "materials/particle/projected/ground_crack_shatter_trans.vtex"
+    }
+}
+"@
+    $bodySource = Write-TestFile $source 'models\heroes_wip\ivy\body.vmat' $bodyVmat
     Write-TestFile $source 'particles\abilities\tengu\stone_form.vpcf' 'retail fx v2' | Out-Null
     Write-TestFile $source 'particles\abilities\tengu\stone_form.vsnap' 'retail snap v2' | Out-Null
     Write-TestFile $source 'models\heroes_wip\ivy\ivy.vmdl' 'retail model - must not copy' | Out-Null
@@ -60,8 +73,20 @@ try {
     $bodyTarget = Join-Path $addon 'models\heroes_wip\ivy\body.vmat'
     $fxTarget = Join-Path $addon 'particles\abilities\tengu\stone_form.vpcf'
     $snapTarget = Join-Path $addon 'particles\abilities\tengu\stone_form.vsnap'
-    if ((Get-Content -LiteralPath $bodyTarget -Raw).Trim() -ne 'retail body v2') {
-        throw 'VMAT was not refreshed from 0source.'
+    $preparedBody = Get-Content -LiteralPath $bodyTarget -Raw
+    if (-not $preparedBody.Contains('"TextureColor" "materials/models/heroes/ivy/body_color.vtex"', [StringComparison]::Ordinal)) {
+        throw 'Copied VMAT did not restore the retail VTEX for a shader-remapped texture parameter.'
+    }
+    if (-not $preparedBody.Contains('"g_tSelfIllumMask" "materials/particle/projected/ground_crack_shatter_trans.vtex"', [StringComparison]::Ordinal)) {
+        throw 'Copied VMAT did not restore the retail VTEX for an exact texture parameter.'
+    }
+    if ($preparedBody.Contains('"TextureColor" "materials/models/heroes/ivy/body_color.png"', [StringComparison]::Ordinal) -or
+        $preparedBody.Contains('"g_tSelfIllumMask" "materials/particle/projected/ground_crack_shatter_trans.png"', [StringComparison]::Ordinal)) {
+        throw 'Copied VMAT still points active texture slots at decompiled image files.'
+    }
+    $sourceBodyAfterCopy = Get-Content -LiteralPath $bodySource -Raw
+    if (-not $sourceBodyAfterCopy.Contains('body_color.png', [StringComparison]::Ordinal)) {
+        throw '0source VMAT was modified while preparing the CSDK working copy.'
     }
     if ((Get-Content -LiteralPath $fxTarget -Raw).Trim() -ne 'retail fx v2') {
         throw 'VPCF was not refreshed from 0source.'
@@ -105,8 +130,20 @@ try {
     if (@(Get-ChildItem -LiteralPath $backupParent -Directory).Count -ne $backupFolderCount) {
         throw 'No-backup refresh created an unexpected timestamp backup folder.'
     }
-    if ((Get-Content -LiteralPath $bodyTarget -Raw).Trim() -ne 'retail body v2') {
-        throw 'No-backup material refresh did not overwrite the selected VMAT.'
+    if (-not (Get-Content -LiteralPath $bodyTarget -Raw).Contains('body_color.vtex', [StringComparison]::Ordinal)) {
+        throw 'No-backup material refresh did not restore the retail VTEX reference.'
+    }
+
+    $third = $copy.Invoke($null, [object[]]@(
+        [string]$source,
+        [string]$addon,
+        [string]$backupParent,
+        [bool]$true,
+        [bool]$false,
+        [bool]$true,
+        [Threading.CancellationToken]::None))
+    if ($third.MaterialCopiedCount -ne 0 -or $third.OverwrittenCount -ne 0 -or $null -ne $third.BackupFolder) {
+        throw 'An unchanged prepared VMAT was treated as a fresh overwrite.'
     }
 
     $dialog = Get-Content -LiteralPath 'internal/src/Deadlimit/App/HeroExtractionOptionsDialog.cs' -Raw
@@ -141,4 +178,4 @@ finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host 'CSDK editing copy, backup, and extraction-scope smoke passed.'
+Write-Host 'CSDK editing copy, retail texture fallback, backup, and extraction-scope smoke passed.'
