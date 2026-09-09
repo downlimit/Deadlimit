@@ -158,7 +158,7 @@ public static class VertexColorSourceGuard
             return new VertexColorStagedResult(false, result, state.Message);
         }
 
-        var applied = VertexColorSidecarService.TryApply(artistDmxPath, stagedDmxPath);
+        var applied = VertexColorTransferService.TryApply(artistDmxPath, stagedDmxPath);
         return new VertexColorStagedResult(
             applied.Status == VertexColorSidecarStatus.Applied,
             applied,
@@ -184,7 +184,7 @@ public static class VertexColorSourceGuard
         try
         {
             File.Copy(artistDmxPath, validationPath, overwrite: false);
-            return VertexColorSidecarService.TryApply(artistDmxPath, validationPath);
+            return VertexColorTransferService.TryApply(artistDmxPath, validationPath);
         }
         finally
         {
