@@ -4,6 +4,12 @@ namespace Deadlimit.App;
 
 internal static class BuildFeature
 {
+    private static readonly HashSet<MainForm> ActiveBuildForms = [];
+
+    internal static event Action<MainForm, bool>? BuildForTestStateChanged;
+
+    internal static bool IsBuildForTestRunning(MainForm form) => ActiveBuildForms.Contains(form);
+
     public static void Attach(MainForm form)
     {
         var topBar = FindDescendants<FlowLayoutPanel>(form)
@@ -83,6 +89,7 @@ internal static class BuildFeature
         topBar.Controls.Add(prepareButton);
         topBar.Controls.Add(buildAndTestButton);
         topBar.Controls.Add(launchCsdkButton);
+        GameLaunchInterlockFeature.Attach(form);
     }
 
     private static async Task RunPrepareAsync(
@@ -274,15 +281,16 @@ internal static class BuildFeature
         }
 
         var forceFullRebuild = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
-        SetButtonsEnabled(actionButtons, false);
         var originalTitle = form.Text;
         using var animator = new BuildProgressAnimator(form, progressBar, originalTitle);
 
         string? forceStatePath = null;
         string? forceStateBackupPath = null;
 
+        SetBuildForTestRunning(form, true);
         try
         {
+            SetButtonsEnabled(actionButtons, false);
             animator.Start();
             var paths = new DeadlimitPaths();
 
@@ -411,6 +419,18 @@ internal static class BuildFeature
         {
             form.Text = originalTitle;
             SetButtonsEnabled(actionButtons, true);
+            SetBuildForTestRunning(form, false);
+        }
+    }
+
+    private static void SetBuildForTestRunning(MainForm form, bool running)
+    {
+        var changed = running
+            ? ActiveBuildForms.Add(form)
+            : ActiveBuildForms.Remove(form);
+        if (changed)
+        {
+            BuildForTestStateChanged?.Invoke(form, running);
         }
     }
 
@@ -518,7 +538,7 @@ internal static class BuildFeature
             MessageBox.Show(
                 form,
                 ex.Message,
-                UiText.T("Could not launch CSDK", "Не удалось запустить CSDK"),
+                UiText.T("Could not launch CSDK", "CSDK не удалось запустить"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
