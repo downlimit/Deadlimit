@@ -229,7 +229,27 @@ public sealed class BuildAndTestService
             Directory.CreateDirectory(retailAddonsRoot);
             var vpkPath = Path.Combine(retailAddonsRoot, $"pak{releaseSlot:D2}_dir.vpk");
 
-            PackVpk(addonGameRoot, vpkPath, log, progress, cancellationToken);
+            var sourceRoot = SafePath.ResolveUnderRoot(
+                manifest.ProjectFolder,
+                manifest.SourceDumpFolderName,
+                "Project source-dump folder");
+            var reusableRetailTextureOutputs = RetailTexturePackagingPolicy.ResolveReusableRetailCompiledTextures(
+                sourceRoot,
+                prepare.AddonContentRoot,
+                addonGameRoot);
+            log.AppendLine($"Retail texture outputs reused from Deadlock instead of packed: {reusableRetailTextureOutputs.Count}");
+            foreach (var reusableTexture in reusableRetailTextureOutputs.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                log.AppendLine($"  reuse {reusableTexture}");
+            }
+
+            PackVpk(
+                addonGameRoot,
+                vpkPath,
+                reusableRetailTextureOutputs,
+                log,
+                progress,
+                cancellationToken);
 
             SaveState(statePath, new BuildTestState
             {
@@ -552,6 +572,7 @@ public sealed class BuildAndTestService
     private static void PackVpk(
         string addonGameRoot,
         string outputVpk,
+        IReadOnlySet<string> excludedRelativePaths,
         StringBuilder log,
         IProgress<BuildAndTestProgress>? progress,
         CancellationToken cancellationToken)
@@ -563,12 +584,18 @@ public sealed class BuildAndTestService
         }
 
         var files = Directory.EnumerateFiles(addonGameRoot, "*", SearchOption.AllDirectories)
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .Select(path => new
+            {
+                Path = path,
+                RelativePath = NormalizeRelativePath(Path.GetRelativePath(addonGameRoot, path)),
+            })
+            .Where(item => !excludedRelativePaths.Contains(item.RelativePath))
+            .OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         if (files.Length == 0)
         {
             throw new InvalidOperationException(
-                $"Cannot create VPK because the compiled addon game folder is empty: {addonGameRoot}");
+                $"Cannot create VPK because the compiled addon game folder is empty after retail-resource reuse filtering: {addonGameRoot}");
         }
 
         var targetDirectory = Path.GetDirectoryName(outputVpk)!;
@@ -590,8 +617,7 @@ public sealed class BuildAndTestService
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var file = files[index];
-                    var relative = NormalizeRelativePath(Path.GetRelativePath(addonGameRoot, file));
-                    package.AddFile(relative, File.ReadAllBytes(file));
+                    package.AddFile(file.RelativePath, File.ReadAllBytes(file.Path));
 
                     var percent = 90 + (int)Math.Floor(6.0 * (index + 1) / files.Length);
                     Report(progress, percent, $"Packing VPK — {index + 1}/{files.Length} files...");
@@ -614,6 +640,7 @@ public sealed class BuildAndTestService
             log.AppendLine();
             log.AppendLine("[ValvePak in-process packaging]");
             log.AppendLine($"Packed files: {files.Length}");
+            log.AppendLine($"Reused retail texture outputs omitted: {excludedRelativePaths.Count}");
             log.AppendLine("VPK version: 2");
             log.AppendLine($"Output: {outputVpk}");
             Report(progress, 99, "VPK deployed to retail Deadlock addons.");

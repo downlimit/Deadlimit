@@ -116,7 +116,7 @@ public sealed partial class HeroExtractionService
                     candidate.VpkPath,
                     resourceFolder,
                     stagingFolder,
-                    options.ExtractTextures,
+                    true,
                     progress,
                     cancellationToken);
             }
@@ -128,7 +128,7 @@ public sealed partial class HeroExtractionService
                     vpkPaths,
                     candidate,
                     stagingFolder,
-                    options.ExtractTextures,
+                    options.ExtractTextures || options.CopyMaterialsToCsdkForEditing,
                     progress,
                     cancellationToken);
             }
@@ -139,7 +139,9 @@ public sealed partial class HeroExtractionService
                     vpkPaths,
                     candidate,
                     stagingFolder,
-                    options.ExtractTextures,
+                    options.ExtractTextures
+                    || options.CopyAbilityFxToCsdkForEditing
+                    || options.CopyMaterialsToCsdkForEditing,
                     progress,
                     cancellationToken);
             }
@@ -188,8 +190,8 @@ public sealed partial class HeroExtractionService
 
             var completionMessage = (options.ExtractTextures, options.ExtractAbilities) switch
             {
-                (true, true) => "Hero source, textures and abilities extraction complete.",
-                (true, false) => "Hero source and texture extraction complete.",
+                (true, true) => "Hero source, dependency textures and abilities extraction complete.",
+                (true, false) => "Hero source and dependency texture extraction complete.",
                 (false, true) => "Hero source and abilities extraction complete.",
                 _ => "Hero source extraction complete.",
             };

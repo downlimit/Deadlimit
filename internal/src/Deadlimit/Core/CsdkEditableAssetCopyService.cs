@@ -1,5 +1,4 @@
 using System.Security.Cryptography;
-using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Deadlimit.Core;
@@ -20,16 +19,13 @@ internal sealed class CsdkEditableAssetCopyService
         ".vsnap",
     };
 
-    private static readonly Regex CompiledTexturesHeaderRegex = new(
-        "^[ \\t]*\\\"?Compiled Textures\\\"?[ \\t]*(?:=[ \\t]*)?(?=\\{|$)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
+    private static readonly HashSet<string> AuthoringTextureExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".tga", ".jpg", ".jpeg", ".tif", ".tiff", ".exr", ".vtex",
+    };
 
-    private static readonly Regex CompiledTextureEntryRegex = new(
-        "^[ \\t]*\\\"?(?<key>[A-Za-z_$][A-Za-z0-9_$]*)\\\"?[ \\t]*(?:=[ \\t]*)?\\\"(?<path>[^\\\"\\r\\n]+)\\\"",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
-
-    private static readonly Regex ActiveTextureEntryRegex = new(
-        "^(?<prefix>[ \\t]*\\\"?(?<key>(?:Texture|g_t)[A-Za-z0-9_$]*)\\\"?[ \\t]*(?:=[ \\t]*)?(?:resource[ \\t]*:[ \\t]*)?\\\")(?<path>[^\\\"\\r\\n]+)(?<suffix>\\\")",
+    private static readonly Regex VmatTextureSourceRegex = new(
+        "^[ \\t]*\\\"?(?:Texture|g_t)[A-Za-z0-9_$]*\\\"?[ \\t]*(?:=[ \\t]*)?(?:resource[ \\t]*:[ \\t]*)?\\\"(?<path>[^\\\"\\r\\n]+)\\\"",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
 
     private readonly DeadlimitPaths _paths;
@@ -89,7 +85,7 @@ internal sealed class CsdkEditableAssetCopyService
         bool backupOverwrites,
         CancellationToken cancellationToken)
     {
-        var selected = Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories)
+        var selectedByRelativePath = Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories)
             .Select(path => new EditableSource(
                 path,
                 NormalizeRelativePath(Path.GetRelativePath(sourceRoot, path)),
@@ -97,6 +93,20 @@ internal sealed class CsdkEditableAssetCopyService
                 IsAbilityFx(path)))
             .Where(item => (copyMaterials && item.IsMaterial)
                            || (copyAbilityFx && item.IsAbilityFx))
+            .ToDictionary(item => item.RelativePath, StringComparer.OrdinalIgnoreCase);
+
+        if (copyMaterials)
+        {
+            foreach (var material in selectedByRelativePath.Values.Where(item => item.IsMaterial).ToArray())
+            {
+                foreach (var dependency in EnumerateMaterialTextureDependencies(material.Path, sourceRoot))
+                {
+                    selectedByRelativePath.TryAdd(dependency.RelativePath, dependency);
+                }
+            }
+        }
+
+        var selected = selectedByRelativePath.Values
             .OrderBy(item => item.RelativePath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -127,7 +137,7 @@ internal sealed class CsdkEditableAssetCopyService
                     addonContentRoot,
                     source.RelativePath.Replace('/', Path.DirectorySeparatorChar),
                     "CSDK editable asset target");
-                var preparedBytes = PrepareEditableSourceBytes(source);
+                var preparedBytes = File.ReadAllBytes(source.Path);
 
                 if (File.Exists(target) && FilesEqual(preparedBytes, target))
                 {
@@ -233,156 +243,48 @@ internal sealed class CsdkEditableAssetCopyService
         }
     }
 
-    private static byte[] PrepareEditableSourceBytes(EditableSource source)
+    private static IEnumerable<EditableSource> EnumerateMaterialTextureDependencies(
+        string materialPath,
+        string sourceRoot)
     {
-        var bytes = File.ReadAllBytes(source.Path);
-        if (!source.IsMaterial)
+        var text = File.ReadAllText(materialPath);
+        var compiledTexturesIndex = text.IndexOf("Compiled Textures", StringComparison.OrdinalIgnoreCase);
+        var authoringText = compiledTexturesIndex >= 0 ? text[..compiledTexturesIndex] : text;
+
+        foreach (Match match in VmatTextureSourceRegex.Matches(authoringText))
         {
-            return bytes;
-        }
-
-        var sourceText = Encoding.UTF8.GetString(bytes);
-        var preparedText = RestoreRetailCompiledTextureReferences(sourceText);
-        return string.Equals(sourceText, preparedText, StringComparison.Ordinal)
-            ? bytes
-            : Encoding.UTF8.GetBytes(preparedText);
-    }
-
-    internal static string RestoreRetailCompiledTextureReferences(string materialText)
-    {
-        var header = CompiledTexturesHeaderRegex.Match(materialText);
-        if (!header.Success)
-        {
-            return materialText;
-        }
-
-        var openBrace = materialText.IndexOf('{', header.Index + header.Length);
-        if (openBrace < 0)
-        {
-            return materialText;
-        }
-
-        var closeBrace = FindMatchingBrace(materialText, openBrace);
-        if (closeBrace < 0)
-        {
-            return materialText;
-        }
-
-        var compiledBlock = materialText[(openBrace + 1)..closeBrace];
-        var compiledEntries = CompiledTextureEntryRegex.Matches(compiledBlock)
-            .Cast<Match>()
-            .Select(match => new
+            var resourcePath = NormalizeRelativePath(match.Groups["path"].Value.Trim().Trim('"'));
+            if (resourcePath.Length == 0
+                || resourcePath.Contains(':', StringComparison.Ordinal)
+                || !AuthoringTextureExtensions.Contains(Path.GetExtension(resourcePath)))
             {
-                Key = match.Groups["key"].Value,
-                Path = match.Groups["path"].Value,
-            })
-            .Where(item => item.Path.EndsWith(".vtex", StringComparison.OrdinalIgnoreCase))
-            .GroupBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .ToArray();
-
-        if (compiledEntries.Length == 0)
-        {
-            return materialText;
-        }
-
-        var compiledByKey = compiledEntries.ToDictionary(
-            item => item.Key,
-            item => item.Path,
-            StringComparer.OrdinalIgnoreCase);
-        var compiledByStem = compiledEntries
-            .GroupBy(item => GetResourceStemPath(item.Path), StringComparer.OrdinalIgnoreCase)
-            .Where(group => group.Count() == 1)
-            .ToDictionary(
-                group => group.Key,
-                group => group.Single().Path,
-                StringComparer.OrdinalIgnoreCase);
-
-        var editablePart = materialText[..header.Index];
-        var rewrittenEditablePart = ActiveTextureEntryRegex.Replace(editablePart, match =>
-        {
-            var key = match.Groups["key"].Value;
-            var activePath = match.Groups["path"].Value;
-
-            string? retailPath = null;
-            if (!compiledByKey.TryGetValue(key, out retailPath))
-            {
-                compiledByStem.TryGetValue(GetResourceStemPath(activePath), out retailPath);
-            }
-
-            if (string.IsNullOrWhiteSpace(retailPath))
-            {
-                return match.Value;
-            }
-
-            return match.Groups["prefix"].Value
-                   + retailPath
-                   + match.Groups["suffix"].Value;
-        });
-
-        return rewrittenEditablePart + materialText[header.Index..];
-    }
-
-    private static int FindMatchingBrace(string text, int openBrace)
-    {
-        var depth = 0;
-        var inString = false;
-        var escaped = false;
-
-        for (var index = openBrace; index < text.Length; index++)
-        {
-            var value = text[index];
-            if (inString)
-            {
-                if (escaped)
-                {
-                    escaped = false;
-                    continue;
-                }
-
-                if (value == '\\')
-                {
-                    escaped = true;
-                    continue;
-                }
-
-                if (value == '"')
-                {
-                    inString = false;
-                }
-
                 continue;
             }
 
-            if (value == '"')
+            string sourcePath;
+            try
             {
-                inString = true;
+                sourcePath = SafePath.ResolveUnderRoot(
+                    sourceRoot,
+                    resourcePath.Replace('/', Path.DirectorySeparatorChar),
+                    "CSDK material authoring texture dependency");
+            }
+            catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException)
+            {
                 continue;
             }
 
-            if (value == '{')
+            if (!File.Exists(sourcePath))
             {
-                depth++;
+                continue;
             }
-            else if (value == '}')
-            {
-                depth--;
-                if (depth == 0)
-                {
-                    return index;
-                }
-            }
+
+            yield return new EditableSource(
+                sourcePath,
+                resourcePath,
+                IsMaterial: false,
+                IsAbilityFx: false);
         }
-
-        return -1;
-    }
-
-    private static string GetResourceStemPath(string path)
-    {
-        var normalized = path.Replace('\\', '/').Trim();
-        var slash = normalized.LastIndexOf('/');
-        var dot = normalized.LastIndexOf('.');
-        return dot > slash ? normalized[..dot] : normalized;
     }
 
     private static bool IsMaterial(string path) =>
@@ -423,7 +325,7 @@ internal sealed class CsdkEditableAssetCopyService
     }
 
     private static string NormalizeRelativePath(string value) =>
-        value.Replace('\\', '/').TrimStart('/');
+        value.Replace('\\', '/').Trim().TrimStart('/');
 
     private static void DeleteDirectoryIfExists(string path)
     {

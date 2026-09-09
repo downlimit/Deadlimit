@@ -84,7 +84,9 @@ internal static class HeroExtractionOptionsDialog
 
         var extractTexturesCheck = new CheckBox
         {
-            Text = UiText.T("Extract textures", "Извлекать текстуры"),
+            Text = UiText.T(
+                "Extract textures by dependencies",
+                "Извлекать текстуры по зависимостям"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 3, 0, 16),
