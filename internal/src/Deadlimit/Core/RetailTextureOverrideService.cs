@@ -4,7 +4,8 @@ namespace Deadlimit.Core;
 
 public sealed record RetailTextureTarget(
     string ResourcePath,
-    string ReferencingMaterialResourcePath);
+    string ReferencingMaterialResourcePath,
+    bool HasExtractedSourceFile = false);
 
 public sealed record RetailTextureOverride(
     string ArtistSourcePath,
@@ -60,7 +61,14 @@ public static class RetailTextureOverrideService
                      .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
             var resourcePath = NormalizeResourcePath(Path.GetRelativePath(extractedSourceRoot, sourceImage));
-            targets.TryAdd(resourcePath, new RetailTextureTarget(resourcePath, string.Empty));
+            if (targets.TryGetValue(resourcePath, out var existing))
+            {
+                targets[resourcePath] = existing with { HasExtractedSourceFile = true };
+            }
+            else
+            {
+                targets.Add(resourcePath, new RetailTextureTarget(resourcePath, string.Empty, HasExtractedSourceFile: true));
+            }
         }
 
         return targets.Values
@@ -77,7 +85,15 @@ public static class RetailTextureOverrideService
             return Array.Empty<RetailTextureOverride>();
         }
 
-        var targetsByStem = targets
+        var eligibleTargets = manifest.LastSourceExtractionIncludedTextures
+            ? targets
+            : targets.Where(target => target.HasExtractedSourceFile).ToArray();
+        if (eligibleTargets.Count == 0)
+        {
+            return Array.Empty<RetailTextureOverride>();
+        }
+
+        var targetsByStem = eligibleTargets
             .GroupBy(target => GetResourceStem(target.ResourcePath), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
@@ -116,7 +132,7 @@ public static class RetailTextureOverrideService
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .OrderBy(name => name, StringComparer.OrdinalIgnoreCase));
                 throw new InvalidOperationException(
-                    $"Project-root texture '{artistFileName}' has the same basename as an extracted retail texture but a different source extension. " +
+                    $"Project-root texture '{artistFileName}' has the same basename as an eligible extracted retail texture but a different source extension. " +
                     $"Use the original extracted filename: {expectedNames}");
             }
 
@@ -126,7 +142,7 @@ public static class RetailTextureOverrideService
                     Environment.NewLine,
                     exactMatches.Select(match => $"  - {match.ResourcePath}"));
                 throw new InvalidOperationException(
-                    $"Project-root texture '{artistFileName}' matches more than one extracted retail texture resource. " +
+                    $"Project-root texture '{artistFileName}' matches more than one eligible extracted retail texture resource. " +
                     "Deadlimit will not guess which resource to replace." + Environment.NewLine + candidates);
             }
 
