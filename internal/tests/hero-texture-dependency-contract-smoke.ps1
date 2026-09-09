@@ -106,8 +106,16 @@ if ($mainForm.Contains('0source already contains files. Refresh it from the curr
 }
 
 $overrideService = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/RetailTextureOverrideService.cs' -Raw
-if (-not $overrideService.Contains('manifest.LastSourceExtractionIncludedTextures', [StringComparison]::Ordinal)) {
-    throw 'Retail texture overrides are not gated by the last actual extraction options.'
+foreach ($required in @(
+    'bool HasExtractedSourceFile = false',
+    'existing with { HasExtractedSourceFile = true }',
+    'new RetailTextureTarget(resourcePath, string.Empty, HasExtractedSourceFile: true)',
+    'manifest.LastSourceExtractionIncludedTextures',
+    'targets.Where(target => target.HasExtractedSourceFile).ToArray()'
+)) {
+    if (-not $overrideService.Contains($required, [StringComparison]::Ordinal)) {
+        throw "Source-backed retail texture override contract is missing: $required"
+    }
 }
 
 $online = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/OnlinePreparationSession.cs' -Raw
@@ -115,4 +123,4 @@ if (-not $online.Contains('RetailTextureOverrideService.ResolveOnlineTextureTarg
     throw 'ONLINE PREPARATION retail texture target routing is missing.'
 }
 
-Write-Host 'Hero texture dependency and per-run extraction contract smoke passed.'
+Write-Host 'Hero texture dependency and source-backed override contract smoke passed.'

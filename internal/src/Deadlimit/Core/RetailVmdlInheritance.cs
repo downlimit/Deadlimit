@@ -274,34 +274,61 @@ public static class RetailVmdlInheritance
                     StringComparison.OrdinalIgnoreCase))
                 .ToArray();
 
-            RetailRenderMeshEntry target;
+            string targetResourcePath;
             if (exactMatches.Length == 1)
             {
-                target = exactMatches[0];
-            }
-            else if (artistDmxFiles.Count == 1)
-            {
-                target = ChoosePrimaryRenderMesh(renderMeshes, hero, artistFileName)
-                    ?? throw new InvalidOperationException(
-                        $"Could not identify a unique primary retail render mesh for '{artistFileName}'. " +
-                        "Rename the artist DMX to match the retail render-mesh source filename.");
+                targetResourcePath = NormalizeResourcePath(exactMatches[0].Filename);
             }
             else
             {
-                throw new InvalidOperationException(
-                    $"Artist DMX '{artistFileName}' does not uniquely match a retail RenderMeshFile. " +
-                    "For multi-DMX projects, keep the original retail DMX filenames.");
+                var sourceRoot = ExtractedSourceAssetResolver.TryResolveSourceRootForArtistPath(artistDmx);
+                var sourceTarget = sourceRoot is null
+                    ? null
+                    : ExtractedSourceAssetResolver.ResolveDmxTarget(artistDmx, sourceRoot);
+
+                if (sourceTarget is not null && sourceRoot is not null)
+                {
+                    targetResourcePath = NormalizeResourcePath(sourceTarget.ResourcePath);
+                    ExtractedSourceAssetResolver.StageOwningVmdlSourceTrees(
+                        sourceRoot,
+                        addonContentRoot,
+                        sourceTarget.OwnerVmdlSourcePaths,
+                        sourceCopy.DestinationVmdlPath);
+
+                    foreach (var ownerFolder in sourceTarget.OwnerVmdlSourcePaths
+                                 .Select(Path.GetDirectoryName)
+                                 .Where(folder => !string.IsNullOrWhiteSpace(folder))
+                                 .Select(folder => folder!)
+                                 .Distinct(StringComparer.OrdinalIgnoreCase))
+                    {
+                        CopyExternalRetailTextureDependencies(ownerFolder, sourceRoot, addonContentRoot);
+                    }
+                }
+                else if (artistDmxFiles.Count == 1)
+                {
+                    var primary = ChoosePrimaryRenderMesh(renderMeshes, hero, artistFileName)
+                        ?? throw new InvalidOperationException(
+                            $"Could not identify a unique primary retail render mesh for '{artistFileName}'. " +
+                            "Use an original extracted source filename or rename the artist DMX to match the retail render-mesh source filename.");
+                    targetResourcePath = NormalizeResourcePath(primary.Filename);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"Artist DMX '{artistFileName}' does not uniquely match the main retail VMDL and has no unique extracted-source target. " +
+                        "Deadlimit will not guess which retail resource to replace.");
+                }
             }
 
-            if (!usedTargets.Add(target.Filename))
+            if (!usedTargets.Add(targetResourcePath))
             {
                 throw new InvalidOperationException(
-                    $"More than one artist DMX resolved to the same retail render mesh: {target.Filename}");
+                    $"More than one artist DMX resolved to the same retail render mesh: {targetResourcePath}");
             }
 
             var targetPath = SafePath.ResolveUnderRoot(
                 addonContentRoot,
-                target.Filename.Replace('/', Path.DirectorySeparatorChar),
+                targetResourcePath.Replace('/', Path.DirectorySeparatorChar),
                 "VMDL RenderMeshFile target");
             Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
             File.Copy(artistDmx, targetPath, overwrite: true);
@@ -309,7 +336,7 @@ public static class RetailVmdlInheritance
             var vertexColor = stagedVertexColor.VertexColor;
             replaced.Add(new ArtistDmxOverlayResult(
                 artistDmx,
-                target.Filename,
+                targetResourcePath,
                 targetPath,
                 vertexColor));
         }
@@ -321,7 +348,50 @@ public static class RetailVmdlInheritance
         string destinationVmdlPath,
         IReadOnlyList<VmdlMaterialRemap> additionalMaterialRemaps)
     {
+        var mainResult = PatchSingleAuthoringVmdl(
+            destinationVmdlPath,
+            additionalMaterialRemaps,
+            stripSupportingMarker: false);
+
+        var addonContentRoot = FindAddonContentRoot(destinationVmdlPath);
+        if (addonContentRoot is null)
+        {
+            return mainResult;
+        }
+
+        var mainFullPath = Path.GetFullPath(destinationVmdlPath);
+        foreach (var supportingVmdl in Directory.EnumerateFiles(addonContentRoot, "*.vmdl", SearchOption.AllDirectories)
+                     .Where(path => !string.Equals(Path.GetFullPath(path), mainFullPath, StringComparison.OrdinalIgnoreCase))
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            var text = File.ReadAllText(supportingVmdl);
+            if (!text.StartsWith(ExtractedSourceAssetResolver.SupportingVmdlMarker, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            PatchSingleAuthoringVmdl(
+                supportingVmdl,
+                additionalMaterialRemaps,
+                stripSupportingMarker: true);
+        }
+
+        return mainResult;
+    }
+
+    private static RetailVmdlPatchResult PatchSingleAuthoringVmdl(
+        string destinationVmdlPath,
+        IReadOnlyList<VmdlMaterialRemap> additionalMaterialRemaps,
+        bool stripSupportingMarker)
+    {
         var text = File.ReadAllText(destinationVmdlPath);
+        if (stripSupportingMarker
+            && text.StartsWith(ExtractedSourceAssetResolver.SupportingVmdlMarker, StringComparison.Ordinal))
+        {
+            text = text[ExtractedSourceAssetResolver.SupportingVmdlMarker.Length..]
+                .TrimStart('\r', '\n');
+        }
+
         var root = LocateRootChildren(text);
 
         var removedClasses = root.Nodes
@@ -382,6 +452,22 @@ public static class RetailVmdlInheritance
             existingRemapCount,
             addedRemapCount,
             renderMeshCount);
+    }
+
+    private static string? FindAddonContentRoot(string vmdlPath)
+    {
+        var current = new DirectoryInfo(Path.GetDirectoryName(Path.GetFullPath(vmdlPath))!);
+        while (current.Parent is not null)
+        {
+            if (string.Equals(current.Parent.Name, "citadel_addons", StringComparison.OrdinalIgnoreCase))
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        return null;
     }
 
     private static RetailRenderMeshEntry? ChoosePrimaryRenderMesh(

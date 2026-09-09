@@ -4,7 +4,8 @@ namespace Deadlimit.Core;
 
 public sealed record RetailTextureTarget(
     string ResourcePath,
-    string ReferencingMaterialResourcePath);
+    string ReferencingMaterialResourcePath,
+    bool HasExtractedSourceFile = false);
 
 public sealed record RetailTextureOverride(
     string ArtistSourcePath,
@@ -52,6 +53,24 @@ public static class RetailTextureOverrideService
             }
         }
 
+        // The extracted source tree is provenance on its own. Portraits, minimap icons,
+        // top-bar images and other UI textures may never be referenced by a VMAT, so they
+        // must still be eligible for an exact project-root override at their retail path.
+        foreach (var sourceImage in Directory.EnumerateFiles(extractedSourceRoot, "*", SearchOption.AllDirectories)
+                     .Where(path => ArtistTextureExtensions.Contains(Path.GetExtension(path)))
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            var resourcePath = NormalizeResourcePath(Path.GetRelativePath(extractedSourceRoot, sourceImage));
+            if (targets.TryGetValue(resourcePath, out var existing))
+            {
+                targets[resourcePath] = existing with { HasExtractedSourceFile = true };
+            }
+            else
+            {
+                targets.Add(resourcePath, new RetailTextureTarget(resourcePath, string.Empty, HasExtractedSourceFile: true));
+            }
+        }
+
         return targets.Values
             .OrderBy(target => target.ResourcePath, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -61,14 +80,20 @@ public static class RetailTextureOverrideService
         ProjectManifest manifest,
         IReadOnlyList<RetailTextureTarget> targets)
     {
-        if (!manifest.LastSourceExtractionIncludedTextures
-            || !Directory.Exists(manifest.ProjectFolder)
-            || targets.Count == 0)
+        if (!Directory.Exists(manifest.ProjectFolder) || targets.Count == 0)
         {
             return Array.Empty<RetailTextureOverride>();
         }
 
-        var targetsByStem = targets
+        var eligibleTargets = manifest.LastSourceExtractionIncludedTextures
+            ? targets
+            : targets.Where(target => target.HasExtractedSourceFile).ToArray();
+        if (eligibleTargets.Count == 0)
+        {
+            return Array.Empty<RetailTextureOverride>();
+        }
+
+        var targetsByStem = eligibleTargets
             .GroupBy(target => GetResourceStem(target.ResourcePath), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
@@ -162,7 +187,7 @@ public static class RetailTextureOverrideService
     {
         var defaultTarget = Path.Combine(defaultTextureTargetFolder, Path.GetFileName(artistSourcePath));
         var manifest = ProjectStore.TryLoad(projectFolder);
-        if (manifest is null || !manifest.LastSourceExtractionIncludedTextures)
+        if (manifest is null)
         {
             return defaultTarget;
         }
