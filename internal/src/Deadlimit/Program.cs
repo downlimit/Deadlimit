@@ -192,6 +192,7 @@ internal static class Program
         HeroCatalogFeature.Attach(form);
         ProjectLogsFeature.Attach(form);
         ProjectSaveStateFeature.Attach(form);
+        ProjectExternalChangeFeature.Attach(form);
 
         UpdateStartup(startup, 78, UiText.T("Preparing project workspace...", "Подготовка рабочей области проекта..."));
         ProjectHeaderFeature.Attach(form);
@@ -412,4 +413,3 @@ internal static class Program
         return (Icon)source.Clone();
     }
 }
-

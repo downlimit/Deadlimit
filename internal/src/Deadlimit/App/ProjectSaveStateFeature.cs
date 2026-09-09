@@ -130,7 +130,6 @@ internal static class ProjectSaveStateFeature
             UpdateSaveState();
             WarnIfReleaseIdIsShared();
         }));
-        form.Activated += (_, _) => UpdateSaveState();
         form.Shown += (_, _) => UpdateSaveState();
         form.FormClosed += (_, _) => Updaters.Remove(form);
 
