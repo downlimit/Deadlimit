@@ -53,7 +53,7 @@ internal static class HeroExtractionOptionsDialog
         {
             Text = UiText.T("SOURCE", "ИСХОДНИКИ"),
             AutoSize = true,
-            Font = new Font(SystemFonts.MessageBoxFont, FontStyle.Bold),
+            Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold),
             Margin = new Padding(0, 0, 0, 5),
         };
 
@@ -94,7 +94,7 @@ internal static class HeroExtractionOptionsDialog
         {
             Text = UiText.T("CSDK EDITING", "РЕДАКТИРОВАНИЕ В CSDK"),
             AutoSize = true,
-            Font = new Font(SystemFonts.MessageBoxFont, FontStyle.Bold),
+            Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold),
             Margin = new Padding(0, 0, 0, 5),
         };
 
