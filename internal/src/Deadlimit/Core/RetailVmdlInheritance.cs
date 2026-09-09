@@ -139,16 +139,13 @@ public static class RetailVmdlInheritance
             sourceRoot,
             addonContentRoot);
 
-        if (ProjectStore.GetToolPathSettings().ExtractHeroTextures)
-        {
-            var textureTargets = RetailTextureOverrideService.BuildTargetIndex(sourceRoot);
-            var textureOverrides = RetailTextureOverrideService.ResolveProjectRootOverrides(
-                manifest,
-                textureTargets);
-            copied += RetailTextureOverrideService.StageProjectRootOverrides(
-                addonContentRoot,
-                textureOverrides);
-        }
+        var textureTargets = RetailTextureOverrideService.BuildTargetIndex(sourceRoot);
+        var textureOverrides = RetailTextureOverrideService.ResolveProjectRootOverrides(
+            manifest,
+            textureTargets);
+        copied += RetailTextureOverrideService.StageProjectRootOverrides(
+            addonContentRoot,
+            textureOverrides);
 
         var destinationVmdl = Path.Combine(destinationFolder, Path.GetFileName(sourceVmdl));
         if (!File.Exists(destinationVmdl))

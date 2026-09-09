@@ -9,14 +9,12 @@ $buildTargets = $textureType.GetMethod('BuildTargetIndex', [Reflection.BindingFl
 $resolveOverrides = $textureType.GetMethod('ResolveProjectRootOverrides', [Reflection.BindingFlags]::Public -bor [Reflection.BindingFlags]::Static)
 $stageOverrides = $textureType.GetMethod('StageProjectRootOverrides', [Reflection.BindingFlags]::Public -bor [Reflection.BindingFlags]::Static)
 
-$temp = Join-Path ([IO.Path]::GetTempPath()) ('deadlimit-prepare-retail-fallback-' + [Guid]::NewGuid().ToString('N'))
+$temp = Join-Path ([IO.Path]::GetTempPath()) ('deadlimit-prepare-authoring-textures-' + [Guid]::NewGuid().ToString('N'))
 $projectRoot = Join-Path $temp 'project'
 $sourceRoot = Join-Path $projectRoot '0source'
 $addonRoot = Join-Path $temp 'content\citadel_addons\ivytest'
-$materialRelative = 'materials\heroes\ivy\ivy_wingsv3.vmat'
-$colorRelative = 'materials\heroes\ivy\ivy_wingsv3_color.png'
-$normalRelative = 'materials\heroes\ivy\ivy_wingsv3_normal.png'
-$manualRelative = 'materials\heroes\ivy\ivy_wingsv3_manual.png'
+$materialRelative = 'models\heroes_staging\tengu\tengu_v2\materials\ivy_wingsv3.vmat'
+$colorRelative = 'models\heroes_staging\tengu\tengu_v2\materials\ivy_wingsv3_color.png'
 
 function Write-TestFile([string]$root, [string]$relative, [string]$content) {
     $path = Join-Path $root $relative
@@ -39,35 +37,22 @@ try {
     $vmat = @"
 Layer0
 {
-    "TextureColor" "materials/heroes/ivy/ivy_wingsv3_color.png"
-    "TextureNormal" "materials/heroes/ivy/ivy_wingsv3_normal.png"
-    "TextureDetail" "materials/heroes/ivy/ivy_wingsv3_manual.png"
+    "TextureColor" "models/heroes_staging/tengu/tengu_v2/materials/ivy_wingsv3_color.png"
 }
 "Compiled Textures"
 {
-    "TextureColor" "materials/heroes/ivy/ivy_wingsv3_color.vtex"
-    "TextureNormal" "materials/heroes/ivy/ivy_wingsv3_normal.vtex"
-    "TextureDetail" "materials/heroes/ivy/ivy_wingsv3_manual.vtex"
+    "g_tColor" "models/heroes_staging/tengu/tengu_v2/materials/ivy_wingsv3_color.vtex"
 }
 "@
 
     Write-TestFile $sourceRoot $materialRelative $vmat | Out-Null
-    Write-TestFile $addonRoot $materialRelative $vmat | Out-Null
-
-    # Stock color exists in 0source and was redundantly copied into the addon.
-    # PREPARE must stop referencing/carrying that identical copy.
     Write-TestBytes $sourceRoot $colorRelative ([byte[]](1,2,3,4)) | Out-Null
+    Write-TestFile $addonRoot $materialRelative $vmat | Out-Null
     Write-TestBytes $addonRoot $colorRelative ([byte[]](1,2,3,4)) | Out-Null
 
-    # Normal is not extracted at all. The copied VMAT still has to fall back to retail .vtex.
-
-    # A user-edited source already living in CSDK differs from the extracted stock source.
-    # Do not silently replace or delete it.
-    Write-TestBytes $sourceRoot $manualRelative ([byte[]](5,5,5,5)) | Out-Null
-    Write-TestBytes $addonRoot $manualRelative ([byte[]](9,9,9,9)) | Out-Null
-
-    # Explicit project-root override must survive the stock cleanup and be staged normally.
-    $artistColor = Write-TestBytes $projectRoot 'ivy_wingsv3_color.png' ([byte[]](8,7,6,5))
+    # Project-root artist source with the exact retail source name must replace the stock
+    # CSDK working copy at the original Tengu/Ivy resource path.
+    Write-TestBytes $projectRoot 'ivy_wingsv3_color.png' ([byte[]](8,7,6,5)) | Out-Null
 
     $manifest = [Activator]::CreateInstance($manifestType)
     $manifest.ProjectFolder = $projectRoot
@@ -84,38 +69,21 @@ Layer0
         throw "Expected one staged project-root texture override, got $staged."
     }
 
-    $preparedVmatPath = Join-Path $addonRoot $materialRelative
-    $preparedVmat = Get-Content -LiteralPath $preparedVmatPath -Raw
-    if (-not $preparedVmat.Contains('"TextureColor" "materials/heroes/ivy/ivy_wingsv3_color.vtex"', [StringComparison]::Ordinal)) {
-        throw 'PREPARE did not restore the stock Color slot to retail .vtex.'
-    }
-    if (-not $preparedVmat.Contains('"TextureNormal" "materials/heroes/ivy/ivy_wingsv3_normal.vtex"', [StringComparison]::Ordinal)) {
-        throw 'PREPARE did not restore a missing stock Normal slot to retail .vtex.'
-    }
-    if (-not $preparedVmat.Contains('"TextureDetail" "materials/heroes/ivy/ivy_wingsv3_manual.png"', [StringComparison]::Ordinal)) {
-        throw 'PREPARE overwrote an existing non-stock CSDK texture source.'
+    $preparedVmat = Get-Content -LiteralPath (Join-Path $addonRoot $materialRelative) -Raw
+    if (-not $preparedVmat.Contains('"TextureColor" "models/heroes_staging/tengu/tengu_v2/materials/ivy_wingsv3_color.png"', [StringComparison]::Ordinal)) {
+        throw 'PREPARE changed an editable Ivy/Tengu VMAT away from its authoring PNG source.'
     }
 
     $preparedColor = Join-Path $addonRoot $colorRelative
     if (-not (Test-Path -LiteralPath $preparedColor)) {
-        throw 'Project-root artist override was not staged after stock cleanup.'
+        throw 'PREPARE removed the Ivy/Tengu authoring texture from CSDK.'
     }
     $colorBytes = [IO.File]::ReadAllBytes($preparedColor)
     if ($colorBytes.Length -ne 4 -or $colorBytes[0] -ne 8 -or $colorBytes[3] -ne 5) {
-        throw 'Project-root artist override bytes were replaced by the stock source.'
+        throw 'Project-root artist texture did not replace the stock CSDK working copy.'
     }
 
-    if (Test-Path -LiteralPath (Join-Path $addonRoot $normalRelative)) {
-        throw 'PREPARE unexpectedly created a stock Normal source image.'
-    }
-
-    $manualBytes = [IO.File]::ReadAllBytes((Join-Path $addonRoot $manualRelative))
-    if ($manualBytes.Length -ne 4 -or $manualBytes[0] -ne 9) {
-        throw 'Existing non-stock CSDK texture source was modified or deleted.'
-    }
-
-    # Supporting ability VMDL trees are staged later than the main retail model tree.
-    # They must follow the same rule: no stock image copy, VMAT falls back to retail .vtex.
+    # Supporting ability source trees must keep their PNG dependencies in CSDK as well.
     $supportSourceRoot = Join-Path $sourceRoot 'models\heroes_wip\ivy\ability'
     $supportVmdl = Write-TestFile $supportSourceRoot 'stone_fx.vmdl' '{}'
     $supportVmat = @"
@@ -125,7 +93,7 @@ Layer0
 }
 "Compiled Textures"
 {
-    "TextureColor" "models/heroes_wip/ivy/ability/stone_fx_color.vtex"
+    "g_tColor" "models/heroes_wip/ivy/ability/stone_fx_color.vtex"
 }
 "@
     Write-TestFile $supportSourceRoot 'stone_fx.vmat' $supportVmat | Out-Null
@@ -145,22 +113,31 @@ Layer0
         [string[]]@($supportVmdl),
         [string]$mainDestination))
 
-    $preparedSupportVmatPath = Join-Path $addonRoot 'models\heroes_wip\ivy\ability\stone_fx.vmat'
-    $preparedSupportVmat = Get-Content -LiteralPath $preparedSupportVmatPath -Raw
-    if (-not $preparedSupportVmat.Contains('"TextureColor" "models/heroes_wip/ivy/ability/stone_fx_color.vtex"', [StringComparison]::Ordinal)) {
-        throw 'Supporting ability VMAT did not fall back to its retail .vtex.'
+    $supportVmatTarget = Join-Path $addonRoot 'models\heroes_wip\ivy\ability\stone_fx.vmat'
+    $supportTextureTarget = Join-Path $addonRoot 'models\heroes_wip\ivy\ability\stone_fx_color.png'
+    if (-not (Test-Path -LiteralPath $supportVmatTarget)) {
+        throw 'Supporting ability VMAT was not staged.'
     }
-    if (Test-Path -LiteralPath (Join-Path $addonRoot 'models\heroes_wip\ivy\ability\stone_fx_color.png')) {
-        throw 'Supporting source staging copied an unchanged stock texture into the addon.'
+    if (-not (Test-Path -LiteralPath $supportTextureTarget)) {
+        throw 'Supporting ability authoring PNG was not staged.'
+    }
+    if (-not (Get-Content -LiteralPath $supportVmatTarget -Raw).Contains('stone_fx_color.png', [StringComparison]::Ordinal)) {
+        throw 'Supporting ability VMAT lost its PNG authoring reference.'
+    }
+
+    $overrideSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/RetailTextureOverrideService.cs' -Raw
+    if ($overrideSource.Contains('RepairMissingRetailTextureReferences', [StringComparison]::Ordinal) -or
+        $overrideSource.Contains('stockCopiesToDelete', [StringComparison]::Ordinal)) {
+        throw 'Obsolete stock-source deletion/fallback logic is still present.'
     }
 
     $resolverSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ExtractedSourceAssetResolver.cs' -Raw
-    if (-not $resolverSource.Contains('RetailTextureOverrideService.RepairMissingRetailTextureReferences(addonContentRoot)', [StringComparison]::Ordinal)) {
-        throw 'Supporting source staging is not wired to retail texture fallback repair.'
+    if ($resolverSource.Contains('RetailTextureSourceExtensions.Contains(Path.GetExtension(sourceFile))', [StringComparison]::Ordinal)) {
+        throw 'Supporting source staging still skips authoring texture sources.'
     }
 }
 finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host 'PREPARE retail VMAT fallback and stock-texture cleanup smoke passed.'
+Write-Host 'PREPARE authoring texture preservation, root override and supporting FX texture smoke passed.'

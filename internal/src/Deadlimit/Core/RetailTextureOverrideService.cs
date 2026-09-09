@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
 namespace Deadlimit.Core;
@@ -15,8 +14,6 @@ public sealed record RetailTextureOverride(
 
 public static class RetailTextureOverrideService
 {
-    private static readonly AsyncLocal<string?> LastExtractedSourceRoot = new();
-
     private static readonly HashSet<string> ArtistTextureExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".png", ".tga", ".jpg", ".jpeg", ".tif", ".tiff",
@@ -31,27 +28,12 @@ public static class RetailTextureOverrideService
         "^[ \\t]*\\\"?(?:Texture|g_t)[A-Za-z0-9_]*\\\"?[ \\t]*(?:=[ \\t]*)?(?:resource[ \\t]*:[ \\t]*)?\\\"(?<path>[^\\\"\\r\\n]+)\\\"",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
 
-    private static readonly Regex CompiledTexturesHeaderRegex = new(
-        "^[ \\t]*\\\"?Compiled Textures\\\"?[ \\t]*(?:=[ \\t]*)?(?=\\{|$)",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
-
-    private static readonly Regex CompiledTextureEntryRegex = new(
-        "^[ \\t]*\\\"?(?<key>[A-Za-z_$][A-Za-z0-9_$]*)\\\"?[ \\t]*(?:=[ \\t]*)?\\\"(?<path>[^\\\"\\r\\n]+)\\\"",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
-
-    private static readonly Regex ActiveTextureEntryRegex = new(
-        "^(?<prefix>[ \\t]*\\\"?(?<key>(?:Texture|g_t)[A-Za-z0-9_$]*)\\\"?[ \\t]*(?:=[ \\t]*)?(?:resource[ \\t]*:[ \\t]*)?\\\")(?<path>[^\\\"\\r\\n]+)(?<suffix>\\\")",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
-
     public static IReadOnlyList<RetailTextureTarget> BuildTargetIndex(string extractedSourceRoot)
     {
         if (!Directory.Exists(extractedSourceRoot))
         {
-            LastExtractedSourceRoot.Value = null;
             return Array.Empty<RetailTextureTarget>();
         }
-
-        LastExtractedSourceRoot.Value = Path.GetFullPath(extractedSourceRoot);
 
         var targets = new Dictionary<string, RetailTextureTarget>(StringComparer.OrdinalIgnoreCase);
         foreach (var vmatPath in Directory.EnumerateFiles(extractedSourceRoot, "*.vmat", SearchOption.AllDirectories)
@@ -178,10 +160,6 @@ public static class RetailTextureOverrideService
         string addonContentRoot,
         IReadOnlyList<RetailTextureOverride> overrides)
     {
-        PrepareRetailTextureReferences(
-            addonContentRoot,
-            LastExtractedSourceRoot.Value);
-
         var staged = 0;
         foreach (var replacement in overrides)
         {
@@ -195,180 +173,6 @@ public static class RetailTextureOverrideService
         }
 
         return staged;
-    }
-
-    internal static int RepairMissingRetailTextureReferences(string addonContentRoot)
-    {
-        return RewriteRetailTextureReferences(
-            addonContentRoot,
-            extractedSourceRoot: null,
-            removeStockCopies: false);
-    }
-
-    private static int PrepareRetailTextureReferences(
-        string addonContentRoot,
-        string? extractedSourceRoot)
-    {
-        return RewriteRetailTextureReferences(
-            addonContentRoot,
-            extractedSourceRoot,
-            removeStockCopies: true);
-    }
-
-    private static int RewriteRetailTextureReferences(
-        string addonContentRoot,
-        string? extractedSourceRoot,
-        bool removeStockCopies)
-    {
-        if (!Directory.Exists(addonContentRoot))
-        {
-            return 0;
-        }
-
-        var stockCopiesToDelete = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var repairedCount = 0;
-        foreach (var vmatPath in Directory.EnumerateFiles(addonContentRoot, "*.vmat", SearchOption.AllDirectories)
-                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
-        {
-            var text = File.ReadAllText(vmatPath);
-            var repaired = RestoreRetailTextureReferences(
-                text,
-                addonContentRoot,
-                extractedSourceRoot,
-                removeStockCopies,
-                stockCopiesToDelete,
-                out var fileRepairCount);
-            if (fileRepairCount == 0)
-            {
-                continue;
-            }
-
-            File.WriteAllText(vmatPath, repaired);
-            repairedCount += fileRepairCount;
-        }
-
-        foreach (var stockCopy in stockCopiesToDelete)
-        {
-            if (File.Exists(stockCopy))
-            {
-                File.Delete(stockCopy);
-            }
-        }
-
-        return repairedCount;
-    }
-
-    private static string RestoreRetailTextureReferences(
-        string materialText,
-        string addonContentRoot,
-        string? extractedSourceRoot,
-        bool removeStockCopies,
-        ISet<string> stockCopiesToDelete,
-        out int repairedCount)
-    {
-        repairedCount = 0;
-        var header = CompiledTexturesHeaderRegex.Match(materialText);
-        if (!header.Success)
-        {
-            return materialText;
-        }
-
-        var openBrace = materialText.IndexOf('{', header.Index + header.Length);
-        if (openBrace < 0)
-        {
-            return materialText;
-        }
-
-        var closeBrace = FindMatchingBrace(materialText, openBrace);
-        if (closeBrace < 0)
-        {
-            return materialText;
-        }
-
-        var compiledBlock = materialText[(openBrace + 1)..closeBrace];
-        var compiledEntries = CompiledTextureEntryRegex.Matches(compiledBlock)
-            .Cast<Match>()
-            .Select(match => new
-            {
-                Key = match.Groups["key"].Value,
-                Path = match.Groups["path"].Value,
-            })
-            .Where(item => item.Path.EndsWith(".vtex", StringComparison.OrdinalIgnoreCase))
-            .GroupBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group.First())
-            .ToArray();
-
-        if (compiledEntries.Length == 0)
-        {
-            return materialText;
-        }
-
-        var compiledByKey = compiledEntries.ToDictionary(
-            item => item.Key,
-            item => item.Path,
-            StringComparer.OrdinalIgnoreCase);
-        var compiledByStem = compiledEntries
-            .GroupBy(item => GetResourceStemPath(item.Path), StringComparer.OrdinalIgnoreCase)
-            .Where(group => group.Count() == 1)
-            .ToDictionary(
-                group => group.Key,
-                group => group.Single().Path,
-                StringComparer.OrdinalIgnoreCase);
-
-        var localRepairedCount = 0;
-        var editablePart = materialText[..header.Index];
-        var rewrittenEditablePart = ActiveTextureEntryRegex.Replace(editablePart, match =>
-        {
-            var activePath = match.Groups["path"].Value;
-            if (!IsEditableTextureSourcePath(activePath))
-            {
-                return match.Value;
-            }
-
-            var key = match.Groups["key"].Value;
-            string? retailPath = null;
-            if (!compiledByKey.TryGetValue(key, out retailPath))
-            {
-                compiledByStem.TryGetValue(GetResourceStemPath(activePath), out retailPath);
-            }
-
-            if (string.IsNullOrWhiteSpace(retailPath))
-            {
-                return match.Value;
-            }
-
-            var addonSourcePath = TryResolveTextureSourcePath(addonContentRoot, activePath);
-            var sourceExists = addonSourcePath is not null && File.Exists(addonSourcePath);
-            var isUnchangedRetailCopy = false;
-
-            if (sourceExists
-                && removeStockCopies
-                && !string.IsNullOrWhiteSpace(extractedSourceRoot))
-            {
-                var extractedSourcePath = TryResolveTextureSourcePath(extractedSourceRoot, activePath);
-                isUnchangedRetailCopy = extractedSourcePath is not null
-                    && File.Exists(extractedSourcePath)
-                    && FilesEqual(extractedSourcePath, addonSourcePath!);
-            }
-
-            if (sourceExists && !isUnchangedRetailCopy)
-            {
-                return match.Value;
-            }
-
-            if (isUnchangedRetailCopy && addonSourcePath is not null)
-            {
-                stockCopiesToDelete.Add(addonSourcePath);
-            }
-
-            localRepairedCount++;
-            return match.Groups["prefix"].Value
-                   + retailPath
-                   + match.Groups["suffix"].Value;
-        });
-
-        repairedCount = localRepairedCount;
-        return rewrittenEditablePart + materialText[header.Index..];
     }
 
     public static string ResolveOnlineTextureTarget(
@@ -409,110 +213,6 @@ public static class RetailTextureOverrideService
             "Online retail texture override destination");
     }
 
-    private static string? TryResolveTextureSourcePath(string root, string resourcePath)
-    {
-        if (Path.IsPathRooted(resourcePath))
-        {
-            return null;
-        }
-
-        try
-        {
-            var relative = resourcePath
-                .Replace('/', Path.DirectorySeparatorChar)
-                .Replace('\\', Path.DirectorySeparatorChar)
-                .TrimStart(Path.DirectorySeparatorChar);
-            return SafePath.ResolveUnderRoot(
-                root,
-                relative,
-                "Retail VMAT texture source");
-        }
-        catch (InvalidDataException)
-        {
-            return null;
-        }
-    }
-
-    private static bool FilesEqual(string left, string right)
-    {
-        var leftInfo = new FileInfo(left);
-        var rightInfo = new FileInfo(right);
-        if (leftInfo.Length != rightInfo.Length)
-        {
-            return false;
-        }
-
-        using var leftStream = File.OpenRead(left);
-        using var rightStream = File.OpenRead(right);
-        return SHA256.HashData(leftStream).AsSpan().SequenceEqual(SHA256.HashData(rightStream));
-    }
-
-    private static bool IsEditableTextureSourcePath(string resourcePath)
-    {
-        var extension = Path.GetExtension(resourcePath.Replace('\\', '/'));
-        return extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".tga", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".tif", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".tiff", StringComparison.OrdinalIgnoreCase)
-            || extension.Equals(".exr", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static int FindMatchingBrace(string text, int openBrace)
-    {
-        var depth = 0;
-        var inString = false;
-        var escaped = false;
-
-        for (var index = openBrace; index < text.Length; index++)
-        {
-            var value = text[index];
-            if (inString)
-            {
-                if (escaped)
-                {
-                    escaped = false;
-                    continue;
-                }
-
-                if (value == '\\')
-                {
-                    escaped = true;
-                    continue;
-                }
-
-                if (value == '"')
-                {
-                    inString = false;
-                }
-
-                continue;
-            }
-
-            if (value == '"')
-            {
-                inString = true;
-                continue;
-            }
-
-            if (value == '{')
-            {
-                depth++;
-            }
-            else if (value == '}')
-            {
-                depth--;
-                if (depth == 0)
-                {
-                    return index;
-                }
-            }
-        }
-
-        return -1;
-    }
-
     private static bool IsRetailTextureSourceReference(string resourcePath)
     {
         if (resourcePath.Length == 0 || resourcePath.Contains(':', StringComparison.Ordinal))
@@ -525,13 +225,6 @@ public static class RetailTextureOverrideService
 
     private static string GetResourceStem(string resourcePath) =>
         Path.GetFileNameWithoutExtension(resourcePath.Replace('/', Path.DirectorySeparatorChar));
-
-    private static string GetResourceStemPath(string resourcePath)
-    {
-        var normalized = NormalizeResourcePath(resourcePath);
-        var extension = Path.GetExtension(normalized);
-        return extension.Length == 0 ? normalized : normalized[..^extension.Length];
-    }
 
     private static string GetResourceDirectory(string resourcePath)
     {

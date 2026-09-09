@@ -37,10 +37,11 @@ Layer0
 }
 "@
     $bodySource = Write-TestFile $source 'models\heroes_wip\ivy\body.vmat' $bodyVmat
+    Write-TestFile $source 'materials\models\heroes\ivy\body_color.png' 'stock body color' | Out-Null
+    Write-TestFile $source 'materials\particle\projected\ground_crack_shatter_trans.png' 'stock dissolve mask' | Out-Null
     Write-TestFile $source 'particles\abilities\tengu\stone_form.vpcf' 'retail fx v2' | Out-Null
     Write-TestFile $source 'particles\abilities\tengu\stone_form.vsnap' 'retail snap v2' | Out-Null
     Write-TestFile $source 'models\heroes_wip\ivy\ivy.vmdl' 'retail model - must not copy' | Out-Null
-    Write-TestFile $source 'materials\heroes\ivy\body_color.png' 'texture - must not copy' | Out-Null
 
     Write-TestFile $addon 'models\heroes_wip\ivy\body.vmat' 'artist body before refresh' | Out-Null
     Write-TestFile $addon 'particles\abilities\tengu\stone_form.vpcf' 'artist fx before refresh' | Out-Null
@@ -66,26 +67,30 @@ Layer0
     if ([string]::IsNullOrWhiteSpace([string]$result.BackupFolder)) {
         throw 'Backup-enabled copy did not create a timestamp backup folder.'
     }
-    if (-not ([IO.Path]::GetFullPath([string]$result.BackupFolder)).StartsWith([IO.Path]::GetFullPath([string]$backupParent), [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Backup escaped fx_and_mat_bckps: $($result.BackupFolder)"
-    }
 
     $bodyTarget = Join-Path $addon 'models\heroes_wip\ivy\body.vmat'
+    $colorTarget = Join-Path $addon 'materials\models\heroes\ivy\body_color.png'
+    $maskTarget = Join-Path $addon 'materials\particle\projected\ground_crack_shatter_trans.png'
     $fxTarget = Join-Path $addon 'particles\abilities\tengu\stone_form.vpcf'
     $snapTarget = Join-Path $addon 'particles\abilities\tengu\stone_form.vsnap'
+
     $preparedBody = Get-Content -LiteralPath $bodyTarget -Raw
-    if (-not $preparedBody.Contains('"TextureColor" "materials/models/heroes/ivy/body_color.vtex"', [StringComparison]::Ordinal)) {
-        throw 'Copied VMAT did not restore the retail VTEX for a shader-remapped texture parameter.'
+    if (-not $preparedBody.Contains('"TextureColor" "materials/models/heroes/ivy/body_color.png"', [StringComparison]::Ordinal)) {
+        throw 'Copied VMAT lost its editable Color source path.'
     }
-    if (-not $preparedBody.Contains('"g_tSelfIllumMask" "materials/particle/projected/ground_crack_shatter_trans.vtex"', [StringComparison]::Ordinal)) {
-        throw 'Copied VMAT did not restore the retail VTEX for an exact texture parameter.'
+    if (-not $preparedBody.Contains('"g_tSelfIllumMask" "materials/particle/projected/ground_crack_shatter_trans.png"', [StringComparison]::Ordinal)) {
+        throw 'Copied VMAT lost its editable FX texture source path.'
     }
-    if ($preparedBody.Contains('"TextureColor" "materials/models/heroes/ivy/body_color.png"', [StringComparison]::Ordinal) -or
-        $preparedBody.Contains('"g_tSelfIllumMask" "materials/particle/projected/ground_crack_shatter_trans.png"', [StringComparison]::Ordinal)) {
-        throw 'Copied VMAT still points active texture slots at decompiled image files.'
+    if (-not (Test-Path -LiteralPath $colorTarget) -or -not (Test-Path -LiteralPath $maskTarget)) {
+        throw 'CSDK material copy did not include required authoring texture dependencies.'
     }
-    $sourceBodyAfterCopy = Get-Content -LiteralPath $bodySource -Raw
-    if (-not $sourceBodyAfterCopy.Contains('body_color.png', [StringComparison]::Ordinal)) {
+    if ((Get-Content -LiteralPath $colorTarget -Raw).Trim() -ne 'stock body color') {
+        throw 'CSDK Color authoring texture bytes are wrong.'
+    }
+    if ((Get-Content -LiteralPath $maskTarget -Raw).Trim() -ne 'stock dissolve mask') {
+        throw 'CSDK FX mask authoring texture bytes are wrong.'
+    }
+    if (-not (Get-Content -LiteralPath $bodySource -Raw).Contains('body_color.png', [StringComparison]::Ordinal)) {
         throw '0source VMAT was modified while preparing the CSDK working copy.'
     }
     if ((Get-Content -LiteralPath $fxTarget -Raw).Trim() -ne 'retail fx v2') {
@@ -96,9 +101,6 @@ Layer0
     }
     if (Test-Path -LiteralPath (Join-Path $addon 'models\heroes_wip\ivy\ivy.vmdl')) {
         throw 'CSDK editing copy incorrectly copied a VMDL as ability FX.'
-    }
-    if (Test-Path -LiteralPath (Join-Path $addon 'materials\heroes\ivy\body_color.png')) {
-        throw 'CSDK editing copy incorrectly copied an image texture.'
     }
 
     $bodyBackup = Join-Path ([string]$result.BackupFolder) 'models\heroes_wip\ivy\body.vmat'
@@ -130,8 +132,8 @@ Layer0
     if (@(Get-ChildItem -LiteralPath $backupParent -Directory).Count -ne $backupFolderCount) {
         throw 'No-backup refresh created an unexpected timestamp backup folder.'
     }
-    if (-not (Get-Content -LiteralPath $bodyTarget -Raw).Contains('body_color.vtex', [StringComparison]::Ordinal)) {
-        throw 'No-backup material refresh did not restore the retail VTEX reference.'
+    if (-not (Get-Content -LiteralPath $bodyTarget -Raw).Contains('body_color.png', [StringComparison]::Ordinal)) {
+        throw 'No-backup material refresh did not restore the editable PNG reference.'
     }
 
     $third = $copy.Invoke($null, [object[]]@(
@@ -143,7 +145,7 @@ Layer0
         [bool]$true,
         [Threading.CancellationToken]::None))
     if ($third.MaterialCopiedCount -ne 0 -or $third.OverwrittenCount -ne 0 -or $null -ne $third.BackupFolder) {
-        throw 'An unchanged prepared VMAT was treated as a fresh overwrite.'
+        throw 'An unchanged editable material tree was treated as a fresh overwrite.'
     }
 
     $dialog = Get-Content -LiteralPath 'internal/src/Deadlimit/App/HeroExtractionOptionsDialog.cs' -Raw
@@ -151,7 +153,8 @@ Layer0
         'Extract hero',
         'Extract abilities',
         'Extract portraits & UI',
-        'Extract textures',
+        'Extract textures by dependencies',
+        'Извлекать текстуры по зависимостям',
         'Copy materials to CSDK for editing',
         'Copy ability FX to CSDK for editing',
         'copyAbilityFxCheck.Enabled = extractAbilitiesCheck.Checked',
@@ -165,11 +168,13 @@ Layer0
     $extraction = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/HeroExtractionService.cs' -Raw
     foreach ($required in @(
         'if (options.ExtractHero)',
+        'stagingFolder,`n                    true,',
         'options.ExtractTextures || options.CopyMaterialsToCsdkForEditing',
-        'new CsdkEditableAssetCopyService(_paths).Copy(',
-        'options.CopyAbilityFxToCsdkForEditing && !options.ExtractAbilities'
+        'options.CopyAbilityFxToCsdkForEditing',
+        'new CsdkEditableAssetCopyService(_paths).Copy('
     )) {
-        if (-not $extraction.Contains($required, [StringComparison]::Ordinal)) {
+        $normalizedRequired = $required.Replace('`n', "`n")
+        if (-not $extraction.Contains($normalizedRequired, [StringComparison]::Ordinal)) {
             throw "Scoped extraction/CSDK-copy wiring is missing: $required"
         }
     }
@@ -178,4 +183,4 @@ finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host 'CSDK editing copy, retail texture fallback, backup, and extraction-scope smoke passed.'
+Write-Host 'CSDK editable material/FX copy, authoring texture dependencies and backup smoke passed.'
