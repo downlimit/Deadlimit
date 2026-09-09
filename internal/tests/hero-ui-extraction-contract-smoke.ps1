@@ -55,7 +55,7 @@ if ($sourceOnly.ExtractPortraitsAndUi) {
 }
 
 $dialog = Get-Content -LiteralPath 'internal/src/Deadlimit/App/HeroExtractionOptionsDialog.cs' -Raw
-if (-not $dialog.Contains('Extract portraits and UI', [StringComparison]::Ordinal) -or
+if (-not $dialog.Contains('Extract portraits & UI', [StringComparison]::Ordinal) -or
     -not $dialog.Contains('Извлекать портреты и UI', [StringComparison]::Ordinal)) {
     throw 'Extraction dialog does not expose the portrait/UI checkbox in both locales.'
 }
