@@ -132,8 +132,8 @@ public static class RetailTextureOverrideService
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .OrderBy(name => name, StringComparer.OrdinalIgnoreCase));
                 throw new InvalidOperationException(
-                    $"Project-root texture '{artistFileName}' has the same basename as an eligible extracted retail texture but a different source extension. " +
-                    $"Use the original extracted filename: {expectedNames}");
+                    $"Project-root texture '{artistFileName}' has the same basename as a retail texture but a different source extension. " +
+                    $"Use the original retail filename: {expectedNames}");
             }
 
             if (exactMatches.Length != 1)
@@ -142,7 +142,7 @@ public static class RetailTextureOverrideService
                     Environment.NewLine,
                     exactMatches.Select(match => $"  - {match.ResourcePath}"));
                 throw new InvalidOperationException(
-                    $"Project-root texture '{artistFileName}' matches more than one eligible extracted retail texture resource. " +
+                    $"Project-root texture '{artistFileName}' matches more than one retail texture resource. " +
                     "Deadlimit will not guess which resource to replace." + Environment.NewLine + candidates);
             }
 
