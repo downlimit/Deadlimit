@@ -12,7 +12,10 @@ public sealed record HeroExtractionResult(
     string SourceVpkPath,
     string OutputFolder,
     int ExtractedFileCount,
-    string? Source2ViewerVersion);
+    string? Source2ViewerVersion,
+    int CsdkMaterialCopiedCount = 0,
+    int CsdkAbilityFxCopiedCount = 0,
+    string? CsdkEditingBackupFolder = null);
 
 public sealed partial class HeroExtractionService
 {
@@ -48,6 +51,24 @@ public sealed partial class HeroExtractionService
         if (!Directory.Exists(manifest.ProjectFolder))
         {
             throw new DirectoryNotFoundException(manifest.ProjectFolder);
+        }
+
+        if (!options.HasAnyExtractionScope)
+        {
+            throw new InvalidOperationException(
+                "Select at least one extraction scope: hero, abilities, or portraits/UI.");
+        }
+        if (options.CopyAbilityFxToCsdkForEditing && !options.ExtractAbilities)
+        {
+            throw new InvalidOperationException(
+                "Copy ability FX to CSDK for editing requires Extract abilities.");
+        }
+        if (options.CopyMaterialsToCsdkForEditing
+            && !options.ExtractHero
+            && !options.ExtractAbilities)
+        {
+            throw new InvalidOperationException(
+                "Copy materials to CSDK for editing requires Extract hero and/or Extract abilities.");
         }
 
         var hero = manifest.Hero.Trim();
@@ -88,21 +109,26 @@ public sealed partial class HeroExtractionService
 
         try
         {
-            progress?.Report(new HeroExtractionProgress($"Decompiling {resourceFolder}..."));
-            ExtractResourceFolder(
-                candidate.VpkPath,
-                resourceFolder,
-                stagingFolder,
-                options.ExtractTextures,
-                progress,
-                cancellationToken);
+            if (options.ExtractHero)
+            {
+                progress?.Report(new HeroExtractionProgress($"Decompiling {resourceFolder}..."));
+                ExtractResourceFolder(
+                    candidate.VpkPath,
+                    resourceFolder,
+                    stagingFolder,
+                    options.ExtractTextures,
+                    progress,
+                    cancellationToken);
+            }
 
-            if (options.ExtractTextures)
+            if (options.ExtractHero
+                && (options.ExtractTextures || options.CopyMaterialsToCsdkForEditing))
             {
                 ExtractHeroTextureDependencies(
                     vpkPaths,
                     candidate,
                     stagingFolder,
+                    options.ExtractTextures,
                     progress,
                     cancellationToken);
             }
@@ -150,6 +176,14 @@ public sealed partial class HeroExtractionService
             manifest.ExtractedSourceFileCount = extractedFileCount;
             manifest.LastSourceExtractionIncludedTextures = options.ExtractTextures;
             manifest.LastSourceExtractionIncludedAbilities = options.ExtractAbilities;
+
+            var csdkCopy = new CsdkEditableAssetCopyService(_paths).Copy(
+                manifest,
+                outputFolder,
+                options,
+                progress,
+                cancellationToken);
+
             ProjectStore.Save(manifest);
 
             var completionMessage = (options.ExtractTextures, options.ExtractAbilities) switch
@@ -166,7 +200,10 @@ public sealed partial class HeroExtractionService
                 candidate.VpkPath,
                 outputFolder,
                 extractedFileCount,
-                manifest.Source2ViewerVersion);
+                manifest.Source2ViewerVersion,
+                csdkCopy.MaterialCopiedCount,
+                csdkCopy.AbilityFxCopiedCount,
+                csdkCopy.BackupFolder);
         }
         catch
         {
@@ -256,10 +293,14 @@ public sealed partial class HeroExtractionService
         IReadOnlyList<string> vpkPaths,
         ModelCandidate candidate,
         string outputRoot,
+        bool includeTextures,
         IProgress<HeroExtractionProgress>? progress,
         CancellationToken cancellationToken)
     {
-        progress?.Report(new HeroExtractionProgress("Resolving hero model, material and texture dependencies..."));
+        progress?.Report(new HeroExtractionProgress(
+            includeTextures
+                ? "Resolving hero model, material and texture dependencies..."
+                : "Resolving hero model and material dependencies..."));
 
         var pendingBridges = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var pendingMaterials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -366,21 +407,26 @@ public sealed partial class HeroExtractionService
             }
         }
 
-        var textureLocations = ResolveResourceLocations(
-            vpkPaths,
-            texturePaths,
-            progress,
-            cancellationToken);
-
-        var missingTextures = texturePaths
-            .Where(path => !textureLocations.ContainsKey(path))
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        foreach (var missing in missingTextures)
+        IReadOnlyDictionary<string, ResourceLocation> textureLocations =
+            new Dictionary<string, ResourceLocation>(StringComparer.OrdinalIgnoreCase);
+        if (includeTextures)
         {
-            progress?.Report(new HeroExtractionProgress(
-                $"Referenced retail texture was not found: {missing}"));
+            textureLocations = ResolveResourceLocations(
+                vpkPaths,
+                texturePaths,
+                progress,
+                cancellationToken);
+
+            var missingTextures = texturePaths
+                .Where(path => !textureLocations.ContainsKey(path))
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            foreach (var missing in missingTextures)
+            {
+                progress?.Report(new HeroExtractionProgress(
+                    $"Referenced retail texture was not found: {missing}"));
+            }
         }
 
         var dependencies = resolvedMaterials.Values
@@ -391,7 +437,7 @@ public sealed partial class HeroExtractionService
             .ToArray();
 
         progress?.Report(new HeroExtractionProgress(
-            $"Hero texture dependencies: {processedBridges.Count - 1} model/mesh bridge(s), " +
+            $"Hero dependencies: {processedBridges.Count - 1} model/mesh bridge(s), " +
             $"{resolvedMaterials.Count} material(s), {textureLocations.Count} texture resource(s)."));
 
         if (dependencies.Length == 0)
