@@ -66,7 +66,6 @@ if ($plain -ne $vertexColorSource) {
 # DEADLIMIT_MANAGED_CUSTOM_VMAT_V5, while the registry predates explicit name-modifier
 # revision tracking. Such a file is still Deadlimit-owned and must receive the preset once.
 $registryStoreType = $assembly.GetType('Deadlimit.Core.ManagedCustomMaterialRegistryStore', $true)
-$registryType = $assembly.GetType('Deadlimit.Core.ManagedCustomMaterialRegistry', $true)
 $ownershipType = $assembly.GetType('Deadlimit.Core.ManagedCustomMaterialOwnership', $true)
 $manifestType = $assembly.GetType('Deadlimit.Core.ProjectManifest', $true)
 $publicStatic = [Reflection.BindingFlags]::Public -bor [Reflection.BindingFlags]::Static
@@ -152,6 +151,38 @@ Layer0
     if ($afterManual -notmatch '"g_flMetalness"\s+"0\.000"' -or
         $afterManual -notmatch '"TextureRoughness1"\s+"\[0\.900000 0\.900000 0\.900000 0\.000000\]"') {
         throw "A completed name-modifier revision overwrote a later manual material edit.`n$afterManual"
+    }
+
+    # Vertex-color VMATs used to keep their generated marker indefinitely. That marker made
+    # CustomMaterialAuthoringService re-run the metal preset before the registry lifecycle
+    # could preserve a later Material Editor edit. Loading known ownership now promotes that
+    # old marker to the managed pending marker before PREPARE reaches custom-material reconcile.
+    $legacyVertexColorVmat = @'
+// DEADLIMIT_VERTEXCOLOR_VMAT_V1
+Layer0
+{
+    "TextureRoughness1" "[0.900000 0.900000 0.900000 0.000000]"
+    "g_flMetalness" "0.000"
+}
+'@
+    Set-Content -LiteralPath $materialPath -Value $legacyVertexColorVmat -Encoding utf8NoBOM
+    $loadedAfterLegacyMarker = $loadRegistry.Invoke($null, [object[]]@($manifest))
+    $promoted = Get-Content -LiteralPath $materialPath -Raw
+    if (-not $promoted.StartsWith('// DEADLIMIT_MANAGED_CUSTOM_VMAT_V5_PENDING', [StringComparison]::Ordinal)) {
+        throw "Registry-owned vertex-color VMAT was not promoted before custom-material reconcile.`n$promoted"
+    }
+    if ($promoted -notmatch '"g_flMetalness"\s+"0\.000"' -or
+        $promoted -notmatch '"TextureRoughness1"\s+"\[0\.900000 0\.900000 0\.900000 0\.000000\]"') {
+        throw "Vertex-color marker promotion changed manual material parameters.`n$promoted"
+    }
+    if ($loadedAfterLegacyMarker.Materials[0].NameModifierRevision -ne 1) {
+        throw 'Vertex-color marker promotion lost the completed name-modifier revision.'
+    }
+    [void]$saveRegistry.Invoke($null, [object[]]@($manifest, $merged))
+    $afterPromotedSave = Get-Content -LiteralPath $materialPath -Raw
+    if ($afterPromotedSave -notmatch '"g_flMetalness"\s+"0\.000"' -or
+        $afterPromotedSave -notmatch '"TextureRoughness1"\s+"\[0\.900000 0\.900000 0\.900000 0\.000000\]"') {
+        throw "A promoted vertex-color material lost its later manual parameter edits.`n$afterPromotedSave"
     }
 
     # If Material Editor stripped Deadlimit's marker before the migration revision was ever
