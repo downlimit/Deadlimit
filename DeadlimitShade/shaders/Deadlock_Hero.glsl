@@ -417,6 +417,7 @@ struct DLDirectSpecularSample
 {
   float rawLobe;
   float steppedLobe;
+  vec3 materialTint;
   vec3 contribution;
 };
 
@@ -635,6 +636,7 @@ DLDirectSpecularSample dlEvaluateDirectSpecular(
     ? tintSource * (profile.directSpecularReflectance / tintLuminance)
     : tintSource;
   vec3 materialTint = mix(normalizedTint, baseColor, clamp(metallic, 0.0, 1.0));
+  sample.materialTint = materialTint;
   float energyNormalization = 0.5 / max(
     0.0001,
     1.0 - exp2(-3.32192993 * alpha2));
@@ -746,13 +748,17 @@ void shade(V2F inputs)
   {
     vec4 retailColorMetalness = texture(dl_retail_color, inputs.tex_coord);
     vec4 retailNormalRoughness = texture(dl_retail_normal_roughness, inputs.tex_coord);
-    baseColor = retailColorMetalness.rgb;
+    // Source 2 marks g_tColor RGB as sRGB while A remains linear metalness.
+    // Project TEXTURE resources reach custom sampler2D parameters without the
+    // channel-aware getBaseColor conversion, so decode only the color lanes.
+    baseColor = sRGB2linear(retailColorMetalness.rgb);
     metallic = retailColorMetalness.a;
     retailNormal = normalUnpack(retailNormalRoughness);
     roughness = retailNormalRoughness.a;
     ambientOcclusion = texture(dl_retail_ambient_occlusion, inputs.tex_coord).r;
     retailRimMask = texture(dl_retail_tint_rim, inputs.tex_coord).g;
-    retailTransmissiveColor = texture(dl_retail_npr_transmissive, inputs.tex_coord).rgb;
+    retailTransmissiveColor = sRGB2linear(
+      texture(dl_retail_npr_transmissive, inputs.tex_coord).rgb);
   }
 
   vec3 vertexColor = clamp(inputs.color[0].rgb, vec3(0.0), vec3(1.0));
@@ -860,6 +866,17 @@ void shade(V2F inputs)
 
   vec3 diffColor = generateDiffuseColor(baseColor, metallic);
   vec3 specColor = generateSpecularColor(specularLevel, baseColor, metallic);
+  if (dl_use_retail_inputs && !diagnosticInputs)
+  {
+    // Reflected opaque retail path: dielectric F0 is 0.04, metal F0 is the
+    // prepared base color, with a fade only for near-black authored colors.
+    float authoredColorVisibility = clamp(
+      max(baseColor.r, max(baseColor.g, baseColor.b)) * 25.0,
+      0.0,
+      1.0);
+    specColor = mix(vec3(0.04), baseColor, clamp(metallic, 0.0, 1.0)) *
+      authoredColorVisibility;
+  }
   vec3 viewDirection = normalize(getEyeVec(inputs.position));
   DLDirectSpecularSample keyDirectSpecular = dlEvaluateDirectSpecular(
     vectors.normal,
@@ -974,6 +991,21 @@ void shade(V2F inputs)
   if (dl_debug_view == 20)
   {
     dlDebugOutput(environmentSpecular.contribution);
+    return;
+  }
+  if (dl_debug_view == 21)
+  {
+    dlDebugOutput(diffColor);
+    return;
+  }
+  if (dl_debug_view == 22)
+  {
+    dlDebugOutput(keyDirectSpecular.materialTint);
+    return;
+  }
+  if (dl_debug_view == 23)
+  {
+    dlDebugOutput(specColor);
     return;
   }
 

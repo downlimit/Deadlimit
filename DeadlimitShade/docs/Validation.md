@@ -2,7 +2,7 @@
 
 Status: bootstrap protocol.
 
-Updated: 2026-09-06.
+Updated: 2026-09-09.
 
 ## Purpose
 
@@ -665,3 +665,36 @@ found eight added fields: a second mask, two UV selectors, two scroll speeds,
 two scroll quantizers and a blend mode. The recovered multiply/add/subtract
 mask result feeds the ordinary alpha-test gate and shared opaque NPR graph. No
 Painter approximation is claimed by this gate.
+
+## Ordinary opaque metal visual gate — 2026-09-09
+
+The deterministic `subs_ivy_builder.spp` scene remained on the Ivy profile,
+retail inputs, retail Default environment and `1.0 EV`. A close crop of the
+already loaded retail `ivy_gearv3` binding made the copper cuff and weapon
+fittings large enough for channel inspection; lighting and material inputs
+were unchanged.
+
+Computer Use captured these shader-native views from the live Painter viewport:
+
+| View | Observed result |
+| --- | --- |
+| `Metal Diffuse Color` | Copper regions became dark while nonmetal base color remained visible. |
+| `NPR Specular Material Tint` | The same copper regions carried the recovered colored direct-specular tint. |
+| `Retail Environment F0` | The same metal mask produced copper F0; dielectric regions resolved to low neutral F0. |
+| `Shaded` | Suppressed metal diffuse recombined with colored reflection into readable copper. |
+
+The loaded game reference shows Ivy's cuff hardware as bright copper with broad
+colored response while nearby purple cloth and pale skin remain diffuse. The
+Painter result reproduces that material separation and is visibly distinct
+from the white stock-PBR highlight that caused the earlier dual-highlight
+failure.
+
+| Result or value | Classification |
+| --- | --- |
+| `g_tColor.a` metalness, ordinary `C * (1 - M)` diffuse, default-disabled full-roughness switch and opaque F0 equation | Confirmed by static retail evidence |
+| Painter shader compilation; live modes 21–23; final Shaded recomposition; automatic Base color to Material restore | Confirmed by pipeline/runtime |
+| Existing Ivy light, rim, environment strength, roughness bias and exposure controls | Calibrated approximation |
+| Exact live probe selection, probe texture contents, BRDF LUT runtime values and pixel parity | Blocked/unresolved |
+
+Visual gate: **PASS for the ordinary opaque metal branch**. This pass does not
+claim completion of the overall Deadlock character look.

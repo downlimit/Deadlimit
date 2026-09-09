@@ -278,7 +278,10 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
                 ("NPR Bounce", 17),
                 ("Retail NPR Transmissive", 18),
                 ("Environment Specular Raw", 19),
-                ("Environment Specular Final", 20)):
+                ("Environment Specular Final", 20),
+                ("Metal Diffuse Color", 21),
+                ("NPR Specular Material Tint", 22),
+                ("Retail Environment F0", 23)):
             self.preview_combo.addItem(label, value)
         self.preview_combo.currentIndexChanged.connect(self._set_preview_view)
 
@@ -333,6 +336,19 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self.progress.setVisible(busy)
         self.status_label.setText(text)
 
+    def _restore_material_view(self):
+        """Keep shader-native diagnostics visible after Painter UI callbacks."""
+        application = QtWidgets.QApplication.instance()
+        if application is None:
+            return
+        for combo in application.allWidgets():
+            if not isinstance(combo, QtWidgets.QComboBox):
+                continue
+            material_index = combo.findText("Material", QtCore.Qt.MatchExactly)
+            base_color_index = combo.findText("Base color", QtCore.Qt.MatchExactly)
+            if combo.isVisible() and material_index >= 0 and base_color_index >= 0:
+                combo.setCurrentIndex(material_index)
+
     def _set_preview_view(self, _index):
         if not substance_painter.project.is_open() or self._process is not None:
             return
@@ -342,14 +358,12 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
             # Painter 9.1 channel-solo views bypass custom shader samplers. Keep
             # the viewport in Material mode and use Deadlimit's shader-native
             # diagnostics so retail inputs remain visible.
-            application = QtWidgets.QApplication.instance()
-            for combo in application.allWidgets():
-                if not isinstance(combo, QtWidgets.QComboBox):
-                    continue
-                material_index = combo.findText("Material", QtCore.Qt.MatchExactly)
-                base_color_index = combo.findText("Base color", QtCore.Qt.MatchExactly)
-                if combo.isVisible() and material_index >= 0 and base_color_index >= 0:
-                    combo.setCurrentIndex(material_index)
+            self._restore_material_view()
+            # Painter may finish its own channel-view callback after this
+            # handler. Repeat on the next event-loop turns so a Deadlimit View
+            # view selected from Base color deterministically lands in Material.
+            QtCore.QTimer.singleShot(0, self._restore_material_view)
+            QtCore.QTimer.singleShot(100, self._restore_material_view)
             script = r"""
 (function() {
   var mode = VIEW_MODE;

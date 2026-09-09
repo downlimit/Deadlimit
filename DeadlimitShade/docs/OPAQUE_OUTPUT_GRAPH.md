@@ -206,6 +206,19 @@ Painter's stock panorama specular did not match this path and produced the
 previous double-highlight failure. A compatible environment term requires its
 own controlled reconstruction before it can return to Deadlimit Shaded.
 
+For the ordinary Ivy VMATs inspected here,
+`g_bNoSpecularAtFullRoughness` is absent and therefore resolves to its default
+false value. `Frough` is consequently `1`, giving the ordinary metal diffuse
+term `C * (1 - M)`. When the switch is enabled by another material, the exact
+fade is `saturate((R - 254/255) * -255 + 1)` and affects diffuse suppression
+and specular visibility together.
+
+The opaque environment/probe F0 begins as
+`mix(vec3(0.04), C, M) * saturate(max(C) * 25)`. The NPR direct-specular branch
+uses its separately recovered normalized tint/reflectance controls and then
+mixes that result toward `C` by metalness. These two diagnostic colors are
+therefore expected to differ on dielectrics.
+
 ## Constant-buffer and resource ownership
 
 | Owner | Confirmed code role | Remaining semantic boundary |

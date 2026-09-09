@@ -1,11 +1,12 @@
 # Deadlock-look investigation and continuation brief
 
-Status: Milestone B lighting skeleton passed the fixed-scene Painter visual
-gate. The opaque combo-24 ordinary graph and optional dynamic-2 status delta
-plus alpha-test, sheen, basic-translucency, glass and advanced-translucency
-deltas are complete. The prioritized pixel-family decomposition is complete.
+Status: Milestone B lighting skeleton and the ordinary opaque metal branch have
+passed fixed-scene Painter visual gates. The opaque combo-24 ordinary graph and
+optional dynamic-2 status delta plus alpha-test, sheen, basic-translucency,
+glass and advanced-translucency deltas are complete. The prioritized
+pixel-family decomposition is complete.
 
-Updated: 2026-09-08.
+Updated: 2026-09-09.
 
 ## Purpose
 
@@ -291,15 +292,35 @@ shader.
 alpha-test gate. Surviving pixels use the shared opaque NPR graph. This selected
 family contains no framebuffer refraction or basic-translucent fog routing.
 
+## Ordinary opaque metal branch — 2026-09-09
+
+The shared hero shader now follows the recovered ordinary opaque material split:
+`g_tColor.rgb` is decoded from sRGB, `g_tColor.a` remains linear metalness,
+diffuse is `C * (1 - M)`, and the environment/probe F0 is
+`mix(0.04, C, M) * saturate(max(C) * 25)`. NPR direct specular retains its
+separate normalized material tint and mixes that tint toward `C` by metalness.
+
+Painter exposes the split as `Metal Diffuse Color`,
+`NPR Specular Material Tint` and `Retail Environment F0`. Computer Use captured
+all three on the same loaded Ivy gear binding and the final Shaded composition.
+The copper cuff and weapon fittings were dark in the diffuse-only view, copper
+in both specular-color views and recombined as controlled colored reflections
+in Shaded. Nonmetal cloth, skin and painted weapon parts stayed outside the
+metal response. This is a visual PASS for the metal branch.
+
+Deadlimit View selection now repeats its Material-view restore on Painter's
+next event-loop turns. A fresh restart confirmed that selecting
+`Metal Diffuse Color` while the viewport was in `Base color` changed the
+viewport selector to `Material` without manual intervention.
+
 ## Brief for the next Codex session
 
 Resume visual reconstruction from the completed prioritized static map:
 
 1. keep the fixed Ivy validation scene unchanged;
-2. reconstruct compatible environment/local-probe specular as an explicit
-   base-look term using controlled diagnostic inputs;
-3. validate that term independently under the fixed scene before reconnecting
-   retail maps;
+2. keep the passed metal diffuse/direct-specular/environment-F0 split intact;
+3. calibrate the remaining ordinary opaque cloth and painted-surface response
+   against controlled Deadlock captures;
 4. add optional alpha-test and sheen Painter families only when selected Ivy
    materials or a captured reference requires them;
 5. keep advanced translucency, glass and status effects outside ordinary Ivy
@@ -310,5 +331,7 @@ Resume visual reconstruction from the completed prioritized static map:
    `.scratch` and `.worktrees` outside commits.
 
 The next visual goal is recognisable Deadlock-style calibration across Ivy's
-skin, clothing, eyes, wings and accessories. Milestone B is the stable lighting
-skeleton underneath that work.
+ordinary opaque clothing and painted accessories. SSS, eye and hair branches
+are intentionally deferred; wing handling is limited to the required culling
+behavior until evidence demands a separate path. Milestone B and the passed
+metal branch are the stable base underneath that work.
