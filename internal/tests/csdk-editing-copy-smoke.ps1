@@ -33,12 +33,12 @@ try {
     Write-TestFile $addon 'particles\abilities\tengu\stone_form.vpcf' 'artist fx before refresh' | Out-Null
 
     $result = $copy.Invoke($null, [object[]]@(
-        $source,
-        $addon,
-        $backupParent,
-        $true,
-        $true,
-        $true,
+        [string]$source,
+        [string]$addon,
+        [string]$backupParent,
+        [bool]$true,
+        [bool]$true,
+        [bool]$true,
         [Threading.CancellationToken]::None))
 
     if ($result.MaterialCopiedCount -ne 1) {
@@ -53,7 +53,7 @@ try {
     if ([string]::IsNullOrWhiteSpace([string]$result.BackupFolder)) {
         throw 'Backup-enabled copy did not create a timestamp backup folder.'
     }
-    if (-not ([IO.Path]::GetFullPath([string]$result.BackupFolder)).StartsWith([IO.Path]::GetFullPath($backupParent), [StringComparison]::OrdinalIgnoreCase)) {
+    if (-not ([IO.Path]::GetFullPath([string]$result.BackupFolder)).StartsWith([IO.Path]::GetFullPath([string]$backupParent), [StringComparison]::OrdinalIgnoreCase)) {
         throw "Backup escaped fx_and_mat_bckps: $($result.BackupFolder)"
     }
 
@@ -88,12 +88,12 @@ try {
     $backupFolderCount = @(Get-ChildItem -LiteralPath $backupParent -Directory).Count
     Set-Content -LiteralPath $bodyTarget -Value 'manual body after first copy' -Encoding utf8NoBOM
     $second = $copy.Invoke($null, [object[]]@(
-        $source,
-        $addon,
-        $backupParent,
-        $true,
-        $false,
-        $false,
+        [string]$source,
+        [string]$addon,
+        [string]$backupParent,
+        [bool]$true,
+        [bool]$false,
+        [bool]$false,
         [Threading.CancellationToken]::None))
 
     if ($second.MaterialCopiedCount -ne 1 -or $second.AbilityFxCopiedCount -ne 0) {
