@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
 namespace Deadlimit.Core;
@@ -14,6 +15,8 @@ public sealed record RetailTextureOverride(
 
 public static class RetailTextureOverrideService
 {
+    private static readonly AsyncLocal<string?> LastExtractedSourceRoot = new();
+
     private static readonly HashSet<string> ArtistTextureExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".png", ".tga", ".jpg", ".jpeg", ".tif", ".tiff",
@@ -44,8 +47,11 @@ public static class RetailTextureOverrideService
     {
         if (!Directory.Exists(extractedSourceRoot))
         {
+            LastExtractedSourceRoot.Value = null;
             return Array.Empty<RetailTextureTarget>();
         }
+
+        LastExtractedSourceRoot.Value = Path.GetFullPath(extractedSourceRoot);
 
         var targets = new Dictionary<string, RetailTextureTarget>(StringComparer.OrdinalIgnoreCase);
         foreach (var vmatPath in Directory.EnumerateFiles(extractedSourceRoot, "*.vmat", SearchOption.AllDirectories)
@@ -172,7 +178,9 @@ public static class RetailTextureOverrideService
         string addonContentRoot,
         IReadOnlyList<RetailTextureOverride> overrides)
     {
-        RepairMissingRetailTextureReferences(addonContentRoot);
+        PrepareRetailTextureReferences(
+            addonContentRoot,
+            LastExtractedSourceRoot.Value);
 
         var staged = 0;
         foreach (var replacement in overrides)
@@ -191,17 +199,45 @@ public static class RetailTextureOverrideService
 
     internal static int RepairMissingRetailTextureReferences(string addonContentRoot)
     {
+        return RewriteRetailTextureReferences(
+            addonContentRoot,
+            extractedSourceRoot: null,
+            removeStockCopies: false);
+    }
+
+    private static int PrepareRetailTextureReferences(
+        string addonContentRoot,
+        string? extractedSourceRoot)
+    {
+        return RewriteRetailTextureReferences(
+            addonContentRoot,
+            extractedSourceRoot,
+            removeStockCopies: true);
+    }
+
+    private static int RewriteRetailTextureReferences(
+        string addonContentRoot,
+        string? extractedSourceRoot,
+        bool removeStockCopies)
+    {
         if (!Directory.Exists(addonContentRoot))
         {
             return 0;
         }
 
+        var stockCopiesToDelete = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var repairedCount = 0;
         foreach (var vmatPath in Directory.EnumerateFiles(addonContentRoot, "*.vmat", SearchOption.AllDirectories)
                      .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
             var text = File.ReadAllText(vmatPath);
-            var repaired = RestoreMissingRetailTextureReferences(text, addonContentRoot, out var fileRepairCount);
+            var repaired = RestoreRetailTextureReferences(
+                text,
+                addonContentRoot,
+                extractedSourceRoot,
+                removeStockCopies,
+                stockCopiesToDelete,
+                out var fileRepairCount);
             if (fileRepairCount == 0)
             {
                 continue;
@@ -211,12 +247,23 @@ public static class RetailTextureOverrideService
             repairedCount += fileRepairCount;
         }
 
+        foreach (var stockCopy in stockCopiesToDelete)
+        {
+            if (File.Exists(stockCopy))
+            {
+                File.Delete(stockCopy);
+            }
+        }
+
         return repairedCount;
     }
 
-    private static string RestoreMissingRetailTextureReferences(
+    private static string RestoreRetailTextureReferences(
         string materialText,
         string addonContentRoot,
+        string? extractedSourceRoot,
+        bool removeStockCopies,
+        ISet<string> stockCopiesToDelete,
         out int repairedCount)
     {
         repairedCount = 0;
@@ -273,8 +320,7 @@ public static class RetailTextureOverrideService
         var rewrittenEditablePart = ActiveTextureEntryRegex.Replace(editablePart, match =>
         {
             var activePath = match.Groups["path"].Value;
-            if (!IsEditableTextureSourcePath(activePath)
-                || TextureSourceExists(addonContentRoot, activePath))
+            if (!IsEditableTextureSourcePath(activePath))
             {
                 return match.Value;
             }
@@ -289,6 +335,30 @@ public static class RetailTextureOverrideService
             if (string.IsNullOrWhiteSpace(retailPath))
             {
                 return match.Value;
+            }
+
+            var addonSourcePath = TryResolveTextureSourcePath(addonContentRoot, activePath);
+            var sourceExists = addonSourcePath is not null && File.Exists(addonSourcePath);
+            var isUnchangedRetailCopy = false;
+
+            if (sourceExists
+                && removeStockCopies
+                && !string.IsNullOrWhiteSpace(extractedSourceRoot))
+            {
+                var extractedSourcePath = TryResolveTextureSourcePath(extractedSourceRoot, activePath);
+                isUnchangedRetailCopy = extractedSourcePath is not null
+                    && File.Exists(extractedSourcePath)
+                    && FilesEqual(extractedSourcePath, addonSourcePath!);
+            }
+
+            if (sourceExists && !isUnchangedRetailCopy)
+            {
+                return match.Value;
+            }
+
+            if (isUnchangedRetailCopy && addonSourcePath is not null)
+            {
+                stockCopiesToDelete.Add(addonSourcePath);
             }
 
             localRepairedCount++;
@@ -339,11 +409,11 @@ public static class RetailTextureOverrideService
             "Online retail texture override destination");
     }
 
-    private static bool TextureSourceExists(string addonContentRoot, string resourcePath)
+    private static string? TryResolveTextureSourcePath(string root, string resourcePath)
     {
         if (Path.IsPathRooted(resourcePath))
         {
-            return File.Exists(resourcePath);
+            return null;
         }
 
         try
@@ -352,15 +422,29 @@ public static class RetailTextureOverrideService
                 .Replace('/', Path.DirectorySeparatorChar)
                 .Replace('\\', Path.DirectorySeparatorChar)
                 .TrimStart(Path.DirectorySeparatorChar);
-            return File.Exists(SafePath.ResolveUnderRoot(
-                addonContentRoot,
+            return SafePath.ResolveUnderRoot(
+                root,
                 relative,
-                "Retail VMAT texture source"));
+                "Retail VMAT texture source");
         }
         catch (InvalidDataException)
         {
+            return null;
+        }
+    }
+
+    private static bool FilesEqual(string left, string right)
+    {
+        var leftInfo = new FileInfo(left);
+        var rightInfo = new FileInfo(right);
+        if (leftInfo.Length != rightInfo.Length)
+        {
             return false;
         }
+
+        using var leftStream = File.OpenRead(left);
+        using var rightStream = File.OpenRead(right);
+        return SHA256.HashData(leftStream).AsSpan().SequenceEqual(SHA256.HashData(rightStream));
     }
 
     private static bool IsEditableTextureSourcePath(string resourcePath)
