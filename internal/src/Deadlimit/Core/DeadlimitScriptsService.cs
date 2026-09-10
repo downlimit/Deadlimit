@@ -5,9 +5,11 @@ namespace Deadlimit.Core;
 
 public static class DeadlimitScriptsService
 {
-    private const string ResourceName = "Deadlimit.Scripts.PipelineScripts.ms";
+    private const string BaseResourceName = "Deadlimit.Scripts.PipelineScripts.ms";
+    private const string ExperimentalResourceName = "Deadlimit.Scripts.PipelineScripts.Experimental.ms";
     private const string RepositoryFolderName = "scripts";
     private const string ScriptFileName = "DeadlimitPipelineScripts.ms";
+    private const string ExperimentalScriptFileName = "DeadlimitPipelineScripts.Experimental.ms";
     private const string ReadmeFileName = "README.md";
 
     public static string GetBundledScriptFolder()
@@ -22,6 +24,7 @@ public static class DeadlimitScriptsService
                 ".deadlimit",
                 RepositoryFolderName);
             if (File.Exists(Path.Combine(candidate, ScriptFileName))
+                && File.Exists(Path.Combine(candidate, ExperimentalScriptFileName))
                 && File.Exists(Path.Combine(candidate, ReadmeFileName)))
             {
                 // Keep walking: a build-output copy can be closer than the repository copy.
@@ -40,26 +43,24 @@ public static class DeadlimitScriptsService
     }
 
     public static string GetBundledScriptPath() =>
-        Path.Combine(GetBundledScriptFolder(), ScriptFileName);
+        Path.Combine(GetBundledScriptFolder(), ExperimentalScriptFileName);
 
     public static string WriteScript(string scriptFolder)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(scriptFolder);
 
-        var template = ReadTemplate();
+        var baseTemplate = ReadTemplate(BaseResourceName);
+        var experimentalTemplate = ReadTemplate(ExperimentalResourceName);
         scriptFolder = Path.GetFullPath(scriptFolder.Trim());
         Directory.CreateDirectory(scriptFolder);
-        var scriptPath = Path.Combine(scriptFolder, ScriptFileName);
-        if (!File.Exists(scriptPath)
-            || !string.Equals(File.ReadAllText(scriptPath), template, StringComparison.Ordinal))
-        {
-            AtomicFile.WriteAllText(
-                scriptPath,
-                template,
-                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-        }
 
-        return scriptPath;
+        WriteTemplateIfChanged(
+            Path.Combine(scriptFolder, ScriptFileName),
+            baseTemplate);
+        var experimentalScriptPath = Path.Combine(scriptFolder, ExperimentalScriptFileName);
+        WriteTemplateIfChanged(experimentalScriptPath, experimentalTemplate);
+
+        return experimentalScriptPath;
     }
 
     public static string CreateFileInCommand(string scriptPath)
@@ -69,12 +70,24 @@ public static class DeadlimitScriptsService
         return $"fileIn @\"{EscapeMaxScriptVerbatimString(fullPath)}\"";
     }
 
-    private static string ReadTemplate()
+    private static void WriteTemplateIfChanged(string path, string template)
+    {
+        if (!File.Exists(path)
+            || !string.Equals(File.ReadAllText(path), template, StringComparison.Ordinal))
+        {
+            AtomicFile.WriteAllText(
+                path,
+                template,
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        }
+    }
+
+    private static string ReadTemplate(string resourceName)
     {
         var assembly = Assembly.GetExecutingAssembly();
-        using var stream = assembly.GetManifestResourceStream(ResourceName)
+        using var stream = assembly.GetManifestResourceStream(resourceName)
             ?? throw new InvalidOperationException(
-                $"Embedded Deadlimit Scripts resource '{ResourceName}' was not found.");
+                $"Embedded Deadlimit Scripts resource '{resourceName}' was not found.");
         using var reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
         return reader.ReadToEnd();
     }
