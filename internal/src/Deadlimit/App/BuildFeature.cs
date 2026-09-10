@@ -67,6 +67,98 @@ internal static class BuildFeature
 
         var buildProgressBar = AddBuildProgressBar(form);
         var actionButtons = new[] { prepareButton, buildAndTestButton, launchCsdkButton };
+        var csdkStateTimer = new System.Windows.Forms.Timer
+        {
+            Interval = 2000,
+        };
+        var csdkStateProbeActive = false;
+        var csdkIsRunning = false;
+
+        bool IsOnlineCsdkState() =>
+            launchCsdkButton.Text.Contains("CSDK", StringComparison.OrdinalIgnoreCase)
+            && (launchCsdkButton.Text.Contains("ONLINE", StringComparison.OrdinalIgnoreCase)
+                || launchCsdkButton.Text.Contains("ОНЛАЙН", StringComparison.OrdinalIgnoreCase));
+
+        void ApplyCsdkButtonState()
+        {
+            if (launchCsdkButton.IsDisposed || IsOnlineCsdkState())
+            {
+                return;
+            }
+
+            launchCsdkButton.Text = csdkIsRunning
+                ? UiText.T("CSDK RUNNING", "CSDK ЗАПУЩЕН")
+                : UiText.T("▶  LAUNCH CSDK", "▶  ЗАПУСК CSDK");
+
+            toolTip.SetToolTip(
+                launchCsdkButton,
+                csdkIsRunning
+                    ? UiText.T(
+                        "Reduced CSDK12 is already running. Click to bring its most recently active visible window to the foreground.\n\nHold SHIFT to keep using the ONLINE PREPARATION shortcut.",
+                        "Reduced CSDK12 уже запущен. Нажмите, чтобы вывести его последнее активное видимое окно на передний план.\n\nУдерживайте SHIFT, чтобы использовать действие ОНЛАЙН-ПОДГОТОВКИ.")
+                    : UiText.T(
+                        "Launch the configured Reduced CSDK12 environment.\n\nHold SHIFT while clicking to prepare once, enable ONLINE PREPARATION and launch CSDK. Repeat SHIFT+click to stop online synchronization without launching another CSDK instance.",
+                        "Запустить настроенное окружение Reduced CSDK12.\n\nУдерживайте SHIFT при клике, чтобы выполнить подготовку, включить ОНЛАЙН-ПОДГОТОВКУ и запустить CSDK. Повторный SHIFT+клик остановит онлайн-синхронизацию без запуска ещё одного CSDK."));
+
+            launchCsdkButton.Invalidate();
+        }
+
+        async Task RefreshCsdkButtonStateAsync()
+        {
+            if (csdkStateProbeActive || launchCsdkButton.IsDisposed || form.IsDisposed)
+            {
+                return;
+            }
+
+            csdkStateProbeActive = true;
+            try
+            {
+                var running = await Task.Run(() => CsdkProcessService.IsRunning(new DeadlimitPaths()));
+                if (launchCsdkButton.IsDisposed || form.IsDisposed)
+                {
+                    return;
+                }
+
+                csdkIsRunning = running;
+                ApplyCsdkButtonState();
+            }
+            catch (Exception ex) when (ex is IOException
+                or UnauthorizedAccessException
+                or InvalidOperationException
+                or System.ComponentModel.Win32Exception
+                or NotSupportedException
+                or ArgumentException)
+            {
+                // Process observation is best-effort. Keep the last known button state.
+            }
+            finally
+            {
+                csdkStateProbeActive = false;
+            }
+        }
+
+        async Task RefreshCsdkAfterLaunchAsync()
+        {
+            await Task.Delay(600);
+            await RefreshCsdkButtonStateAsync();
+        }
+
+        bool ActivateRunningCsdk(DeadlimitPaths paths)
+        {
+            try
+            {
+                return CsdkProcessService.TryActivateRunningWindow(paths);
+            }
+            catch (Exception ex) when (ex is IOException
+                or UnauthorizedAccessException
+                or InvalidOperationException
+                or System.ComponentModel.Win32Exception
+                or NotSupportedException
+                or ArgumentException)
+            {
+                return false;
+            }
+        }
 
         prepareButton.Click += async (_, _) =>
             await RunPrepareAsync(form, actionButtons, buildProgressBar);
@@ -74,16 +166,64 @@ internal static class BuildFeature
             await RunBuildAndTestAsync(form, actionButtons, buildProgressBar);
         launchCsdkButton.Click += async (_, _) =>
         {
+            var paths = new DeadlimitPaths();
             if ((Control.ModifierKeys & Keys.Shift) != Keys.Shift)
             {
+                var running = csdkIsRunning || await Task.Run(() => CsdkProcessService.IsRunning(paths));
+                if (running)
+                {
+                    csdkIsRunning = true;
+                    ApplyCsdkButtonState();
+                    if (!ActivateRunningCsdk(paths))
+                    {
+                        MessageBox.Show(
+                            form,
+                            UiText.T(
+                                "CSDK is running, but Deadlimit Manager could not find a visible CSDK window to activate yet.",
+                                "CSDK запущен, но Deadlimit Manager пока не смог найти видимое окно CSDK для переключения."),
+                            UiText.T("CSDK window not found", "Окно CSDK не найдено"),
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information);
+                    }
+                    return;
+                }
+
                 LaunchCsdk(form);
+                _ = RefreshCsdkAfterLaunchAsync();
                 return;
             }
 
             if (await OnlinePreparationFeature.ToggleFromLaunchButtonAsync())
             {
-                LaunchCsdk(form);
+                var running = csdkIsRunning || await Task.Run(() => CsdkProcessService.IsRunning(paths));
+                if (running)
+                {
+                    csdkIsRunning = true;
+                    _ = ActivateRunningCsdk(paths);
+                }
+                else
+                {
+                    LaunchCsdk(form);
+                    _ = RefreshCsdkAfterLaunchAsync();
+                }
             }
+            else
+            {
+                _ = RefreshCsdkButtonStateAsync();
+            }
+        };
+
+        csdkStateTimer.Tick += (_, _) => _ = RefreshCsdkButtonStateAsync();
+        form.Shown += (_, _) =>
+        {
+            csdkStateTimer.Start();
+            _ = RefreshCsdkButtonStateAsync();
+        };
+        form.Activated += (_, _) => _ = RefreshCsdkButtonStateAsync();
+        form.FormClosed += (_, _) =>
+        {
+            csdkStateTimer.Stop();
+            csdkStateTimer.Dispose();
         };
 
         topBar.Controls.Add(prepareButton);
