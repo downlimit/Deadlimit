@@ -4,67 +4,87 @@ namespace Deadlimit.Core;
 
 internal static class AtomicFile
 {
+    private static readonly object WriteGate = new();
+
+    private static readonly int[] ReplaceRetryDelaysMilliseconds =
+    [
+        20,
+        40,
+        80,
+        160,
+        250,
+        400,
+        650,
+        1000,
+    ];
+
     public static void WriteAllText(string path, string contents, Encoding? encoding = null)
     {
-        var target = Path.GetFullPath(path);
-        var folder = Path.GetDirectoryName(target)
-            ?? throw new ArgumentException("Target path has no parent folder.", nameof(path));
-        Directory.CreateDirectory(folder);
-
-        var temporary = Path.Combine(folder, $".{Path.GetFileName(target)}.tmp-{Guid.NewGuid():N}");
-        try
+        lock (WriteGate)
         {
-            using (var stream = new FileStream(
-                       temporary,
-                       FileMode.CreateNew,
-                       FileAccess.Write,
-                       FileShare.None,
-                       64 * 1024,
-                       FileOptions.WriteThrough))
-            using (var writer = new StreamWriter(
-                       stream,
-                       encoding ?? new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)))
+            var target = Path.GetFullPath(path);
+            var folder = Path.GetDirectoryName(target)
+                ?? throw new ArgumentException("Target path has no parent folder.", nameof(path));
+            Directory.CreateDirectory(folder);
+
+            var temporary = Path.Combine(folder, $".{Path.GetFileName(target)}.tmp-{Guid.NewGuid():N}");
+            try
             {
-                writer.Write(contents);
-                writer.Flush();
-                stream.Flush(flushToDisk: true);
-            }
+                using (var stream = new FileStream(
+                           temporary,
+                           FileMode.CreateNew,
+                           FileAccess.Write,
+                           FileShare.None,
+                           64 * 1024,
+                           FileOptions.WriteThrough))
+                using (var writer = new StreamWriter(
+                           stream,
+                           encoding ?? new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)))
+                {
+                    writer.Write(contents);
+                    writer.Flush();
+                    stream.Flush(flushToDisk: true);
+                }
 
-            Replace(temporary, target);
-        }
-        finally
-        {
-            TryDeleteTemporary(temporary);
+                Replace(temporary, target);
+            }
+            finally
+            {
+                TryDeleteTemporary(temporary);
+            }
         }
     }
 
     public static void WriteAllBytes(string path, ReadOnlySpan<byte> contents)
     {
-        var target = Path.GetFullPath(path);
-        var folder = Path.GetDirectoryName(target)
-            ?? throw new ArgumentException("Target path has no parent folder.", nameof(path));
-        Directory.CreateDirectory(folder);
-
-        var temporary = Path.Combine(folder, $".{Path.GetFileName(target)}.tmp-{Guid.NewGuid():N}");
-        try
+        lock (WriteGate)
         {
-            using (var stream = new FileStream(
-                       temporary,
-                       FileMode.CreateNew,
-                       FileAccess.Write,
-                       FileShare.None,
-                       64 * 1024,
-                       FileOptions.WriteThrough))
+            var target = Path.GetFullPath(path);
+            var folder = Path.GetDirectoryName(target)
+                ?? throw new ArgumentException("Target path has no parent folder.", nameof(path));
+            Directory.CreateDirectory(folder);
+
+            var temporary = Path.Combine(folder, $".{Path.GetFileName(target)}.tmp-{Guid.NewGuid():N}");
+            try
             {
-                stream.Write(contents);
-                stream.Flush(flushToDisk: true);
-            }
+                using (var stream = new FileStream(
+                           temporary,
+                           FileMode.CreateNew,
+                           FileAccess.Write,
+                           FileShare.None,
+                           64 * 1024,
+                           FileOptions.WriteThrough))
+                {
+                    stream.Write(contents);
+                    stream.Flush(flushToDisk: true);
+                }
 
-            Replace(temporary, target);
-        }
-        finally
-        {
-            TryDeleteTemporary(temporary);
+                Replace(temporary, target);
+            }
+            finally
+            {
+                TryDeleteTemporary(temporary);
+            }
         }
     }
 
@@ -73,13 +93,47 @@ internal static class AtomicFile
 
     private static void Replace(string temporary, string target)
     {
-        if (File.Exists(target))
+        Exception? lastError = null;
+        for (var attempt = 0; attempt <= ReplaceRetryDelaysMilliseconds.Length; attempt++)
         {
-            File.Replace(temporary, target, destinationBackupFileName: null, ignoreMetadataErrors: true);
-            return;
+            try
+            {
+                if (File.Exists(target))
+                {
+                    File.Replace(temporary, target, destinationBackupFileName: null, ignoreMetadataErrors: true);
+                }
+                else
+                {
+                    File.Move(temporary, target);
+                }
+
+                return;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                lastError = exception;
+                if (!File.Exists(temporary))
+                {
+                    if (File.Exists(target))
+                    {
+                        return;
+                    }
+
+                    throw;
+                }
+
+                if (attempt >= ReplaceRetryDelaysMilliseconds.Length)
+                {
+                    break;
+                }
+
+                Thread.Sleep(ReplaceRetryDelaysMilliseconds[attempt]);
+            }
         }
 
-        File.Move(temporary, target);
+        throw new IOException(
+            $"Could not atomically replace '{target}' after {ReplaceRetryDelaysMilliseconds.Length + 1} attempts.",
+            lastError);
     }
 
     private static void TryDeleteTemporary(string temporary)

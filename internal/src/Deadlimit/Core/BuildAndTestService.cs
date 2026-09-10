@@ -619,7 +619,6 @@ public sealed class BuildAndTestService
         }
 
         manifest.NmSkeletonRef = nmSkeletonRef;
-        ProjectStore.Save(manifest);
     }
 
     private static void PackVpk(

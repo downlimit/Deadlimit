@@ -3,6 +3,79 @@ $ErrorActionPreference = 'Stop'
 $assemblyPath = Resolve-Path 'internal/src/Deadlimit/bin/Release/net10.0-windows/DeadlimitManager.dll'
 $assembly = [Reflection.Assembly]::LoadFrom($assemblyPath)
 $nonPublicStatic = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Static
+$publicStatic = [Reflection.BindingFlags]::Public -bor [Reflection.BindingFlags]::Static
+
+$atomicFileType = $assembly.GetType('Deadlimit.Core.AtomicFile', $true)
+$atomicWriteAllText = $atomicFileType.GetMethod(
+    'WriteAllText',
+    $publicStatic,
+    $null,
+    [Type[]]@([string], [string], [Text.Encoding]),
+    $null)
+if ($null -eq $atomicWriteAllText) { throw 'AtomicFile.WriteAllText was not found.' }
+$atomicRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-atomic-file-$([Guid]::NewGuid().ToString('N'))"
+$atomicTarget = Join-Path $atomicRoot 'project.json'
+$atomicReady = Join-Path $atomicRoot 'locked.ready'
+$atomicLocker = $null
+try {
+    [IO.Directory]::CreateDirectory($atomicRoot) | Out-Null
+    [IO.File]::WriteAllText($atomicTarget, 'before')
+    $escapedTarget = $atomicTarget.Replace("'", "''")
+    $escapedReady = $atomicReady.Replace("'", "''")
+    $lockerCode = @"
+`$stream = [IO.File]::Open('$escapedTarget', [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+try {
+    [IO.File]::WriteAllText('$escapedReady', '')
+    Start-Sleep -Milliseconds 350
+}
+finally {
+    `$stream.Dispose()
+}
+"@
+    $encodedLockerCode = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($lockerCode))
+    $atomicLocker = Start-Process `
+        -FilePath (Get-Command pwsh).Source `
+        -ArgumentList @('-NoProfile', '-EncodedCommand', $encodedLockerCode) `
+        -WindowStyle Hidden `
+        -PassThru
+    $readyDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (-not (Test-Path -LiteralPath $atomicReady) -and [DateTime]::UtcNow -lt $readyDeadline) {
+        Start-Sleep -Milliseconds 25
+    }
+    if (-not (Test-Path -LiteralPath $atomicReady)) {
+        throw 'AtomicFile contention smoke could not establish the external file lock.'
+    }
+
+    $atomicWriteArguments = [object[]]::new(3)
+    $atomicWriteArguments[0] = [string]$atomicTarget
+    $atomicWriteArguments[1] = [string]'after'
+    $atomicWriteArguments[2] = $null
+    $atomicWriteAllText.Invoke($null, $atomicWriteArguments)
+    if ([IO.File]::ReadAllText($atomicTarget) -ne 'after') {
+        throw 'AtomicFile contention retry did not publish the replacement contents.'
+    }
+    if (@(Get-ChildItem -LiteralPath $atomicRoot -Force -File -Filter '.project.json.tmp-*').Count -ne 0) {
+        throw 'AtomicFile contention retry left a temporary file behind.'
+    }
+}
+finally {
+    if ($null -ne $atomicLocker) {
+        if (-not $atomicLocker.HasExited -and -not $atomicLocker.WaitForExit(2000)) {
+            $atomicLocker.Kill($true)
+            $atomicLocker.WaitForExit()
+        }
+        $atomicLocker.Dispose()
+    }
+    if (Test-Path -LiteralPath $atomicRoot) {
+        Remove-Item -LiteralPath $atomicRoot -Recurse -Force
+    }
+}
+
+$buildServiceSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/BuildAndTestService.cs' -Raw
+$manifestSaveCount = ([regex]::Matches($buildServiceSource, 'ProjectStore\.Save\(manifest\);')).Count
+if ($manifestSaveCount -ne 1) {
+    throw "BuildAndTestService must publish its manifest once after AG2 and compiled-model updates; found $manifestSaveCount saves."
+}
 
 # Portable releases are identified by package-owned release metadata. Their
 # unverified external tool installers must stay behind the service-layer guard.
