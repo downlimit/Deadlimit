@@ -5,10 +5,13 @@ namespace Deadlimit.Core;
 
 public static class DeadlimitScriptsService
 {
-    private const string BaseResourceName = "Deadlimit.Scripts.PipelineScripts.ms";
+    private const string EntryResourceName = "Deadlimit.Scripts.PipelineScripts.Entry.ms";
+    private const string CoreResourceName = "Deadlimit.Scripts.PipelineScripts.Core.ms";
     private const string ExperimentalResourceName = "Deadlimit.Scripts.PipelineScripts.Experimental.ms";
     private const string RepositoryFolderName = "scripts";
     private const string ScriptFileName = "DeadlimitPipelineScripts.ms";
+    private const string InternalFolderName = "internal";
+    private const string CoreScriptFileName = "DeadlimitPipelineScripts.ms";
     private const string ExperimentalScriptFileName = "DeadlimitPipelineScripts.Experimental.ms";
     private const string ReadmeFileName = "README.md";
 
@@ -23,8 +26,10 @@ public static class DeadlimitScriptsService
                 current.FullName,
                 ".deadlimit",
                 RepositoryFolderName);
+            var internalFolder = Path.Combine(candidate, InternalFolderName);
             if (File.Exists(Path.Combine(candidate, ScriptFileName))
-                && File.Exists(Path.Combine(candidate, ExperimentalScriptFileName))
+                && File.Exists(Path.Combine(internalFolder, CoreScriptFileName))
+                && File.Exists(Path.Combine(internalFolder, ExperimentalScriptFileName))
                 && File.Exists(Path.Combine(candidate, ReadmeFileName)))
             {
                 // Keep walking: a build-output copy can be closer than the repository copy.
@@ -43,24 +48,29 @@ public static class DeadlimitScriptsService
     }
 
     public static string GetBundledScriptPath() =>
-        Path.Combine(GetBundledScriptFolder(), ExperimentalScriptFileName);
+        Path.Combine(GetBundledScriptFolder(), ScriptFileName);
 
     public static string WriteScript(string scriptFolder)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(scriptFolder);
 
-        var baseTemplate = ReadTemplate(BaseResourceName);
+        var entryTemplate = ReadTemplate(EntryResourceName);
+        var coreTemplate = ReadTemplate(CoreResourceName);
         var experimentalTemplate = ReadTemplate(ExperimentalResourceName);
         scriptFolder = Path.GetFullPath(scriptFolder.Trim());
-        Directory.CreateDirectory(scriptFolder);
+        var internalFolder = Path.Combine(scriptFolder, InternalFolderName);
+        Directory.CreateDirectory(internalFolder);
 
+        var entryScriptPath = Path.Combine(scriptFolder, ScriptFileName);
+        WriteTemplateIfChanged(entryScriptPath, entryTemplate);
         WriteTemplateIfChanged(
-            Path.Combine(scriptFolder, ScriptFileName),
-            baseTemplate);
-        var experimentalScriptPath = Path.Combine(scriptFolder, ExperimentalScriptFileName);
-        WriteTemplateIfChanged(experimentalScriptPath, experimentalTemplate);
+            Path.Combine(internalFolder, CoreScriptFileName),
+            coreTemplate);
+        WriteTemplateIfChanged(
+            Path.Combine(internalFolder, ExperimentalScriptFileName),
+            experimentalTemplate);
 
-        return experimentalScriptPath;
+        return entryScriptPath;
     }
 
     public static string CreateFileInCommand(string scriptPath)
