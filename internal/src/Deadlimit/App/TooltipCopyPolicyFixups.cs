@@ -53,12 +53,12 @@ internal static class TooltipCopyPolicyFixups
 
         if (text.StartsWith("Run the optional CSDK fine-tuning from the current installation guide.", StringComparison.Ordinal))
         {
-            return "Prepare the additional Deadlock files that CSDK may need.\n\nUse this if some game files or tools are missing after a normal **Reduced CSDK** installation.\n\nDeadlimit downloads and prepares the required files automatically. Steam may ask you to sign in with a QR code in a separate window. Your installed **Deadlock** files are **never changed**.";
+            return "Prepare the additional Deadlock files that CSDK may need.\n\nUse this if some game files or tools are missing after a normal **Reduced CSDK** installation. Completed fine-tuning is detected and a normal repeat does not download or change files.\n\nHold **SHIFT** to force a complete repair download. Files are staged before they are applied. Steam may ask you to sign in with a QR code in a separate window. Your installed **Deadlock** files are **never changed**.";
         }
 
         if (text.StartsWith("Выполнить дополнительную донастройку CSDK по актуальной инструкции.", StringComparison.Ordinal))
         {
-            return "Подготовить дополнительные файлы Deadlock, которые могут понадобиться CSDK.\n\nИспользуйте, если после обычной установки **Reduced CSDK** не хватает некоторых файлов игры или инструментов.\n\nDeadlimit автоматически скачает и подготовит нужные файлы. Steam может попросить войти через QR-код в отдельном окне. Файлы установленного **Deadlock** никогда не изменяются.";
+            return "Подготовить дополнительные файлы Deadlock, которые могут понадобиться CSDK.\n\nИспользуйте, если после обычной установки **Reduced CSDK** не хватает некоторых файлов игры или инструментов. Завершённая донастройка распознаётся, и обычный повтор не скачивает и не изменяет файлы.\n\nУдерживайте **SHIFT**, чтобы принудительно скачать все заново для восстановления. До применения файлы подготавливаются во временной папке. Steam может попросить войти через QR-код в отдельном окне. Файлы установленного **Deadlock** никогда не изменяются.";
         }
 
         if (text.StartsWith("**INSTALL…** downloads the latest official Windows x64 release from GitHub and creates one DeadlockTools folder", StringComparison.Ordinal))

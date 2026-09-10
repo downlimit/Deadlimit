@@ -367,7 +367,8 @@ internal sealed class SettingsForm : Form
 
         _csdkPrimaryButton.Click += async (_, _) => await HandleCsdkPrimaryActionAsync();
         _csdkSetupButton.AccessibleName = UiText.T("Full CSDK setup", "Полная настройка CSDK");
-        _csdkSetupButton.Click += async (_, _) => await SetupCsdkAsync();
+        _csdkSetupButton.Click += async (_, _) => await SetupCsdkAsync(
+            (ModifierKeys & Keys.Shift) == Keys.Shift);
 
         _toolTip.SetToolTip(
             _csdkPrimaryButton,
@@ -379,8 +380,8 @@ internal sealed class SettingsForm : Form
         _toolTip.SetToolTip(
             _csdkSetupButton,
             UiText.T(
-                "Run the optional full CSDK setup from the current installation guide.\n\nDeadlimit downloads the required Deadlock depots, extracts the downloaded VPK as-is, removes the temporary pak01 VPK set, then re-applies Reduced CSDK.\n\nDepotDownloader may open a console for Steam QR authentication.\n\nThe configured Deadlock client folder is only validated and is **never modified**.",
-                "Выполнить дополнительную полную настройку CSDK по актуальной инструкции.\n\nDeadlimit скачивает нужные депо Deadlock, извлекает скачанный VPK без декомпиляции, удаляет временный набор pak01 VPK и повторно накладывает Reduced CSDK.\n\nDepotDownloader может открыть консоль для Steam-авторизации по QR.\n\nПапка Deadlock клиента только проверяется и **никогда не изменяется**."));
+                "Run the optional full CSDK setup from the current installation guide.\n\nDeadlimit stages the required Deadlock depots, extracts the downloaded VPK as-is, removes the temporary pak01 VPK set, then re-applies Reduced CSDK. A normal repeat skips all downloads when the same guide setup is already complete.\n\nHold **SHIFT** to force a complete repair download. DepotDownloader may open a console for Steam QR authentication.\n\nThe configured Deadlock client folder is only validated and is **never modified**.",
+                "Выполнить дополнительную полную настройку CSDK по актуальной инструкции.\n\nDeadlimit скачивает нужные депо Deadlock во временную папку, извлекает VPK без декомпиляции, удаляет временный набор pak01 VPK и повторно накладывает Reduced CSDK. Повторный обычный запуск пропускает скачивание, если донастройка по той же инструкции уже завершена.\n\nУдерживайте **SHIFT**, чтобы принудительно скачать все заново для восстановления. DepotDownloader может открыть консоль для Steam-авторизации по QR.\n\nПапка игрового клиента Deadlock только проверяется и **никогда не изменяется**."));
         _toolTip.SetToolTip(
             browseButton,
             UiText.T(
@@ -992,7 +993,7 @@ internal sealed class SettingsForm : Form
         await RefreshDeadlockToolsStatusAsync();
     }
 
-    private async Task SetupCsdkAsync()
+    private async Task SetupCsdkAsync(bool force)
     {
         if (!_allowUnverifiedToolchainAutomation)
         {
@@ -1011,7 +1012,8 @@ internal sealed class SettingsForm : Form
                 await _toolchain.SetupCsdkAsync(
                     _csdkRootText.Text.Trim(),
                     _retailDeadlockRootText.Text.Trim(),
-                    progress);
+                    progress,
+                    force);
                 await RefreshCsdkStatusAsync();
             },
             UiText.T("Could not complete CSDK setup", "Не удалось выполнить настройку CSDK"));
@@ -1592,6 +1594,5 @@ internal sealed class SettingsForm : Form
         public override string ToString() => Label;
     }
 }
-
 
 

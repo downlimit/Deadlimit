@@ -21,6 +21,7 @@ public sealed record BuildAndTestResult(
 public sealed class BuildAndTestService
 {
     private const int CompileBatchSize = 25;
+    private const int Csdk12MaximumParticleFormatVersion = 63;
 
     private static readonly HashSet<string> DirectCompileExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -49,6 +50,10 @@ public sealed class BuildAndTestService
     private static readonly Regex NmSkeletonRegex = new(
         @"models/[A-Za-z0-9_./\\-]+\.vnmskel",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex ParticleFormatRegex = new(
+        @"\bformat:vpcf(?<version>\d+)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private readonly DeadlimitPaths _paths;
 
@@ -133,6 +138,26 @@ public sealed class BuildAndTestService
             Report(progress, 33, LocalizedText.T("Comparing prepared content with the previous successful build...", "Сравнение подготовленного content с предыдущей успешной сборкой..."));
 
             var currentHashes = HashContentTree(prepare.AddonContentRoot, cancellationToken);
+            var unsupportedParticles = FindUnsupportedParticleSources(
+                prepare.AddonContentRoot,
+                Csdk12MaximumParticleFormatVersion,
+                cancellationToken);
+            if (unsupportedParticles.Count > 0)
+            {
+                log.AppendLine($"Unsupported particle sources for Reduced CSDK 12: {unsupportedParticles.Count}");
+                foreach (var path in unsupportedParticles)
+                {
+                    log.AppendLine($"  {Path.GetRelativePath(prepare.AddonContentRoot, path)}");
+                }
+
+                var examples = string.Join(", ", unsupportedParticles
+                    .Take(4)
+                    .Select(path => Path.GetFileName(path)));
+                throw new InvalidOperationException(LocalizedText.T(
+                    $"Reduced CSDK 12 supports particle sources through vpcf{Csdk12MaximumParticleFormatVersion}, but this project contains {unsupportedParticles.Count} newer particle file(s). If the skin changes ability models, keep 'Extract abilities' enabled and leave 'Copy ability FX to CSDK for editing' disabled. If ability models are not needed, extract without abilities. Ability FX editing requires a compatible newer CSDK. First files: {examples}",
+                    $"Reduced CSDK 12 поддерживает исходники particles до vpcf{Csdk12MaximumParticleFormatVersion}, а в этом проекте есть {unsupportedParticles.Count} более новых файлов. Если скин меняет модели способностей, оставьте «Извлекать способности» включённым и выключите «Копировать FX способностей в CSDK для редактирования». Если модели способностей не нужны, извлеките исходники без способностей. Для редактирования FX способностей нужен совместимый более новый CSDK. Первые файлы: {examples}"));
+            }
+
             var previousHashes = previousState?.ContentHashes
                 ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -344,6 +369,34 @@ public sealed class BuildAndTestService
             hashes[relative] = Convert.ToHexString(SHA256.HashData(stream));
         }
         return hashes;
+    }
+
+    internal static IReadOnlyList<string> FindUnsupportedParticleSources(
+        string contentRoot,
+        int maximumSupportedVersion,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Directory.Exists(contentRoot))
+        {
+            return [];
+        }
+
+        var unsupported = new List<string>();
+        foreach (var path in Directory.EnumerateFiles(contentRoot, "*.vpcf", SearchOption.AllDirectories)
+                     .OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var header = File.ReadLines(path).FirstOrDefault() ?? string.Empty;
+            var match = ParticleFormatRegex.Match(header);
+            if (match.Success
+                && int.TryParse(match.Groups["version"].Value, out var version)
+                && version > maximumSupportedVersion)
+            {
+                unsupported.Add(path);
+            }
+        }
+
+        return unsupported;
     }
 
     private static HashSet<string> ResolveIncrementalCompileTargets(
