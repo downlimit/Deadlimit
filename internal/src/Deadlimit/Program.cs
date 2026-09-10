@@ -11,6 +11,7 @@ internal static class Program
     private const string StartupSmokeArgument = "--startup-smoke";
     private const string ReleasePolicySmokeArgument = "--release-policy-smoke";
     private const string WriteVertexColorScriptArgument = "--write-vertex-color-script";
+    private const string ExtractDmxVertexColorTransferArgument = "--extract-dmx-vertex-color-transfer";
     private const string SingleInstanceMutexName = @"Local\Deadlimit.Gui.SingleInstance.v1";
     private const int SwRestore = 9;
 
@@ -24,6 +25,12 @@ internal static class Program
             && string.Equals(args[0], WriteVertexColorScriptArgument, StringComparison.OrdinalIgnoreCase))
         {
             return WriteVertexColorScript(args);
+        }
+
+        if (args.Length > 0
+            && string.Equals(args[0], ExtractDmxVertexColorTransferArgument, StringComparison.OrdinalIgnoreCase))
+        {
+            return ExtractDmxVertexColorTransfer(args);
         }
 
         if (args.Any(argument =>
@@ -402,6 +409,39 @@ internal static class Program
         {
             Console.Error.WriteLine($"Failed: {ex.Message}");
             return 70;
+        }
+    }
+
+    private static int ExtractDmxVertexColorTransfer(string[] args)
+    {
+        if (args.Length != 6
+            || string.IsNullOrWhiteSpace(args[1])
+            || string.IsNullOrWhiteSpace(args[2])
+            || string.IsNullOrWhiteSpace(args[5])
+            || !int.TryParse(args[3], out var vertexCount)
+            || !int.TryParse(args[4], out var faceCount))
+        {
+            Console.Error.WriteLine(
+                "Usage: DeadlimitManager.exe --extract-dmx-vertex-color-transfer <source.dmx> <mesh-name> <vertex-count> <face-count> <output.ms>");
+            return 65;
+        }
+
+        try
+        {
+            var result = DmxVertexColorTransferService.ExportMaxScriptPayload(
+                args[1],
+                args[2],
+                vertexCount,
+                faceCount,
+                args[5]);
+            Console.Out.WriteLine(
+                $"{result.MeshName}: {result.VertexCount} verts, {result.FaceCount} faces, {result.CornerCount} color corners");
+            return 0;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 71;
         }
     }
 
