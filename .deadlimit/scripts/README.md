@@ -9,7 +9,7 @@ The window uses five stacked sections: BONE TOOLS, VERTEX COLOR, INNER LINEART, 
 
 ## Experimental
 
-EXPERIMENTAL is a rollout inside the same `DeadlimitPipelineScripts.ms` window, not a separate artist-facing script. `PULL VERTEX COLOR FOR SELECTED MESH...` lets the artist select one Editable Poly, choose a source DMX, and restore DMX channel 0 only when Deadlimit can prove an identical mesh by name/topology. The command fails without changing the mesh if matching is ambiguous or topology differs.
+EXPERIMENTAL is a rollout inside the same `DeadlimitPipelineScripts.ms` window, not a separate artist-facing script. `PULL VERTEX COLOR FOR SELECTED MESH...` lets the artist select one Editable Poly or Editable Mesh base object, choose a source DMX, and restore DMX channel 0 only when Deadlimit can prove an identical mesh by name/topology. Both base-object paths write channel 0 directly without collapsing the modifier stack. The command fails without changing the mesh if matching is ambiguous or topology differs.
 ## Vertex Color FBX export
 
 1. Export the normal DMX with Wall Worm.
