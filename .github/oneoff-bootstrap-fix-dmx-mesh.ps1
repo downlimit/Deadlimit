@@ -30,6 +30,16 @@ if (-not $helper.Contains($old)) {
     throw 'Patch helper guard block was not found.'
 }
 $helper = $helper.Replace($old, $new)
+
+# The workflow token may edit normal repository files but may not rewrite another workflow.
+# Keep the static smoke script in the repository; the regular PR build can run it separately.
+$buildMutationPattern = '(?s)\$buildPath = ''\.github/workflows/build\.yml''.*?(?=& \$testPath)'
+$before = $helper
+$helper = [regex]::Replace($helper, $buildMutationPattern, '', 1)
+if ($helper -eq $before) {
+    throw 'Build-workflow mutation block was not found in patch helper.'
+}
+
 [IO.File]::WriteAllText((Resolve-Path $helperPath).Path, $helper, [Text.UTF8Encoding]::new($false))
 
 & $helperPath
