@@ -597,9 +597,19 @@ public sealed class MainForm : Form
         }
 
         var outputFolder = Path.Combine(_loadedManifest.ProjectFolder, _loadedManifest.SourceDumpFolderName);
-        var hasExistingSource = Directory.Exists(outputFolder)
-            && Directory.EnumerateFileSystemEntries(outputFolder).Any();
-        var dialogResult = HeroExtractionOptionsDialog.Show(this, hasExistingSource);
+        var gltfOutputFolder = Path.Combine(outputFolder, "glTFsource");
+        var hasExistingDmxSource = Directory.Exists(outputFolder)
+            && Directory.EnumerateFileSystemEntries(outputFolder)
+                .Any(path => !string.Equals(
+                    Path.GetFullPath(path),
+                    Path.GetFullPath(gltfOutputFolder),
+                    StringComparison.OrdinalIgnoreCase));
+        var hasExistingGltfSource = Directory.Exists(gltfOutputFolder)
+            && Directory.EnumerateFileSystemEntries(gltfOutputFolder).Any();
+        var dialogResult = HeroExtractionOptionsDialog.Show(
+            this,
+            hasExistingDmxSource,
+            hasExistingGltfSource);
         if (!dialogResult.Accepted)
         {
             SetStatus(UiText.T("Hero source extraction cancelled.", "Извлечение исходников героя отменено."));
@@ -614,7 +624,9 @@ public sealed class MainForm : Form
             var result = await service.ExtractAsync(_loadedManifest, dialogResult.Options, progress);
 
             var backupCleanupWarning = dialogResult.RemoveBackupAfterSuccess
-                ? TryRemovePreviousHeroSourceBackup(_loadedManifest.ProjectFolder)
+                ? TryRemovePreviousHeroSourceBackup(
+                    _loadedManifest.ProjectFolder,
+                    dialogResult.Options.Format)
                 : null;
 
             RefreshScan(showStatus: false);
@@ -660,11 +672,18 @@ public sealed class MainForm : Form
         }
     }
 
-    private static string? TryRemovePreviousHeroSourceBackup(string projectFolder)
+    private static string? TryRemovePreviousHeroSourceBackup(
+        string projectFolder,
+        HeroExtractionFormat format)
     {
         try
         {
-            var previousFolder = Path.Combine(ProjectStore.GetMetadataFolder(projectFolder), "0source.previous");
+            var backupFolderName = format == HeroExtractionFormat.Gltf
+                ? "glTFsource.previous"
+                : "0source.previous";
+            var previousFolder = Path.Combine(
+                ProjectStore.GetMetadataFolder(projectFolder),
+                backupFolderName);
             if (Directory.Exists(previousFolder))
             {
                 Directory.Delete(previousFolder, recursive: true);

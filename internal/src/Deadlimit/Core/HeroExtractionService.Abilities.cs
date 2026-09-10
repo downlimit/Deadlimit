@@ -31,6 +31,55 @@ public sealed partial class HeroExtractionService
         IProgress<HeroExtractionProgress>? progress,
         CancellationToken cancellationToken)
     {
+        var locations = ResolveHeroAbilityDependencies(
+            vpkPaths,
+            candidate,
+            includeTextures,
+            progress,
+            cancellationToken);
+
+        if (locations.Count > 0)
+        {
+            ExtractResourceLocations(locations, outputRoot, progress, cancellationToken);
+        }
+    }
+
+    private static void ExtractHeroAbilityGltfResources(
+        IReadOnlyList<string> vpkPaths,
+        ModelCandidate candidate,
+        string outputRoot,
+        bool includeTextures,
+        IProgress<HeroExtractionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var locations = ResolveHeroAbilityDependencies(
+            vpkPaths,
+            candidate,
+            includeTextures: false,
+            progress,
+            cancellationToken);
+
+        if (locations.Count == 0)
+        {
+            return;
+        }
+
+        ExtractGltfResourceLocations(
+            vpkPaths,
+            locations,
+            outputRoot,
+            includeTextures,
+            progress,
+            cancellationToken);
+    }
+
+    private static IReadOnlyList<ResourceLocation> ResolveHeroAbilityDependencies(
+        IReadOnlyList<string> vpkPaths,
+        ModelCandidate candidate,
+        bool includeTextures,
+        IProgress<HeroExtractionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         progress?.Report(new HeroExtractionProgress("Resolving hero ability resources..."));
 
         var vdataPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -62,7 +111,7 @@ public sealed partial class HeroExtractionService
         {
             progress?.Report(new HeroExtractionProgress(
                 "No bound abilities were found for the selected hero."));
-            return;
+            return [];
         }
 
         progress?.Report(new HeroExtractionProgress(
@@ -76,7 +125,7 @@ public sealed partial class HeroExtractionService
         {
             progress?.Report(new HeroExtractionProgress(
                 "No enabled visual resource references were found in the selected hero abilities."));
-            return;
+            return [];
         }
 
         var resolved = ResolveResourceLocations(vpkPaths, requested, progress, cancellationToken);
@@ -135,7 +184,7 @@ public sealed partial class HeroExtractionService
 
         progress?.Report(new HeroExtractionProgress(
             $"Ability visual dependencies: {locations.Length} resource(s)."));
-        ExtractResourceLocations(locations, outputRoot, progress, cancellationToken);
+        return locations;
     }
 
     private static string ReadDecompiledResourceText(

@@ -58,10 +58,20 @@ public sealed partial class HeroExtractionService
             throw new InvalidOperationException(
                 "Select at least one extraction scope: hero, abilities, or portraits/UI.");
         }
+        if (!Enum.IsDefined(options.Format))
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "Unknown hero extraction format.");
+        }
         if (options.CopyAbilityFxToCsdkForEditing)
         {
             throw new InvalidOperationException(
                 "Copy ability FX to CSDK for editing is disabled for Reduced CSDK 12 because current Deadlock VPCF sources may use an incompatible newer format.");
+        }
+        if (options.Format == HeroExtractionFormat.Gltf
+            && options.CopyMaterialsToCsdkForEditing)
+        {
+            throw new InvalidOperationException(
+                "Copy materials to CSDK for editing is available only for DMX source extraction.");
         }
         if (options.CopyMaterialsToCsdkForEditing
             && !options.ExtractHero
@@ -96,15 +106,28 @@ public sealed partial class HeroExtractionService
 
         var resourceFolder = GetResourceFolder(candidate.ResourcePath);
         var metadataFolder = ProjectStore.GetMetadataFolder(manifest.ProjectFolder);
-        var stagingFolder = Path.Combine(metadataFolder, "source-extract-staging");
+        var isGltf = options.Format == HeroExtractionFormat.Gltf;
+        var stagingFolder = Path.Combine(
+            metadataFolder,
+            isGltf ? "gltf-source-extract-staging" : "source-extract-staging");
         var scopeStagingFolder = Path.Combine(stagingFolder, "scopes");
         var publishStagingFolder = Path.Combine(stagingFolder, "publish");
-        var scopeStatePath = Path.Combine(metadataFolder, "source-extraction-state.json");
-        var outputFolder = SafePath.ResolveUnderRoot(
+        var scopeStatePath = Path.Combine(
+            metadataFolder,
+            isGltf ? "gltf-source-extraction-state.json" : "source-extraction-state.json");
+        var sourceOutputFolder = SafePath.ResolveUnderRoot(
             manifest.ProjectFolder,
             manifest.SourceDumpFolderName,
             "Project source-extraction folder");
-        var previousFolder = Path.Combine(metadataFolder, "0source.previous");
+        var outputFolder = isGltf
+            ? SafePath.ResolveUnderRoot(
+                sourceOutputFolder,
+                "glTFsource",
+                "Project glTF source-extraction folder")
+            : sourceOutputFolder;
+        var previousFolder = Path.Combine(
+            metadataFolder,
+            isGltf ? "glTFsource.previous" : "0source.previous");
 
         Directory.CreateDirectory(metadataFolder);
         DeleteDirectoryIfExists(stagingFolder);
@@ -122,24 +145,39 @@ public sealed partial class HeroExtractionService
                 Directory.CreateDirectory(heroStagingFolder);
                 freshScopeFolders[HeroExtractionScopePublisher.HeroScope] = heroStagingFolder;
 
-                progress?.Report(new HeroExtractionProgress($"Decompiling {resourceFolder}..."));
-                ExtractResourceFolder(
-                    candidate.VpkPath,
-                    resourceFolder,
-                    heroStagingFolder,
-                    true,
-                    progress,
-                    cancellationToken);
-
-                if (options.ExtractTextures || options.CopyMaterialsToCsdkForEditing)
+                if (isGltf)
                 {
-                    ExtractHeroTextureDependencies(
+                    progress?.Report(new HeroExtractionProgress(
+                        $"Exporting {Path.GetFileName(candidate.ResourcePath)} to glTF..."));
+                    ExtractGltfResourceLocations(
                         vpkPaths,
-                        candidate,
+                        [new ResourceLocation(candidate.VpkPath, candidate.ResourcePath)],
                         heroStagingFolder,
-                        includeTextures: true,
+                        options.ExtractTextures,
                         progress,
                         cancellationToken);
+                }
+                else
+                {
+                    progress?.Report(new HeroExtractionProgress($"Decompiling {resourceFolder}..."));
+                    ExtractResourceFolder(
+                        candidate.VpkPath,
+                        resourceFolder,
+                        heroStagingFolder,
+                        true,
+                        progress,
+                        cancellationToken);
+
+                    if (options.ExtractTextures || options.CopyMaterialsToCsdkForEditing)
+                    {
+                        ExtractHeroTextureDependencies(
+                            vpkPaths,
+                            candidate,
+                            heroStagingFolder,
+                            includeTextures: true,
+                            progress,
+                            cancellationToken);
+                    }
                 }
             }
 
@@ -151,15 +189,28 @@ public sealed partial class HeroExtractionService
                 Directory.CreateDirectory(abilitiesStagingFolder);
                 freshScopeFolders[HeroExtractionScopePublisher.AbilitiesScope] = abilitiesStagingFolder;
 
-                ExtractHeroAbilityDependencies(
-                    vpkPaths,
-                    candidate,
-                    abilitiesStagingFolder,
-                    options.ExtractTextures
-                    || options.CopyAbilityFxToCsdkForEditing
-                    || options.CopyMaterialsToCsdkForEditing,
-                    progress,
-                    cancellationToken);
+                if (isGltf)
+                {
+                    ExtractHeroAbilityGltfResources(
+                        vpkPaths,
+                        candidate,
+                        abilitiesStagingFolder,
+                        options.ExtractTextures,
+                        progress,
+                        cancellationToken);
+                }
+                else
+                {
+                    ExtractHeroAbilityDependencies(
+                        vpkPaths,
+                        candidate,
+                        abilitiesStagingFolder,
+                        options.ExtractTextures
+                        || options.CopyAbilityFxToCsdkForEditing
+                        || options.CopyMaterialsToCsdkForEditing,
+                        progress,
+                        cancellationToken);
+                }
             }
 
             if (options.ExtractPortraitsAndUi)
@@ -183,7 +234,8 @@ public sealed partial class HeroExtractionService
                 outputFolder,
                 publishStagingFolder,
                 freshScopeFolders,
-                scopeState);
+                scopeState,
+                isGltf ? null : ["glTFsource"]);
 
             progress?.Report(new HeroExtractionProgress("Publishing refreshed 0source..."));
             PublishRefreshedSource(
@@ -193,26 +245,52 @@ public sealed partial class HeroExtractionService
                 progress);
             HeroExtractionScopePublisher.SaveState(scopeStatePath, publication.State);
 
-            manifest.SchemaVersion = Math.Max(manifest.SchemaVersion, 2);
+            if (!isGltf)
+            {
+                // glTF has its own refresh lifecycle and backup. Keep the DMX backup bounded
+                // to compile-ready source instead of duplicating the isolated glTF tree.
+                DeleteDirectoryIfExists(Path.Combine(previousFolder, "glTFsource"));
+            }
+
+            var extractedFileCount = publication.FinalFileCount;
+            if (!isGltf)
+            {
+                var preservedGltfFolder = Path.Combine(outputFolder, "glTFsource");
+                if (Directory.Exists(preservedGltfFolder))
+                {
+                    extractedFileCount -= Directory
+                        .EnumerateFiles(preservedGltfFolder, "*", SearchOption.AllDirectories)
+                        .Count();
+                }
+            }
+
             manifest.RetailMainModel = candidate.ResourcePath;
             manifest.RetailSourceVpk = candidate.VpkPath;
-            manifest.LastSourceExtractionUtc = DateTimeOffset.UtcNow;
             manifest.Source2ViewerVersion = vrfVersion is null ? "ValveResourceFormat" : $"ValveResourceFormat {vrfVersion}";
-            manifest.ExtractedSourceFileCount = publication.FinalFileCount;
-            manifest.LastSourceExtractionIncludedTextures = options.ExtractTextures;
-            manifest.LastSourceExtractionIncludedAbilities = options.ExtractAbilities;
+            if (!isGltf)
+            {
+                manifest.SchemaVersion = Math.Max(manifest.SchemaVersion, 2);
+                manifest.LastSourceExtractionUtc = DateTimeOffset.UtcNow;
+                manifest.ExtractedSourceFileCount = extractedFileCount;
+                manifest.LastSourceExtractionIncludedTextures = options.ExtractTextures;
+                manifest.LastSourceExtractionIncludedAbilities = options.ExtractAbilities;
+            }
 
-            var csdkCopy = new CsdkEditableAssetCopyService(_paths).Copy(
-                manifest,
-                outputFolder,
-                options,
-                progress,
-                cancellationToken);
+            var csdkCopy = isGltf
+                ? new CsdkEditableAssetCopyResult(0, 0, 0, null)
+                : new CsdkEditableAssetCopyService(_paths).Copy(
+                    manifest,
+                    outputFolder,
+                    options,
+                    progress,
+                    cancellationToken);
 
             ProjectStore.Save(manifest);
             DeleteDirectoryIfExists(stagingFolder);
 
-            var completionMessage = (options.ExtractTextures, options.ExtractAbilities) switch
+            var completionMessage = isGltf
+                ? $"glTF source extraction complete: {extractedFileCount} file(s) in 0source\\glTFsource."
+                : (options.ExtractTextures, options.ExtractAbilities) switch
             {
                 (true, true) => "Hero source, dependency textures and abilities extraction complete.",
                 (true, false) => "Hero source and dependency texture extraction complete.",
@@ -225,7 +303,7 @@ public sealed partial class HeroExtractionService
                 candidate.ResourcePath,
                 candidate.VpkPath,
                 outputFolder,
-                publication.FinalFileCount,
+                extractedFileCount,
                 manifest.Source2ViewerVersion,
                 csdkCopy.MaterialCopiedCount,
                 csdkCopy.AbilityFxCopiedCount,
@@ -907,6 +985,10 @@ public sealed partial class HeroExtractionService
         string previousFolder,
         IProgress<HeroExtractionProgress>? progress)
     {
+        Directory.CreateDirectory(Path.GetDirectoryName(outputFolder)
+                                  ?? throw new ArgumentException(
+                                      "Source extraction output folder has no parent.",
+                                      nameof(outputFolder)));
         DeleteDirectoryIfExists(previousFolder);
 
         if (!Directory.Exists(outputFolder))

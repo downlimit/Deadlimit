@@ -157,6 +157,9 @@ Layer0
         'Извлекать текстуры по зависимостям',
         'Copy materials to CSDK for editing',
         'Copy ability FX to CSDK for editing',
+        'DMX — CSDK build source',
+        'glTF — DCC source in 0source\\glTFsource',
+        'glTF files, buffers and texture data are refreshed only inside 0source\\glTFsource',
         'copyAbilityFxCheck.Enabled = false',
         'Отключено для Reduced CSDK 12',
         'для редактирования самого графа частиц нужен совместимый более новый CSDK',
@@ -173,15 +176,35 @@ Layer0
     $extraction = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/HeroExtractionService.cs' -Raw
     foreach ($required in @(
         'if (options.ExtractHero)',
-        'heroStagingFolder,`n                    true,',
+        'ExtractResourceFolder(',
+        'heroStagingFolder,',
+        'includeTextures: true',
         'options.ExtractTextures || options.CopyMaterialsToCsdkForEditing',
         'options.CopyAbilityFxToCsdkForEditing',
         'is disabled for Reduced CSDK 12 because current Deadlock VPCF sources may use an incompatible newer format',
+        'isGltf ? "gltf-source-extract-staging" : "source-extract-staging"',
+        'isGltf ? "gltf-source-extraction-state.json" : "source-extraction-state.json"',
+        'isGltf ? "glTFsource.previous" : "0source.previous"',
+        'isGltf ? null : ["glTFsource"]',
         'new CsdkEditableAssetCopyService(_paths).Copy('
     )) {
         $normalizedRequired = $required.Replace('`n', "`n")
         if (-not $extraction.Contains($normalizedRequired, [StringComparison]::Ordinal)) {
             throw "Scoped extraction/CSDK-copy wiring is missing: $required"
+        }
+    }
+
+    $gltfSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/HeroExtractionService.Gltf.cs' -Raw
+    foreach ($required in @(
+        'new GltfModelExporter(fileLoader)',
+        'ProgressReporter = new Progress<string>',
+        'ExportAnimations = false',
+        'ExportMaterials = includeTextures',
+        'SatelliteImages = true',
+        'exporter.Export(resource, outputPath, cancellationToken)'
+    )) {
+        if (-not $gltfSource.Contains($required, [StringComparison]::Ordinal)) {
+            throw "glTF extraction wiring is missing: $required"
         }
     }
 }

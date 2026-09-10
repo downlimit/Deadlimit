@@ -60,6 +60,9 @@ $sourceOnly = $optionsType.GetProperty('SourceOnly').GetValue($null)
 if ($sourceOnly.ExtractTextures -or $sourceOnly.ExtractAbilities) {
     throw 'SourceOnly extraction options must disable both optional extraction scopes.'
 }
+if ($sourceOnly.Format.ToString() -ne 'Dmx') {
+    throw 'SourceOnly extraction must default to the compile-ready DMX format.'
+}
 
 $manifestType = $assembly.GetType('Deadlimit.Core.ProjectManifest', $true)
 $manifest = [Activator]::CreateInstance($manifestType)
@@ -98,7 +101,9 @@ if (-not $dialog.Contains('Extract textures', [StringComparison]::Ordinal) -or
     -not $dialog.Contains('Extract abilities', [StringComparison]::Ordinal)) {
     throw 'Extraction dialog does not expose both per-run checkboxes.'
 }
-if (-not $mainForm.Contains('HeroExtractionOptionsDialog.Show(this, hasExistingSource)', [StringComparison]::Ordinal)) {
+if (-not $mainForm.Contains('HeroExtractionOptionsDialog.Show(', [StringComparison]::Ordinal) -or
+    -not $mainForm.Contains('hasExistingDmxSource,', [StringComparison]::Ordinal) -or
+    -not $mainForm.Contains('hasExistingGltfSource)', [StringComparison]::Ordinal)) {
     throw 'MainForm does not show the extraction options dialog for the extraction command.'
 }
 if ($mainForm.Contains('0source already contains files. Refresh it from the current Deadlock game client build?', [StringComparison]::Ordinal)) {
