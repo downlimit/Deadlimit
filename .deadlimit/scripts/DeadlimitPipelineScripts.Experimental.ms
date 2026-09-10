@@ -229,6 +229,7 @@ fn deadlimitExperimentalPullDmxVertexColor =
     local pathClass = dotNetClass "System.IO.Path"
     local guidValue = ((dotNetClass "System.Guid").NewGuid()).ToString "N"
     local payloadPath = pathClass.Combine (pathClass.GetTempPath()) ("deadlimit-dmx-vertexcolor-" + guidValue + ".ms")
+    local result = undefined
     deadlimitDmxVertexColorTransferPayload = undefined
 
     try
@@ -242,20 +243,18 @@ fn deadlimitExperimentalPullDmxVertexColor =
         local cornerCount = deadlimitExperimentalApplyMappedColors targetNode mappedColors
         local sourceMeshName = deadlimitDmxVertexColorTransferPayload[1]
         format "Deadlimit experimental Vertex Color: % <- % (% corners)\n" targetNode.name sourceMeshName cornerCount
-        #(targetNode, sourceMeshName, cornerCount, helperResult)
+        result = #(targetNode, sourceMeshName, cornerCount, helperResult)
     )
     catch
     (
         local errorText = getCurrentException()
         format "Deadlimit experimental Vertex Color failed: %\n" errorText
         messageBox (errorText as string) title:"Deadlimit Scripts — Experimental"
-        undefined
     )
-    finally
-    (
-        deadlimitDmxVertexColorTransferPayload = undefined
-        try(if doesFileExist payloadPath do deleteFile payloadPath)catch()
-    )
+
+    deadlimitDmxVertexColorTransferPayload = undefined
+    try(if doesFileExist payloadPath do deleteFile payloadPath)catch()
+    result
 )
 
 rollout deadlimitExperimentalDmxVertexColorRollout "EXPERIMENTAL"
@@ -263,16 +262,7 @@ rollout deadlimitExperimentalDmxVertexColorRollout "EXPERIMENTAL"
     label lblDmxPull "Copies original DMX channel 0 to one identical selected mesh." width:340 align:#left
     button btnDmxPull "PULL VERTEX COLOR FOR SELECTED MESH..." width:340 height:30
 
-    on btnDmxPull pressed do
-    (
-        try(deadlimitExperimentalPullDmxVertexColor())
-        catch
-        (
-            local errorText = getCurrentException()
-            format "Deadlimit experimental Vertex Color failed: %\n" errorText
-            messageBox (errorText as string) title:"Deadlimit Scripts — Experimental"
-        )
-    )
+    on btnDmxPull pressed do deadlimitExperimentalPullDmxVertexColor()
 )
 
 if deadlimitPipelineFloater != undefined do
