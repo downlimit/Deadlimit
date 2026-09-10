@@ -833,13 +833,13 @@ fn deadlimitVertexColorRefreshTrackedDisplay =
 )
 
 /*
-    FEATURE: EXACT VERTEX-COLOR UNDO FOR DIRECT EDITABLE POLY WRITES
+    FEATURE: EXACT VERTEX-COLOR UNDO FOR DIRECT EDITABLE POLY/MESH WRITES
 
     polyop map-channel writes do not create a channel RestoreObj, even inside an Undo context
     and even when polyop receives the scene node. Max still creates the named Undo entry for
     the accompanying node display changes, so a plain Ctrl+Z can misleadingly report success
     while channel 0 remains filled. Keep an in-session transaction stack containing exact
-    before/after channel-0 arrays and display flags for Editable Poly targets.
+    before/after channel-0 arrays and display flags for Editable Poly/Editable Mesh targets.
 
     #sceneUndo/#sceneRedo supplies the named Undo entry after Max finishes its own restore.
     When that name matches the top Deadlimit transaction, restore the corresponding snapshot
@@ -850,18 +850,24 @@ fn deadlimitVertexColorRefreshTrackedDisplay =
 fn deadlimitVertexColorCaptureUndoSnapshots nodes =
 (
     local snapshots = #()
-    for node in nodes where isValidNode node and (classOf node.baseObject) == Editable_Poly do
+    for node in nodes where isValidNode node and ((classOf node.baseObject) == Editable_Poly or (classOf node.baseObject) == Editable_Mesh) do
     (
-        local editablePoly = node.baseObject
-        local mapSupported = polyop.getMapSupport editablePoly 0
+        local editableObject = node.baseObject
+        local targetKind = if (classOf editableObject) == Editable_Poly then #poly else #mesh
+        local mapSupported = if targetKind == #poly then (polyop.getMapSupport editableObject 0) else (meshop.getMapSupport editableObject 0)
         local mapVertices = #()
         local mapFaces = #()
         if mapSupported do
         (
-            local mapVertexCount = polyop.getNumMapVerts editablePoly 0
-            local mapFaceCount = polyop.getNumMapFaces editablePoly 0
-            for mapVertexIndex = 1 to mapVertexCount do append mapVertices (copy (polyop.getMapVert editablePoly 0 mapVertexIndex))
-            for mapFaceIndex = 1 to mapFaceCount do append mapFaces (deepCopy (polyop.getMapFace editablePoly 0 mapFaceIndex))
+            local mapVertexCount = if targetKind == #poly then (polyop.getNumMapVerts editableObject 0) else (meshop.getNumCPVVerts editableObject)
+            local mapFaceCount = if targetKind == #poly then (polyop.getNumMapFaces editableObject 0) else (meshop.getNumMapFaces editableObject 0)
+            for mapVertexIndex = 1 to mapVertexCount do
+                append mapVertices (copy (if targetKind == #poly then (polyop.getMapVert editableObject 0 mapVertexIndex) else (meshop.getMapVert editableObject 0 mapVertexIndex)))
+            for mapFaceIndex = 1 to mapFaceCount do
+            (
+                local mapFace = if targetKind == #poly then (deepCopy (polyop.getMapFace editableObject 0 mapFaceIndex)) else (copy (meshop.getMapFace editableObject 0 mapFaceIndex))
+                append mapFaces mapFace
+            )
         )
         append snapshots #(
             node,
@@ -870,12 +876,12 @@ fn deadlimitVertexColorCaptureUndoSnapshots nodes =
             mapFaces,
             node.vertexColorType,
             node.showVertexColors,
-            node.vertexColorsShaded
+            node.vertexColorsShaded,
+            targetKind
         )
     )
     snapshots
 )
-
 fn deadlimitVertexColorRestoreUndoSnapshots snapshots =
 (
     local restoredNodes = #()
@@ -884,25 +890,42 @@ fn deadlimitVertexColorRestoreUndoSnapshots snapshots =
         for snapshot in snapshots do
         (
             local node = snapshot[1]
-            if isValidNode node and (classOf node.baseObject) == Editable_Poly do
+            if isValidNode node do
             (
-                local editablePoly = node.baseObject
-                if snapshot[2] then
+                local editableObject = node.baseObject
+                local currentKind = if (classOf editableObject) == Editable_Poly then #poly else if (classOf editableObject) == Editable_Mesh then #mesh else #unsupported
+                local targetKind = if snapshot.count >= 8 then snapshot[8] else currentKind
+                if currentKind == targetKind and targetKind != #unsupported do
                 (
-                    polyop.setMapSupport editablePoly 0 true
-                    polyop.setNumMapVerts editablePoly 0 snapshot[3].count keep:false
-                    for mapVertexIndex = 1 to snapshot[3].count do polyop.setMapVert editablePoly 0 mapVertexIndex snapshot[3][mapVertexIndex]
-                    polyop.setNumMapFaces editablePoly 0 snapshot[4].count keep:false
-                    for mapFaceIndex = 1 to snapshot[4].count do polyop.setMapFace editablePoly 0 mapFaceIndex snapshot[4][mapFaceIndex]
-                )
-                else
-                    polyop.setMapSupport editablePoly 0 false
+                    if snapshot[2] then
+                    (
+                        if targetKind == #poly then
+                        (
+                            polyop.setMapSupport editableObject 0 true
+                            polyop.setNumMapVerts editableObject 0 snapshot[3].count keep:false
+                            for mapVertexIndex = 1 to snapshot[3].count do polyop.setMapVert editableObject 0 mapVertexIndex snapshot[3][mapVertexIndex]
+                            polyop.setNumMapFaces editableObject 0 snapshot[4].count keep:false
+                            for mapFaceIndex = 1 to snapshot[4].count do polyop.setMapFace editableObject 0 mapFaceIndex snapshot[4][mapFaceIndex]
+                        )
+                        else
+                        (
+                            meshop.setMapSupport editableObject 0 true
+                            meshop.setNumCPVVerts editableObject snapshot[3].count
+                            for mapVertexIndex = 1 to snapshot[3].count do meshop.setMapVert editableObject 0 mapVertexIndex snapshot[3][mapVertexIndex]
+                            for mapFaceIndex = 1 to snapshot[4].count do meshop.setMapFace editableObject 0 mapFaceIndex snapshot[4][mapFaceIndex]
+                        )
+                    )
+                    else
+                    (
+                        if targetKind == #poly then polyop.setMapSupport editableObject 0 false else meshop.setMapSupport editableObject 0 false
+                    )
 
-                node.vertexColorType = snapshot[5]
-                node.showVertexColors = snapshot[6]
-                node.vertexColorsShaded = snapshot[7]
-                update node
-                append restoredNodes node
+                    node.vertexColorType = snapshot[5]
+                    node.showVertexColors = snapshot[6]
+                    node.vertexColorsShaded = snapshot[7]
+                    update node
+                    append restoredNodes node
+                )
             )
         )
     )
@@ -910,7 +933,6 @@ fn deadlimitVertexColorRestoreUndoSnapshots snapshots =
     deadlimitVertexColorRefreshDisplay restoredNodes
     restoredNodes.count
 )
-
 fn deadlimitVertexColorRecordUndoTransaction undoLabel beforeSnapshots afterSnapshots =
 (
     if beforeSnapshots.count == 0 then return false
@@ -3688,12 +3710,13 @@ fn deadlimitExperimentalValidateAndMapPayload targetNode payload =
     if payload == undefined or (classOf payload) != Array or payload.count != 5 then
         throw "DMX helper returned an invalid Vertex Color payload."
 
-    if (classOf targetNode.baseObject) != Editable_Poly then
-        throw "Experimental DMX Vertex Color transfer currently requires an Editable Poly base object."
+    local editableObject = targetNode.baseObject
+    local targetKind = if (classOf editableObject) == Editable_Poly then #poly else if (classOf editableObject) == Editable_Mesh then #mesh else #unsupported
+    if targetKind == #unsupported then
+        throw "Experimental DMX Vertex Color transfer currently requires an Editable Poly or Editable Mesh base object."
 
-    local editablePoly = targetNode.baseObject
-    local targetVertexCount = polyop.getNumVerts editablePoly
-    local targetFaceCount = polyop.getNumFaces editablePoly
+    local targetVertexCount = if targetKind == #poly then (polyop.getNumVerts editableObject) else editableObject.numVerts
+    local targetFaceCount = if targetKind == #poly then (polyop.getNumFaces editableObject) else editableObject.numFaces
     if payload[2] != targetVertexCount or payload[3] != targetFaceCount then
         throw "Selected mesh topology changed while the DMX payload was being prepared."
 
@@ -3721,7 +3744,13 @@ fn deadlimitExperimentalValidateAndMapPayload targetNode payload =
 
     for targetFaceIndex = 1 to targetFaceCount do
     (
-        local targetVerts = for vertexId in (polyop.getFaceVerts editablePoly targetFaceIndex) collect (vertexId as integer)
+        local targetVerts = if targetKind == #poly then
+            (for vertexId in (polyop.getFaceVerts editableObject targetFaceIndex) collect (vertexId as integer))
+        else
+        (
+            local meshFace = meshop.getFace editableObject targetFaceIndex
+            #(meshFace.x as integer, meshFace.y as integer, meshFace.z as integer)
+        )
         local key = deadlimitExperimentalFaceKey targetVerts
         if not (sourceByKey.ContainsKey key) then
             throw ("Selected mesh topology differs from the DMX at face " + (targetFaceIndex as string) + ". Nothing was changed.")
@@ -3752,38 +3781,64 @@ fn deadlimitExperimentalValidateAndMapPayload targetNode payload =
 
     mappedColors
 )
-
 fn deadlimitExperimentalApplyMappedColors targetNode mappedColors =
 (
-    local editablePoly = targetNode.baseObject
-    local faceCount = polyop.getNumFaces editablePoly
+    local editableObject = targetNode.baseObject
+    local targetKind = if (classOf editableObject) == Editable_Poly then #poly else if (classOf editableObject) == Editable_Mesh then #mesh else #unsupported
+    if targetKind == #unsupported then
+        throw "Experimental DMX Vertex Color transfer currently requires an Editable Poly or Editable Mesh base object."
+
+    local faceCount = if targetKind == #poly then (polyop.getNumFaces editableObject) else editableObject.numFaces
     local totalCorners = 0
     for faceIndex = 1 to faceCount do totalCorners += mappedColors[faceIndex].count
     if totalCorners <= 0 then throw "No DMX Vertex Color corners were available to transfer."
 
     local beforeSnapshots = deadlimitVertexColorCaptureUndoSnapshots #(targetNode)
     if beforeSnapshots.count != 1 then
-        throw "Could not capture the selected Editable Poly before Vertex Color transfer."
+        throw "Could not capture the selected editable mesh before Vertex Color transfer."
 
     try
     (
         undo "Pull Vertex Color from DMX" on
         (
-            polyop.setMapSupport editablePoly 0 true
-            polyop.setNumMapVerts editablePoly 0 totalCorners keep:false
-            polyop.setNumMapFaces editablePoly 0 faceCount keep:false
-
-            local mapVertexIndex = 0
-            for faceIndex = 1 to faceCount do
+            if targetKind == #poly then
             (
-                local mapFace = #()
-                for colorValue in mappedColors[faceIndex] do
+                polyop.setMapSupport editableObject 0 true
+                polyop.setNumMapVerts editableObject 0 totalCorners keep:false
+                polyop.setNumMapFaces editableObject 0 faceCount keep:false
+
+                local mapVertexIndex = 0
+                for faceIndex = 1 to faceCount do
                 (
-                    mapVertexIndex += 1
-                    polyop.setMapVert editablePoly 0 mapVertexIndex colorValue
-                    append mapFace mapVertexIndex
+                    local mapFace = #()
+                    for colorValue in mappedColors[faceIndex] do
+                    (
+                        mapVertexIndex += 1
+                        polyop.setMapVert editableObject 0 mapVertexIndex colorValue
+                        append mapFace mapVertexIndex
+                    )
+                    polyop.setMapFace editableObject 0 faceIndex mapFace
                 )
-                polyop.setMapFace editablePoly 0 faceIndex mapFace
+            )
+            else
+            (
+                meshop.setMapSupport editableObject 0 true
+                meshop.setNumCPVVerts editableObject totalCorners
+
+                local mapVertexIndex = 0
+                for faceIndex = 1 to faceCount do
+                (
+                    local faceColors = mappedColors[faceIndex]
+                    if faceColors.count != 3 then
+                        throw ("Editable Mesh face " + (faceIndex as string) + " is not triangular. Nothing was changed.")
+                    local firstMapVertex = mapVertexIndex + 1
+                    for colorValue in faceColors do
+                    (
+                        mapVertexIndex += 1
+                        meshop.setMapVert editableObject 0 mapVertexIndex colorValue
+                    )
+                    meshop.setMapFace editableObject 0 faceIndex [firstMapVertex, firstMapVertex + 1, firstMapVertex + 2]
+                )
             )
 
             targetNode.vertexColorType = #color
@@ -3800,24 +3855,23 @@ fn deadlimitExperimentalApplyMappedColors targetNode mappedColors =
     )
     catch
     (
-        local errorText = getCurrentException()
         deadlimitVertexColorRestoreUndoSnapshots beforeSnapshots
         throw()
     )
 )
-
 fn deadlimitExperimentalPullDmxVertexColor =
 (
     if selection.count != 1 then throw "Select exactly one mesh."
     local targetNode = selection[1]
     if not isValidNode targetNode or (superClassOf targetNode) != GeometryClass then
         throw "Select exactly one valid geometry mesh."
-    if (classOf targetNode.baseObject) != Editable_Poly then
-        throw "Experimental DMX Vertex Color transfer currently requires an Editable Poly base object."
+    local editableObject = targetNode.baseObject
+    local targetKind = if (classOf editableObject) == Editable_Poly then #poly else if (classOf editableObject) == Editable_Mesh then #mesh else #unsupported
+    if targetKind == #unsupported then
+        throw "Experimental DMX Vertex Color transfer currently requires an Editable Poly or Editable Mesh base object."
 
-    local editablePoly = targetNode.baseObject
-    local vertexCount = polyop.getNumVerts editablePoly
-    local faceCount = polyop.getNumFaces editablePoly
+    local vertexCount = if targetKind == #poly then (polyop.getNumVerts editableObject) else editableObject.numVerts
+    local faceCount = if targetKind == #poly then (polyop.getNumFaces editableObject) else editableObject.numFaces
     if vertexCount <= 0 or faceCount <= 0 then throw "Selected mesh has no usable polygon topology."
 
     local dmxPath = getOpenFileName caption:"Select source DMX with original Vertex Color" types:"DMX (*.dmx)|*.dmx|"
