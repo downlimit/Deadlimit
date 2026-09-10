@@ -70,7 +70,8 @@ internal static class HeroExtractionScopePublisher
         string existingOutputFolder,
         string publishFolder,
         IReadOnlyDictionary<string, string> freshScopeFolders,
-        SourceExtractionScopeState? previousState)
+        SourceExtractionScopeState? previousState,
+        IReadOnlyCollection<string>? preservedRelativeDirectories = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(existingOutputFolder);
         ArgumentException.ThrowIfNullOrWhiteSpace(publishFolder);
@@ -120,6 +121,27 @@ internal static class HeroExtractionScopePublisher
             freshFileCount += relativeFiles.Count;
             nextState.Scopes[scope] = relativeFiles;
             CopyDirectory(scopeFolder, publishFolder);
+        }
+
+        foreach (var relativeDirectory in preservedRelativeDirectories ?? [])
+        {
+            var normalized = SafePath.NormalizeRelative(
+                relativeDirectory,
+                "Preserved source extraction directory");
+            var existingDirectory = SafePath.ResolveUnderRoot(
+                existingOutputFolder,
+                normalized.Replace('/', Path.DirectorySeparatorChar),
+                "Existing preserved source extraction directory");
+            if (!Directory.Exists(existingDirectory))
+            {
+                continue;
+            }
+
+            var destinationDirectory = SafePath.ResolveUnderRoot(
+                publishFolder,
+                normalized.Replace('/', Path.DirectorySeparatorChar),
+                "Published preserved source extraction directory");
+            CopyDirectory(existingDirectory, destinationDirectory);
         }
 
         if (freshFileCount == 0)

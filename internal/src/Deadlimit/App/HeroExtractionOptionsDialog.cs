@@ -9,7 +9,10 @@ internal sealed record HeroExtractionDialogResult(
 
 internal static class HeroExtractionOptionsDialog
 {
-    internal static HeroExtractionDialogResult Show(IWin32Window owner, bool hasExistingSource)
+    internal static HeroExtractionDialogResult Show(
+        IWin32Window owner,
+        bool hasExistingDmxSource,
+        bool hasExistingGltfSource)
     {
         using var dialog = new Form
         {
@@ -30,7 +33,7 @@ internal static class HeroExtractionOptionsDialog
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
-            RowCount = 11,
+            RowCount = 14,
             Margin = Padding.Empty,
             Padding = new Padding(18),
         };
@@ -39,14 +42,56 @@ internal static class HeroExtractionOptionsDialog
         {
             AutoSize = true,
             MaximumSize = new Size(760, 0),
-            Text = hasExistingSource
+            Text = hasExistingDmxSource || hasExistingGltfSource
                 ? UiText.T(
-                    "0source already contains files. Choose the source scopes to refresh and which editable source files should also be copied into this project's CSDK addon.",
-                    "0source уже содержит файлы. Выберите, какие исходники обновить и какие редактируемые файлы дополнительно скопировать в CSDK-аддон этого проекта.")
+                    "Extracted source already exists. Choose its format, the scopes to refresh and which editable source files should also be copied into this project's CSDK addon.",
+                    "Извлечённые исходники уже существуют. Выберите формат, обновляемые группы и редактируемые файлы для копирования в CSDK-аддон проекта.")
                 : UiText.T(
-                    "Choose the source scopes to extract into 0source and which editable source files should also be copied into this project's CSDK addon.",
-                    "Выберите, какие исходники извлечь в 0source и какие редактируемые файлы дополнительно скопировать в CSDK-аддон этого проекта."),
+                    "Choose the source format, extraction scopes and which editable source files should also be copied into this project's CSDK addon.",
+                    "Выберите формат исходников, группы для извлечения и редактируемые файлы для копирования в CSDK-аддон проекта."),
             Margin = new Padding(0, 0, 0, 14),
+        };
+
+        var formatHeader = new Label
+        {
+            Text = UiText.T("SOURCE FORMAT", "ФОРМАТ ИСХОДНИКОВ"),
+            AutoSize = true,
+            Font = new Font(SystemFonts.MessageBoxFont!, FontStyle.Bold),
+            Margin = new Padding(0, 0, 0, 5),
+        };
+
+        var formatRow = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.LeftToRight,
+            WrapContents = false,
+            Margin = Padding.Empty,
+        };
+
+        var dmxFormatRadio = new RadioButton
+        {
+            Text = UiText.T("DMX — CSDK build source", "DMX — исходники для сборки CSDK"),
+            Checked = true,
+            AutoSize = true,
+            Margin = new Padding(0, 3, 18, 5),
+        };
+
+        var gltfFormatRadio = new RadioButton
+        {
+            Text = UiText.T(
+                "glTF — DCC source in 0source\\glTFsource",
+                "glTF — DCC-исходники в 0source\\glTFsource"),
+            AutoSize = true,
+            Margin = new Padding(0, 3, 0, 5),
+        };
+
+        var formatNote = new Label
+        {
+            AutoSize = true,
+            MaximumSize = new Size(760, 0),
+            ForeColor = SystemColors.GrayText,
+            Margin = new Padding(22, 0, 0, 14),
         };
 
         var sourceHeader = new Label
@@ -168,6 +213,7 @@ internal static class HeroExtractionOptionsDialog
         void RefreshDependencies()
         {
             var hasModelScope = extractHeroCheck.Checked || extractAbilitiesCheck.Checked;
+            var isGltf = gltfFormatRadio.Checked;
 
             extractTexturesCheck.Enabled = hasModelScope;
             if (!hasModelScope)
@@ -175,8 +221,8 @@ internal static class HeroExtractionOptionsDialog
                 extractTexturesCheck.Checked = false;
             }
 
-            copyMaterialsCheck.Enabled = hasModelScope;
-            if (!hasModelScope)
+            copyMaterialsCheck.Enabled = hasModelScope && !isGltf;
+            if (!copyMaterialsCheck.Enabled)
             {
                 copyMaterialsCheck.Checked = false;
             }
@@ -184,35 +230,51 @@ internal static class HeroExtractionOptionsDialog
             copyAbilityFxCheck.Enabled = false;
             copyAbilityFxCheck.Checked = false;
 
+            formatNote.Text = isGltf
+                ? UiText.T(
+                    "glTF files, buffers and texture data are refreshed only inside 0source\\glTFsource. PREPARE and BUILD continue using the DMX source tree in 0source.",
+                    "Файлы glTF, буферы и данные текстур обновляются только внутри 0source\\glTFsource. ПОДГОТОВКА и СБОРКА продолжают использовать DMX-дерево в 0source.")
+                : UiText.T(
+                    "DMX keeps the current compile-ready extraction layout directly in 0source.",
+                    "DMX сохраняет текущую готовую к компиляции структуру непосредственно в 0source.");
+
             yesButton.Enabled = extractHeroCheck.Checked
                                 || extractAbilitiesCheck.Checked
                                 || extractPortraitsAndUiCheck.Checked;
             noBackupButton.Enabled = yesButton.Enabled
-                                     && (hasExistingSource
+                                     && ((isGltf ? hasExistingGltfSource : hasExistingDmxSource)
                                          || copyMaterialsCheck.Checked
                                          || copyAbilityFxCheck.Checked);
         }
 
+        dmxFormatRadio.CheckedChanged += (_, _) => RefreshDependencies();
+        gltfFormatRadio.CheckedChanged += (_, _) => RefreshDependencies();
         extractHeroCheck.CheckedChanged += (_, _) => RefreshDependencies();
         extractAbilitiesCheck.CheckedChanged += (_, _) => RefreshDependencies();
         extractPortraitsAndUiCheck.CheckedChanged += (_, _) => RefreshDependencies();
         copyMaterialsCheck.CheckedChanged += (_, _) => RefreshDependencies();
+
+        formatRow.Controls.Add(dmxFormatRadio);
+        formatRow.Controls.Add(gltfFormatRadio);
 
         buttonRow.Controls.Add(noButton);
         buttonRow.Controls.Add(noBackupButton);
         buttonRow.Controls.Add(yesButton);
 
         root.Controls.Add(message, 0, 0);
-        root.Controls.Add(sourceHeader, 0, 1);
-        root.Controls.Add(extractHeroCheck, 0, 2);
-        root.Controls.Add(extractAbilitiesCheck, 0, 3);
-        root.Controls.Add(extractPortraitsAndUiCheck, 0, 4);
-        root.Controls.Add(extractTexturesCheck, 0, 5);
-        root.Controls.Add(csdkHeader, 0, 6);
-        root.Controls.Add(copyMaterialsCheck, 0, 7);
-        root.Controls.Add(copyAbilityFxCheck, 0, 8);
-        root.Controls.Add(copyAbilityFxNote, 0, 9);
-        root.Controls.Add(buttonRow, 0, 10);
+        root.Controls.Add(formatHeader, 0, 1);
+        root.Controls.Add(formatRow, 0, 2);
+        root.Controls.Add(formatNote, 0, 3);
+        root.Controls.Add(sourceHeader, 0, 4);
+        root.Controls.Add(extractHeroCheck, 0, 5);
+        root.Controls.Add(extractAbilitiesCheck, 0, 6);
+        root.Controls.Add(extractPortraitsAndUiCheck, 0, 7);
+        root.Controls.Add(extractTexturesCheck, 0, 8);
+        root.Controls.Add(csdkHeader, 0, 9);
+        root.Controls.Add(copyMaterialsCheck, 0, 10);
+        root.Controls.Add(copyAbilityFxCheck, 0, 11);
+        root.Controls.Add(copyAbilityFxNote, 0, 12);
+        root.Controls.Add(buttonRow, 0, 13);
         dialog.Controls.Add(root);
 
         dialog.AcceptButton = yesButton;
@@ -232,6 +294,9 @@ internal static class HeroExtractionOptionsDialog
                 ExtractHero: extractHeroCheck.Checked,
                 CopyMaterialsToCsdkForEditing: copyMaterialsCheck.Checked,
                 CopyAbilityFxToCsdkForEditing: copyAbilityFxCheck.Checked,
-                BackupCsdkOverwrites: !removeBackupAfterSuccess));
+                BackupCsdkOverwrites: !removeBackupAfterSuccess,
+                Format: gltfFormatRadio.Checked
+                    ? HeroExtractionFormat.Gltf
+                    : HeroExtractionFormat.Dmx));
     }
 }
