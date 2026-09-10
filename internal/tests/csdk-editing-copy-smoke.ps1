@@ -157,20 +157,26 @@ Layer0
         'Извлекать текстуры по зависимостям',
         'Copy materials to CSDK for editing',
         'Copy ability FX to CSDK for editing',
-        'copyAbilityFxCheck.Enabled = extractAbilitiesCheck.Checked',
+        'copyAbilityFxCheck.Enabled = false',
+        'Отключено для Reduced CSDK 12',
+        'для редактирования самого графа частиц нужен совместимый более новый CSDK',
         'BackupCsdkOverwrites: !removeBackupAfterSuccess'
     )) {
         if (-not $dialog.Contains($required, [StringComparison]::Ordinal)) {
             throw "Extraction dialog contract is missing: $required"
         }
     }
+    if ($dialog.Contains('copyAbilityFxCheck.Enabled = extractAbilitiesCheck.Checked', [StringComparison]::Ordinal)) {
+        throw 'The unsafe Reduced CSDK ability-FX editing checkbox can still be enabled.'
+    }
 
     $extraction = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/HeroExtractionService.cs' -Raw
     foreach ($required in @(
         'if (options.ExtractHero)',
-        'stagingFolder,`n                    true,',
+        'heroStagingFolder,`n                    true,',
         'options.ExtractTextures || options.CopyMaterialsToCsdkForEditing',
         'options.CopyAbilityFxToCsdkForEditing',
+        'is disabled for Reduced CSDK 12 because current Deadlock VPCF sources may use an incompatible newer format',
         'new CsdkEditableAssetCopyService(_paths).Copy('
     )) {
         $normalizedRequired = $required.Replace('`n', "`n")

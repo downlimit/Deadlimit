@@ -258,20 +258,26 @@ public sealed class BuildAndTestService
                 manifest.ProjectFolder,
                 manifest.SourceDumpFolderName,
                 "Project source-dump folder");
-            var reusableRetailTextureOutputs = RetailTexturePackagingPolicy.ResolveReusableRetailCompiledTextures(
+            var packagingPlan = RetailResourcePackagingPolicy.Resolve(
+                manifest,
+                _paths.RetailDeadlockRoot,
                 sourceRoot,
                 prepare.AddonContentRoot,
-                addonGameRoot);
-            log.AppendLine($"Retail texture outputs reused from Deadlock instead of packed: {reusableRetailTextureOutputs.Count}");
-            foreach (var reusableTexture in reusableRetailTextureOutputs.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+                addonGameRoot,
+                compiledMainModel,
+                cancellationToken);
+            log.AppendLine($"Compiled output paths also available from retail: {packagingPlan.RetailResourceCount}");
+            log.AppendLine($"Project-owned compiled roots: {packagingPlan.ProjectRootCount}");
+            log.AppendLine($"Retail/redundant compiled outputs omitted from VPK: {packagingPlan.ExcludedRelativePaths.Count}");
+            foreach (var reusableResource in packagingPlan.ExcludedRelativePaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
             {
-                log.AppendLine($"  reuse {reusableTexture}");
+                log.AppendLine($"  reuse {reusableResource}");
             }
 
             PackVpk(
                 addonGameRoot,
                 vpkPath,
-                reusableRetailTextureOutputs,
+                packagingPlan.ExcludedRelativePaths,
                 log,
                 progress,
                 cancellationToken);
@@ -692,7 +698,7 @@ public sealed class BuildAndTestService
             log.AppendLine();
             log.AppendLine("[ValvePak in-process packaging]");
             log.AppendLine($"Packed files: {files.Length}");
-            log.AppendLine($"Reused retail texture outputs omitted: {excludedRelativePaths.Count}");
+            log.AppendLine($"Retail/redundant compiled outputs omitted: {excludedRelativePaths.Count}");
             log.AppendLine("VPK version: 2");
             log.AppendLine($"Output: {outputVpk}");
             Report(progress, 99, "VPK deployed to retail Deadlock addons.");
