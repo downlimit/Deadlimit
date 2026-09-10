@@ -23,8 +23,9 @@
 
   <ItemGroup>
     <EmbeddedResource Include="..\..\assets\DeadlimitManager_128_v4.ico" LogicalName="DeadlimitManager.AppIcon.ico" />
-    <EmbeddedResource Include="..\..\..\.deadlimit\scripts\DeadlimitPipelineScripts.ms" LogicalName="Deadlimit.Scripts.PipelineScripts.ms" />
-    <EmbeddedResource Include="..\..\..\.deadlimit\scripts\DeadlimitPipelineScripts.Experimental.ms" LogicalName="Deadlimit.Scripts.PipelineScripts.Experimental.ms" />
+    <EmbeddedResource Include="..\..\..\.deadlimit\scripts\DeadlimitPipelineScripts.ms" LogicalName="Deadlimit.Scripts.PipelineScripts.Entry.ms" />
+    <EmbeddedResource Include="..\..\..\.deadlimit\scripts\internal\DeadlimitPipelineScripts.ms" LogicalName="Deadlimit.Scripts.PipelineScripts.Core.ms" />
+    <EmbeddedResource Include="..\..\..\.deadlimit\scripts\internal\DeadlimitPipelineScripts.Experimental.ms" LogicalName="Deadlimit.Scripts.PipelineScripts.Experimental.ms" />
   </ItemGroup>
 
   <ItemGroup>
