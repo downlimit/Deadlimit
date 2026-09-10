@@ -19,4 +19,4 @@ jobs:
           fetch-depth: 0
       - name: Patch experimental DMX mesh support
         shell: pwsh
-        run: .github/oneoff-fix-experimental-dmx-mesh.ps1
+        run: .github/oneoff-bootstrap-fix-dmx-mesh.ps1
