@@ -8,11 +8,11 @@ $required = @(
     '(classOf editableObject) == Editable_Mesh',
     'meshop.getMapSupport editableObject 0',
     'meshop.setMapSupport editableObject 0 true',
-    'meshop.setNumMapVerts editableObject 0 totalCorners keep:false',
-    'meshop.setNumMapFaces editableObject 0 faceCount keep:false',
+    'meshop.setNumCPVVerts editableObject totalCorners',
+    'meshop.getNumMapFaces editableObject 0',
     'meshop.setMapVert editableObject 0 mapVertexIndex colorValue',
     'meshop.setMapFace editableObject 0 faceIndex',
-    'local meshFace = getFace editableObject targetFaceIndex',
+    'local meshFace = meshop.getFace editableObject targetFaceIndex',
     'targetKind'
 )
 foreach ($pattern in $required) {
@@ -21,6 +21,10 @@ foreach ($pattern in $required) {
     }
 }
 
+
+if ($source.Contains('meshop.setNumMapFaces editableObject 0')) {
+    throw 'Editable Mesh channel 0 must not be resized with meshop.setNumMapFaces.'
+}
 if ($source.Contains('Experimental DMX Vertex Color transfer currently requires an Editable Poly base object.')) {
     throw 'The old Editable-Poly-only guard is still present.'
 }

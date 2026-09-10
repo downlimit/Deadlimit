@@ -833,13 +833,13 @@ fn deadlimitVertexColorRefreshTrackedDisplay =
 )
 
 /*
-    FEATURE: EXACT VERTEX-COLOR UNDO FOR DIRECT EDITABLE POLY WRITES
+    FEATURE: EXACT VERTEX-COLOR UNDO FOR DIRECT EDITABLE POLY/MESH WRITES
 
     polyop map-channel writes do not create a channel RestoreObj, even inside an Undo context
     and even when polyop receives the scene node. Max still creates the named Undo entry for
     the accompanying node display changes, so a plain Ctrl+Z can misleadingly report success
     while channel 0 remains filled. Keep an in-session transaction stack containing exact
-    before/after channel-0 arrays and display flags for Editable Poly targets.
+    before/after channel-0 arrays and display flags for Editable Poly/Editable Mesh targets.
 
     #sceneUndo/#sceneRedo supplies the named Undo entry after Max finishes its own restore.
     When that name matches the top Deadlimit transaction, restore the corresponding snapshot
@@ -859,7 +859,7 @@ fn deadlimitVertexColorCaptureUndoSnapshots nodes =
         local mapFaces = #()
         if mapSupported do
         (
-            local mapVertexCount = if targetKind == #poly then (polyop.getNumMapVerts editableObject 0) else (meshop.getNumMapVerts editableObject 0)
+            local mapVertexCount = if targetKind == #poly then (polyop.getNumMapVerts editableObject 0) else (meshop.getNumCPVVerts editableObject)
             local mapFaceCount = if targetKind == #poly then (polyop.getNumMapFaces editableObject 0) else (meshop.getNumMapFaces editableObject 0)
             for mapVertexIndex = 1 to mapVertexCount do
                 append mapVertices (copy (if targetKind == #poly then (polyop.getMapVert editableObject 0 mapVertexIndex) else (meshop.getMapVert editableObject 0 mapVertexIndex)))
@@ -910,9 +910,8 @@ fn deadlimitVertexColorRestoreUndoSnapshots snapshots =
                         else
                         (
                             meshop.setMapSupport editableObject 0 true
-                            meshop.setNumMapVerts editableObject 0 snapshot[3].count keep:false
+                            meshop.setNumCPVVerts editableObject snapshot[3].count
                             for mapVertexIndex = 1 to snapshot[3].count do meshop.setMapVert editableObject 0 mapVertexIndex snapshot[3][mapVertexIndex]
-                            meshop.setNumMapFaces editableObject 0 snapshot[4].count keep:false
                             for mapFaceIndex = 1 to snapshot[4].count do meshop.setMapFace editableObject 0 mapFaceIndex snapshot[4][mapFaceIndex]
                         )
                     )
@@ -3749,7 +3748,7 @@ fn deadlimitExperimentalValidateAndMapPayload targetNode payload =
             (for vertexId in (polyop.getFaceVerts editableObject targetFaceIndex) collect (vertexId as integer))
         else
         (
-            local meshFace = getFace editableObject targetFaceIndex
+            local meshFace = meshop.getFace editableObject targetFaceIndex
             #(meshFace.x as integer, meshFace.y as integer, meshFace.z as integer)
         )
         local key = deadlimitExperimentalFaceKey targetVerts
@@ -3824,8 +3823,7 @@ fn deadlimitExperimentalApplyMappedColors targetNode mappedColors =
             else
             (
                 meshop.setMapSupport editableObject 0 true
-                meshop.setNumMapVerts editableObject 0 totalCorners keep:false
-                meshop.setNumMapFaces editableObject 0 faceCount keep:false
+                meshop.setNumCPVVerts editableObject totalCorners
 
                 local mapVertexIndex = 0
                 for faceIndex = 1 to faceCount do
