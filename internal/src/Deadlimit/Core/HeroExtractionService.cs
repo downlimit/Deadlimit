@@ -58,10 +58,10 @@ public sealed partial class HeroExtractionService
             throw new InvalidOperationException(
                 "Select at least one extraction scope: hero, abilities, or portraits/UI.");
         }
-        if (options.CopyAbilityFxToCsdkForEditing && !options.ExtractAbilities)
+        if (options.CopyAbilityFxToCsdkForEditing)
         {
             throw new InvalidOperationException(
-                "Copy ability FX to CSDK for editing requires Extract abilities.");
+                "Copy ability FX to CSDK for editing is disabled for Reduced CSDK 12 because current Deadlock VPCF sources may use an incompatible newer format.");
         }
         if (options.CopyMaterialsToCsdkForEditing
             && !options.ExtractHero
@@ -97,6 +97,9 @@ public sealed partial class HeroExtractionService
         var resourceFolder = GetResourceFolder(candidate.ResourcePath);
         var metadataFolder = ProjectStore.GetMetadataFolder(manifest.ProjectFolder);
         var stagingFolder = Path.Combine(metadataFolder, "source-extract-staging");
+        var scopeStagingFolder = Path.Combine(stagingFolder, "scopes");
+        var publishStagingFolder = Path.Combine(stagingFolder, "publish");
+        var scopeStatePath = Path.Combine(metadataFolder, "source-extraction-state.json");
         var outputFolder = SafePath.ResolveUnderRoot(
             manifest.ProjectFolder,
             manifest.SourceDumpFolderName,
@@ -105,40 +108,53 @@ public sealed partial class HeroExtractionService
 
         Directory.CreateDirectory(metadataFolder);
         DeleteDirectoryIfExists(stagingFolder);
-        Directory.CreateDirectory(stagingFolder);
+        Directory.CreateDirectory(scopeStagingFolder);
 
         try
         {
+            var freshScopeFolders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
             if (options.ExtractHero)
             {
+                var heroStagingFolder = Path.Combine(
+                    scopeStagingFolder,
+                    HeroExtractionScopePublisher.HeroScope);
+                Directory.CreateDirectory(heroStagingFolder);
+                freshScopeFolders[HeroExtractionScopePublisher.HeroScope] = heroStagingFolder;
+
                 progress?.Report(new HeroExtractionProgress($"Decompiling {resourceFolder}..."));
                 ExtractResourceFolder(
                     candidate.VpkPath,
                     resourceFolder,
-                    stagingFolder,
+                    heroStagingFolder,
                     true,
                     progress,
                     cancellationToken);
-            }
 
-            if (options.ExtractHero
-                && (options.ExtractTextures || options.CopyMaterialsToCsdkForEditing))
-            {
-                ExtractHeroTextureDependencies(
-                    vpkPaths,
-                    candidate,
-                    stagingFolder,
-                    options.ExtractTextures || options.CopyMaterialsToCsdkForEditing,
-                    progress,
-                    cancellationToken);
+                if (options.ExtractTextures || options.CopyMaterialsToCsdkForEditing)
+                {
+                    ExtractHeroTextureDependencies(
+                        vpkPaths,
+                        candidate,
+                        heroStagingFolder,
+                        includeTextures: true,
+                        progress,
+                        cancellationToken);
+                }
             }
 
             if (options.ExtractAbilities)
             {
+                var abilitiesStagingFolder = Path.Combine(
+                    scopeStagingFolder,
+                    HeroExtractionScopePublisher.AbilitiesScope);
+                Directory.CreateDirectory(abilitiesStagingFolder);
+                freshScopeFolders[HeroExtractionScopePublisher.AbilitiesScope] = abilitiesStagingFolder;
+
                 ExtractHeroAbilityDependencies(
                     vpkPaths,
                     candidate,
-                    stagingFolder,
+                    abilitiesStagingFolder,
                     options.ExtractTextures
                     || options.CopyAbilityFxToCsdkForEditing
                     || options.CopyMaterialsToCsdkForEditing,
@@ -148,34 +164,41 @@ public sealed partial class HeroExtractionService
 
             if (options.ExtractPortraitsAndUi)
             {
+                var uiStagingFolder = Path.Combine(
+                    scopeStagingFolder,
+                    HeroExtractionScopePublisher.PortraitsAndUiScope);
+                Directory.CreateDirectory(uiStagingFolder);
+                freshScopeFolders[HeroExtractionScopePublisher.PortraitsAndUiScope] = uiStagingFolder;
+
                 ExtractHeroUiResources(
                     vpkPaths,
                     candidate,
-                    stagingFolder,
+                    uiStagingFolder,
                     progress,
                     cancellationToken);
             }
 
-            var extractedFileCount = Directory.EnumerateFiles(stagingFolder, "*", SearchOption.AllDirectories).Count();
-            if (extractedFileCount == 0)
-            {
-                throw new InvalidOperationException(
-                    "ValveResourceFormat completed without an error, but no files were written to the extraction folder.");
-            }
+            var scopeState = HeroExtractionScopePublisher.TryLoadState(scopeStatePath);
+            var publication = HeroExtractionScopePublisher.Prepare(
+                outputFolder,
+                publishStagingFolder,
+                freshScopeFolders,
+                scopeState);
 
             progress?.Report(new HeroExtractionProgress("Publishing refreshed 0source..."));
             PublishRefreshedSource(
-                stagingFolder,
+                publishStagingFolder,
                 outputFolder,
                 previousFolder,
                 progress);
+            HeroExtractionScopePublisher.SaveState(scopeStatePath, publication.State);
 
             manifest.SchemaVersion = Math.Max(manifest.SchemaVersion, 2);
             manifest.RetailMainModel = candidate.ResourcePath;
             manifest.RetailSourceVpk = candidate.VpkPath;
             manifest.LastSourceExtractionUtc = DateTimeOffset.UtcNow;
             manifest.Source2ViewerVersion = vrfVersion is null ? "ValveResourceFormat" : $"ValveResourceFormat {vrfVersion}";
-            manifest.ExtractedSourceFileCount = extractedFileCount;
+            manifest.ExtractedSourceFileCount = publication.FinalFileCount;
             manifest.LastSourceExtractionIncludedTextures = options.ExtractTextures;
             manifest.LastSourceExtractionIncludedAbilities = options.ExtractAbilities;
 
@@ -187,6 +210,7 @@ public sealed partial class HeroExtractionService
                 cancellationToken);
 
             ProjectStore.Save(manifest);
+            DeleteDirectoryIfExists(stagingFolder);
 
             var completionMessage = (options.ExtractTextures, options.ExtractAbilities) switch
             {
@@ -201,7 +225,7 @@ public sealed partial class HeroExtractionService
                 candidate.ResourcePath,
                 candidate.VpkPath,
                 outputFolder,
-                extractedFileCount,
+                publication.FinalFileCount,
                 manifest.Source2ViewerVersion,
                 csdkCopy.MaterialCopiedCount,
                 csdkCopy.AbilityFxCopiedCount,

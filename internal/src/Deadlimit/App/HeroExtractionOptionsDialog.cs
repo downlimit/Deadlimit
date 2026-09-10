@@ -30,7 +30,7 @@ internal static class HeroExtractionOptionsDialog
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
             ColumnCount = 1,
-            RowCount = 10,
+            RowCount = 11,
             Margin = Padding.Empty,
             Padding = new Padding(18),
         };
@@ -116,8 +116,21 @@ internal static class HeroExtractionOptionsDialog
                 "Copy ability FX to CSDK for editing",
                 "Копировать FX способностей в CSDK для редактирования"),
             AutoSize = true,
+            Enabled = false,
+            Checked = false,
             Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 3, 0, 16),
+            Margin = new Padding(0, 3, 0, 5),
+        };
+
+        var copyAbilityFxNote = new Label
+        {
+            AutoSize = true,
+            MaximumSize = new Size(760, 0),
+            ForeColor = SystemColors.GrayText,
+            Text = UiText.T(
+                "Disabled for Reduced CSDK 12: current Deadlock ability effects may use a newer VPCF format and make project builds fail. Models, materials and textures referenced by the retail effect can still be replaced; editing the particle graph requires a compatible newer CSDK.",
+                "Отключено для Reduced CSDK 12: актуальные эффекты Deadlock могут использовать более новую версию VPCF и ломать сборку проекта. Модели, материалы и текстуры, на которые ссылается retail-эффект, можно заменять; для редактирования самого графа частиц нужен совместимый более новый CSDK."),
+            Margin = new Padding(22, 0, 0, 16),
         };
 
         var buttonRow = new FlowLayoutPanel
@@ -168,11 +181,8 @@ internal static class HeroExtractionOptionsDialog
                 copyMaterialsCheck.Checked = false;
             }
 
-            copyAbilityFxCheck.Enabled = extractAbilitiesCheck.Checked;
-            if (!extractAbilitiesCheck.Checked)
-            {
-                copyAbilityFxCheck.Checked = false;
-            }
+            copyAbilityFxCheck.Enabled = false;
+            copyAbilityFxCheck.Checked = false;
 
             yesButton.Enabled = extractHeroCheck.Checked
                                 || extractAbilitiesCheck.Checked
@@ -187,7 +197,6 @@ internal static class HeroExtractionOptionsDialog
         extractAbilitiesCheck.CheckedChanged += (_, _) => RefreshDependencies();
         extractPortraitsAndUiCheck.CheckedChanged += (_, _) => RefreshDependencies();
         copyMaterialsCheck.CheckedChanged += (_, _) => RefreshDependencies();
-        copyAbilityFxCheck.CheckedChanged += (_, _) => RefreshDependencies();
 
         buttonRow.Controls.Add(noButton);
         buttonRow.Controls.Add(noBackupButton);
@@ -202,7 +211,8 @@ internal static class HeroExtractionOptionsDialog
         root.Controls.Add(csdkHeader, 0, 6);
         root.Controls.Add(copyMaterialsCheck, 0, 7);
         root.Controls.Add(copyAbilityFxCheck, 0, 8);
-        root.Controls.Add(buttonRow, 0, 9);
+        root.Controls.Add(copyAbilityFxNote, 0, 9);
+        root.Controls.Add(buttonRow, 0, 10);
         dialog.Controls.Add(root);
 
         dialog.AcceptButton = yesButton;

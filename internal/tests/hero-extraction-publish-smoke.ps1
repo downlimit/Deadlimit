@@ -2,6 +2,9 @@ $ErrorActionPreference = 'Stop'
 
 $assemblyPath = Resolve-Path 'internal/src/Deadlimit/bin/Release/net10.0-windows/DeadlimitManager.dll'
 $assembly = [Reflection.Assembly]::LoadFrom($assemblyPath)
+$scopeSmokeType = $assembly.GetType('Deadlimit.Core.HeroExtractionScopePublisherSmoke', $true)
+$scopeSmokeType.GetMethod('Run').Invoke($null, @())
+
 $type = $assembly.GetType('Deadlimit.Core.HeroExtractionService', $true)
 $flags = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Static
 $publish = $type.GetMethod('PublishRefreshedSourceInPlace', $flags)
@@ -34,4 +37,4 @@ finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host 'Hero extraction in-place publish smoke passed.'
+Write-Host 'Hero extraction scoped and in-place publish smoke passed.'
