@@ -6,6 +6,7 @@
 */
 
 global deadlimitExperimentalScriptPath
+global deadlimitExperimentalBaseScript
 global deadlimitExperimentalDmxVertexColorRollout
 global deadlimitDmxVertexColorTransferPayload
 global deadlimitExperimentalPullDmxVertexColor
@@ -14,7 +15,7 @@ global deadlimitExperimentalFaceKey
 
 deadlimitExperimentalScriptPath = getSourceFileName()
 
-local deadlimitExperimentalBaseScript = getFilenamePath deadlimitExperimentalScriptPath + "DeadlimitPipelineScripts.ms"
+deadlimitExperimentalBaseScript = getFilenamePath deadlimitExperimentalScriptPath + "DeadlimitPipelineScripts.ms"
 if not (doesFileExist deadlimitExperimentalBaseScript) then
     throw ("Deadlimit base script was not found beside the experimental entrypoint: " + deadlimitExperimentalBaseScript)
 fileIn deadlimitExperimentalBaseScript
