@@ -4,8 +4,12 @@
 
 The implementation filename and existing MAXScript class/global identifiers are retained for compatibility. `Deadlimit Scripts` is the product name; `Deadlimit Pipeline Scripts` is its long form. Additional DCC implementations, including Blender, share this product scope.
 
-The window uses four open stacked sections: BONE TOOLS, VERTEX COLOR, INNER LINEART, and the always-last EXPORT VERTEX COLOR section. The native MAXScript rollout floater keeps the sections in flow when any section is collapsed or reopened, so they cannot overlap.
+The window uses five stacked sections: BONE TOOLS, VERTEX COLOR, INNER LINEART, EXPORT VERTEX COLOR, and EXPERIMENTAL. The native MAXScript rollout floater keeps the sections in flow when any section is collapsed or reopened, so they cannot overlap.
 
+
+## Experimental
+
+EXPERIMENTAL is a rollout inside the same `DeadlimitPipelineScripts.ms` window, not a separate artist-facing script. `PULL VERTEX COLOR FOR SELECTED MESH...` lets the artist select one Editable Poly, choose a source DMX, and restore DMX channel 0 only when Deadlimit can prove an identical mesh by name/topology. The command fails without changing the mesh if matching is ambiguous or topology differs.
 ## Vertex Color FBX export
 
 1. Export the normal DMX with Wall Worm.
