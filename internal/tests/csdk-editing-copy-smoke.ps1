@@ -198,14 +198,78 @@ Layer0
     foreach ($required in @(
         'new GltfModelExporter(fileLoader)',
         'ProgressReporter = new Progress<string>',
-        'ExportAnimations = false',
+        'ExportAnimations = true',
+        'exporter.AnimationFilter.Add(SkeletonOnlyAnimationFilter)',
         'ExportMaterials = includeTextures',
         'SatelliteImages = true',
-        'exporter.Export(resource, outputPath, cancellationToken)'
+        'exporter.Export(resource, outputPath, cancellationToken)',
+        'NormalizeMixedPrimitiveVertexColors(outputPath)',
+        'Array.Fill(whiteColors, byte.MaxValue)',
+        'ValidateGltfSkinningContract(outputPath)'
     )) {
         if (-not $gltfSource.Contains($required, [StringComparison]::Ordinal)) {
             throw "glTF extraction wiring is missing: $required"
         }
+    }
+
+    $heroExtractionType = $assembly.GetType('Deadlimit.Core.HeroExtractionService', $true)
+    $normalizeVertexColors = $heroExtractionType.GetMethod(
+        'NormalizeMixedPrimitiveVertexColors',
+        $flags)
+    if ($null -eq $normalizeVertexColors) {
+        throw 'glTF mixed-primitive Vertex Color normalizer was not found.'
+    }
+
+    $gltfFixtureFolder = Join-Path $temp 'gltf-vertex-color'
+    New-Item -ItemType Directory -Path $gltfFixtureFolder -Force | Out-Null
+    $gltfFixturePath = Join-Path $gltfFixtureFolder 'mixed.gltf'
+    $gltfBufferPath = Join-Path $gltfFixtureFolder 'mixed.bin'
+    [IO.File]::WriteAllBytes($gltfBufferPath, [byte[]]@())
+    Set-Content -LiteralPath $gltfFixturePath -Encoding utf8NoBOM -Value @'
+{
+  "buffers": [{ "uri": "mixed.bin", "byteLength": 0 }],
+  "bufferViews": [{ "buffer": 0, "byteOffset": 0, "byteLength": 0 }],
+  "accessors": [
+    { "bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3" },
+    { "bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3" },
+    { "bufferView": 0, "componentType": 5121, "normalized": true, "count": 3, "type": "VEC4" }
+  ],
+  "meshes": [
+    { "primitives": [
+      { "attributes": { "POSITION": 0 } },
+      { "attributes": { "POSITION": 1, "COLOR_0": 2 } }
+    ] },
+    { "primitives": [
+      { "attributes": { "POSITION": 0 } }
+    ] }
+  ]
+}
+'@
+
+    $normalizeVertexColors.Invoke($null, [object[]]@([string]$gltfFixturePath))
+    $normalizedGltf = Get-Content -LiteralPath $gltfFixturePath -Raw | ConvertFrom-Json
+    $generatedAccessorIndex = $normalizedGltf.meshes[0].primitives[0].attributes.COLOR_0
+    if ($generatedAccessorIndex -ne 3) {
+        throw "Expected a generated white COLOR_0 accessor at index 3, got $generatedAccessorIndex."
+    }
+    if ($normalizedGltf.meshes[0].primitives[1].attributes.COLOR_0 -ne 2) {
+        throw 'The original COLOR_0 accessor was replaced.'
+    }
+    if ($normalizedGltf.meshes[1].primitives[0].attributes.PSObject.Properties.Name -contains 'COLOR_0') {
+        throw 'A mesh with no Vertex Color primitives received an unnecessary COLOR_0 accessor.'
+    }
+    $generatedAccessor = $normalizedGltf.accessors[$generatedAccessorIndex]
+    if ($generatedAccessor.componentType -ne 5121 -or
+        $generatedAccessor.normalized -ne $true -or
+        $generatedAccessor.count -ne 3 -or
+        $generatedAccessor.type -ne 'VEC4') {
+        throw 'Generated white COLOR_0 accessor metadata is invalid.'
+    }
+    $whiteBytes = [IO.File]::ReadAllBytes($gltfBufferPath)
+    if ($whiteBytes.Count -ne 12 -or
+        @($whiteBytes | Where-Object { $_ -ne [byte]255 }).Count -ne 0 -or
+        $normalizedGltf.buffers[0].byteLength -ne 12) {
+        throw 'Generated white COLOR_0 buffer data is invalid.'
     }
 }
 finally {
