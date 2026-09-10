@@ -60,6 +60,75 @@ $guardCount = ([regex]::Matches($toolchainSource, 'ReleaseChannelPolicy\.Require
 if ($guardCount -ne 5) {
     throw "Expected five service-layer external-tool automation guards; found $guardCount."
 }
+foreach ($required in @(
+    'IsCsdkSetupCurrent(csdkRoot, catalog.Generation, depotKeys)',
+    'DepotArguments(depot, stagingRoot)',
+    'InstallCsdkArchiveAsync(catalog, stagedCsdkRoot',
+    'CopyDirectory(stagedGameRoot, Path.Combine(csdkRoot, "game")')) {
+    if (-not $toolchainSource.Contains($required, [StringComparison]::Ordinal)) {
+        throw "CSDK fine-tuning safety contract is missing: $required"
+    }
+}
+if ($toolchainSource.Contains('DepotArguments(depot, csdkRoot)', [StringComparison]::Ordinal)) {
+    throw 'CSDK fine-tuning still downloads depots directly into the live CSDK folder.'
+}
+
+$toolchainType = $assembly.GetType('Deadlimit.Core.ToolchainDependencyService', $true)
+$isSetupCurrent = $toolchainType.GetMethod('IsCsdkSetupCurrent', $nonPublicStatic)
+if ($null -eq $isSetupCurrent) { throw 'ToolchainDependencyService.IsCsdkSetupCurrent was not found.' }
+$setupRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-csdk-setup-$([Guid]::NewGuid().ToString('N'))"
+try {
+    [IO.Directory]::CreateDirectory((Join-Path $setupRoot 'game\citadel')) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $setupRoot 'csdkcfg.exe'), '')
+    [IO.File]::WriteAllText((Join-Path $setupRoot 'game\citadel\gameinfo.gi'), '')
+    $marker = @{
+        generation = 12
+        depots = @(
+            @{ AppId = '1422450'; DepotId = '1422451'; ManifestId = 'manifest-a' }
+            @{ AppId = '1422450'; DepotId = '1422456'; ManifestId = 'manifest-b' }
+        )
+    } | ConvertTo-Json -Depth 4
+    [IO.File]::WriteAllText((Join-Path $setupRoot '.deadlimit-csdk-setup.json'), $marker)
+    [string[]]$expectedDepots = @(
+        '1422450:1422451:manifest-a',
+        '1422450:1422456:manifest-b'
+    )
+    $currentArgs = [object[]]@([string]$setupRoot, [int]12, [string[]]$expectedDepots)
+    if (-not [bool]$isSetupCurrent.Invoke($null, $currentArgs)) {
+        throw 'A complete matching CSDK fine-tuning marker was not recognized.'
+    }
+    [string[]]$changedDepots = @('1422450:1422451:different')
+    $changedArgs = [object[]]@([string]$setupRoot, [int]12, [string[]]$changedDepots)
+    if ([bool]$isSetupCurrent.Invoke($null, $changedArgs)) {
+        throw 'A mismatched CSDK fine-tuning marker was incorrectly treated as current.'
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $setupRoot) {
+        Remove-Item -LiteralPath $setupRoot -Recurse -Force
+    }
+}
+
+$buildType = $assembly.GetType('Deadlimit.Core.BuildAndTestService', $true)
+$findUnsupportedParticles = $buildType.GetMethod('FindUnsupportedParticleSources', $nonPublicStatic)
+if ($null -eq $findUnsupportedParticles) { throw 'BuildAndTestService.FindUnsupportedParticleSources was not found.' }
+$particleRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-particle-format-$([Guid]::NewGuid().ToString('N'))"
+try {
+    [IO.Directory]::CreateDirectory($particleRoot) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $particleRoot 'supported.vpcf'), '<!-- kv3 encoding:text format:vpcf63:version{x} -->')
+    [IO.File]::WriteAllText((Join-Path $particleRoot 'newer-64.vpcf'), '<!-- kv3 encoding:text format:vpcf64:version{x} -->')
+    [IO.File]::WriteAllText((Join-Path $particleRoot 'newer-65.vpcf'), '<!-- kv3 encoding:text format:vpcf65:version{x} -->')
+    $particleArgs = [object[]]@([string]$particleRoot, [int]63, [Threading.CancellationToken]::None)
+    $unsupported = @($findUnsupportedParticles.Invoke($null, $particleArgs))
+    if ($unsupported.Count -ne 2) {
+        throw "Expected two unsupported particle sources; found $($unsupported.Count)."
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $particleRoot) {
+        Remove-Item -LiteralPath $particleRoot -Recurse -Force
+    }
+}
 $settingsSource = Get-Content -LiteralPath 'internal/src/Deadlimit/App/SettingsForm.cs' -Raw
 foreach ($required in @(
     'ReleaseChannelPolicy.AllowsUnverifiedToolchainAutomation',
