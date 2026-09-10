@@ -299,7 +299,13 @@ $newPull = @'
     local faceCount = if targetKind == #poly then (polyop.getNumFaces editableObject) else editableObject.numFaces
 '@
 if (-not $script.Contains($oldPull)) {
-    throw 'Experimental pull preflight block was not found.'
+    $oldPull = $oldPull.Replace("`r`n", "`n")
+}
+if (-not $script.Contains($oldPull)) {
+    $oldPull = $oldPull.Replace("`n", "`r`n")
+}
+if (-not $script.Contains($oldPull)) {
+    throw 'Experimental pull preflight block was not found after line-ending normalization.'
 }
 $script = $script.Replace($oldPull, $newPull)
 
@@ -358,24 +364,6 @@ if (-not $readme.Contains('Editable Poly or Editable Mesh base object')) {
 Write-Host 'Experimental DMX Vertex Color Editable Mesh smoke passed.'
 '@
 [IO.File]::WriteAllText((Join-Path (Resolve-Path '.').Path $testPath), $test + "`r`n", [Text.UTF8Encoding]::new($false))
-
-$buildPath = '.github/workflows/build.yml'
-$build = Get-Content -LiteralPath $buildPath -Raw
-$anchor = @'
-      - name: Texture naming alias smoke
-        shell: pwsh
-        run: internal/tests/texture-naming-alias-smoke.ps1
-'@
-$addition = @'
-      - name: Experimental DMX vertex color smoke
-        shell: pwsh
-        run: internal/tests/experimental-dmx-vertex-color-smoke.ps1
-'@
-if (-not $build.Contains($anchor)) {
-    throw 'Build workflow insertion point was not found.'
-}
-$build = $build.Replace($anchor, $anchor + $addition)
-[IO.File]::WriteAllText((Resolve-Path $buildPath).Path, $build, [Text.UTF8Encoding]::new($false))
 
 & $testPath
 
