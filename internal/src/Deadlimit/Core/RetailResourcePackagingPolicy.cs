@@ -24,7 +24,8 @@ internal static class RetailResourcePackagingPolicy
         string addonContentRoot,
         string addonGameRoot,
         string compiledMainModel,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action<string>? diagnosticSink = null)
     {
         var addonFiles = Directory.EnumerateFiles(addonGameRoot, "*", SearchOption.AllDirectories)
             .ToDictionary(
@@ -51,6 +52,7 @@ internal static class RetailResourcePackagingPolicy
             retailResources,
             projectRoots,
             forcedMaterialDependencyOwners,
+            diagnosticSink,
             cancellationToken);
         var excluded = addonFiles.Keys
             .Where(path => !included.Contains(path))
@@ -78,6 +80,12 @@ internal static class RetailResourcePackagingPolicy
             _ => references.TryGetValue(_, out var value) ? value : Array.Empty<string>(),
             CancellationToken.None);
     }
+
+    internal static IReadOnlyList<string> ReadExternalReferencesForSmoke(
+        string filePath,
+        string resourcePath,
+        Action<string>? diagnosticSink = null) =>
+        ReadExternalReferences(filePath, resourcePath, diagnosticSink);
 
     private static HashSet<string> ResolveProjectRoots(
         ProjectManifest manifest,
@@ -200,6 +208,7 @@ internal static class RetailResourcePackagingPolicy
         IReadOnlySet<string> retailResources,
         IReadOnlySet<string> projectRoots,
         IReadOnlySet<string> forcedMaterialDependencyOwners,
+        Action<string>? diagnosticSink,
         CancellationToken cancellationToken)
     {
         return ResolveClosure(
@@ -207,7 +216,7 @@ internal static class RetailResourcePackagingPolicy
             retailResources,
             projectRoots,
             forcedMaterialDependencyOwners,
-            relativePath => ReadExternalReferences(addonFiles[relativePath], relativePath),
+            relativePath => ReadExternalReferences(addonFiles[relativePath], relativePath, diagnosticSink),
             cancellationToken);
     }
 
@@ -252,7 +261,10 @@ internal static class RetailResourcePackagingPolicy
         return included;
     }
 
-    private static IReadOnlyList<string> ReadExternalReferences(string filePath, string resourcePath)
+    private static IReadOnlyList<string> ReadExternalReferences(
+        string filePath,
+        string resourcePath,
+        Action<string>? diagnosticSink)
     {
         if (resourcePath.EndsWith(".vtex_c", StringComparison.OrdinalIgnoreCase))
         {
@@ -271,8 +283,12 @@ internal static class RetailResourcePackagingPolicy
                 .ToArray()
                 ?? Array.Empty<string>();
         }
-        catch (Exception ex) when (ex is InvalidDataException or NotSupportedException)
+        catch (Exception ex) when (ex is InvalidDataException
+                                   or NotSupportedException
+                                   or ValveResourceFormat.Utils.UnexpectedMagicException)
         {
+            diagnosticSink?.Invoke(
+                $"Packaging dependency scan skipped unreadable resource: {resourcePath} ({ex.GetType().Name}: {ex.Message})");
             return Array.Empty<string>();
         }
     }
