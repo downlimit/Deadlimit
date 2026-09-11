@@ -265,7 +265,8 @@ public sealed class BuildAndTestService
                 prepare.AddonContentRoot,
                 addonGameRoot,
                 compiledMainModel,
-                cancellationToken);
+                cancellationToken,
+                message => log.AppendLine(message));
             log.AppendLine($"Compiled output paths also available from retail: {packagingPlan.RetailResourceCount}");
             log.AppendLine($"Project-owned compiled roots: {packagingPlan.ProjectRootCount}");
             log.AppendLine($"Retail/redundant compiled outputs omitted from VPK: {packagingPlan.ExcludedRelativePaths.Count}");
