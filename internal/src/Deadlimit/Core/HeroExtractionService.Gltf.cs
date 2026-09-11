@@ -7,8 +7,6 @@ namespace Deadlimit.Core;
 
 public sealed partial class HeroExtractionService
 {
-    private const string SkeletonOnlyAnimationFilter = "__deadlimit_skeleton_only_no_animation_clips__";
-
     private static void ExtractGltfResourceLocations(
         IReadOnlyList<string> vpkPaths,
         IReadOnlyList<ResourceLocation> locations,
@@ -56,24 +54,14 @@ public sealed partial class HeroExtractionService
             var exporter = new GltfModelExporter(fileLoader)
             {
                 ProgressReporter = new Progress<string>(message =>
-                {
-                    if (!message.Contains(SkeletonOnlyAnimationFilter, StringComparison.Ordinal))
-                    {
-                        progress?.Report(new HeroExtractionProgress(message));
-                    }
-                }),
-                // ValveResourceFormat currently uses ExportAnimations to gate both animation
-                // channels and the skeleton/Skin objects. Keep it enabled, then use an exact
-                // impossible animation name so DCC exports retain skinning without copying the
-                // retail animation library into every character source file.
+                    progress?.Report(new HeroExtractionProgress(message))),
                 ExportAnimations = true,
                 ExportMaterials = includeTextures,
                 AdaptTextures = true,
                 SatelliteImages = true,
-                ExportExtras = true,
+                ExportExtras = false,
                 ComposeAdditiveAnimations = false,
             };
-            exporter.AnimationFilter.Add(SkeletonOnlyAnimationFilter);
 
             var exportableCount = 0;
             var distinctLocations = locations
@@ -122,6 +110,7 @@ public sealed partial class HeroExtractionService
                 }
 
                 NormalizeMixedPrimitiveVertexColors(outputPath);
+                SplitGltfPrimitivesForDcc(outputPath);
                 ValidateGltfSkinningContract(outputPath);
             }
 
@@ -144,7 +133,7 @@ public sealed partial class HeroExtractionService
     private static void NormalizeMixedPrimitiveVertexColors(string gltfPath)
     {
         // glTF defines a missing COLOR_0 as a white base-color multiplier. The Khronos
-        // The Max importer concatenates primitives into one mesh but advances its color
+        // Max importer concatenates primitives into one mesh but advances its color
         // offset only for primitives that contain COLOR_0. Materializing the implicit
         // white values keeps later colored primitives aligned with their Max vertices.
         var root = JsonNode.Parse(File.ReadAllText(gltfPath))?.AsObject()
@@ -268,6 +257,485 @@ public sealed partial class HeroExtractionService
         primitive["attributes"] is JsonObject attributes
         && attributes.ContainsKey("COLOR_0");
 
+    private static void SplitGltfPrimitivesForDcc(string gltfPath)
+    {
+        var root = JsonNode.Parse(File.ReadAllText(gltfPath))?.AsObject()
+            ?? throw new InvalidDataException($"glTF JSON is empty: {gltfPath}");
+        if (root["meshes"] is not JsonArray meshes
+            || root["nodes"] is not JsonArray nodes
+            || root["accessors"] is not JsonArray accessors
+            || root["bufferViews"] is not JsonArray bufferViews
+            || root["buffers"] is not JsonArray buffers
+            || buffers.Count == 0
+            || buffers[0] is not JsonObject buffer)
+        {
+            return;
+        }
+
+        var bufferUri = buffer["uri"]?.GetValue<string>();
+        if (string.IsNullOrWhiteSpace(bufferUri)
+            || Uri.TryCreate(bufferUri, UriKind.Absolute, out _))
+        {
+            throw new InvalidDataException(
+                $"glTF primitive splitting requires an external relative buffer in {Path.GetFileName(gltfPath)}.");
+        }
+
+        var bufferPath = SafePath.ResolveUnderRoot(
+            Path.GetDirectoryName(gltfPath)!,
+            Uri.UnescapeDataString(bufferUri).Replace('/', Path.DirectorySeparatorChar),
+            "glTF binary buffer");
+        var originalBuffer = File.ReadAllBytes(bufferPath);
+        using var appendedBuffer = new FileStream(bufferPath, FileMode.Append, FileAccess.Write, FileShare.None);
+
+        var materials = root["materials"] as JsonArray;
+        var splitMeshes = new Dictionary<int, int[]>();
+        var originalMeshCount = meshes.Count;
+        for (var meshIndex = 0; meshIndex < originalMeshCount; meshIndex++)
+        {
+            if (meshes[meshIndex] is not JsonObject mesh
+                || mesh["primitives"] is not JsonArray primitives
+                || primitives.Count <= 1)
+            {
+                continue;
+            }
+
+            var baseName = mesh["name"]?.GetValue<string>();
+            if (string.IsNullOrWhiteSpace(baseName))
+            {
+                baseName = $"mesh_{meshIndex:D2}";
+            }
+
+            var replacementIndexes = new int[primitives.Count];
+            for (var primitiveIndex = 0; primitiveIndex < primitives.Count; primitiveIndex++)
+            {
+                var primitive = primitives[primitiveIndex]?.DeepClone() as JsonObject
+                    ?? throw new InvalidDataException(
+                        $"glTF mesh {meshIndex} contains an empty primitive in {Path.GetFileName(gltfPath)}.");
+                CompactPrimitiveAccessors(
+                    primitive,
+                    accessors,
+                    bufferViews,
+                    originalBuffer,
+                    appendedBuffer,
+                    gltfPath);
+                var materialSuffix = GetPrimitiveMaterialSuffix(primitive, materials);
+                var partName = $"{baseName}__part_{primitiveIndex:D2}{materialSuffix}";
+                var splitMesh = new JsonObject
+                {
+                    ["name"] = partName,
+                    ["primitives"] = new JsonArray(primitive),
+                };
+                if (mesh["weights"] is JsonNode weights)
+                {
+                    splitMesh["weights"] = weights.DeepClone();
+                }
+                if (mesh["extras"] is JsonNode extras)
+                {
+                    splitMesh["extras"] = extras.DeepClone();
+                }
+
+                replacementIndexes[primitiveIndex] = meshes.Count;
+                meshes.Add(splitMesh);
+            }
+
+            splitMeshes.Add(meshIndex, replacementIndexes);
+        }
+
+        if (splitMeshes.Count == 0)
+        {
+            return;
+        }
+
+        var originalNodeCount = nodes.Count;
+        var splitNodeChildren = new Dictionary<int, int[]>();
+        for (var nodeIndex = 0; nodeIndex < originalNodeCount; nodeIndex++)
+        {
+            if (nodes[nodeIndex] is not JsonObject node
+                || node["mesh"]?.GetValue<int>() is not int originalMeshIndex
+                || !splitMeshes.TryGetValue(originalMeshIndex, out var replacementIndexes))
+            {
+                continue;
+            }
+
+            node.Remove("mesh");
+            var skin = node["skin"]?.DeepClone();
+            node.Remove("skin");
+            var weights = node["weights"]?.DeepClone();
+            node.Remove("weights");
+
+            var children = node["children"] as JsonArray;
+            if (children is null)
+            {
+                children = [];
+                node["children"] = children;
+            }
+
+            var nodeName = node["name"]?.GetValue<string>() ?? $"node_{nodeIndex:D2}";
+            var newChildren = new int[replacementIndexes.Length];
+            for (var partIndex = 0; partIndex < replacementIndexes.Length; partIndex++)
+            {
+                var child = new JsonObject
+                {
+                    ["name"] = $"{nodeName}__part_{partIndex:D2}",
+                    ["mesh"] = replacementIndexes[partIndex],
+                };
+                if (skin is not null)
+                {
+                    child["skin"] = skin.DeepClone();
+                }
+                if (weights is not null)
+                {
+                    child["weights"] = weights.DeepClone();
+                }
+
+                newChildren[partIndex] = nodes.Count;
+                children.Add(nodes.Count);
+                nodes.Add(child);
+            }
+            splitNodeChildren.Add(nodeIndex, newChildren);
+        }
+
+        RetargetSplitMorphAnimations(root, splitNodeChildren);
+
+        var orderedMeshes = new JsonArray();
+        var oldToNewMeshIndex = new Dictionary<int, int>();
+        for (var meshIndex = 0; meshIndex < originalMeshCount; meshIndex++)
+        {
+            var sourceIndexes = splitMeshes.TryGetValue(meshIndex, out var replacements)
+                ? replacements
+                : [meshIndex];
+            foreach (var sourceIndex in sourceIndexes)
+            {
+                oldToNewMeshIndex[sourceIndex] = orderedMeshes.Count;
+                orderedMeshes.Add(meshes[sourceIndex]?.DeepClone());
+            }
+        }
+        root["meshes"] = orderedMeshes;
+
+        foreach (var node in nodes.OfType<JsonObject>())
+        {
+            if (node["mesh"]?.GetValue<int>() is not int meshIndex)
+            {
+                continue;
+            }
+            node["mesh"] = oldToNewMeshIndex[meshIndex];
+        }
+
+        buffer["byteLength"] = checked((int)appendedBuffer.Length);
+
+        AtomicFile.WriteAllText(
+            gltfPath,
+            root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    private static void RetargetSplitMorphAnimations(
+        JsonObject root,
+        IReadOnlyDictionary<int, int[]> splitNodeChildren)
+    {
+        if (splitNodeChildren.Count == 0 || root["animations"] is not JsonArray animations)
+        {
+            return;
+        }
+
+        foreach (var animation in animations.OfType<JsonObject>())
+        {
+            if (animation["channels"] is not JsonArray channels)
+            {
+                continue;
+            }
+            var updated = new JsonArray();
+            foreach (var channelNode in channels)
+            {
+                if (channelNode is not JsonObject channel
+                    || channel["target"] is not JsonObject target
+                    || !string.Equals(target["path"]?.GetValue<string>(), "weights", StringComparison.Ordinal)
+                    || target["node"]?.GetValue<int>() is not int nodeIndex
+                    || !splitNodeChildren.TryGetValue(nodeIndex, out var childIndexes))
+                {
+                    updated.Add(channelNode?.DeepClone());
+                    continue;
+                }
+
+                foreach (var childIndex in childIndexes)
+                {
+                    var clone = channel.DeepClone().AsObject();
+                    clone["target"]!["node"] = childIndex;
+                    updated.Add(clone);
+                }
+            }
+            animation["channels"] = updated;
+        }
+    }
+
+    private static void CompactPrimitiveAccessors(
+        JsonObject primitive,
+        JsonArray accessors,
+        JsonArray bufferViews,
+        byte[] sourceBuffer,
+        FileStream destinationBuffer,
+        string gltfPath)
+    {
+        if (primitive["indices"]?.GetValue<int>() is not int indexAccessorIndex
+            || primitive["attributes"] is not JsonObject attributes)
+        {
+            throw new InvalidDataException(
+                $"glTF primitive has no indexed geometry in {Path.GetFileName(gltfPath)}.");
+        }
+
+        var sourceIndices = ReadUnsignedAccessor(
+            indexAccessorIndex,
+            accessors,
+            bufferViews,
+            sourceBuffer,
+            gltfPath);
+        var oldToNew = new Dictionary<int, int>();
+        var usedVertices = new List<int>();
+        var compactIndices = new int[sourceIndices.Length];
+        for (var index = 0; index < sourceIndices.Length; index++)
+        {
+            var sourceVertex = sourceIndices[index];
+            if (!oldToNew.TryGetValue(sourceVertex, out var compactVertex))
+            {
+                compactVertex = usedVertices.Count;
+                oldToNew.Add(sourceVertex, compactVertex);
+                usedVertices.Add(sourceVertex);
+            }
+            compactIndices[index] = compactVertex;
+        }
+
+        foreach (var attribute in attributes.ToArray())
+        {
+            if (attribute.Value?.GetValue<int>() is int accessorIndex)
+            {
+                attributes[attribute.Key] = AppendCompactedAccessor(
+                    accessorIndex,
+                    usedVertices,
+                    accessors,
+                    bufferViews,
+                    sourceBuffer,
+                    destinationBuffer,
+                    gltfPath);
+            }
+        }
+
+        if (primitive["targets"] is JsonArray targets)
+        {
+            foreach (var target in targets.OfType<JsonObject>())
+            {
+                foreach (var attribute in target.ToArray())
+                {
+                    if (attribute.Value?.GetValue<int>() is int accessorIndex)
+                    {
+                        target[attribute.Key] = AppendCompactedAccessor(
+                            accessorIndex,
+                            usedVertices,
+                            accessors,
+                            bufferViews,
+                            sourceBuffer,
+                            destinationBuffer,
+                            gltfPath);
+                    }
+                }
+            }
+        }
+
+        Align4(destinationBuffer);
+        var indexOffset = checked((int)destinationBuffer.Position);
+        var useUInt32 = usedVertices.Count > ushort.MaxValue;
+        foreach (var value in compactIndices)
+        {
+            destinationBuffer.Write(useUInt32
+                ? BitConverter.GetBytes((uint)value)
+                : BitConverter.GetBytes((ushort)value));
+        }
+
+        var indexView = bufferViews.Count;
+        bufferViews.Add(new JsonObject
+        {
+            ["buffer"] = 0,
+            ["byteOffset"] = indexOffset,
+            ["byteLength"] = checked(compactIndices.Length * (useUInt32 ? 4 : 2)),
+            ["target"] = 34963,
+        });
+        var compactIndexAccessor = accessors.Count;
+        accessors.Add(new JsonObject
+        {
+            ["bufferView"] = indexView,
+            ["componentType"] = useUInt32 ? 5125 : 5123,
+            ["count"] = compactIndices.Length,
+            ["type"] = "SCALAR",
+        });
+        primitive["indices"] = compactIndexAccessor;
+    }
+
+    private static int AppendCompactedAccessor(
+        int accessorIndex,
+        IReadOnlyList<int> sourceVertices,
+        JsonArray accessors,
+        JsonArray bufferViews,
+        byte[] sourceBuffer,
+        FileStream destinationBuffer,
+        string gltfPath)
+    {
+        var accessor = GetGltfObject(accessors, accessorIndex, "accessor", gltfPath);
+        if (accessor.ContainsKey("sparse"))
+        {
+            throw new InvalidDataException(
+                $"Sparse glTF accessors are unsupported during primitive splitting: {Path.GetFileName(gltfPath)}.");
+        }
+
+        var viewIndex = accessor["bufferView"]?.GetValue<int>() ?? -1;
+        var view = GetGltfObject(bufferViews, viewIndex, "buffer view", gltfPath);
+        if ((view["buffer"]?.GetValue<int>() ?? 0) != 0)
+        {
+            throw new InvalidDataException(
+                $"Multiple glTF buffers are unsupported during primitive splitting: {Path.GetFileName(gltfPath)}.");
+        }
+
+        var componentType = accessor["componentType"]?.GetValue<int>() ?? 0;
+        var type = accessor["type"]?.GetValue<string>()
+            ?? throw new InvalidDataException($"glTF accessor has no value type in {Path.GetFileName(gltfPath)}.");
+        var count = accessor["count"]?.GetValue<int>() ?? 0;
+        var elementSize = checked(GetGltfComponentSize(componentType) * GetGltfComponentCount(type));
+        var stride = view["byteStride"]?.GetValue<int>() ?? elementSize;
+        var start = checked((view["byteOffset"]?.GetValue<int>() ?? 0)
+            + (accessor["byteOffset"]?.GetValue<int>() ?? 0));
+
+        Align4(destinationBuffer);
+        var destinationOffset = checked((int)destinationBuffer.Position);
+        foreach (var sourceVertex in sourceVertices)
+        {
+            if (sourceVertex < 0 || sourceVertex >= count)
+            {
+                throw new InvalidDataException(
+                    $"glTF index {sourceVertex} exceeds accessor {accessorIndex} in {Path.GetFileName(gltfPath)}.");
+            }
+
+            var sourceOffset = checked(start + (sourceVertex * stride));
+            if (sourceOffset < 0 || sourceOffset + elementSize > sourceBuffer.Length)
+            {
+                throw new InvalidDataException(
+                    $"glTF accessor {accessorIndex} exceeds its binary buffer in {Path.GetFileName(gltfPath)}.");
+            }
+            destinationBuffer.Write(sourceBuffer, sourceOffset, elementSize);
+        }
+
+        var destinationViewIndex = bufferViews.Count;
+        bufferViews.Add(new JsonObject
+        {
+            ["buffer"] = 0,
+            ["byteOffset"] = destinationOffset,
+            ["byteLength"] = checked(sourceVertices.Count * elementSize),
+            ["target"] = 34962,
+        });
+        var result = new JsonObject
+        {
+            ["bufferView"] = destinationViewIndex,
+            ["componentType"] = componentType,
+            ["count"] = sourceVertices.Count,
+            ["type"] = type,
+        };
+        if (accessor["normalized"]?.GetValue<bool>() == true)
+        {
+            result["normalized"] = true;
+        }
+
+        var resultIndex = accessors.Count;
+        accessors.Add(result);
+        return resultIndex;
+    }
+
+    private static int[] ReadUnsignedAccessor(
+        int accessorIndex,
+        JsonArray accessors,
+        JsonArray bufferViews,
+        byte[] sourceBuffer,
+        string gltfPath)
+    {
+        var accessor = GetGltfObject(accessors, accessorIndex, "accessor", gltfPath);
+        var view = GetGltfObject(
+            bufferViews,
+            accessor["bufferView"]?.GetValue<int>() ?? -1,
+            "buffer view",
+            gltfPath);
+        var componentType = accessor["componentType"]?.GetValue<int>() ?? 0;
+        var componentSize = GetGltfComponentSize(componentType);
+        var count = accessor["count"]?.GetValue<int>() ?? 0;
+        var stride = view["byteStride"]?.GetValue<int>() ?? componentSize;
+        var start = checked((view["byteOffset"]?.GetValue<int>() ?? 0)
+            + (accessor["byteOffset"]?.GetValue<int>() ?? 0));
+        var result = new int[count];
+        for (var index = 0; index < count; index++)
+        {
+            var offset = checked(start + (index * stride));
+            result[index] = componentType switch
+            {
+                5121 => sourceBuffer[offset],
+                5123 => BitConverter.ToUInt16(sourceBuffer, offset),
+                5125 => checked((int)BitConverter.ToUInt32(sourceBuffer, offset)),
+                _ => throw new InvalidDataException(
+                    $"Unsupported glTF index component type {componentType} in {Path.GetFileName(gltfPath)}."),
+            };
+        }
+        return result;
+    }
+
+    private static JsonObject GetGltfObject(JsonArray array, int index, string kind, string gltfPath)
+    {
+        if (index < 0 || index >= array.Count || array[index] is not JsonObject value)
+        {
+            throw new InvalidDataException(
+                $"glTF contains an invalid {kind} index {index} in {Path.GetFileName(gltfPath)}.");
+        }
+        return value;
+    }
+
+    private static void Align4(FileStream stream)
+    {
+        while (stream.Position % 4 != 0)
+        {
+            stream.WriteByte(0);
+        }
+    }
+
+    private static int GetGltfComponentSize(int componentType) => componentType switch
+    {
+        5120 or 5121 => 1,
+        5122 or 5123 => 2,
+        5125 or 5126 => 4,
+        _ => throw new InvalidDataException($"Unsupported glTF component type {componentType}."),
+    };
+
+    private static int GetGltfComponentCount(string type) => type switch
+    {
+        "SCALAR" => 1,
+        "VEC2" => 2,
+        "VEC3" => 3,
+        "VEC4" => 4,
+        "MAT2" => 4,
+        "MAT3" => 9,
+        "MAT4" => 16,
+        _ => throw new InvalidDataException($"Unsupported glTF accessor type '{type}'."),
+    };
+
+    private static string GetPrimitiveMaterialSuffix(JsonNode primitive, JsonArray? materials)
+    {
+        if (primitive is not JsonObject primitiveObject
+            || primitiveObject["material"]?.GetValue<int>() is not int materialIndex
+            || materials is null
+            || materialIndex < 0
+            || materialIndex >= materials.Count
+            || materials[materialIndex] is not JsonObject material
+            || string.IsNullOrWhiteSpace(material["name"]?.GetValue<string>()))
+        {
+            return string.Empty;
+        }
+
+        var name = material["name"]!.GetValue<string>();
+        var safe = new string(name.Select(ch => char.IsLetterOrDigit(ch) || ch is '_' or '-' ? ch : '_').ToArray());
+        return safe.Length == 0 ? string.Empty : $"__{safe}";
+    }
+
     private static void ValidateGltfSkinningContract(string gltfPath)
     {
         using var document = JsonDocument.Parse(File.ReadAllBytes(gltfPath));
@@ -370,12 +838,5 @@ public sealed partial class HeroExtractionService
                 $"glTF export omitted Skin bindings for weighted mesh index(es) {string.Join(", ", missing)} in {Path.GetFileName(gltfPath)}.");
         }
 
-        if (root.TryGetProperty("animations", out var animations)
-            && animations.ValueKind == JsonValueKind.Array
-            && animations.GetArrayLength() > 0)
-        {
-            throw new InvalidDataException(
-                $"Skeleton-only glTF export unexpectedly included animation clips in {Path.GetFileName(gltfPath)}.");
-        }
     }
 }

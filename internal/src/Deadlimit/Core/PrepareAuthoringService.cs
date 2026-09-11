@@ -85,11 +85,20 @@ public sealed class PrepareAuthoringService
             .Where(path => !VertexColorSidecarService.IsSidecarPath(path))
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        var rootFbxFiles = Directory.EnumerateFiles(manifest.ProjectFolder, "*.fbx", SearchOption.TopDirectoryOnly)
+            .Where(path => !VertexColorSidecarService.IsSidecarPath(path))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var rootGltfFiles = Directory.EnumerateFiles(manifest.ProjectFolder, "*", SearchOption.TopDirectoryOnly)
+            .Where(path => Path.GetExtension(path).Equals(".gltf", StringComparison.OrdinalIgnoreCase)
+                || Path.GetExtension(path).Equals(".glb", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
-        if (rootDmxFiles.Length == 0)
+        if (rootDmxFiles.Length + rootFbxFiles.Length + rootGltfFiles.Length == 0)
         {
             throw new InvalidOperationException(
-                "No .dmx files were found in the project root. Export the current artist model to the project root first.");
+                "No DMX, FBX, glTF, or GLB model files were found in the project root. Export the current artist model to the project root first.");
         }
 
         if (string.IsNullOrWhiteSpace(manifest.RetailMainModel))
@@ -115,6 +124,7 @@ public sealed class PrepareAuthoringService
         log.AppendLine($"Retail model: {manifest.RetailMainModel}");
         log.AppendLine($"CSDK content root: {addonContentRoot}");
         log.AppendLine($"CSDK game output root: {addonGameRoot}");
+        log.AppendLine($"Project-root model sources: DMX={rootDmxFiles.Length}, FBX={rootFbxFiles.Length}, glTF/GLB={rootGltfFiles.Length}");
         log.AppendLine($"Custom material mode: {(regenerateCustomMaterials ? "clean regeneration" : "preserve artist edits and synchronize project textures")}");
         if (regenerateCustomMaterials)
         {
@@ -175,13 +185,41 @@ public sealed class PrepareAuthoringService
             log.AppendLine($"Destination VMDL: {sourceCopy.DestinationVmdlPath}");
 
             cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Overlaying artist DMX on matching retail render meshes...", "Наложение пользовательских DMX на соответствующие retail render mesh...")));
+            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Overlaying project-root model sources on matching retail render meshes...", "Подготовка моделей из корня проекта для соответствующих retail render mesh...")));
 
             var replacedRenderMeshes = RetailVmdlInheritance.OverlayArtistDmx(
                 sourceCopy,
                 addonContentRoot,
                 manifest.Hero,
                 rootDmxFiles);
+
+            var replacedFbxMeshes = RetailVmdlInheritance.OverlayArtistFbx(
+                sourceCopy,
+                addonContentRoot,
+                manifest.Hero,
+                rootFbxFiles);
+
+            var gltfOverlay = GltfAuthoringAdapter.Overlay(
+                manifest,
+                sourceCopy,
+                addonContentRoot,
+                rootGltfFiles,
+                log,
+                cancellationToken);
+
+            var duplicateTargets = replacedRenderMeshes.Select(value => value.ResourcePath)
+                .Concat(replacedFbxMeshes.Select(value => value.ResourcePath))
+                .Concat(gltfOverlay.PreparedResources)
+                .GroupBy(value => Path.ChangeExtension(value, null), StringComparer.OrdinalIgnoreCase)
+                .Where(group => group.Count() > 1)
+                .Select(group => string.Join(", ", group))
+                .ToArray();
+            if (duplicateTargets.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    "More than one project-root model source replaces the same retail render mesh. Keep one authoring format per target:\n" +
+                    string.Join("\n", duplicateTargets));
+            }
 
             log.AppendLine($"Artist DMX overlays: {replacedRenderMeshes.Count}");
             foreach (var overlay in replacedRenderMeshes)
@@ -191,6 +229,13 @@ public sealed class PrepareAuthoringService
                     $"    vertex color [{overlay.VertexColor.Status}]: {overlay.VertexColor.Message} | " +
                     $"sidecar {overlay.VertexColor.SidecarPath}");
             }
+            log.AppendLine($"Artist FBX overlays: {replacedFbxMeshes.Count}");
+            foreach (var overlay in replacedFbxMeshes)
+            {
+                log.AppendLine($"  replace {overlay.ResourcePath} from {Path.GetFileName(overlay.ArtistFbxPath)}");
+            }
+            log.AppendLine(
+                $"Artist glTF overlays: files={gltfOverlay.GltfFileCount}, primitives={gltfOverlay.PrimitiveCount}, preparedDMX={gltfOverlay.PreparedDmxCount}");
 
             var vertexColorAppliedCount = replacedRenderMeshes.Count(overlay =>
                 overlay.VertexColor.Status == VertexColorSidecarStatus.Applied);
@@ -234,11 +279,16 @@ public sealed class PrepareAuthoringService
                     string.Join("\n", vertexColorWarnings));
             }
 
-            var authoringMaterialReferences = ExpandWallWormMaterialAliases(dmxMaterialReferences);
+            var allMaterialReferences = dmxMaterialReferences
+                .Concat(gltfOverlay.MaterialReferences)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            var authoringMaterialReferences = ExpandWallWormMaterialAliases(allMaterialReferences);
 
             var compatibilityRemaps = DiscoverMaterialRepairs(
                 rootDmxFiles,
-                dmxMaterialReferences,
+                allMaterialReferences,
                 sourceCopy.DestinationVmdlPath,
                 manifest.Hero,
                 log);
@@ -333,7 +383,7 @@ public sealed class PrepareAuthoringService
             log.AppendLine($"Managed custom VMAT final missing-source repairs: {finalTextureRepairs}");
 
             var exactCustomMaterialRemaps = ResolveExactCustomMaterialRemaps(
-                dmxMaterialReferences,
+                allMaterialReferences,
                 customMaterials.Remaps,
                 log);
 
@@ -374,7 +424,8 @@ public sealed class PrepareAuthoringService
             log.AppendLine("Material policy: preserve retail reuse, generate narrow compatibility repairs, and route unresolved Wall Worm custom slots to addon-owned VMAT files.");
             log.AppendLine("Material policy: direct materials/<name>.vmat references from Wall Worm are paired with an extensionless authoring alias, so spaces and the explicit .vmat suffix survive into the final VMDL remap.");
             log.AppendLine("Material policy: copy retail/template material parameters only when a custom VMAT is first created; later PREPARE runs preserve manual VMAT edits and synchronize only matching project-root texture sources.");
-            log.AppendLine("Render-mesh policy: preserve retail RenderMeshList/bodygroups/LODs; overlay artist DMX at the original render-mesh resource path.");
+            log.AppendLine("Render-mesh policy: preserve retail RenderMeshList/bodygroups/LODs; overlay root DMX directly, reference root FBX directly, and adapt root glTF/GLB through its extracted DMX companion.");
+            log.AppendLine("glTF policy: preserve primitive/material separation, COLOR_0 and skin streams; retain the retail skeleton and animation bindings for CSDK compilation.");
             log.AppendLine("Vertex Color policy: *_vertexcolor.fbx stays beside the artist DMX as persistent source data; repeated PREPARE, BUILD FOR TEST and ONLINE activation may reuse it safely.");
 
             manifest.SourceVmdl = sourceCopy.DestinationVmdlPath;
@@ -392,12 +443,12 @@ public sealed class PrepareAuthoringService
                 addonName,
                 addonContentRoot,
                 sourceCopy.DestinationVmdlPath,
-                replacedRenderMeshes.Count,
+                replacedRenderMeshes.Count + replacedFbxMeshes.Count + gltfOverlay.PreparedDmxCount,
                 vertexColorAppliedCount,
                 vertexColorMissingCount,
                 vertexColorSkippedCount,
                 vertexColorWarnings,
-                dmxMaterialReferences.Count,
+                allMaterialReferences.Length,
                 patchResult.ExistingMaterialRemapCount,
                 patchResult.AddedMaterialRemapCount,
                 compatibilityRemaps.Count,
@@ -651,15 +702,30 @@ public sealed class PrepareAuthoringService
         string sourceDumpRoot,
         StringBuilder log)
     {
+        var sourceRoot = sourceDumpRoot;
+        foreach (var pipelineName in new[]
+                 {
+                     ExtractedSourceLayout.GltfPipelineFolderName,
+                     ExtractedSourceLayout.LegacyGltfPipelineFolderName,
+                 })
+        {
+            var candidate = Path.Combine(sourceDumpRoot, pipelineName);
+            var normalizedCandidate = Path.GetFullPath(candidate)
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            if (Path.GetFullPath(sourceVmdlPath).StartsWith(normalizedCandidate, StringComparison.OrdinalIgnoreCase))
+            {
+                sourceRoot = candidate;
+                break;
+            }
+        }
+
         var retailDmxFiles = new List<string>();
         foreach (var renderMesh in RetailVmdlInheritance.ReadRenderMeshes(sourceVmdlPath))
         {
-            var sourceDmxPath = SafePath.ResolveUnderRoot(
-                sourceDumpRoot,
-                renderMesh.Filename.Replace('/', Path.DirectorySeparatorChar),
-                "Retail render-mesh source");
+            var sourceDmxPath = ExtractedSourceLayout.ResolveResource(sourceRoot, renderMesh.Filename);
 
-            if (File.Exists(sourceDmxPath))
+            if (sourceDmxPath is not null && File.Exists(sourceDmxPath))
             {
                 retailDmxFiles.Add(sourceDmxPath);
             }

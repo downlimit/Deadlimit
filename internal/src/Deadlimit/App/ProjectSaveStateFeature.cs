@@ -59,6 +59,8 @@ internal static class ProjectSaveStateFeature
                 return hero.Length > 0
                     || release.Length > 0
                     || scan.DmxFiles.Count > 0
+                    || scan.FbxFiles.Count > 0
+                    || scan.GltfFiles.Count > 0
                     || scan.PngTextures.Count > 0;
             }
 
@@ -69,6 +71,8 @@ internal static class ProjectSaveStateFeature
             }
 
             return !SequenceEqualIgnoreCase(scan.DmxFiles, manifest.DmxFiles)
+                || !SequenceEqualIgnoreCase(scan.FbxFiles, manifest.FbxFiles)
+                || !SequenceEqualIgnoreCase(scan.GltfFiles, manifest.GltfFiles)
                 || !SequenceEqualIgnoreCase(scan.PngTextures, manifest.PngTextures);
         }
 

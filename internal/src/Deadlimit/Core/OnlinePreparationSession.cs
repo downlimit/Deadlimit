@@ -26,6 +26,14 @@ internal sealed class OnlinePreparationSession : IDisposable
         ".tiff",
     };
 
+    private static readonly HashSet<string> ModelSourceExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".dmx",
+        ".fbx",
+        ".gltf",
+        ".glb",
+    };
+
     private static readonly Regex DmxMaterialReferenceRegex = new(
         @"materials/(?:[^\0\r\n\t""]+?\.vmat|[A-Za-z0-9_./\\-]+)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -138,16 +146,21 @@ internal sealed class OnlinePreparationSession : IDisposable
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        if (rootDmxFiles.Length == 0)
+        var hasRootModelSource = Directory.EnumerateFiles(manifest.ProjectFolder, "*", SearchOption.TopDirectoryOnly)
+            .Any(path => ModelSourceExtensions.Contains(Path.GetExtension(path))
+                && !VertexColorSidecarService.IsSidecarPath(path));
+        if (!hasRootModelSource)
         {
             throw new InvalidOperationException(
-                LocalizedText.T("ONLINE PREPARATION found no root-level DMX files in the current project.", "ОНЛАЙН-ПОДГОТОВКА не нашла DMX-файлы в корне текущего проекта."));
+                LocalizedText.T("ONLINE PREPARATION found no root-level DMX, FBX, glTF, or GLB model files in the current project.", "ОНЛАЙН-ПОДГОТОВКА не нашла DMX, FBX, glTF или GLB в корне текущего проекта."));
         }
 
-        var dmxMappings = ArtistDmxTargetResolver.Resolve(
-            sourceVmdlFullPath,
-            manifest.Hero,
-            rootDmxFiles);
+        var dmxMappings = rootDmxFiles.Length == 0
+            ? []
+            : ArtistDmxTargetResolver.Resolve(
+                sourceVmdlFullPath,
+                manifest.Hero,
+                rootDmxFiles);
 
         var dmxTargets = dmxMappings.ToDictionary(
             mapping => Path.GetFullPath(mapping.ArtistDmxPath),
@@ -399,7 +412,7 @@ internal sealed class OnlinePreparationSession : IDisposable
         if (membershipChanges.Any(path => !VertexColorSidecarService.IsSidecarPath(path)))
         {
             MarkPrepareRequired(
-                LocalizedText.T("ONLINE PREPARATION detected a new, deleted, or renamed root DMX/texture file. A normal PREPARE FOR CSDK is required to rebuild project structure and bindings.", "ОНЛАЙН-ПОДГОТОВКА обнаружила новый, удалённый или переименованный DMX/файл текстуры в корне проекта. Для перестроения структуры и привязок требуется обычный ПОДГОТОВИТЬ ДЛЯ CSDK."),
+                LocalizedText.T("ONLINE PREPARATION detected a new, deleted, or renamed root model/texture file. A normal PREPARE FOR CSDK is required to rebuild project structure and bindings.", "ОНЛАЙН-ПОДГОТОВКА обнаружила новый, удалённый или переименованный файл модели/текстуры в корне проекта. Для перестроения структуры и привязок требуется обычный ПОДГОТОВИТЬ ДЛЯ CSDK."),
                 null);
             return;
         }
@@ -535,6 +548,17 @@ internal sealed class OnlinePreparationSession : IDisposable
                 continue;
             }
 
+            if (ModelSourceExtensions.Contains(extension))
+            {
+                _sourceHashes[sourcePath] = hash;
+                MarkPrepareRequired(
+                    LocalizedText.T(
+                        $"ONLINE PREPARATION detected an updated {extension.TrimStart('.').ToUpperInvariant()} model source: {Path.GetFileName(sourcePath)}. A preserving PREPARE FOR CSDK is required to rebuild its CSDK adapter output.",
+                        $"ОНЛАЙН-ПОДГОТОВКА обнаружила обновлённый исходник модели {extension.TrimStart('.').ToUpperInvariant()}: {Path.GetFileName(sourcePath)}. Для обновления CSDK требуется сохраняющая ПОДГОТОВКА."),
+                    sourcePath);
+                continue;
+            }
+
             var textureTarget = RetailTextureOverrideService.ResolveOnlineTextureTarget(
                 _projectFolder,
                 sourcePath,
@@ -648,8 +672,9 @@ internal sealed class OnlinePreparationSession : IDisposable
     {
         var extension = Path.GetExtension(path);
         return extension.Equals(".dmx", StringComparison.OrdinalIgnoreCase)
-            || (extension.Equals(".fbx", StringComparison.OrdinalIgnoreCase)
-                && VertexColorSidecarService.IsSidecarPath(path))
+            || extension.Equals(".fbx", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".gltf", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".glb", StringComparison.OrdinalIgnoreCase)
             || TextureExtensions.Contains(extension);
     }
 

@@ -10,7 +10,16 @@ The artist-facing destination is:
 <ProjectFolder>\0source\
 ```
 
-The project root remains the artist-owned handoff area for edited DMX and texture files. Extraction must never modify those root assets.
+The project root remains the artist-owned handoff area for edited DMX, FBX, glTF/GLB and texture files. Extraction must never modify those root assets.
+
+Two generated extraction layouts coexist:
+
+```text
+0source\                         DMX pipeline and first PREPARE lookup root
+0source\glTFpipeline\            isolated glTF pipeline and PREPARE fallback root
+```
+
+DMX extraction publishes into `0source`. glTF extraction publishes a Source 2 Viewer-depth glTF package into `0source\glTFpipeline`, including skinning, vertex color, material/texture data when selected, and every animation clip exposed by the pinned ValveResourceFormat exporter. The same isolated folder also receives decompiled VMDL/DMX companion sources because Reduced CSDK cannot compile glTF directly.
 
 ## Current external evidence — 2026-08-22
 
@@ -49,11 +58,11 @@ saved Deadlimit Manager project
 → choose per-run extraction options
 → open current retail VPK(s) through ValveResourceFormat/ValvePak
 → discover a hero .vmdl_c candidate
-→ decompile its resource folder into hidden staging
+→ export glTF with complete animation/skin data or decompile the DMX resource folder into hidden staging
 → optionally resolve hero material/texture dependencies
 → optionally resolve the selected hero's ability visual dependencies
 → verify that files were actually produced
-→ publish staging as 0source
+→ publish staging as 0source or 0source\glTFpipeline
 → persist discovered retail paths/version/timestamp/count and the extraction options used
 ```
 
@@ -61,6 +70,8 @@ The extraction options are intentionally **not global Settings**. Every extracti
 
 - `Extract textures` / `Извлекать текстуры`;
 - `Extract abilities` / `Извлекать способности`.
+
+The format choice is per run. glTF meshes with several material primitives are emitted as separate named mesh objects with compact vertex buffers. This preserves the `vertcolor_pbr_basic`/eye primitive boundary in DCC importers while keeping `COLOR_0`, skin weights and the original animation payload.
 
 The action buttons keep the existing refresh semantics:
 
@@ -104,7 +115,7 @@ When `Extract textures` is off, `.vtex/.vtex_c` entries physically located insid
 
 When `Extract textures` is enabled, Deadlimit additionally follows the selected hero model/mesh dependency chain to referenced VMAT resources and then to referenced VTEX resources across the current retail VPK set.
 
-The resulting decoded texture content and the referenced materials are written into `0source` at their resource-relative paths. The last successful extraction records that textures were included. Downstream retail-texture override routing uses this project fact rather than a global application preference.
+The resulting decoded texture content and referenced materials are written under the selected pipeline root at their resource-relative paths. The last successful DMX extraction records that textures were included. Downstream retail-texture override routing follows the same ordered source roots.
 
 This is a targeted model/material/texture closure. It is not a claim that every possible Source 2 dependency type has been traversed.
 
@@ -157,7 +168,19 @@ Refresh uses a publish-after-success rule:
 5. if the final move fails, attempt to restore the previous extraction;
 6. only after a successful publish, `YES, NO BACKUP` may delete `.deadlimit\0source.previous`.
 
-The artist's root assets remain outside this transaction.
+The artist's root assets remain outside this transaction. DMX refresh preserves both the current `glTFpipeline` folder and the legacy `glTFsource` folder. New glTF refreshes use `glTFpipeline`.
+
+## PREPARE source priority
+
+PREPARE resolves extracted retail resources by logical path in this order:
+
+1. `0source` excluding its nested glTF folders;
+2. `0source\glTFpipeline`;
+3. legacy `0source\glTFsource` for existing projects.
+
+The project root remains authoritative for artist edits. Root DMX is copied onto its retail render-mesh target, root FBX is referenced directly by ModelDoc, and root glTF/GLB is adapted into the extracted companion DMX while retaining the retail skeleton and animation bindings.
+
+For a root glTF/GLB edit, keep the extracted primitive count and order. PREPARE may accept changed vertex and triangle counts inside each primitive, but it deliberately fails when primitives are added, removed, or reordered because that would make the retail render-mesh/material mapping ambiguous. Animation clips in the extracted glTF are available for DCC inspection; PREPARE retains the retail animation bindings even when a DCC exports only the edited bind-pose mesh.
 
 ## Persisted extraction facts
 

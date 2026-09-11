@@ -57,8 +57,9 @@ license and terms.
    The CSDK, DepotDownloader, and DeadlockTools actions are available with the
    same explicit, user-initiated behavior in Git, installed, and manually
    extracted copies.
-4. Create or open a Deadlimit project whose root contains the artist DMX files
-   and matching texture sources.
+4. Create or open a Deadlimit project whose root contains artist DMX, FBX,
+   glTF/GLB model files and matching texture sources. Use one model format for
+   each retail render-mesh target.
 5. Run **PREPARE FOR CSDK** once, then launch CSDK for ModelDoc and material work.
 6. Use **BUILD & TEST** to prepare current inputs, compile changed resources,
    restore required model data, package a VPK, and deploy it to the configured

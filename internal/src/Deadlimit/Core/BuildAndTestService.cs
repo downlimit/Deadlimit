@@ -427,9 +427,11 @@ public sealed class BuildAndTestService
             }
         }
 
-        var dmxDependencyChanged = changed.Concat(removed)
-            .Any(path => string.Equals(Path.GetExtension(path), ".dmx", StringComparison.OrdinalIgnoreCase));
-        if (dmxDependencyChanged)
+        var renderMeshDependencyChanged = changed.Concat(removed)
+            .Any(path =>
+                string.Equals(Path.GetExtension(path), ".dmx", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(Path.GetExtension(path), ".fbx", StringComparison.OrdinalIgnoreCase));
+        if (renderMeshDependencyChanged)
         {
             foreach (var vmdl in allDirectSources.Where(path =>
                          string.Equals(Path.GetExtension(path), ".vmdl", StringComparison.OrdinalIgnoreCase)))
@@ -933,11 +935,7 @@ public sealed class BuildAndTestService
 
     private static string? FindNmSkeletonReference(ProjectManifest manifest)
     {
-        var sourceRoot = SafePath.ResolveUnderRoot(
-            manifest.ProjectFolder,
-            manifest.SourceDumpFolderName,
-            "Project source-dump folder");
-        if (!Directory.Exists(sourceRoot))
+        if (!ExtractedSourceLayout.GetOrderedRoots(manifest).Any(Directory.Exists))
         {
             return null;
         }
@@ -946,7 +944,7 @@ public sealed class BuildAndTestService
             ? null
             : Path.GetFileName(ToSourceVmdlResourcePath(manifest.RetailMainModel));
 
-        var candidates = Directory.EnumerateFiles(sourceRoot, "*.vmdl", SearchOption.AllDirectories)
+        var candidates = ExtractedSourceLayout.EnumerateFilesByPriority(manifest, "*.vmdl")
             .OrderByDescending(path => desiredVmdlName is not null
                 && string.Equals(Path.GetFileName(path), desiredVmdlName, StringComparison.OrdinalIgnoreCase))
             .ThenBy(path => path.Length)
@@ -1151,7 +1149,7 @@ public sealed class BuildAndTestService
         {
             return 12;
         }
-        if (message.StartsWith("Overlaying artist", StringComparison.OrdinalIgnoreCase))
+        if (message.StartsWith("Overlaying", StringComparison.OrdinalIgnoreCase))
         {
             return 17;
         }

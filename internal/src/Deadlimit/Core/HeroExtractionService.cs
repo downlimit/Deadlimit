@@ -122,12 +122,12 @@ public sealed partial class HeroExtractionService
         var outputFolder = isGltf
             ? SafePath.ResolveUnderRoot(
                 sourceOutputFolder,
-                "glTFsource",
+                ExtractedSourceLayout.GltfPipelineFolderName,
                 "Project glTF source-extraction folder")
             : sourceOutputFolder;
         var previousFolder = Path.Combine(
             metadataFolder,
-            isGltf ? "glTFsource.previous" : "0source.previous");
+            isGltf ? "glTFpipeline.previous" : "0source.previous");
 
         Directory.CreateDirectory(metadataFolder);
         DeleteDirectoryIfExists(stagingFolder);
@@ -152,6 +152,19 @@ public sealed partial class HeroExtractionService
                     ExtractGltfResourceLocations(
                         vpkPaths,
                         [new ResourceLocation(candidate.VpkPath, candidate.ResourcePath)],
+                        heroStagingFolder,
+                        options.ExtractTextures,
+                        progress,
+                        cancellationToken);
+
+                    // CSDK cannot consume glTF directly. Keep the Source 2 Viewer-style
+                    // glTF export and place its decompiled ModelDoc/DMX companions in the
+                    // same isolated pipeline so PREPARE can adapt an edited root glTF.
+                    progress?.Report(new HeroExtractionProgress(
+                        $"Decompiling CSDK companion sources for {Path.GetFileName(candidate.ResourcePath)}..."));
+                    ExtractResourceFolder(
+                        candidate.VpkPath,
+                        resourceFolder,
                         heroStagingFolder,
                         options.ExtractTextures,
                         progress,
@@ -198,6 +211,14 @@ public sealed partial class HeroExtractionService
                         options.ExtractTextures,
                         progress,
                         cancellationToken);
+
+                    ExtractHeroAbilityDependencies(
+                        vpkPaths,
+                        candidate,
+                        abilitiesStagingFolder,
+                        options.ExtractTextures,
+                        progress,
+                        cancellationToken);
                 }
                 else
                 {
@@ -235,7 +256,12 @@ public sealed partial class HeroExtractionService
                 publishStagingFolder,
                 freshScopeFolders,
                 scopeState,
-                isGltf ? null : ["glTFsource"]);
+                isGltf
+                    ? null
+                    : [
+                        ExtractedSourceLayout.GltfPipelineFolderName,
+                        ExtractedSourceLayout.LegacyGltfPipelineFolderName,
+                    ]);
 
             progress?.Report(new HeroExtractionProgress("Publishing refreshed 0source..."));
             PublishRefreshedSource(
@@ -249,17 +275,27 @@ public sealed partial class HeroExtractionService
             {
                 // glTF has its own refresh lifecycle and backup. Keep the DMX backup bounded
                 // to compile-ready source instead of duplicating the isolated glTF tree.
-                DeleteDirectoryIfExists(Path.Combine(previousFolder, "glTFsource"));
+                DeleteDirectoryIfExists(Path.Combine(previousFolder, ExtractedSourceLayout.GltfPipelineFolderName));
+                DeleteDirectoryIfExists(Path.Combine(previousFolder, ExtractedSourceLayout.LegacyGltfPipelineFolderName));
             }
 
             var extractedFileCount = publication.FinalFileCount;
             if (!isGltf)
             {
-                var preservedGltfFolder = Path.Combine(outputFolder, "glTFsource");
+                var preservedGltfFolder = Path.Combine(outputFolder, ExtractedSourceLayout.GltfPipelineFolderName);
                 if (Directory.Exists(preservedGltfFolder))
                 {
                     extractedFileCount -= Directory
                         .EnumerateFiles(preservedGltfFolder, "*", SearchOption.AllDirectories)
+                        .Count();
+                }
+                var preservedLegacyGltfFolder = Path.Combine(
+                    outputFolder,
+                    ExtractedSourceLayout.LegacyGltfPipelineFolderName);
+                if (Directory.Exists(preservedLegacyGltfFolder))
+                {
+                    extractedFileCount -= Directory
+                        .EnumerateFiles(preservedLegacyGltfFolder, "*", SearchOption.AllDirectories)
                         .Count();
                 }
             }
@@ -289,7 +325,7 @@ public sealed partial class HeroExtractionService
             DeleteDirectoryIfExists(stagingFolder);
 
             var completionMessage = isGltf
-                ? $"glTF source extraction complete: {extractedFileCount} file(s) in 0source\\glTFsource."
+                ? $"glTF source extraction complete: {extractedFileCount} file(s) in 0source\\{ExtractedSourceLayout.GltfPipelineFolderName}."
                 : (options.ExtractTextures, options.ExtractAbilities) switch
             {
                 (true, true) => "Hero source, dependency textures and abilities extraction complete.",

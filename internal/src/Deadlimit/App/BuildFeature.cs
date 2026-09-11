@@ -600,7 +600,8 @@ internal static class BuildFeature
         {
             return 25;
         }
-        if (message.StartsWith("Overlaying artist", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Наложение пользовательских", StringComparison.OrdinalIgnoreCase))
+        if (message.StartsWith("Overlaying", StringComparison.OrdinalIgnoreCase)
+            || message.StartsWith("Подготовка моделей", StringComparison.OrdinalIgnoreCase))
         {
             return 45;
         }

@@ -109,7 +109,7 @@ public static class HeroExtractionScopePublisherSmoke
         var ui = Path.Combine(caseRoot, "ui");
 
         Write(output, "unknown/stale.txt", "stale");
-        Write(output, "glTFsource/models/hero/reference.gltf", "gltf");
+        Write(output, "glTFpipeline/models/hero/reference.gltf", "gltf");
         Write(hero, "models/hero/new.vmdl", "hero");
         Write(abilities, "particles/hero/new.vpcf", "ability");
         Write(ui, "panorama/images/heroes/new.png", "ui");
@@ -124,10 +124,10 @@ public static class HeroExtractionScopePublisherSmoke
                 [HeroExtractionScopePublisher.PortraitsAndUiScope] = ui,
             },
             previousState: null,
-            preservedRelativeDirectories: ["glTFsource"]);
+            preservedRelativeDirectories: ["glTFpipeline"]);
 
         AssertMissing(publish, "unknown/stale.txt", "full refresh retained an unknown stale file");
-        AssertContents(publish, "glTFsource/models/hero/reference.gltf", "gltf");
+        AssertContents(publish, "glTFpipeline/models/hero/reference.gltf", "gltf");
         AssertContents(publish, "models/hero/new.vmdl", "hero");
         AssertContents(publish, "particles/hero/new.vpcf", "ability");
         AssertContents(publish, "panorama/images/heroes/new.png", "ui");

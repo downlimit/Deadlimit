@@ -42,6 +42,9 @@ jobs:
       - name: Prepare behavior smoke
         shell: pwsh
         run: internal/tests/prepare-behavior-smoke.ps1
+      - name: glTF and FBX authoring pipeline smoke
+        shell: pwsh
+        run: internal/tests/gltf-authoring-pipeline-smoke.ps1
       - name: UI localization smoke
         shell: pwsh
         run: internal/tests/ui-localization-smoke.ps1
@@ -292,4 +295,3 @@ jobs:
           }
 
           if ($LASTEXITCODE -ne 0) { throw 'Rolling Deadlimit publication failed.' }
-
