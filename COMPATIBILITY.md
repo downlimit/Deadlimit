@@ -14,6 +14,7 @@ apply only to the snapshots recorded below and in each release note.
 | Reduced CSDK | Generation 12; `csdkcfg.exe` `0.1.0` | Snapshot-tested locally | Local binaries are fingerprinted below; the mutable upstream archive still lacks an authenticated release hash. |
 | Deadlock | Steam app `1422450`, build `24882156` | Snapshot-tested | Installed depot manifests are recorded below. |
 | ValveResourceFormat / Source 2 Viewer library | NuGet 20.0.6980 | Build dependency | Revalidate extraction after package or game-format changes. |
+| Khronos glTF importer for Max | KHRglTFImporter_2025.dli | Required for the glTF DCC pipeline | Remove the obsolete HSglTFImporter.dli and HSglTFExporter.dle. Keeping the pre-Khronos HS build beside the KHR build makes importer selection ambiguous and can produce incorrect scene results. |
 | DeadlockTools | release `v1.1.0`, product commit `ed8eda954f63dde4869b57b8976f9e873fe19187` | Snapshot-tested | Installed executable is fingerprinted below; the upstream ZIP still needs an authenticated release hash. |
 | Substance 3D Painter / Deadlimit Shade | Painter `9.1.0`; Shade research snapshot only | Experimental | No distributable Shade shader or preset exists yet. |
 | Blender | — | Unsupported / planned | No Blender pipeline exists yet. |
