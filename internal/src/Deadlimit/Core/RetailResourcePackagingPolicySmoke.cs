@@ -4,6 +4,11 @@ internal static class RetailResourcePackagingPolicySmoke
 {
     public static int Run()
     {
+        if (!UnsupportedHeaderIsNonFatal())
+        {
+            return 1;
+        }
+
         var addonFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["models/custom.vmdl_c"] = "custom-model",
@@ -57,5 +62,36 @@ internal static class RetailResourcePackagingPolicySmoke
         };
 
         return included.SetEquals(expected) ? 0 : 1;
+    }
+
+    private static bool UnsupportedHeaderIsNonFatal()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"deadlimit-packaging-{Guid.NewGuid():N}.vmdl_c");
+        const string resourcePath = "models/unsupported-header.vmdl_c";
+        var diagnostics = new List<string>();
+
+        try
+        {
+            using (var stream = File.Create(path))
+            using (var writer = new BinaryWriter(stream))
+            {
+                writer.Write((uint)64);
+                writer.Write((ushort)14);
+            }
+
+            var references = RetailResourcePackagingPolicy.ReadExternalReferencesForSmoke(
+                path,
+                resourcePath,
+                diagnostics.Add);
+
+            return references.Count == 0
+                   && diagnostics.Count == 1
+                   && diagnostics[0].Contains(resourcePath, StringComparison.OrdinalIgnoreCase)
+                   && diagnostics[0].Contains("UnexpectedMagicException", StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 }
