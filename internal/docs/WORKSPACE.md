@@ -10,9 +10,10 @@ Current expected shape:
 
 ```text
 <ProjectFolder>\
-├─ *.dmx
+├─ *.dmx / *.fbx / *.gltf / *.glb
 ├─ *.png
-├─ 0source\          # current retail hero extraction; generated on demand
+├─ 0source\          # DMX extraction and primary PREPARE lookup root
+│  └─ glTFpipeline\  # isolated glTF extraction and PREPARE fallback root
 ├─ 1scene\           # optional artist-owned folder; Deadlimit Manager does not assume or manage it
 ├─ 6temp\            # optional artist-owned folder; Deadlimit Manager does not assume or manage it
 └─ .deadlimit\       # hidden Deadlimit Manager metadata / staging / safety backup
@@ -26,9 +27,9 @@ Only the conventions that affect Deadlimit Manager are normative. Folder names s
 
 The project root is the normal handoff point from the DCC/texturing workflow.
 
-For the current Stage 1 implementation Deadlimit Manager scans only the top level of the selected project folder for:
+Deadlimit Manager scans only the top level of the selected project folder for:
 
-- `*.dmx` model files;
+- `*.dmx`, `*.fbx`, `*.gltf`, and `*.glb` model files;
 - `*.png` textures.
 
 It records relative file names in the project manifest. Other files and folders are ignored unless a later pipeline stage explicitly needs them.
@@ -51,7 +52,9 @@ Current intended/implemented behavior:
 8. if publishing the new extraction fails, Deadlimit Manager attempts to restore the previous `0source`;
 9. the selected retail model path, source VPK, ValveResourceFormat version, extraction timestamp, and extracted file count are persisted in `project.json`.
 
-`0source` is generated data. Artist-authored DMX/PNG files remain in the project root and are not touched by extraction.
+`0source` is generated data. Artist-authored model and texture files remain in the project root and are not touched by extraction. PREPARE first resolves a resource from the DMX tree in `0source`, then from `0source\glTFpipeline` when the primary resource is absent. Existing `0source\glTFsource` projects remain readable as a final compatibility fallback.
+
+Root DMX, FBX and glTF/GLB are compile inputs with different adapters. DMX is overlaid directly. FBX is a ModelDoc-supported render-mesh source. glTF/GLB is converted into the decompiled DMX companion extracted alongside the glTF package, preserving primitive boundaries, `COLOR_0`, four skin influences and the retail skeleton contract.
 
 The first extraction slice decompiles the discovered retail hero resource folder. Full transitive dependency closure outside that folder remains to be validated from real extraction output before it is generalized.
 

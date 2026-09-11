@@ -495,8 +495,8 @@ public sealed class MainForm : Form
         {
             RefreshProjectLibrary(preserveSelection: true, rescanSelected: true);
             SetStatus(UiText.T(
-                $"Saved. DMX: {_loadedManifest!.DmxFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}.",
-                $"Сохранено. DMX: {_loadedManifest!.DmxFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}."));
+                $"Saved. Models: {_loadedManifest!.DmxFiles.Count + _loadedManifest.FbxFiles.Count + _loadedManifest.GltfFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}.",
+                $"Сохранено. Моделей: {_loadedManifest!.DmxFiles.Count + _loadedManifest.FbxFiles.Count + _loadedManifest.GltfFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}."));
         }
     }
 
@@ -557,6 +557,8 @@ public sealed class MainForm : Form
                 ReleaseTarget = releaseTarget,
                 SourceDumpFolderName = existing?.SourceDumpFolderName ?? "0source",
                 DmxFiles = [.. scan.DmxFiles],
+                FbxFiles = [.. scan.FbxFiles],
+                GltfFiles = [.. scan.GltfFiles],
                 PngTextures = [.. scan.PngTextures],
                 CreatedUtc = existing?.CreatedUtc ?? DateTimeOffset.UtcNow,
                 RetailMainModel = existing?.RetailMainModel,
@@ -597,15 +599,17 @@ public sealed class MainForm : Form
         }
 
         var outputFolder = Path.Combine(_loadedManifest.ProjectFolder, _loadedManifest.SourceDumpFolderName);
-        var gltfOutputFolder = Path.Combine(outputFolder, "glTFsource");
+        var gltfOutputFolder = Path.Combine(outputFolder, ExtractedSourceLayout.GltfPipelineFolderName);
+        var legacyGltfOutputFolder = Path.Combine(outputFolder, ExtractedSourceLayout.LegacyGltfPipelineFolderName);
         var hasExistingDmxSource = Directory.Exists(outputFolder)
             && Directory.EnumerateFileSystemEntries(outputFolder)
-                .Any(path => !string.Equals(
+                .Any(path => !new[] { gltfOutputFolder, legacyGltfOutputFolder }.Any(gltfFolder => string.Equals(
                     Path.GetFullPath(path),
-                    Path.GetFullPath(gltfOutputFolder),
-                    StringComparison.OrdinalIgnoreCase));
-        var hasExistingGltfSource = Directory.Exists(gltfOutputFolder)
-            && Directory.EnumerateFileSystemEntries(gltfOutputFolder).Any();
+                    Path.GetFullPath(gltfFolder),
+                    StringComparison.OrdinalIgnoreCase)));
+        var hasExistingGltfSource = new[] { gltfOutputFolder, legacyGltfOutputFolder }
+            .Any(folder => Directory.Exists(folder)
+                && Directory.EnumerateFileSystemEntries(folder).Any());
         var dialogResult = HeroExtractionOptionsDialog.Show(
             this,
             hasExistingDmxSource,
@@ -679,7 +683,7 @@ public sealed class MainForm : Form
         try
         {
             var backupFolderName = format == HeroExtractionFormat.Gltf
-                ? "glTFsource.previous"
+                ? "glTFpipeline.previous"
                 : "0source.previous";
             var previousFolder = Path.Combine(
                 ProjectStore.GetMetadataFolder(projectFolder),
@@ -717,7 +721,7 @@ public sealed class MainForm : Form
 
         if (!Directory.Exists(folder))
         {
-            _dmxCountLabel.Text = "DMX: 0";
+            _dmxCountLabel.Text = UiText.T("MODELS: 0", "МОДЕЛИ: 0");
             _pngCountLabel.Text = "PNG: 0";
             _sourceFolderLabel.Text = UiText.T(
                 "Hero source destination: 0source (created on demand by hero extraction).",
@@ -728,7 +732,9 @@ public sealed class MainForm : Form
         try
         {
             var scan = ProjectScanner.Scan(folder);
-            _dmxCountLabel.Text = $"DMX: {scan.DmxFiles.Count}";
+            _dmxCountLabel.Text = UiText.T(
+                $"MODELS: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}",
+                $"МОДЕЛИ: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}");
             _pngCountLabel.Text = $"PNG: {scan.PngTextures.Count}";
 
             var sourcePath = Path.Combine(folder, _loadedManifest?.SourceDumpFolderName ?? "0source");
@@ -750,6 +756,16 @@ public sealed class MainForm : Form
                 _assetList.Items.Add($"[DMX] {file}");
             }
 
+            foreach (var file in scan.FbxFiles)
+            {
+                _assetList.Items.Add($"[FBX] {file}");
+            }
+
+            foreach (var file in scan.GltfFiles)
+            {
+                _assetList.Items.Add($"[{Path.GetExtension(file).TrimStart('.').ToUpperInvariant()}] {file}");
+            }
+
             foreach (var file in scan.PngTextures)
             {
                 _assetList.Items.Add($"[PNG] {file}");
@@ -758,8 +774,8 @@ public sealed class MainForm : Form
             if (showStatus)
             {
                 SetStatus(UiText.T(
-                    $"Scan complete. DMX: {scan.DmxFiles.Count}; PNG: {scan.PngTextures.Count}.",
-                    $"Сканирование завершено. DMX: {scan.DmxFiles.Count}; PNG: {scan.PngTextures.Count}."));
+                    $"Scan complete. Models: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}; PNG: {scan.PngTextures.Count}.",
+                    $"Сканирование завершено. Моделей: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}; PNG: {scan.PngTextures.Count}."));
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -776,7 +792,7 @@ public sealed class MainForm : Form
         _heroText.Clear();
         _releaseTargetText.Clear();
         _assetList.Items.Clear();
-        _dmxCountLabel.Text = "DMX: 0";
+        _dmxCountLabel.Text = UiText.T("MODELS: 0", "МОДЕЛИ: 0");
         _pngCountLabel.Text = "PNG: 0";
         _sourceFolderLabel.Text = UiText.T(
             "Select a project folder from the library.",

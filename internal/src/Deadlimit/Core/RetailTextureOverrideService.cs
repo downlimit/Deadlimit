@@ -36,38 +36,59 @@ public static class RetailTextureOverrideService
         }
 
         var targets = new Dictionary<string, RetailTextureTarget>(StringComparer.OrdinalIgnoreCase);
-        foreach (var vmatPath in Directory.EnumerateFiles(extractedSourceRoot, "*.vmat", SearchOption.AllDirectories)
-                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        var roots = ExtractedSourceLayout.GetOrderedRoots(extractedSourceRoot);
+        for (var rootIndex = 0; rootIndex < roots.Count; rootIndex++)
         {
-            var materialResourcePath = NormalizeResourcePath(Path.GetRelativePath(extractedSourceRoot, vmatPath));
-            var text = File.ReadAllText(vmatPath);
-            foreach (Match match in VmatTextureSourceRegex.Matches(text))
+            var root = roots[rootIndex];
+            if (!Directory.Exists(root))
             {
-                var resourcePath = NormalizeResourcePath(match.Groups["path"].Value);
-                if (!IsRetailTextureSourceReference(resourcePath))
-                {
-                    continue;
-                }
+                continue;
+            }
 
-                targets.TryAdd(resourcePath, new RetailTextureTarget(resourcePath, materialResourcePath));
+            foreach (var vmatPath in Directory.EnumerateFiles(root, "*.vmat", SearchOption.AllDirectories)
+                         .Where(path => rootIndex != 0 || !ExtractedSourceLayout.IsInsideNestedPipeline(root, path))
+                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                var materialResourcePath = NormalizeResourcePath(Path.GetRelativePath(root, vmatPath));
+                var text = File.ReadAllText(vmatPath);
+                foreach (Match match in VmatTextureSourceRegex.Matches(text))
+                {
+                    var resourcePath = NormalizeResourcePath(match.Groups["path"].Value);
+                    if (!IsRetailTextureSourceReference(resourcePath))
+                    {
+                        continue;
+                    }
+
+                    targets.TryAdd(resourcePath, new RetailTextureTarget(resourcePath, materialResourcePath));
+                }
             }
         }
 
         // The extracted source tree is provenance on its own. Portraits, minimap icons,
         // top-bar images and other UI textures may never be referenced by a VMAT, so they
         // must still be eligible for an exact project-root override at their retail path.
-        foreach (var sourceImage in Directory.EnumerateFiles(extractedSourceRoot, "*", SearchOption.AllDirectories)
-                     .Where(path => ArtistTextureExtensions.Contains(Path.GetExtension(path)))
-                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        for (var rootIndex = 0; rootIndex < roots.Count; rootIndex++)
         {
-            var resourcePath = NormalizeResourcePath(Path.GetRelativePath(extractedSourceRoot, sourceImage));
-            if (targets.TryGetValue(resourcePath, out var existing))
+            var root = roots[rootIndex];
+            if (!Directory.Exists(root))
             {
-                targets[resourcePath] = existing with { HasExtractedSourceFile = true };
+                continue;
             }
-            else
+
+            foreach (var sourceImage in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+                         .Where(path => rootIndex != 0 || !ExtractedSourceLayout.IsInsideNestedPipeline(root, path))
+                         .Where(path => ArtistTextureExtensions.Contains(Path.GetExtension(path)))
+                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
             {
-                targets.Add(resourcePath, new RetailTextureTarget(resourcePath, string.Empty, HasExtractedSourceFile: true));
+                var resourcePath = NormalizeResourcePath(Path.GetRelativePath(root, sourceImage));
+                if (targets.TryGetValue(resourcePath, out var existing))
+                {
+                    targets[resourcePath] = existing with { HasExtractedSourceFile = true };
+                }
+                else
+                {
+                    targets.Add(resourcePath, new RetailTextureTarget(resourcePath, string.Empty, HasExtractedSourceFile: true));
+                }
             }
         }
 

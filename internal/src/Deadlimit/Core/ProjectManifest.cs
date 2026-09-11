@@ -39,6 +39,8 @@ public sealed class ProjectManifest
 
     public string SourceDumpFolderName { get; set; } = "0source";
     public List<string> DmxFiles { get; set; } = [];
+    public List<string> FbxFiles { get; set; } = [];
+    public List<string> GltfFiles { get; set; } = [];
     public List<string> PngTextures { get; set; } = [];
 
     public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.UtcNow;

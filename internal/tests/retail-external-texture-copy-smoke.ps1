@@ -41,6 +41,15 @@ Layer0
     if ($bytes.Length -ne 4 -or $bytes[0] -ne 1 -or $bytes[3] -ne 4) {
         throw 'Copied cross-hero texture dependency content does not match source.'
     }
+
+    Remove-Item -LiteralPath $expected -Force
+    $gltfFallback = Join-Path $sourceRoot 'glTFpipeline\models\heroes_wip\bookworm\materials\outline_layout.png'
+    New-Item -ItemType Directory -Path (Split-Path $gltfFallback) -Force | Out-Null
+    Move-Item -LiteralPath $externalTexture -Destination $gltfFallback
+    $fallbackCount = [int]$copy.Invoke($null, $invokeArgs)
+    if ($fallbackCount -ne 1 -or -not (Test-Path -LiteralPath $expected)) {
+        throw 'A missing primary retail texture dependency did not fall back to 0source\glTFpipeline.'
+    }
 }
 finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue

@@ -158,8 +158,8 @@ Layer0
         'Copy materials to CSDK for editing',
         'Copy ability FX to CSDK for editing',
         'DMX — CSDK build source',
-        'glTF — DCC source in 0source\\glTFsource',
-        'glTF files, buffers and texture data are refreshed only inside 0source\\glTFsource',
+        'glTF — DCC source in 0source\\glTFpipeline',
+        'PREPARE accepts an edited DMX, FBX, glTF or GLB from the project root',
         'copyAbilityFxCheck.Enabled = false',
         'Отключено для Reduced CSDK 12',
         'для редактирования самого графа частиц нужен совместимый более новый CSDK',
@@ -184,8 +184,9 @@ Layer0
         'is disabled for Reduced CSDK 12 because current Deadlock VPCF sources may use an incompatible newer format',
         'isGltf ? "gltf-source-extract-staging" : "source-extract-staging"',
         'isGltf ? "gltf-source-extraction-state.json" : "source-extraction-state.json"',
-        'isGltf ? "glTFsource.previous" : "0source.previous"',
-        'isGltf ? null : ["glTFsource"]',
+        'isGltf ? "glTFpipeline.previous" : "0source.previous"',
+        'ExtractedSourceLayout.GltfPipelineFolderName',
+        'ExtractedSourceLayout.LegacyGltfPipelineFolderName',
         'new CsdkEditableAssetCopyService(_paths).Copy('
     )) {
         $normalizedRequired = $required.Replace('`n', "`n")
@@ -199,11 +200,12 @@ Layer0
         'new GltfModelExporter(fileLoader)',
         'ProgressReporter = new Progress<string>',
         'ExportAnimations = true',
-        'exporter.AnimationFilter.Add(SkeletonOnlyAnimationFilter)',
         'ExportMaterials = includeTextures',
         'SatelliteImages = true',
+        'ExportExtras = false',
         'exporter.Export(resource, outputPath, cancellationToken)',
         'NormalizeMixedPrimitiveVertexColors(outputPath)',
+        'SplitGltfPrimitivesForDcc(outputPath)',
         'Array.Fill(whiteColors, byte.MaxValue)',
         'ValidateGltfSkinningContract(outputPath)'
     )) {

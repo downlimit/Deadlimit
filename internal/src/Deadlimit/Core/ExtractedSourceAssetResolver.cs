@@ -2,11 +2,13 @@ namespace Deadlimit.Core;
 
 internal sealed record ExtractedSourceAssetMatch(
     string SourcePath,
-    string ResourcePath);
+    string ResourcePath,
+    string SourceRoot);
 
 internal sealed record ExtractedDmxTarget(
     string ResourcePath,
-    IReadOnlyList<string> OwnerVmdlSourcePaths);
+    IReadOnlyList<string> OwnerVmdlSourcePaths,
+    string SourceRoot);
 
 internal static class ExtractedSourceAssetResolver
 {
@@ -44,15 +46,32 @@ internal static class ExtractedSourceAssetResolver
             return null;
         }
 
-        sourceRoot = Path.GetFullPath(sourceRoot);
         var fileName = Path.GetFileName(artistPath);
-        var matches = Directory.EnumerateFiles(sourceRoot, fileName, SearchOption.AllDirectories)
-            .Where(path => string.Equals(Path.GetFileName(path), fileName, StringComparison.OrdinalIgnoreCase))
-            .Select(path => new ExtractedSourceAssetMatch(
-                Path.GetFullPath(path),
-                NormalizeResourcePath(Path.GetRelativePath(sourceRoot, path))))
-            .OrderBy(match => match.ResourcePath, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        sourceRoot = Path.GetFullPath(sourceRoot);
+        var searchRoots = new[]
+        {
+            sourceRoot,
+            Path.Combine(sourceRoot, ExtractedSourceLayout.GltfPipelineFolderName),
+            Path.Combine(sourceRoot, ExtractedSourceLayout.LegacyGltfPipelineFolderName),
+        };
+        ExtractedSourceAssetMatch[] matches = [];
+        for (var index = 0; index < searchRoots.Length && matches.Length == 0; index++)
+        {
+            var currentRoot = searchRoots[index];
+            if (!Directory.Exists(currentRoot))
+            {
+                continue;
+            }
+            matches = Directory.EnumerateFiles(currentRoot, fileName, SearchOption.AllDirectories)
+                .Where(path => index != 0 || !ExtractedSourceLayout.IsInsideNestedPipeline(sourceRoot, path))
+                .Where(path => string.Equals(Path.GetFileName(path), fileName, StringComparison.OrdinalIgnoreCase))
+                .Select(path => new ExtractedSourceAssetMatch(
+                    Path.GetFullPath(path),
+                    NormalizeResourcePath(Path.GetRelativePath(currentRoot, path)),
+                    Path.GetFullPath(currentRoot)))
+                .OrderBy(match => match.ResourcePath, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
 
         if (matches.Length == 0)
         {
@@ -89,7 +108,7 @@ internal static class ExtractedSourceAssetResolver
             return null;
         }
 
-        var owners = FindOwningVmdls(sourceRoot, sourceMatch.ResourcePath);
+        var owners = FindOwningVmdls(sourceMatch.SourceRoot, sourceMatch.ResourcePath);
         if (owners.Count == 0)
         {
             throw new InvalidOperationException(
@@ -97,7 +116,7 @@ internal static class ExtractedSourceAssetResolver
                 "Deadlimit will not stage an orphan DMX that cannot be compiled into a model.");
         }
 
-        return new ExtractedDmxTarget(sourceMatch.ResourcePath, owners);
+        return new ExtractedDmxTarget(sourceMatch.ResourcePath, owners, sourceMatch.SourceRoot);
     }
 
     internal static IReadOnlyList<string> FindOwningVmdls(

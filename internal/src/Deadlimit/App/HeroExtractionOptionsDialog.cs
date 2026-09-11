@@ -80,8 +80,8 @@ internal static class HeroExtractionOptionsDialog
         var gltfFormatRadio = new RadioButton
         {
             Text = UiText.T(
-                "glTF — DCC source in 0source\\glTFsource",
-                "glTF — DCC-исходники в 0source\\glTFsource"),
+                "glTF — DCC source in 0source\\glTFpipeline",
+                "glTF — DCC-исходники в 0source\\glTFpipeline"),
             AutoSize = true,
             Margin = new Padding(0, 3, 0, 5),
         };
@@ -232,8 +232,8 @@ internal static class HeroExtractionOptionsDialog
 
             formatNote.Text = isGltf
                 ? UiText.T(
-                    "glTF files, buffers and texture data are refreshed only inside 0source\\glTFsource. PREPARE and BUILD continue using the DMX source tree in 0source.",
-                    "Файлы glTF, буферы и данные текстур обновляются только внутри 0source\\glTFsource. ПОДГОТОВКА и СБОРКА продолжают использовать DMX-дерево в 0source.")
+                    "glTF files, animation clips, buffers, textures and CSDK companion sources are refreshed inside 0source\\glTFpipeline. PREPARE accepts an edited DMX, FBX, glTF or GLB from the project root.",
+                    "Файлы glTF, анимационные клипы, буферы, текстуры и вспомогательные исходники CSDK обновляются в 0source\\glTFpipeline. ПОДГОТОВКА принимает изменённый DMX, FBX, glTF или GLB из корня проекта.")
                 : UiText.T(
                     "DMX keeps the current compile-ready extraction layout directly in 0source.",
                     "DMX сохраняет текущую готовую к компиляции структуру непосредственно в 0source.");
