@@ -335,3 +335,157 @@ ordinary opaque clothing and painted accessories. SSS, eye and hair branches
 are intentionally deferred; wing handling is limited to the required culling
 behavior until evidence demands a separate path. Milestone B and the passed
 metal branch are the stable base underneath that work.
+
+## Reduced CSDK runtime correction — 2026-09-09
+
+A RenderDoc capture of the visible Ivy Asset Browser draw established the
+Reduced CSDK runtime values that the preceding Painter calibration lacked:
+two diffuse steps, step sharpness `0.9`, diffuse PBR blend `0.25`, direct wrap
+`0.8`, normalization `0.625`, diffuse range `[-1, 1]`, DfAO range `[0.4, 1]`
+and NPR light weights `[0.42, 0.42, 0.126]`. The prior Ivy values `0.18`,
+`0.72`, `0.48` and `0.85` are retired.
+
+The profile records these as **confirmed by pipeline/runtime** with the source
+`reduced-csdk-asset-browser`. They are not current retail runtime values;
+current retail and Reduced CSDK shader identities differ. Painter's probe
+colors, neutral screen DfAO substitute, and the numeric direct-specular/rim
+controls retain their existing calibrated/unresolved classifications. The
+same draw confirms `g_bNPRDirectSpecular = 0` and `g_bNPRRimLighting = 0`;
+ordinary Default Shaded must therefore omit both calibrated lobes. The
+next visual gate must use the corrected profile before further cloth or paint
+calibration.
+
+## Reduced CSDK exposure-control reconstruction — 2026-09-09
+
+The corrected profile was applied in a fresh Painter process and the real
+viewport was captured through Computer Use. Direct diffuse, direct specular,
+rim and the NPR lighting composite remain independently selectable. The
+recovered bounce exposure control removed the preceding near-black midtone
+failure and produced a stable, visibly stepped Shaded result on the same Ivy
+camera. The proof frames are local temporary evidence under
+`.scratch/visual-proof/runtime-exposure` and stay outside commits.
+
+This is a visual PASS for the exposure-control slice. Full game parity remains
+open: the Source 2 draw uses bound directional/local-probe resources that are
+only partly reconstructed in Painter.
+
+## Runtime environment and duplicate-lobe correction — 2026-09-09
+
+The captured pixel draw binds `envmaparray.vtex` at PS texture slot 12. Its
+runtime descriptor is a 256x256 cubemap array with seven mips and 2040 faces
+(340 cubes). Cube zero was exported from the capture and converted to a
+lat-long HDR solely as local proof evidence. In the fixed Painter scene,
+rotation 145 produces the same broad industrial-panel reflection structure on
+Ivy's weapon and copper pieces; Direct Diffuse, Direct Specular, Rim, NPR
+Composite and Painter PBR were captured independently under
+`.scratch/visual-proof/runtime-probe`.
+
+Those frames exposed a composition error rather than a tuning problem. The
+Ivy profile still forced its calibrated direct-specular and rim branches on
+even though the captured Default draw disables both runtime flags. This added
+a second view/light-vector highlight over the cubemap response. The profile
+now follows the captured flags: environment specular remains active, while
+direct specular and NPR rim contribute zero in ordinary Default Shaded. Their
+diagnostic implementations remain available for future runtime states where
+the corresponding flags are enabled. The captured HDR remains temporary and
+must not be committed; a reproducible local extraction path is still required
+before environment setup can be claimed complete for arbitrary projects.
+
+## Six-direction bounce reconstruction — 2026-09-09, pending visual gate
+
+The local implementation now evaluates the six signed, squared-direction
+probe coefficients exported from Reduced CSDK capture event 791. Exposure
+control applies to each coefficient before ordinary and NPR probe evaluation;
+captured cb1[18].x is 1. The surface-to-camera vector contributes positively
+to the NPR direction. The side probe uses the camera vector's horizontal
+projection (instructions 934-947), independently of the weighted NPR direction.
+DfAO remapping follows instructions 906-909: lerp(minimum, 1,
+saturate(screenDfAO / scale)). Transmission uses 1 minus the quantized coordinate.
+
+The six samples are capture-derived RGBE-export measurements, with export
+precision limits. Freezing a single origin sample over the character is a
+calibrated spatial approximation. This does not reconstruct the full volume,
+establish current-retail parity, or justify a final visual PASS. The captured
+sun radiance is 1.6 per RGB channel; the secondary preview fill is disabled
+for this controlled slice, without claiming all runtime light lists are empty.
+
+Visual follow-up: Computer Use verified neutral NPR Composite, material Shaded,
+and isolated raw environment specular. Frames 12 and 13 under the local
+runtime-probe proof directory show restored diffuse brightness and copper
+response after retiring the old environment strength 0.18 and roughness bias
+0.12 (neutral defaults are 1 and 0). Painter was left in Material / Retail,
+Shaded. Existing camera, environment and outline were preserved. Static profile,
+Apply and retail-texture contracts and git diff --check passed. No commit was
+made: this is visible progress on the reconstruction slice, not full parity.
+Next unresolved boundary is Source 2 environment BRDF lookup/multiple scattering
+(captured instructions 834-862) and final display transform. Do not resume
+arbitrary lobe calibration or repeat environment-rotation tests without new evidence.
+
+The earlier `light_test_default` static cubemap recipe is removed from Apply.
+Its decoded image is nearly uniform and does not match the cubemap array bound
+to the captured Ivy draw. Apply now preserves the project's selected
+environment until the runtime-array extraction path is reproducible.
+
+## Environment BRDF evidence — 2026-09-12
+
+See `ENVIRONMENT_BRDF_RUNTIME.md`: captured normalization and multiple-scattering
+flags are both enabled. The real BRDF LUT and all seven mips of selected cube
+zero now have a repeatable offline export tool. Five numerical tests and 25
+captured-LUT sample checks pass. This advances decomposition; the installed
+Painter shader stays at the preceding visually inspected version. Next replace
+the environment integration as a complete path using those inputs. No additional
+artistic coefficients, viewport PASS, or commit were introduced in this step.
+
+### 2026-09-13 integration status
+
+The optional captured-environment shader branch and the user-facing bundle
+loader are implemented and installed. Native mip packing, LUT quantization,
+GLSL 330 environment-block compilation, and binding persistence across Apply
+were checked. See `ENVIRONMENT_BRDF_RUNTIME.md` for explicit approximations.
+Visual gate is pending because Computer Use returned Dota rather than the
+selected Painter viewport. Captured mode is disabled in the open project;
+Material / Retail and Shaded are restored, and the experimental SPP is not saved.
+Do not claim visual progress from this iteration or commit before the gate.
+
+### 2026-09-13 subsequent real viewport check
+
+Painter became capturable after user moved it to another monitor and the
+window was activated. Neutral Composite rendered, but isolated captured specular
+was black and metallic regions failed. Debug 24 proved LUT sampling was nonzero;
+debug 25 compared a known nonzero atlas texel at top-down V and flipped V.
+Only flipped V produced the expected grey. Atlas sampling now flips V from image
+row coordinates to Painter texture coordinates; the LUT uses the same image
+coordinate convention (LUT orientation still needs a numeric GPU readback).
+
+The isolated neutral specular now shows reflections. Material Shaded was captured
+in `.scratch/visual-proof/runtime-probe/14-captured-brdf-v-corrected.jpg`: weapon
+and copper response returned, eyes and outline remain visible. Captured mode
+is enabled in the open project, Material / Retail and Shaded selected. Computer
+Use was reset. This is a visual pass for atlas connectivity only; full CSDK
+parity remains unproved and the documented BRDF approximations still apply.
+No commit. Project was not saved over the existing SPP during this check.
+
+### 2026-09-13 pixel-trace reference and dominant reflection
+
+Added reproducible offline pixel-trace export and independent CPU comparison for
+event 791, pixels (660,290) and (580,200). Dominant reflection, box projection,
+post-projection roughness blend, LUT coordinates, radiance normalization and
+coupled multiple scattering match the RenderDoc traces within 8.64e-8 absolute
+error. Captured DDS bilinear LUT samples, rounded to half, match both traced
+samples exactly. See `ENVIRONMENT_BRDF_RUNTIME.md` for scope and commands.
+
+Transferred verified dominant reflection into the captured GLSL path. No fitted
+values added. The latest source change is not installed; the open Painter SPP
+and prior visual status are unchanged. No commit or full visual PASS.
+
+Next technical boundary: establish model-to-captured-world coordinates before
+transferring box projection; confirm probe selection/weights, specular occlusion
+and final display transform. Preserve distinctions between Reduced CSDK evidence
+and unconfirmed current retail equivalence. Do not label the decomposition complete.
+
+### User-authorized checkpoint — 2026-09-13
+
+The user explicitly requested committing the current progress before continuing.
+This checkpoint preserves source, tests and documentation despite the pending
+full visual gate. It is not a release or an accepted Deadlock viewport match.
+Local captures, decoded assets, SPP, scratch data and user worktrees are excluded.

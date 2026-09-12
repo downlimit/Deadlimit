@@ -589,6 +589,56 @@ must not be described as retail runtime values. The recovered equations and
 buffer field identities are static evidence; a matching runtime draw is still
 required to replace the calibrated values.
 
+## Reduced CSDK runtime constants capture — 2026-09-09
+
+A RenderDoc D3D11 capture of the Reduced CSDK Asset Browser Ivy preview now
+supersedes the earlier statement that no CSDK runtime evidence existed. The
+capture contains the visible Ivy draw (event 791, 75,651 indices) and its
+pixel-stage global constant buffer. Matching the buffer packing against the
+decompiled Reduced CSDK `pbr_vulkan_60_ps.vcs` NPR global layout gives:
+
+| NPR global | Captured value | Classification |
+| --- | ---: | --- |
+| bounce enabled | `1` | confirmed by pipeline/runtime (Reduced CSDK) |
+| diffuse steps | `2` | confirmed by pipeline/runtime (Reduced CSDK) |
+| diffuse step sharpness | `0.9` | confirmed by pipeline/runtime (Reduced CSDK) |
+| diffuse range | `[-1, 1]` | confirmed by pipeline/runtime (Reduced CSDK) |
+| DfAO influence range | `[0.4, 1]` | confirmed by pipeline/runtime (Reduced CSDK) |
+| diffuse PBR blend | `0.25` | confirmed by pipeline/runtime (Reduced CSDK) |
+| NPR light weights | `[0.42, 0.42, 0.126]` | confirmed by pipeline/runtime (Reduced CSDK) |
+| direct diffuse enabled | `1` | confirmed by pipeline/runtime (Reduced CSDK) |
+| direct-light wrap | `0.8` | confirmed by pipeline/runtime (Reduced CSDK) |
+| inverse direct-light normalization | `0.625` | confirmed by pipeline/runtime (Reduced CSDK) |
+| exposure control enabled | `1` | confirmed by pipeline/runtime (Reduced CSDK) |
+| exposure targets | `[1, 0.5, 0.1]` | confirmed by pipeline/runtime (Reduced CSDK) |
+| exposure-control PBR blend | `0.5` | confirmed by pipeline/runtime (Reduced CSDK) |
+| direct specular enabled | `0` | confirmed by pipeline/runtime (Reduced CSDK) |
+| rim enabled in this preview | `0` | confirmed by pipeline/runtime (Reduced CSDK) |
+
+These values are not current retail runtime values. The Reduced CSDK shader
+payload and current retail shader payload have different identities. Painter's
+neutral `screenDfAO = 1`, six-directional probe colors, direct-specular
+controls, rim controls, and preview light colors remain calibrated
+approximations or blocked where noted. The profile uses the captured diffuse
+and bounce constants while keeping that provenance boundary explicit.
+
+The two disabled flags are composition-critical. In the deterministic Default
+preview, ordinary Shaded must not add the calibrated direct-specular or rim
+lobes over the environment response. Their equations stay available for
+diagnostics and for future captures where the corresponding runtime flags are
+enabled; the red silhouette visible in this preview is supplied by the outline
+pass, not evidence that the NPR rim flag is active.
+
+The Painter bounce path now includes the recovered exposure-control topology.
+For each probe color it preserves linear-RGB chromaticity, fits luminance to
+the captured up/side/down target (`1.0`, `0.5`, `0.1` with fixed proof-scene
+tone-map scalar `1`), then blends the fitted and original radiance by the
+captured `0.5` control. The quantized bounce coordinate interpolates down to
+horizon to up and is mixed toward the ordinary probe by diffuse PBR blend
+`0.25`. The algorithm and scalar controls are confirmed by static/runtime
+evidence respectively. Painter still supplies one calibrated probe color in
+place of Source 2's six bound probe coefficients.
+
 ## Default tool-preview rig boundary
 
 The installed retail client advanced to build `25173285` during this work. A
@@ -618,3 +668,16 @@ Painter `uniform_main_light`. Those converted directions and normalized
 intensities are **calibrated approximations**. Both lights use the same
 recovered direct-diffuse/direct-specular equations; Painter HDRI specular stays
 excluded from the Deadlimit shaded output.
+# Reduced CSDK probe transfer follow-up (2026-09-09)
+
+The six-direction bounce now uses capture-derived coefficients with per-axis
+exposure control, signed squared weights, camera-horizontal side sampling,
+and the corrected surface-to-camera sign in NPR direction construction.
+The origin sample is frozen over the model (calibrated spatial approximation);
+RGBE export precision limits apply. Captured exposure divisor cb1[18].x = 1.
+
+Environment specular remains Painter's BRDF integration substitute. Its old
+0.18 strength and +0.12 roughness adjustment are retired; neutral defaults
+1 and 0 pass through the substitute without these extra artistic corrections.
+These defaults are implementation identities, not extracted retail constants.
+Source 2's BRDF lookup and multiple-scattering branch remain unresolved here.

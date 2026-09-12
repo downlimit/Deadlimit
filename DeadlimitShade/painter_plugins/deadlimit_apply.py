@@ -9,6 +9,7 @@ from pathlib import Path
 from PySide2 import QtCore, QtWidgets
 
 import substance_painter.js
+import substance_painter.display
 import substance_painter.project
 import substance_painter.resource
 import substance_painter.ui
@@ -91,6 +92,18 @@ def _import_or_reuse_project_texture(path, name):
         substance_painter.resource.Usage.TEXTURE,
         name=name,
         group="Deadlimit Retail Preview")
+
+
+def _import_or_reuse_project_environment(path, name):
+    identifier = substance_painter.resource.ResourceID.from_project(name)
+    existing = substance_painter.resource.Resource.retrieve(identifier)
+    if existing:
+        return existing[0]
+    return substance_painter.resource.import_project_resource(
+        str(path),
+        substance_painter.resource.Usage.ENVIRONMENT,
+        name=name,
+        group="Deadlimit Retail Environments")
 
 
 def _import_or_reuse_project_shader(path, role):
@@ -249,6 +262,8 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self._retail_outputs = []
         self._retail_bindings = {}
         self._retail_current = None
+        self._environment_output = None
+        self._environment_recipe = None
         self._phase = ""
         self._elapsed = QtCore.QElapsedTimer()
         self._status_timer = QtCore.QTimer(self)
@@ -302,6 +317,8 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self.apply_button.setObjectName("ApplyDeadlimit")
         self.apply_button.setMinimumHeight(36)
         self.apply_button.clicked.connect(self.apply_deadlimit)
+        self.environment_button = QtWidgets.QPushButton("Load CSDK environment bundle…", self)
+        self.environment_button.clicked.connect(self._load_captured_environment)
         self.progress = QtWidgets.QProgressBar(self)
         self.progress.setRange(0, 0)
         self.progress.setVisible(False)
@@ -319,6 +336,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         layout.addWidget(self.instructions_label)
         layout.addLayout(form)
         layout.addWidget(self.apply_button)
+        layout.addWidget(self.environment_button)
         layout.addWidget(self.progress)
         layout.addWidget(self.status_label)
         layout.addStretch(1)
@@ -327,6 +345,66 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
     def _update_preview_button(self, _index=None):
         character = self.character_combo.currentText() or "character"
         self.apply_button.setText("Preview {} as Deadlock".format(character))
+
+    def _load_captured_environment(self):
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Load prepared CSDK environment", "", "Environment bundle (environment.json)")
+        if path:
+            try:
+                self.load_captured_environment(path)
+                self.status_label.setText("Captured CSDK environment loaded · single-probe proof mode")
+            except Exception as exc:
+                self.status_label.setText("Environment load failed: {}".format(exc))
+
+    def load_captured_environment(self, path):
+        if not substance_painter.project.is_open():
+            raise RuntimeError("Open a project first")
+        manifest_path = Path(path).resolve()
+        bundle = json.loads(manifest_path.read_text())
+        if bundle.get("version") != 1 or bundle.get("source") != "reduced-csdk-event-791":
+            raise RuntimeError("Unsupported capture profile")
+        parameters = {"dl_captured_environment": True}
+        for key, field in (("atlas", "dl_captured_atlas"), ("lut", "dl_captured_brdf")):
+            texture_path = (manifest_path.parent / bundle[key]).resolve()
+            if texture_path.parent != manifest_path.parent:
+                raise RuntimeError("Bundle texture must be beside environment.json")
+            digest = hashlib.sha256(texture_path.read_bytes()).hexdigest()[:12]
+            resource = _import_or_reuse_project_texture(texture_path, "Deadlimit_Captured_{}_{}".format(key, digest))
+            parameters[field] = resource.identifier().url()
+        self._bind_captured_environment(parameters)
+
+    def _bind_captured_environment(self, parameters):
+        if not parameters:
+            return
+        script = r'''(function(parameters) {
+          var count = 0;
+          alg.shaders.instances().forEach(function(instance) {
+            if (!/^Deadlimit (Hero|Retail)/.test(instance.label)) return;
+            // Painter can retain unused instances from previous shader hashes.
+            if (!Object.prototype.hasOwnProperty.call(alg.shaders.parameters(instance.id),
+              "dl_captured_environment")) return;
+            alg.shaders.setParameters(instance.id, parameters);
+            count++;
+          });
+          if (!count) throw new Error("Apply Deadlimit before loading environment");
+          return count;
+        })(PARAMETERS)'''.replace("PARAMETERS", json.dumps(parameters))
+        substance_painter.js.evaluate(script)
+
+    def _captured_environment_settings(self):
+        script = r'''(function() {
+          var shaders = alg.shaders.shaderInstancesToObject().shaders;
+          for (var name in shaders) {
+            var s = shaders[name];
+            var p = (s.parameters || {})["Deadlimit Captured Environment"] || {};
+            var t = (s.materials || {})["Deadlimit Captured Environment"] || {};
+            if (p.dl_captured_environment && t.dl_captured_atlas && t.dl_captured_brdf)
+              return JSON.stringify({dl_captured_environment:true,
+                dl_captured_atlas:t.dl_captured_atlas, dl_captured_brdf:t.dl_captured_brdf});
+          }
+          return "{}";
+        })()'''
+        return json.loads(substance_painter.js.evaluate(script))
 
     def _set_busy(self, busy, text):
         self.character_combo.setEnabled(not busy)
@@ -557,6 +635,9 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self._retail_outputs = []
         self._retail_queue = []
         self._retail_current = None
+        self._environment_output = None
+        self._environment_recipe = self._selected_profile.get(
+            "painterApply", {}).get("environmentPreview")
         if not recipe or not context or not context["retailVpk"].is_file():
             self._phase = "Step 3/3 · Assigning Hero and Outline shaders"
             self.status_label.setText(self._phase)
@@ -572,6 +653,14 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
 
         vpk_stat = context["retailVpk"].stat()
         cache_root = Path(tempfile.gettempdir()) / "deadlimit-shade-retail-cache"
+        if self._environment_recipe:
+            environment_digest = hashlib.sha256()
+            environment_digest.update(self._environment_recipe["texture"].encode("utf-8"))
+            environment_digest.update(str(vpk_stat.st_size).encode("ascii"))
+            environment_digest.update(str(vpk_stat.st_mtime_ns).encode("ascii"))
+            environment_digest.update(converter.read_bytes())
+            self._environment_output = cache_root / self._selected_profile["key"] / (
+                "environment-" + environment_digest.hexdigest()[:16])
         for index, binding in enumerate(recipe["materialBindings"]):
             digest = hashlib.sha256()
             digest.update(binding["material"].encode("utf-8"))
@@ -585,7 +674,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
 
     def _run_next_retail_extract(self):
         if not self._retail_queue:
-            self._import_retail_resources()
+            self._prepare_environment_preview()
             return
         index, binding, output, context, converter = self._retail_queue.pop(0)
         self._retail_current = (index, binding, output)
@@ -631,8 +720,62 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self._retail_outputs.append(item)
         self._run_next_retail_extract()
 
+    def _prepare_environment_preview(self):
+        if not self._environment_recipe or not self._environment_output:
+            self._import_retail_resources()
+            return
+        manifest = self._environment_output / "texture-manifest.json"
+        if manifest.is_file():
+            self._import_retail_resources()
+            return
+        context = _project_context(self._source_mesh)
+        converter = _retail_converter_path()
+        self._environment_output.mkdir(parents=True, exist_ok=True)
+        self._phase = "Step 4/5 · Preparing retail Default environment"
+        self.status_label.setText(
+            self._phase + "\nDecoding the referenced cubemap from the local read-only VPK.")
+        self._process = QtCore.QProcess(self)
+        self._process.setProgram(str(converter))
+        self._process.setWorkingDirectory(str(converter.parent))
+        self._process.setArguments([
+            "--vpk", str(context["retailVpk"]),
+            "--texture", self._environment_recipe["texture"],
+            "--output", str(self._environment_output),
+        ])
+        self._process.finished.connect(self._environment_process_finished)
+        self._process.errorOccurred.connect(self._generation_error)
+        self._process.start()
+
+    def _environment_process_finished(self, exit_code, _exit_status):
+        process = self._process
+        self._process = None
+        stdout = bytes(process.readAllStandardOutput()).decode("utf-8", "replace").strip()
+        stderr = bytes(process.readAllStandardError()).decode("utf-8", "replace").strip()
+        process.deleteLater()
+        manifest = self._environment_output / "texture-manifest.json"
+        if exit_code != 0 or not manifest.is_file():
+            self._status_timer.stop()
+            self._set_busy(False, "Retail Default environment extraction failed: {}".format(
+                stderr or stdout or "unknown backend error"))
+            return
+        self._import_retail_resources()
+
     def _import_retail_resources(self):
         try:
+            if self._environment_recipe and self._environment_output:
+                environment_manifest = json.loads(
+                    (self._environment_output / "texture-manifest.json").read_text(encoding="utf-8"))
+                if environment_manifest.get("compiledSha256") != self._environment_recipe["compiledSha256"]:
+                    raise RuntimeError("retail Default environment hash does not match the Ivy profile")
+                exported = environment_manifest.get("exported", [])
+                if len(exported) != 1:
+                    raise RuntimeError("retail Default cubemap did not produce one lat-long environment")
+                environment = _import_or_reuse_project_environment(
+                    self._environment_output / exported[0]["file"],
+                    "Deadlimit_{}_Default_{}".format(
+                        self._selected_profile["key"],
+                        environment_manifest["compiledSha256"][:12]))
+                substance_painter.display.set_environment_resource(environment.identifier())
             for index, binding, output in sorted(self._retail_outputs):
                 manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
                 urls = {}
@@ -669,7 +812,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
                     "tintRim": urls["g_tTintMaskRimLightMask"],
                     "nprTransmissive": urls["g_tNprTransmissiveColor"],
                 }
-            self._phase = "Step 4/4 · Assigning Hero, retail and Outline shaders"
+            self._phase = "Step 5/5 · Assigning Hero, retail and Outline shaders"
             self.status_label.setText(self._phase)
             self._apply_shaders()
         except Exception as exc:
@@ -678,6 +821,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
 
     def _apply_shaders(self):
         try:
+            captured_environment = self._captured_environment_settings()
             shader_root = _shade_root() / "shaders"
             shader_urls = {
                 "hero": _import_or_reuse_project_shader(
@@ -688,6 +832,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
             result = substance_painter.js.evaluate(_shader_assignment_script(
                 self._selected_profile, self._retail_bindings, shader_urls))
             summary = json.loads(result)
+            self._bind_captured_environment(captured_environment)
             profile = self._selected_profile
             elapsed_seconds = self._elapsed.elapsed() / 1000.0
             self._status_timer.stop()

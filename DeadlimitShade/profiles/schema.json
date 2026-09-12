@@ -65,18 +65,22 @@
       "additionalProperties": false,
       "required": [
         "enabled",
+        "steps",
         "stepSharpness",
         "pbrBlend",
         "wrap",
         "normalization",
+        "runtimeSource",
         "evidence"
       ],
       "properties": {
         "enabled": { "type": "boolean" },
+        "steps": { "type": "number", "minimum": 1.0, "maximum": 16.0 },
         "stepSharpness": { "type": "number", "minimum": 0.0, "maximum": 0.95 },
         "pbrBlend": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
         "wrap": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
         "normalization": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
+        "runtimeSource": { "const": "reduced-csdk-asset-browser" },
         "evidence": { "$ref": "#/$defs/evidence" }
       }
     },
@@ -91,18 +95,64 @@
         "tint": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
         "roughnessBias": { "type": "number", "minimum": 0.0, "maximum": 0.95 },
         "reflectance": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "runtimeSource": { "const": "reduced-csdk-asset-browser" },
+        "enabledEvidence": { "$ref": "#/$defs/evidence" },
+        "controlsEvidence": { "$ref": "#/$defs/evidence" },
         "evidence": { "$ref": "#/$defs/evidence" }
       }
     },
     "bounceLighting": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["enabled", "ambientFloor", "transmissiveStrength", "aoStrength", "evidence"],
+      "required": ["enabled", "diffuseRange", "dfaoInfluenceRange", "lightWeights", "exposureControlEnabled", "exposureTargets", "exposurePbrBlend", "probePositiveX", "probePositiveY", "probePositiveZ", "probeNegativeX", "probeNegativeY", "probeNegativeZ", "probeSamplePosition", "probeRuntimeSource", "probeEvidence", "probeSpatialEvidence", "ambientFloor", "transmissiveStrength", "aoStrength", "runtimeGlobalsEvidence", "runtimeSource", "evidence"],
       "properties": {
         "enabled": { "type": "boolean" },
+        "diffuseRange": {
+          "type": "array",
+          "items": { "type": "number", "minimum": -4.0, "maximum": 4.0 },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "dfaoInfluenceRange": {
+          "type": "array",
+          "items": { "type": "number", "minimum": -4.0, "maximum": 4.0 },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "lightWeights": {
+          "type": "array",
+          "items": { "type": "number", "minimum": -4.0, "maximum": 4.0 },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "exposureControlEnabled": { "type": "boolean" },
+        "exposureTargets": {
+          "type": "array",
+          "items": { "type": "number", "minimum": 0.0, "maximum": 16.0 },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "exposurePbrBlend": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "probePositiveX": { "$ref": "#/$defs/color" },
+        "probePositiveY": { "$ref": "#/$defs/color" },
+        "probePositiveZ": { "$ref": "#/$defs/color" },
+        "probeNegativeX": { "$ref": "#/$defs/color" },
+        "probeNegativeY": { "$ref": "#/$defs/color" },
+        "probeNegativeZ": { "$ref": "#/$defs/color" },
+        "probeSamplePosition": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "probeRuntimeSource": { "const": "reduced-csdk-asset-browser" },
+        "probeEvidence": { "$ref": "#/$defs/evidence" },
+        "probeSpatialEvidence": { "$ref": "#/$defs/evidence" },
         "ambientFloor": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
         "transmissiveStrength": { "type": "number", "minimum": 0.0, "maximum": 2.0 },
         "aoStrength": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "runtimeGlobalsEvidence": { "$ref": "#/$defs/evidence" },
+        "runtimeSource": { "const": "reduced-csdk-asset-browser" },
         "evidence": { "$ref": "#/$defs/evidence" }
       }
     },
@@ -121,13 +171,16 @@
           "minItems": 2,
           "maxItems": 2
         },
+        "runtimeSource": { "const": "reduced-csdk-asset-browser" },
+        "enabledEvidence": { "$ref": "#/$defs/evidence" },
+        "controlsEvidence": { "$ref": "#/$defs/evidence" },
         "evidence": { "$ref": "#/$defs/evidence" }
       }
     },
     "previewLighting": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["keyDirection", "keyColor", "keyIntensity", "fillDirection", "fillColor", "fillIntensity", "environmentColor", "environmentDiffuse", "evidence"],
+      "required": ["keyDirection", "keyColor", "keyIntensity", "fillDirection", "fillColor", "fillIntensity", "environmentColor", "environmentDiffuse", "runtimeSource", "directLightEvidence", "evidence"],
       "properties": {
         "keyDirection": { "$ref": "#/$defs/direction" },
         "keyColor": { "$ref": "#/$defs/color" },
@@ -137,6 +190,8 @@
         "fillIntensity": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
         "environmentColor": { "$ref": "#/$defs/color" },
         "environmentDiffuse": { "type": "number", "minimum": 0.0, "maximum": 2.0 },
+        "runtimeSource": { "const": "reduced-csdk-asset-browser" },
+        "directLightEvidence": { "$ref": "#/$defs/evidence" },
         "evidence": { "$ref": "#/$defs/evidence" }
       }
     },
@@ -175,6 +230,18 @@
           "minItems": 1,
           "uniqueItems": true,
           "items": { "type": "string", "minLength": 1 }
+        },
+        "environmentPreview": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["material", "texture", "compiledSha256", "brightnessExposureBias", "evidence"],
+          "properties": {
+            "material": { "type": "string", "pattern": "^[^\\\\]+\\.vmat_c$" },
+            "texture": { "type": "string", "pattern": "^[^\\\\]+\\.vtex_c$" },
+            "compiledSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "brightnessExposureBias": { "type": "number" },
+            "evidence": { "$ref": "#/$defs/evidence" }
+          }
         },
         "retailPreview": {
           "type": "object",

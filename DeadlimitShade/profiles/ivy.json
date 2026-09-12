@@ -13,30 +13,53 @@
   },
   "directDiffuse": {
     "enabled": true,
-    "stepSharpness": 0.18,
-    "pbrBlend": 0.72,
-    "wrap": 0.48,
-    "normalization": 0.85,
-    "evidence": "calibrated-approximation"
+    "steps": 2.0,
+    "stepSharpness": 0.9,
+    "pbrBlend": 0.25,
+    "wrap": 0.8,
+    "normalization": 0.625,
+    "runtimeSource": "reduced-csdk-asset-browser",
+    "evidence": "confirmed-pipeline-runtime"
   },
   "bounceLighting": {
     "enabled": true,
+    "diffuseRange": [-1.0, 1.0],
+    "dfaoInfluenceRange": [0.4, 1.0],
+    "lightWeights": [0.42, 0.42, 0.126],
+    "exposureControlEnabled": true,
+    "exposureTargets": [1.0, 0.5, 0.1],
+    "exposurePbrBlend": 0.5,
+    "probePositiveX": [1.064453125, 1.064453125, 1.064453125],
+    "probePositiveY": [0.9052734375, 0.9052734375, 0.9052734375],
+    "probePositiveZ": [1.462890625, 1.462890625, 1.462890625],
+    "probeNegativeX": [0.5595703125, 0.5595703125, 0.5595703125],
+    "probeNegativeY": [0.5546875, 0.5546875, 0.5546875],
+    "probeNegativeZ": [0.19970703125, 0.19970703125, 0.19970703125],
+    "probeSamplePosition": [0.0, 0.0, 0.0],
+    "probeRuntimeSource": "reduced-csdk-asset-browser",
+    "probeEvidence": "confirmed-pipeline-runtime",
+    "probeSpatialEvidence": "calibrated-approximation",
     "ambientFloor": 0.18,
-    "transmissiveStrength": 0.0,
+    "transmissiveStrength": 1.0,
     "aoStrength": 0.55,
+    "runtimeGlobalsEvidence": "confirmed-pipeline-runtime",
+    "runtimeSource": "reduced-csdk-asset-browser",
     "evidence": "calibrated-approximation"
   },
   "directSpecular": {
-    "enabled": true,
+    "enabled": false,
     "steps": 3.0,
     "stepSharpness": 0.55,
     "tint": 0.35,
     "roughnessBias": 0.18,
     "reflectance": 0.025,
+    "runtimeSource": "reduced-csdk-asset-browser",
+    "enabledEvidence": "confirmed-pipeline-runtime",
+    "controlsEvidence": "calibrated-approximation",
     "evidence": "calibrated-approximation"
   },
   "rimLighting": {
-    "enabled": true,
+    "enabled": false,
     "wrap": 1.0,
     "falloff": 2.0,
     "strength": 0.75,
@@ -44,6 +67,9 @@
       -0.25,
       0.7
     ],
+    "runtimeSource": "reduced-csdk-asset-browser",
+    "enabledEvidence": "confirmed-pipeline-runtime",
+    "controlsEvidence": "calibrated-approximation",
     "evidence": "calibrated-approximation"
   },
   "previewLighting": {
@@ -57,7 +83,7 @@
       1.0,
       1.0
     ],
-    "keyIntensity": 1.15,
+    "keyIntensity": 1.6,
     "fillDirection": [
       -0.693,
       0.071,
@@ -68,13 +94,15 @@
       1.0,
       1.0
     ],
-    "fillIntensity": 0.4,
+    "fillIntensity": 0.0,
     "environmentColor": [
       0.827451,
       0.886275,
       0.972549
     ],
     "environmentDiffuse": 0.22,
+    "runtimeSource": "reduced-csdk-asset-browser",
+    "directLightEvidence": "confirmed-pipeline-runtime",
     "evidence": "calibrated-approximation"
   },
   "referenceTint": [

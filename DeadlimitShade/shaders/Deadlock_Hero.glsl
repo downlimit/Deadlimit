@@ -30,11 +30,24 @@ const int DL_CHARACTER_IVY = 1;
 struct DLCharacterProfile
 {
   bool directDiffuseEnabled;
+  float directDiffuseSteps;
   float directDiffuseStepSharpness;
   float directDiffusePbrBlend;
   float directDiffuseWrap;
   float directDiffuseNormalization;
   bool bounceLightingEnabled;
+  vec2 bounceDiffuseRange;
+  vec2 bounceDfaoInfluenceRange;
+  vec3 bounceLightWeights;
+  bool bounceExposureControlEnabled;
+  vec3 bounceExposureTargets;
+  float bounceExposurePbrBlend;
+  vec3 bounceProbePositiveX;
+  vec3 bounceProbePositiveY;
+  vec3 bounceProbePositiveZ;
+  vec3 bounceProbeNegativeX;
+  vec3 bounceProbeNegativeY;
+  vec3 bounceProbeNegativeZ;
   float bounceAmbientFloor;
   float bounceTransmissiveStrength;
   float bounceAoStrength;
@@ -66,31 +79,44 @@ DLCharacterProfile dlCharacterProfileIvy()
 {
   DLCharacterProfile profile;
   profile.directDiffuseEnabled = true;
-  profile.directDiffuseStepSharpness = 0.18;
-  profile.directDiffusePbrBlend = 0.72;
-  profile.directDiffuseWrap = 0.48;
-  profile.directDiffuseNormalization = 0.85;
+  profile.directDiffuseSteps = 2.0;
+  profile.directDiffuseStepSharpness = 0.9;
+  profile.directDiffusePbrBlend = 0.25;
+  profile.directDiffuseWrap = 0.8;
+  profile.directDiffuseNormalization = 0.625;
   profile.bounceLightingEnabled = true;
+  profile.bounceDiffuseRange = vec2(-1.0, 1.0);
+  profile.bounceDfaoInfluenceRange = vec2(0.4, 1.0);
+  profile.bounceLightWeights = vec3(0.42, 0.42, 0.126);
+  profile.bounceExposureControlEnabled = true;
+  profile.bounceExposureTargets = vec3(1.0, 0.5, 0.1);
+  profile.bounceExposurePbrBlend = 0.5;
+  profile.bounceProbePositiveX = vec3(1.0644531, 1.0644531, 1.0644531);
+  profile.bounceProbePositiveY = vec3(0.9052734, 0.9052734, 0.9052734);
+  profile.bounceProbePositiveZ = vec3(1.4628906, 1.4628906, 1.4628906);
+  profile.bounceProbeNegativeX = vec3(0.5595703, 0.5595703, 0.5595703);
+  profile.bounceProbeNegativeY = vec3(0.5546875, 0.5546875, 0.5546875);
+  profile.bounceProbeNegativeZ = vec3(0.199707, 0.199707, 0.199707);
   profile.bounceAmbientFloor = 0.18;
-  profile.bounceTransmissiveStrength = 0.0;
+  profile.bounceTransmissiveStrength = 1.0;
   profile.bounceAoStrength = 0.55;
-  profile.directSpecularEnabled = true;
+  profile.directSpecularEnabled = false;
   profile.directSpecularSteps = 3.0;
   profile.directSpecularStepSharpness = 0.55;
   profile.directSpecularTint = 0.35;
   profile.directSpecularRoughnessBias = 0.18;
   profile.directSpecularReflectance = 0.025;
-  profile.rimLightingEnabled = true;
+  profile.rimLightingEnabled = false;
   profile.rimLightingWrap = 1.0;
   profile.rimLightingFalloff = 2.0;
   profile.rimLightingStrength = 0.75;
   profile.rimLightingUpRamp = vec2(-0.25, 0.7);
   profile.keyLightDirection = vec3(0.494, 0.766, -0.411);
   profile.keyLightColor = vec3(1.0, 1.0, 1.0);
-  profile.keyLightIntensity = 1.15;
+  profile.keyLightIntensity = 1.6;
   profile.fillLightDirection = vec3(-0.693, 0.071, 0.719);
   profile.fillLightColor = vec3(1.0, 1.0, 1.0);
-  profile.fillLightIntensity = 0.4;
+  profile.fillLightIntensity = 0.0;
   profile.environmentColor = vec3(0.827451, 0.886275, 0.972549);
   profile.environmentDiffuse = 0.22;
   profile.referenceTint = vec3(0.321569, 0.388235, 0.176471);
@@ -181,8 +207,11 @@ uniform bool dl_use_custom_calibration;
 //: }
 uniform bool dl_npr_direct_diffuse;
 
+//: param custom { "default": 2.0, "label": "Diffuse Steps", "min": 1.0, "max": 16.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_diffuse_steps;
+
 //: param custom {
-//:   "default": 0.75,
+//:   "default": 0.9,
 //:   "label": "Diffuse Step Sharpness",
 //:   "min": 0.0,
 //:   "max": 0.95,
@@ -200,7 +229,7 @@ uniform float dl_npr_diffuse_step_sharpness;
 uniform float dl_npr_diffuse_pbr_blend;
 
 //: param custom {
-//:   "default": 0.5,
+//:   "default": 0.8,
 //:   "label": "Direct Light Wrap",
 //:   "min": 0.0,
 //:   "max": 1.0,
@@ -209,7 +238,7 @@ uniform float dl_npr_diffuse_pbr_blend;
 uniform float dl_npr_direct_light_wrap;
 
 //: param custom {
-//:   "default": 1.0,
+//:   "default": 0.625,
 //:   "label": "Direct Light Normalization",
 //:   "min": 0.0,
 //:   "max": 4.0,
@@ -222,6 +251,37 @@ uniform float dl_npr_direct_light_normalization;
 // weighting and the statically confirmed transmissive color contribution.
 //: param custom { "default": true, "label": "NPR Bounce Lighting", "group": "Deadlimit NPR Calibration" }
 uniform bool dl_npr_bounce_lighting;
+
+// Reduced-CSDK runtime constants captured from Ivy's Asset Browser preview.
+// Painter supplies neutral screen DfAO=1 because its viewport exposes no
+// Deadlock DfAO buffer. Probe colors remain a calibrated Painter substitute.
+//: param custom { "default": -1.0, "label": "Bounce Diffuse Range Min", "min": -4.0, "max": 4.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_bounce_diffuse_range_min;
+//: param custom { "default": 1.0, "label": "Bounce Diffuse Range Max", "min": -4.0, "max": 4.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_bounce_diffuse_range_max;
+//: param custom { "default": 0.4, "label": "Bounce DfAO Range Min", "min": -4.0, "max": 4.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_bounce_dfao_range_min;
+//: param custom { "default": 1.0, "label": "Bounce DfAO Range Max", "min": -4.0, "max": 4.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_bounce_dfao_range_max;
+//: param custom { "default": 0.42, "label": "Bounce Up Weight", "min": -4.0, "max": 4.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_bounce_up_weight;
+//: param custom { "default": 0.42, "label": "Bounce View Weight", "min": -4.0, "max": 4.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_bounce_view_weight;
+//: param custom { "default": 0.126, "label": "Bounce Light Weight", "min": -4.0, "max": 4.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_bounce_light_weight;
+
+// Reduced-CSDK exposure-control globals. Painter's fixed proof scene uses a
+// tone-map scalar of one, matching its documented exposure setting.
+//: param custom { "default": true, "label": "NPR Bounce Exposure Control", "group": "Deadlimit NPR Calibration" }
+uniform bool dl_npr_bounce_exposure_control;
+//: param custom { "default": 1.0, "label": "Bounce Up Exposure Target", "min": 0.0, "max": 16.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_bounce_exposure_target_up;
+//: param custom { "default": 0.5, "label": "Bounce Side Exposure Target", "min": 0.0, "max": 16.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_bounce_exposure_target_side;
+//: param custom { "default": 0.1, "label": "Bounce Down Exposure Target", "min": 0.0, "max": 16.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_bounce_exposure_target_down;
+//: param custom { "default": 0.5, "label": "Bounce Exposure PBR Blend", "min": 0.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_bounce_exposure_pbr_blend;
 
 //: param custom { "default": 0.18, "label": "Bounce Ambient Floor", "min": 0.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
 uniform float dl_npr_bounce_ambient_floor;
@@ -340,15 +400,15 @@ uniform vec3 dl_environment_color;
 uniform float dl_environment_diffuse;
 
 // Painter panorama radiance is the available preview substitute for Deadlock's
-// local/fallback probe radiance. These are calibrated preview controls, not
-// retail runtime values.
+// local/fallback probe radiance. Neutral defaults preserve this substitute's
+// energy and authored roughness; they do not establish Deadlock BRDF parity.
 //: param custom { "default": true, "label": "Environment Specular", "group": "Deadlimit Environment Specular" }
 uniform bool dl_environment_specular_enabled;
 
-//: param custom { "default": 0.18, "label": "Environment Specular Strength", "min": 0.0, "max": 2.0, "group": "Deadlimit Environment Specular" }
+//: param custom { "default": 1.0, "label": "Environment Specular Strength", "min": 0.0, "max": 2.0, "group": "Deadlimit Environment Specular" }
 uniform float dl_environment_specular_strength;
 
-//: param custom { "default": 0.12, "label": "Environment Roughness Bias", "min": 0.0, "max": 0.75, "group": "Deadlimit Environment Specular" }
+//: param custom { "default": 0.0, "label": "Environment Roughness Bias", "min": 0.0, "max": 0.75, "group": "Deadlimit Environment Specular" }
 uniform float dl_environment_specular_roughness_bias;
 
 //: param custom {
@@ -423,6 +483,10 @@ struct DLDirectSpecularSample
 
 struct DLBounceSample
 {
+  vec3 ordinaryProbe;
+  float aoWeight;
+  float rawCoordinate;
+  float quantizedCoordinate;
   vec3 directionalProbe;
   vec3 transmissive;
   vec3 contribution;
@@ -434,13 +498,102 @@ struct DLEnvironmentSpecularSample
   vec3 contribution;
 };
 
+// Optional, explicitly loaded Reduced CSDK proof resources. No runtime assets
+// are embedded. The fallback remains available when this bundle is absent.
+//: param custom { "default": false, "label": "Captured CSDK Environment", "group": "Deadlimit Captured Environment" }
+uniform bool dl_captured_environment;
+//: param custom { "default": "", "default_color": [0.0, 0.0, 0.0, 1.0], "label": "Engine Mip Atlas", "usage": "texture", "group": "Deadlimit Captured Environment" }
+uniform sampler2D dl_captured_atlas;
+//: param custom { "default": "", "default_color": [0.0, 1.0, 0.0, 1.0], "label": "Engine BRDF LUT", "usage": "texture", "group": "Deadlimit Captured Environment" }
+uniform sampler2D dl_captured_brdf;
+
+vec3 dlCapturedFrameDirection(vec3 direction)
+{
+  vec2 horizontal = -uniform_main_light.xz;
+  horizontal = length(horizontal) > 0.000001 ? normalize(horizontal) : vec2(1.0, 0.0);
+  // Inverse of the same Painter yaw applied to our direct-light direction.
+  vec3 local = vec3(horizontal.x * direction.x + horizontal.y * direction.z,
+    direction.y, -horizontal.y * direction.x + horizontal.x * direction.z);
+  return vec3(local.x, -local.z, local.y);
+}
+
+vec2 dlCapturedLut(float roughness, float ndotv)
+{
+  vec2 uv = vec2(clamp(roughness, 0.0, 1.0), sqrt(1.0-clamp(ndotv, 0.0, 1.0)));
+  uv = uv * (63.0/64.0) + (0.5/64.0);
+  return textureLod(dl_captured_brdf, vec2(uv.x, 1.0-uv.y), 0.0).rg;
+}
+
+vec3 dlCapturedMultiple(vec2 lut, vec3 f0)
+{
+  vec3 energy = lut.x + f0 * (lut.y-lut.x);
+  vec3 averageFresnel = f0 + (vec3(1.0)-f0) * 0.047619;
+  return (1.0-lut.y) * energy * averageFresnel /
+    max(vec3(0.000001), vec3(1.0)-(1.0-lut.y)*averageFresnel);
+}
+
+vec3 dlCapturedCubeLevel(vec3 d, float mip)
+{
+  vec3 a = abs(d);
+  vec2 uv;
+  float face;
+  if (a.x >= a.y && a.x >= a.z) {
+    face = d.x >= 0.0 ? 0.0 : 1.0;
+    uv = vec2(d.x >= 0.0 ? -d.z : d.z, -d.y) / max(a.x, 0.000001);
+  } else if (a.y >= a.z) {
+    face = d.y >= 0.0 ? 2.0 : 3.0;
+    uv = vec2(d.x, d.y >= 0.0 ? d.z : -d.z) / max(a.y, 0.000001);
+  } else {
+    face = d.z >= 0.0 ? 4.0 : 5.0;
+    uv = vec2(d.z >= 0.0 ? d.x : -d.x, -d.y) / max(a.z, 0.000001);
+  }
+  float size = 256.0 / exp2(mip);
+  // Retain the native mip's texel centres. Face-edge seam filtering is unresolved.
+  vec2 pixel = clamp((uv*0.5+0.5)*size, vec2(0.5), vec2(size-0.5));
+  vec2 atlasUv = (vec2(face, mip)*256.0 + pixel) / vec2(1536.0, 1792.0);
+  // Image rows are top-down; Painter project samplers use bottom-up V.
+  return textureLod(dl_captured_atlas, vec2(atlasUv.x, 1.0-atlasUv.y), 0.0).rgb;
+}
+
+vec3 dlCapturedDominantReflection(vec3 normal, vec3 reflection, float roughness)
+{
+  // Reduced CSDK event 791, ISA 249-258; checked against two pixel traces.
+  float r2 = roughness*roughness;
+  float smoothness = max(1.0-r2, 0.0);
+  float weight = smoothness*(sqrt(smoothness)+r2);
+  return normalize(normal + weight*(reflection-normal));
+}
+
 DLEnvironmentSpecularSample dlEvaluateEnvironmentSpecular(
   LocalVectors vectors,
   vec3 specularColor,
   float roughness,
-  float specularOcclusion)
+  float specularOcclusion,
+  vec3 ordinaryProbe)
 {
   DLEnvironmentSpecularSample sample;
+  if (dl_captured_environment)
+  {
+    float r = clamp(roughness, 0.0, 1.0);
+    vec3 n = dlCapturedFrameDirection(vectors.normal);
+    vec3 reflectionDirection = dlCapturedFrameDirection(dlCapturedDominantReflection(
+      vectors.normal, reflect(-vectors.eye, vectors.normal), r));
+    float lod = sqrt(r)*5.0;
+    vec3 radiance = mix(dlCapturedCubeLevel(reflectionDirection, floor(lod)),
+      dlCapturedCubeLevel(reflectionDirection, ceil(lod)), fract(lod));
+    // Frozen cube-zero normalization coefficients, captured cb3[36].
+    float denominator = max(dot(vec4(n, 1.0),
+      vec4(0.0051848567, 0.0152820768, -0.0593101270, 0.1779434383)), 0.000001);
+    float normalization = min(max(r*34.4444465637-2.4444465637, 1.0),
+      dot(ordinaryProbe, vec3(0.2125, 0.7154, 0.0721))/denominator);
+    vec2 lut = dlCapturedLut(r, dot(vectors.normal, vectors.eye));
+    vec3 energy = lut.x + specularColor*(lut.y-lut.x);
+    sample.raw = radiance*normalization*energy +
+      ordinaryProbe*dlCapturedMultiple(lut, specularColor);
+    sample.contribution = dl_environment_specular_enabled
+      ? sample.raw*specularOcclusion : vec3(0.0);
+    return sample;
+  }
   float previewRoughness = clamp(
     roughness + dl_environment_specular_roughness_bias,
     0.04,
@@ -466,11 +619,37 @@ DLCharacterProfile dlCustomCharacterProfile()
 {
   DLCharacterProfile profile;
   profile.directDiffuseEnabled = dl_npr_direct_diffuse;
+  profile.directDiffuseSteps = dl_npr_diffuse_steps;
   profile.directDiffuseStepSharpness = dl_npr_diffuse_step_sharpness;
   profile.directDiffusePbrBlend = dl_npr_diffuse_pbr_blend;
   profile.directDiffuseWrap = dl_npr_direct_light_wrap;
   profile.directDiffuseNormalization = dl_npr_direct_light_normalization;
   profile.bounceLightingEnabled = dl_npr_bounce_lighting;
+  profile.bounceDiffuseRange = vec2(
+    dl_npr_bounce_diffuse_range_min,
+    dl_npr_bounce_diffuse_range_max);
+  profile.bounceDfaoInfluenceRange = vec2(
+    dl_npr_bounce_dfao_range_min,
+    dl_npr_bounce_dfao_range_max);
+  profile.bounceLightWeights = vec3(
+    dl_npr_bounce_up_weight,
+    dl_npr_bounce_view_weight,
+    dl_npr_bounce_light_weight);
+  profile.bounceExposureControlEnabled = dl_npr_bounce_exposure_control;
+  profile.bounceExposureTargets = vec3(
+    dl_npr_bounce_exposure_target_up,
+    dl_npr_bounce_exposure_target_side,
+    dl_npr_bounce_exposure_target_down);
+  profile.bounceExposurePbrBlend = dl_npr_bounce_exposure_pbr_blend;
+  vec3 customProbe = max(
+    dl_environment_color * dl_environment_diffuse,
+    vec3(dl_npr_bounce_ambient_floor));
+  profile.bounceProbePositiveX = customProbe;
+  profile.bounceProbePositiveY = customProbe;
+  profile.bounceProbePositiveZ = customProbe;
+  profile.bounceProbeNegativeX = customProbe;
+  profile.bounceProbeNegativeY = customProbe;
+  profile.bounceProbeNegativeZ = customProbe;
   profile.bounceAmbientFloor = dl_npr_bounce_ambient_floor;
   profile.bounceTransmissiveStrength = dl_npr_bounce_transmissive_strength;
   profile.bounceAoStrength = dl_npr_bounce_ao_strength;
@@ -571,7 +750,8 @@ DLDirectDiffuseSample dlEvaluateDirectDiffuse(
   sample.ndotl = dot(normal, lightDirection);
   sample.lambert = max(sample.ndotl, 0.0);
   sample.wrapped = clamp(
-    0.5 + 2.0 * ((profile.directDiffuseWrap - 0.5) + sample.lambert - 0.5),
+    0.5 + max(profile.directDiffuseSteps, 1.0) *
+      ((profile.directDiffuseWrap - 0.5) + sample.lambert - 0.5),
     0.0,
     1.0);
   sample.quantized = dlNprQuantize(
@@ -646,28 +826,190 @@ DLDirectSpecularSample dlEvaluateDirectSpecular(
   return sample;
 }
 
+vec3 dlExposureControlPreserveChroma(
+  vec3 radiance,
+  float targetLuminance,
+  float pbrBlend)
+{
+  // The recovered shader converts linear RGB to xyY, replaces Y, converts
+  // back to RGB, then blends toward the original radiance. With a fixed
+  // tone-map scalar of one this is equivalent to scaling linear RGB by the
+  // ratio between target and source luminance.
+  float sourceLuminance = dot(
+    radiance,
+    vec3(0.2126, 0.7152, 0.0722));
+  vec3 fittedRadiance = sourceLuminance > 0.000001
+    ? radiance * (targetLuminance / sourceLuminance)
+    : vec3(0.0);
+  return mix(
+    fittedRadiance,
+    radiance,
+    clamp(pbrBlend, 0.0, 1.0));
+}
+
+vec3 dlPainterToSource2Direction(vec3 direction)
+{
+  // Source 2's character path is Z-up. The imported Painter mesh is Y-up:
+  // (x, y, z)_Source2 -> (x, z, -y)_Painter.
+  return vec3(direction.x, -direction.z, direction.y);
+}
+
+vec3 dlEvaluateSixDirectionalProbe(
+  vec3 source2Direction,
+  vec3 positiveX,
+  vec3 positiveY,
+  vec3 positiveZ,
+  vec3 negativeX,
+  vec3 negativeY,
+  vec3 negativeZ)
+{
+  vec3 direction = normalize(source2Direction);
+  vec3 squaredDirection = direction * direction;
+  vec3 positiveWeight = vec3(
+    direction.x >= 0.0 ? squaredDirection.x : 0.0,
+    direction.y >= 0.0 ? squaredDirection.y : 0.0,
+    direction.z >= 0.0 ? squaredDirection.z : 0.0);
+  vec3 negativeWeight = squaredDirection - positiveWeight;
+  return positiveX * positiveWeight.x +
+    positiveY * positiveWeight.y +
+    positiveZ * positiveWeight.z +
+    negativeX * negativeWeight.x +
+    negativeY * negativeWeight.y +
+    negativeZ * negativeWeight.z;
+}
+
 DLBounceSample dlEvaluateBounce(
   vec3 normal,
+  vec3 viewDirection,
   float ambientOcclusion,
   vec3 transmissiveColor,
+  vec3 specularColor,
+  float roughness,
   DLCharacterProfile profile)
 {
   DLBounceSample sample;
-  // Painter's panorama creates a second directional lighting system beside
-  // the calibrated Deadlimit key. Keep ordinary Shaded deterministic: the
-  // environment contributes a scalar ambient approximation only. The
-  // Painter PBR Baseline diagnostic remains available for true panorama IBL.
-  sample.directionalProbe = profile.environmentColor * profile.environmentDiffuse;
-  vec3 upwardProbe = sample.directionalProbe;
-  float lowerHemisphere = 1.0 - clamp(0.5 + 0.5 * normal.y, 0.0, 1.0);
+  // The controlled Ivy profile freezes the six RGB values sampled at world
+  // origin from the bound Reduced-CSDK light-probe volume. Spatial variation
+  // across the character remains a documented Painter approximation.
+  // Retail places material AO inside the quantized hemisphere coordinate.
+  // Painter has no screen DfAO buffer; the controlled slice uses neutral
+  // screen DfAO=1, which reduces min(materialAO, remappedDfAO) to materialAO.
+  float neutralScreenDfao = 1.0;
+  float remappedDfao = mix(
+    profile.bounceDfaoInfluenceRange.x,
+    1.0,
+    clamp(neutralScreenDfao / max(profile.bounceDfaoInfluenceRange.y, 0.00001), 0.0, 1.0));
+  sample.aoWeight = min(clamp(ambientOcclusion, 0.0, 1.0), remappedDfao);
+  vec3 weightedDirection =
+    vec3(0.0, 1.0, 0.0) * profile.bounceLightWeights.x +
+    viewDirection * profile.bounceLightWeights.y +
+    normalize(profile.keyLightDirection) * profile.bounceLightWeights.z;
+  vec3 probeDirection = dot(weightedDirection, weightedDirection) > 0.000001
+    ? normalize(weightedDirection)
+    : vec3(0.0, 1.0, 0.0);
+  float rangeDenominator = max(
+    profile.bounceDiffuseRange.y - profile.bounceDiffuseRange.x,
+    0.00001);
+  float hemisphere = clamp(
+    (dot(probeDirection, normal) - profile.bounceDiffuseRange.x) /
+      rangeDenominator,
+    0.0,
+    1.0);
+  float steps = max(profile.directDiffuseSteps, 1.0);
+  sample.rawCoordinate = clamp(
+    hemisphere * sample.aoWeight * steps - 0.5,
+    0.0,
+    max(steps - 1.0, 0.0));
+  float quantizedStep = dlNprQuantize(
+    sample.rawCoordinate,
+    profile.directDiffuseStepSharpness);
+  sample.quantizedCoordinate = (quantizedStep + 0.5) / steps;
+
+  vec3 positiveX = profile.bounceProbePositiveX;
+  vec3 positiveY = profile.bounceProbePositiveY;
+  vec3 positiveZ = profile.bounceProbePositiveZ;
+  vec3 negativeX = profile.bounceProbeNegativeX;
+  vec3 negativeY = profile.bounceProbeNegativeY;
+  vec3 negativeZ = profile.bounceProbeNegativeZ;
+  if (profile.bounceExposureControlEnabled)
+  {
+    positiveX = dlExposureControlPreserveChroma(
+      positiveX,
+      profile.bounceExposureTargets.y,
+      profile.bounceExposurePbrBlend);
+    positiveY = dlExposureControlPreserveChroma(
+      positiveY,
+      profile.bounceExposureTargets.y,
+      profile.bounceExposurePbrBlend);
+    positiveZ = dlExposureControlPreserveChroma(
+      positiveZ,
+      profile.bounceExposureTargets.x,
+      profile.bounceExposurePbrBlend);
+    negativeX = dlExposureControlPreserveChroma(
+      negativeX,
+      profile.bounceExposureTargets.y,
+      profile.bounceExposurePbrBlend);
+    negativeY = dlExposureControlPreserveChroma(
+      negativeY,
+      profile.bounceExposureTargets.y,
+      profile.bounceExposurePbrBlend);
+    negativeZ = dlExposureControlPreserveChroma(
+      negativeZ,
+      profile.bounceExposureTargets.z,
+      profile.bounceExposurePbrBlend);
+  }
+
+  vec3 source2Normal = dl_captured_environment
+    ? dlCapturedFrameDirection(normal) : dlPainterToSource2Direction(normal);
+  vec3 ordinaryProbe = dlEvaluateSixDirectionalProbe(
+    source2Normal,
+    positiveX,
+    positiveY,
+    positiveZ,
+    negativeX,
+    negativeY,
+    negativeZ);
+
+  // Captured instructions 934-947 project surface-to-camera, independently
+  // of the weighted direction used to quantize the NPR hemisphere.
+  sample.ordinaryProbe = ordinaryProbe;
+  if (dl_captured_environment)
+  {
+    vec2 lut = dlCapturedLut(roughness, dot(normal, viewDirection));
+    vec3 energy = lut.x + specularColor*(lut.y-lut.x);
+    ordinaryProbe *= vec3(1.0)-energy-dlCapturedMultiple(lut, specularColor);
+  }
+  vec3 source2ViewDirection = dl_captured_environment
+    ? dlCapturedFrameDirection(viewDirection) : dlPainterToSource2Direction(viewDirection);
+  vec2 horizontalDirection = source2ViewDirection.xy;
+  float horizontalLength2 = dot(horizontalDirection, horizontalDirection);
+  horizontalDirection = horizontalLength2 > 0.000001
+    ? horizontalDirection * inversesqrt(horizontalLength2)
+    : vec2(1.0, 0.0);
+  vec3 sideProbe = dlEvaluateSixDirectionalProbe(
+    vec3(horizontalDirection, 0.0),
+    positiveX,
+    positiveY,
+    positiveZ,
+    negativeX,
+    negativeY,
+    negativeZ);
+  vec3 upwardProbe = positiveZ;
+  vec3 downwardProbe = negativeZ;
+  vec3 nprDirectionalProbe = sample.quantizedCoordinate < 0.5
+    ? mix(downwardProbe, sideProbe, 2.0 * sample.quantizedCoordinate)
+    : mix(sideProbe, upwardProbe, 2.0 * sample.quantizedCoordinate - 1.0);
+  // The recovered program blends the quantized directional result toward its
+  // ordinary normal-directed probe with g_flNPRDiffusePbrBlend.
+  sample.directionalProbe = mix(
+    nprDirectionalProbe,
+    ordinaryProbe,
+    clamp(profile.directDiffusePbrBlend, 0.0, 1.0));
+  float lowerHemisphere = 1.0 - sample.quantizedCoordinate;
   sample.transmissive = upwardProbe * transmissiveColor *
-    profile.bounceTransmissiveStrength * mix(0.35, 1.0, lowerHemisphere);
-  float aoWeight = mix(1.0, ambientOcclusion, profile.bounceAoStrength);
-  vec3 environmentFill = max(
-    sample.directionalProbe,
-    vec3(profile.bounceAmbientFloor));
+    profile.bounceTransmissiveStrength * lowerHemisphere;
   sample.contribution = profile.bounceLightingEnabled
-    ? aoWeight * (environmentFill + sample.transmissive)
+    ? sample.directionalProbe + sample.transmissive
     : vec3(0.0);
   return sample;
 }
@@ -878,6 +1220,8 @@ void shade(V2F inputs)
       authoredColorVisibility;
   }
   vec3 viewDirection = normalize(getEyeVec(inputs.position));
+  if (dl_debug_view == 24) { dlDebugOutput(vec3(dlCapturedLut(roughness, dot(vectors.normal, viewDirection)), 0.0)); return; }
+  if (dl_debug_view == 25) { dlDebugOutput(textureLod(dl_captured_atlas, vec2(0.5/6.0, 1.0-0.5/7.0), 0.0).rgb); return; }
   DLDirectSpecularSample keyDirectSpecular = dlEvaluateDirectSpecular(
     vectors.normal,
     viewDirection,
@@ -897,8 +1241,11 @@ void shade(V2F inputs)
 
   DLBounceSample bounce = dlEvaluateBounce(
     vectors.normal,
+    viewDirection,
     ambientOcclusion,
     retailTransmissiveColor,
+    specColor,
+    roughness,
     characterProfile);
 
   float occlusion = ambientOcclusion * getShadowFactor();
@@ -908,11 +1255,12 @@ void shade(V2F inputs)
       vectors,
       specColor,
       roughness,
-      specOcclusion);
+      specOcclusion,
+      bounce.ordinaryProbe);
 
-  float materialDirectOcclusion = mix(1.0, ambientOcclusion, 0.35);
-  float keyVisibility = materialDirectOcclusion * getShadowFactor();
-  float fillVisibility = materialDirectOcclusion;
+  // Material AO does not multiply the recovered retail direct-light loops.
+  float keyVisibility = getShadowFactor();
+  float fillVisibility = 1.0;
   vec3 keyDiffuseLighting = characterProfile.keyLightIntensity *
     characterProfile.keyLightColor * keyDirectDiffuse.finalValue;
   vec3 fillDiffuseLighting = characterProfile.fillLightIntensity *

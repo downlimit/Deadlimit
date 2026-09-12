@@ -7,8 +7,6 @@ using ValveResourceFormat.ResourceTypes;
 
 var options = ParseArguments(args);
 var vpkPath = Required(options, "vpk");
-var materialPath = NormalizeResourcePath(Required(options, "material"));
-var outputRoot = Path.GetFullPath(Required(options, "output"));
 var sourceRoot = options.TryGetValue("source-root", out var configuredSourceRoot)
     && !string.IsNullOrWhiteSpace(configuredSourceRoot)
         ? Path.GetFullPath(configuredSourceRoot)
@@ -19,14 +17,127 @@ if (!File.Exists(vpkPath))
     throw new FileNotFoundException("Retail VPK was not found.", vpkPath);
 }
 
-Directory.CreateDirectory(outputRoot);
-
 using var package = new Package();
 package.Read(vpkPath);
 var entries = (package.Entries
         ?? throw new InvalidDataException($"VPK entry table was not available: {vpkPath}"))
     .SelectMany(group => group.Value)
     .ToDictionary(entry => NormalizeResourcePath(entry.GetFullPath()), StringComparer.OrdinalIgnoreCase);
+
+if (options.TryGetValue("list-pattern", out var listPattern))
+{
+    var patterns = listPattern.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    var matches = entries.Keys
+        .Where(path => patterns.Any(pattern => path.Contains(pattern, StringComparison.OrdinalIgnoreCase)))
+        .OrderBy(path => path, StringComparer.Ordinal)
+        .ToArray();
+    Console.WriteLine(JsonSerializer.Serialize(matches, new JsonSerializerOptions { WriteIndented = true }));
+    return;
+}
+
+if (options.TryGetValue("texture", out var configuredTexturePath))
+{
+    var texturePath = NormalizeCompiledTexturePath(configuredTexturePath);
+    var textureOutputRoot = Path.GetFullPath(Required(options, "output"));
+    Directory.CreateDirectory(textureOutputRoot);
+    var textureEntry = FindEntry(entries, texturePath);
+    var loadedTexture = ReadResource(package, textureEntry, texturePath);
+    using var textureResource = loadedTexture.Resource;
+    using var textureStream = loadedTexture.Stream;
+    if (textureResource.DataBlock is not Texture texture)
+    {
+        throw new InvalidDataException($"Resource is not a Source 2 texture: {texturePath}");
+    }
+
+    var isCubemap = texture.Flags.ToString().Contains("CUBE", StringComparison.OrdinalIgnoreCase);
+    var exported = new List<object>();
+    if (isCubemap)
+    {
+        var faceBitmaps = Enum.GetValues<Texture.CubemapFace>()
+            .Select(face => texture.GenerateBitmap(0, face, 0))
+            .ToArray();
+        try
+        {
+            var latLongBitmaps = faceBitmaps.Select(bitmap =>
+                    bitmap.ColorType == SkiaSharp.SKColorType.RgbaF32
+                        ? bitmap.Copy()
+                        : bitmap.Copy(SkiaSharp.SKColorType.RgbaF32))
+                .ToArray();
+            var facePixmaps = latLongBitmaps.Select(bitmap => bitmap.PeekPixels()
+                ?? throw new InvalidDataException("Could not access a decoded cubemap face."))
+                .ToArray();
+            try
+            {
+                using var latLong = TextureExtract.CreateLatLongFromCubemapFaces(facePixmaps);
+                var extension = texture.IsHighDynamicRange ? ".exr" : ".png";
+                var bytes = texture.IsHighDynamicRange
+                    ? TextureExtract.ToExrImage(latLong)
+                    : TextureExtract.ToPngImage(latLong);
+                var fileName = $"{Sanitize(Path.GetFileNameWithoutExtension(texturePath))}_latlong{extension}";
+                File.WriteAllBytes(Path.Combine(textureOutputRoot, fileName), bytes);
+                exported.Add(new { file = fileName, sha256 = Convert.ToHexStringLower(SHA256.HashData(bytes)) });
+            }
+            finally
+            {
+                foreach (var pixmap in facePixmaps)
+                {
+                    pixmap.Dispose();
+                }
+                foreach (var bitmap in latLongBitmaps)
+                {
+                    bitmap.Dispose();
+                }
+            }
+        }
+        finally
+        {
+            foreach (var bitmap in faceBitmaps)
+            {
+                bitmap.Dispose();
+            }
+        }
+    }
+    else
+    {
+        using var bitmap = texture.GenerateBitmap();
+        var extension = texture.IsHighDynamicRange ? ".exr" : ".png";
+        var bytes = texture.IsHighDynamicRange
+            ? TextureExtract.ToExrImage(bitmap)
+            : TextureExtract.ToPngImage(bitmap);
+        var fileName = $"{Sanitize(Path.GetFileNameWithoutExtension(texturePath))}{extension}";
+        File.WriteAllBytes(Path.Combine(textureOutputRoot, fileName), bytes);
+        exported.Add(new { file = fileName, sha256 = Convert.ToHexStringLower(SHA256.HashData(bytes)) });
+    }
+
+    var textureManifest = new
+    {
+        schemaVersion = 1,
+        sourceVpk = Path.GetFullPath(vpkPath),
+        texture = texturePath,
+        compiledSha256 = Convert.ToHexStringLower(SHA256.HashData(textureStream.ToArray())),
+        texture.Width,
+        texture.Height,
+        texture.Depth,
+        texture.NumMipLevels,
+        format = texture.Format.ToString(),
+        flags = texture.Flags.ToString(),
+        texture.IsHighDynamicRange,
+        isCubemap,
+        exported,
+    };
+    var textureJson = JsonSerializer.Serialize(textureManifest, new JsonSerializerOptions
+    {
+        WriteIndented = true,
+        IncludeFields = true,
+    });
+    File.WriteAllText(Path.Combine(textureOutputRoot, "texture-manifest.json"), textureJson);
+    Console.WriteLine(textureJson);
+    return;
+}
+
+var materialPath = NormalizeResourcePath(Required(options, "material"));
+var outputRoot = Path.GetFullPath(Required(options, "output"));
+Directory.CreateDirectory(outputRoot);
 
 var materialEntry = FindEntry(entries, materialPath);
 var loadedMaterial = ReadResource(package, materialEntry, materialPath);

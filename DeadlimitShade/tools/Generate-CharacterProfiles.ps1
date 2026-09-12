@@ -38,6 +38,17 @@ function Format-GlslVec3 {
     return "vec3($($parts -join ', '))"
 }
 
+function Format-GlslVec2 {
+    param($Values)
+
+    if (@($Values).Count -ne 2) {
+        throw 'Expected exactly two values for a GLSL vec2.'
+    }
+
+    $parts = @($Values | ForEach-Object { Format-GlslFloat ([double] $_) })
+    return "vec2($($parts -join ', '))"
+}
+
 $profileFiles = Get-ChildItem -LiteralPath $ProfilesPath -Filter '*.json' -File |
     Where-Object { $_.Name -ne 'schema.json' } |
     Sort-Object Name
@@ -71,11 +82,24 @@ $lines.Add('')
 $lines.Add('struct DLCharacterProfile')
 $lines.Add('{')
 $lines.Add('  bool directDiffuseEnabled;')
+$lines.Add('  float directDiffuseSteps;')
 $lines.Add('  float directDiffuseStepSharpness;')
 $lines.Add('  float directDiffusePbrBlend;')
 $lines.Add('  float directDiffuseWrap;')
 $lines.Add('  float directDiffuseNormalization;')
 $lines.Add('  bool bounceLightingEnabled;')
+$lines.Add('  vec2 bounceDiffuseRange;')
+$lines.Add('  vec2 bounceDfaoInfluenceRange;')
+$lines.Add('  vec3 bounceLightWeights;')
+$lines.Add('  bool bounceExposureControlEnabled;')
+$lines.Add('  vec3 bounceExposureTargets;')
+$lines.Add('  float bounceExposurePbrBlend;')
+$lines.Add('  vec3 bounceProbePositiveX;')
+$lines.Add('  vec3 bounceProbePositiveY;')
+$lines.Add('  vec3 bounceProbePositiveZ;')
+$lines.Add('  vec3 bounceProbeNegativeX;')
+$lines.Add('  vec3 bounceProbeNegativeY;')
+$lines.Add('  vec3 bounceProbeNegativeZ;')
 $lines.Add('  float bounceAmbientFloor;')
 $lines.Add('  float bounceTransmissiveStrength;')
 $lines.Add('  float bounceAoStrength;')
@@ -110,11 +134,24 @@ foreach ($profile in ($profiles | Sort-Object id)) {
     $lines.Add('{')
     $lines.Add('  DLCharacterProfile profile;')
     $lines.Add("  profile.directDiffuseEnabled = $(Format-GlslBool ([bool] $profile.directDiffuse.enabled));")
+    $lines.Add("  profile.directDiffuseSteps = $(Format-GlslFloat ([double] $profile.directDiffuse.steps));")
     $lines.Add("  profile.directDiffuseStepSharpness = $(Format-GlslFloat ([double] $profile.directDiffuse.stepSharpness));")
     $lines.Add("  profile.directDiffusePbrBlend = $(Format-GlslFloat ([double] $profile.directDiffuse.pbrBlend));")
     $lines.Add("  profile.directDiffuseWrap = $(Format-GlslFloat ([double] $profile.directDiffuse.wrap));")
     $lines.Add("  profile.directDiffuseNormalization = $(Format-GlslFloat ([double] $profile.directDiffuse.normalization));")
     $lines.Add("  profile.bounceLightingEnabled = $(Format-GlslBool ([bool] $profile.bounceLighting.enabled));")
+    $lines.Add("  profile.bounceDiffuseRange = $(Format-GlslVec2 $profile.bounceLighting.diffuseRange);")
+    $lines.Add("  profile.bounceDfaoInfluenceRange = $(Format-GlslVec2 $profile.bounceLighting.dfaoInfluenceRange);")
+    $lines.Add("  profile.bounceLightWeights = $(Format-GlslVec3 $profile.bounceLighting.lightWeights);")
+    $lines.Add("  profile.bounceExposureControlEnabled = $(Format-GlslBool ([bool] $profile.bounceLighting.exposureControlEnabled));")
+    $lines.Add("  profile.bounceExposureTargets = $(Format-GlslVec3 $profile.bounceLighting.exposureTargets);")
+    $lines.Add("  profile.bounceExposurePbrBlend = $(Format-GlslFloat ([double] $profile.bounceLighting.exposurePbrBlend));")
+    $lines.Add("  profile.bounceProbePositiveX = $(Format-GlslVec3 $profile.bounceLighting.probePositiveX);")
+    $lines.Add("  profile.bounceProbePositiveY = $(Format-GlslVec3 $profile.bounceLighting.probePositiveY);")
+    $lines.Add("  profile.bounceProbePositiveZ = $(Format-GlslVec3 $profile.bounceLighting.probePositiveZ);")
+    $lines.Add("  profile.bounceProbeNegativeX = $(Format-GlslVec3 $profile.bounceLighting.probeNegativeX);")
+    $lines.Add("  profile.bounceProbeNegativeY = $(Format-GlslVec3 $profile.bounceLighting.probeNegativeY);")
+    $lines.Add("  profile.bounceProbeNegativeZ = $(Format-GlslVec3 $profile.bounceLighting.probeNegativeZ);")
     $lines.Add("  profile.bounceAmbientFloor = $(Format-GlslFloat ([double] $profile.bounceLighting.ambientFloor));")
     $lines.Add("  profile.bounceTransmissiveStrength = $(Format-GlslFloat ([double] $profile.bounceLighting.transmissiveStrength));")
     $lines.Add("  profile.bounceAoStrength = $(Format-GlslFloat ([double] $profile.bounceLighting.aoStrength));")
