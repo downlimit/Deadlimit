@@ -179,9 +179,12 @@ Evidence classification:
   no new fitted coefficient was added.
 - **blocked/unresolved:** model-to-captured-world coordinate mapping required for
   box projection in Painter; probe selection/weights across the model; native
-  cubemap cross-face filtering; exact specular occlusion; final display transform.
+  cubemap cross-face filtering; exact specular occlusion.
   RGBE atlas export and UNORM16 LUT transfer retain their documented precision
   limits. Full image parity and cross-project reproduction remain unproved.
+
+The selected capture's final display chain is recovered separately in
+`FINAL_DISPLAY_TRANSFORM_RUNTIME.md`; no Painter integration is implied.
 
 ## Screen visibility and composition boundary — 2026-09-13
 
