@@ -88,10 +88,9 @@ def _lighting_shader_parameters(preset, environment_bound):
         "dl_preset_headlight_casts_shadows": bool(
             headlight.get("castsShadows", False)),
         "dl_preset_rim_enabled": bool(rim.get("enabled", False)),
-        "dl_preset_rim_color": rim.get("color", [1.0, 1.0, 1.0]),
-        "dl_preset_rim_wrap": float(rim.get("wrap", 0.0)),
-        "dl_preset_rim_falloff": float(rim.get("falloff", 1.0)),
-        "dl_preset_rim_strength": float(rim.get("intensity", 0.0)),
+        "dl_preset_rim_cutoff": float(rim.get("cutoff", 1.0)),
+        "dl_preset_rim_sharpness": float(rim.get("sharpness", 0.01)),
+        "dl_preset_rim_strength": float(rim.get("strength", 0.0)),
         "dl_preset_rim_up_ramp": rim.get("upRamp", [-1.0, 1.0]),
         "dl_preset_environment_bound": bool(environment_bound),
         "dl_preset_environment_brightness": float(

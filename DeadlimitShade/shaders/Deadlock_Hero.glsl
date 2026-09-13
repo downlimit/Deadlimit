@@ -316,19 +316,19 @@ uniform float dl_npr_direct_specular_reflectance;
 //: param custom { "default": true, "label": "NPR Rim Lighting", "group": "Deadlimit NPR Calibration" }
 uniform bool dl_npr_rim_lighting;
 
-//: param custom { "default": 1.0, "label": "Rim Wrap", "min": 0.0, "max": 4.0, "group": "Deadlimit NPR Calibration" }
-uniform float dl_npr_rim_wrap;
+//: param custom { "default": 1.0, "label": "Rim Cutoff", "min": 0.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_rim_cutoff;
 
-//: param custom { "default": 2.0, "label": "Rim Falloff", "min": 0.1, "max": 12.0, "group": "Deadlimit NPR Calibration" }
-uniform float dl_npr_rim_falloff;
+//: param custom { "default": 0.01, "label": "Rim Sharpness", "min": 0.0, "max": 0.99, "group": "Deadlimit NPR Calibration" }
+uniform float dl_npr_rim_sharpness;
 
-//: param custom { "default": 1.1, "label": "Rim Strength", "min": 0.0, "max": 8.0, "group": "Deadlimit NPR Calibration" }
+//: param custom { "default": 0.3, "label": "Rim Strength", "min": 0.0, "max": 8.0, "group": "Deadlimit NPR Calibration" }
 uniform float dl_npr_rim_strength;
 
-//: param custom { "default": -0.25, "label": "Rim Up Ramp Start", "min": -1.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
+//: param custom { "default": 0.0, "label": "Rim Up Ramp Start", "min": -1.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
 uniform float dl_npr_rim_up_ramp_start;
 
-//: param custom { "default": 0.7, "label": "Rim Up Ramp End", "min": -1.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
+//: param custom { "default": 1.0, "label": "Rim Up Ramp End", "min": -1.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
 uniform float dl_npr_rim_up_ramp_end;
 
 //: param custom {
@@ -440,12 +440,10 @@ uniform float dl_preset_headlight_intensity;
 uniform bool dl_preset_headlight_casts_shadows;
 //: param custom { "default": false, "label": "Preset Rim", "group": "Deadlimit Lighting Preview" }
 uniform bool dl_preset_rim_enabled;
-//: param custom { "default": [1.0, 1.0, 1.0], "label": "Preset Rim Color", "widget": "color", "group": "Deadlimit Lighting Preview" }
-uniform vec3 dl_preset_rim_color;
-//: param custom { "default": 0.0, "label": "Preset Rim Wrap", "group": "Deadlimit Lighting Preview" }
-uniform float dl_preset_rim_wrap;
-//: param custom { "default": 1.0, "label": "Preset Rim Falloff", "group": "Deadlimit Lighting Preview" }
-uniform float dl_preset_rim_falloff;
+//: param custom { "default": 1.0, "label": "Preset Rim Cutoff", "group": "Deadlimit Lighting Preview" }
+uniform float dl_preset_rim_cutoff;
+//: param custom { "default": 0.01, "label": "Preset Rim Sharpness", "group": "Deadlimit Lighting Preview" }
+uniform float dl_preset_rim_sharpness;
 //: param custom { "default": 0.0, "label": "Preset Rim Intensity", "group": "Deadlimit Lighting Preview" }
 uniform float dl_preset_rim_strength;
 //: param custom { "default": [-1.0, 1.0], "label": "Preset Rim Up Ramp", "group": "Deadlimit Lighting Preview" }
@@ -710,9 +708,8 @@ struct DLRimSample
 struct DLRimSettings
 {
   bool enabled;
-  vec3 color;
-  float wrap;
-  float falloff;
+  float cutoff;
+  float sharpness;
   float strength;
   vec2 upRamp;
 };
@@ -723,18 +720,16 @@ DLRimSettings dlActiveRimSettings()
   if (dl_lighting_preset_mode)
   {
     settings.enabled = dl_preset_rim_enabled;
-    settings.color = dl_preset_rim_color;
-    settings.wrap = dl_preset_rim_wrap;
-    settings.falloff = dl_preset_rim_falloff;
+    settings.cutoff = dl_preset_rim_cutoff;
+    settings.sharpness = dl_preset_rim_sharpness;
     settings.strength = dl_preset_rim_strength;
     settings.upRamp = dl_preset_rim_up_ramp;
     return settings;
   }
 
   settings.enabled = dl_npr_rim_lighting;
-  settings.color = vec3(1.0);
-  settings.wrap = dl_npr_rim_wrap;
-  settings.falloff = dl_npr_rim_falloff;
+  settings.cutoff = dl_npr_rim_cutoff;
+  settings.sharpness = dl_npr_rim_sharpness;
   settings.strength = dl_npr_rim_strength;
   settings.upRamp = vec2(dl_npr_rim_up_ramp_start, dl_npr_rim_up_ramp_end);
   return settings;
@@ -1186,12 +1181,19 @@ DLRimSample dlEvaluateRim(
   DLRimSettings settings)
 {
   DLRimSample sample;
-  float wrap = max(settings.wrap, 0.0);
-  float wrappedView = clamp(
-    (dot(normal, -viewDirection) + wrap) / ((1.0 + wrap) * (1.0 + wrap)),
+  float nDotV = abs(dot(normal, viewDirection));
+  sample.rawRim = clamp(
+    (settings.cutoff - nDotV + 0.1) * 5.0,
     0.0,
     1.0);
-  sample.rawRim = pow(wrappedView, max(settings.falloff, 0.1));
+  float exponent = 1.0 / max(1.0 - settings.sharpness, 0.01);
+  float wing = sample.rawRim > 0.5
+    ? 1.0 - sample.rawRim
+    : sample.rawRim;
+  float shapedWing = exp2(exponent - 1.0) * pow(wing, exponent);
+  float viewRamp = sample.rawRim > 0.5
+    ? 1.0 - shapedWing
+    : shapedWing;
   float rampWidth = max(
     settings.upRamp.y - settings.upRamp.x,
     0.001);
@@ -1199,10 +1201,12 @@ DLRimSample dlEvaluateRim(
     (normal.y - settings.upRamp.x) / rampWidth,
     0.0,
     1.0);
-  sample.steppedRim = sample.rawRim * upRamp *
+  // Reduced CSDK also multiplies by a screen-depth occlusion sample. Painter's
+  // surface shader has no scene-depth input, so this uses the neutral D=1.
+  sample.steppedRim = viewRamp * upRamp *
     settings.strength * ambientOcclusion * rimMask;
   sample.contribution = settings.enabled
-    ? lightingBeforeRim * settings.color * sample.steppedRim
+    ? lightingBeforeRim * sample.steppedRim
     : vec3(0.0);
   return sample;
 }

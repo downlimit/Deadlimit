@@ -524,9 +524,10 @@ and are excluded from Git.
 | --- | --- |
 | Painter shader compilation, live parameters, shader-instance assignment and saved disposable SPP | Confirmed by pipeline/runtime |
 | Retail texture/material identities, eye `color$0` dependency and outline color | Confirmed by static retail evidence |
-| Key direction/color/intensity, environment weights, diffuse controls, specular controls, rim controls and 1.0 mm outline width | Calibrated approximation |
-| Recovered direct-diffuse, stepped-specular and non-depth rim equations | Confirmed by static retail evidence |
-| Exact engine light globals and bound specular/rim values, six-direction probe response, camera-relative retail setup and pixel parity | Blocked/unresolved |
+| Key direction/color/intensity, environment weights, diffuse controls, specular controls and 1.0 mm outline width | Calibrated approximation |
+| Recovered direct-diffuse and stepped-specular equations | Confirmed by static retail evidence |
+| Default/Ivy rim equation, enable, cutoff, sharpness, strength, up-ramp, material mask and AO placement | Confirmed by event-791 ISA/cbuffer runtime trace |
+| Rim scene-depth occlusion in Painter, exact engine light globals, six-direction probe response, camera-relative retail setup and pixel parity | Blocked/unresolved |
 
 The fresh 2026-09-08 captures prove term isolation, asset integrity, live
 Painter-light yaw and an obvious same-scene delta from Painter PBR. The earlier

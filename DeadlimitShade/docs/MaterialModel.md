@@ -83,7 +83,7 @@ their direct consumers.
 | `g_tAmbientOcclusion.R` | authored AO | NPR bounce weighting and final occlusion terms |
 | `g_tNprTransmissiveColor` | sRGB constant texture from `TextureNprTramsissiveColor1 = [0.321569, 0.388235, 0.176471]` | added only to the NPR bounce/indirect term |
 | `g_tTintMaskRimLightMask` | packed tint/rim texture | base/tint and optional rim paths |
-| material flags/values | `g_bNPRBounceDiffuse`, `g_bNPRDirectDiffuse`, `g_bNPRDirectSpecular`, `g_bNPRRimLighting`, sharpness, wrap, step, exposure, and rim controls | fields in `_Globals_`; their current engine-populated values were not present in the VMAT capture |
+| material flags/values | `g_bNPRBounceDiffuse`, `g_bNPRDirectDiffuse`, `g_bNPRDirectSpecular`, `g_bNPRRimLighting`, sharpness, step, exposure, and rim controls | fields in `_Globals_`; event 791 supplies the captured Default/Ivy values documented below |
 
 The generated code also consumes data not authored by this material:
 
@@ -552,14 +552,19 @@ matTint  = mix(tintNorm, baseColor, metalness)
 directSpecular = stepped * (0.5 / (1-exp2(-3.32192993*r0*r0))) * matTint
 ```
 
-The recovered rim branch uses the camera-to-pixel direction, surface-up ramp,
-AO, packed rim mask, and lighting accumulated before rim:
+The event-791 runtime rim branch uses the camera-to-pixel direction,
+surface-up ramp, raw authored AO, `g_tTintMaskRimLightMask.G`, and lighting
+accumulated before rim:
 
 ```text
-wrappedView = sat((dot(N, cameraToPixel) + wrap) / (1 + wrap)^2)
-upRamp      = sat((Nup - upRampMin) / (upRampMax - upRampMin))
-rimFactor   = pow(wrappedView, falloff) * upRamp * strength * AO * rimMask
-rimColor    = lightingBeforeRim * rimFactor
+u = sat((cutoff - abs(dot(N, cameraToPixel)) + 0.1) * 5)
+p = 1 / (1 - sharpness)
+w = min(u, 1-u)
+q = exp2(p-1) * pow(w, p)
+viewRamp = (u > 0.5) ? 1-q : q
+upRamp = sat((Nup - upRampMin) / (upRampMax - upRampMin))
+rimFactor = viewRamp * upRamp * strength * authoredAO * tint_rim.g * depthOcclusion
+rimColor = (directDiffuseLighting + bounceLighting) * rimFactor
 ```
 
 Before final material modulation, retail applies this color-dependent response
@@ -577,17 +582,16 @@ unavailable. That substitution is a **calibrated approximation**; the
 polynomial and its placement are **confirmed by static retail evidence**.
 
 Painter uses Y as surface-up in this implementation and exposes a
-surface-to-camera vector, so the corresponding terms are `N.y` and
-`dot(N, -viewDirection)`. The final Deadlimit shaded path adds `rimColor`
-directly. It has no independent artistic rim color and no Painter environment
-specular term. Those two constraints prevent the previously observed pair of
-competing highlights.
+surface-to-camera vector, so the corresponding terms are `N.y` and the
+absolute normal/view dot. The final Deadlimit shaded path adds `rimColor`
+directly. It has no independent artistic rim color and does not scale from
+direct or environment specular.
 
-The Ivy profile values for steps, sharpness, tint, roughness bias, reflectance,
-wrap, falloff, strength, and up-ramp are **calibrated approximations**. They
-must not be described as retail runtime values. The recovered equations and
-buffer field identities are static evidence; a matching runtime draw is still
-required to replace the calibrated values.
+Painter's surface-shader API does not expose the scene depth sampled by the
+runtime occlusion branch. Deadlimit therefore evaluates the recovered
+non-depth equation with neutral `depthOcclusion=1`; this is the remaining rim
+approximation. The material mask, curve, AO, up-ramp, strength, and lighting
+source are runtime-backed.
 
 ## Reduced CSDK runtime constants capture — 2026-09-09
 
@@ -613,21 +617,26 @@ decompiled Reduced CSDK `pbr_vulkan_60_ps.vcs` NPR global layout gives:
 | exposure targets | `[1, 0.5, 0.1]` | confirmed by pipeline/runtime (Reduced CSDK) |
 | exposure-control PBR blend | `0.5` | confirmed by pipeline/runtime (Reduced CSDK) |
 | direct specular enabled | `0` | confirmed by pipeline/runtime (Reduced CSDK) |
-| rim enabled in this preview | `0` | confirmed by pipeline/runtime (Reduced CSDK) |
+| rim enabled in this preview | `1` | confirmed by ISA/cbuffer runtime trace (Reduced CSDK) |
+| rim cutoff | `1.0` | confirmed by ISA/cbuffer runtime trace (Reduced CSDK) |
+| rim sharpness | `0.01` | confirmed by ISA/cbuffer runtime trace (Reduced CSDK) |
+| rim strength | `0.3` | confirmed by ISA/cbuffer runtime trace (Reduced CSDK) |
+| rim up-ramp | `[0, 1]` | confirmed by ISA/cbuffer runtime trace (Reduced CSDK) |
+| rim depth occlusion enabled | `1` | confirmed by ISA/cbuffer runtime trace (Reduced CSDK) |
+| rim occlusion sample distance | `0.5` | confirmed by ISA/cbuffer runtime trace (Reduced CSDK) |
 
 These values are not current retail runtime values. The Reduced CSDK shader
 payload and current retail shader payload have different identities. Painter's
 neutral `screenDfAO = 1`, six-directional probe colors, direct-specular
-controls, rim controls, and preview light colors remain calibrated
+controls, rim depth occlusion, and preview light colors remain calibrated
 approximations or blocked where noted. The profile uses the captured diffuse
 and bounce constants while keeping that provenance boundary explicit.
 
-The two disabled flags are composition-critical. `g_bNPRDirectSpecularEnabled=0`
+The direct-specular flag remains composition-critical. `g_bNPRDirectSpecularEnabled=0`
 selects the ordinary direct-specular path; it does not remove direct specular.
 That ordinary path is now traced separately and is retained in captured-mode
-Shaded. `g_bNPRRimLightingEnabled=0` contributes no NPR rim in this Default draw.
-The red silhouette visible in this preview is supplied by the outline pass and
-is not evidence that the NPR rim flag is active.
+Shaded. Runtime tracing of `cb0[11].x` corrects the earlier rim interpretation:
+the Default draw enables NPR rim. Its red outline remains a separate pass.
 
 The Painter bounce path now includes the recovered exposure-control topology.
 For each probe color it preserves linear-RGB chromaticity, fits luminance to

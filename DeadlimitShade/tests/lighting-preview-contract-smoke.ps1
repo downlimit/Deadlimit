@@ -38,7 +38,12 @@ Assert-True ($default.lights.Count -eq 2) 'Default must retain key and fill ligh
 Assert-True ([bool] $default.lights[0].castsShadows) 'Default key must retain direct-shadow intent.'
 Assert-True (-not [bool] $default.lights[1].castsShadows) 'Default fill must remain unshadowed.'
 Assert-True ($default.environment.sourceImage -eq 'materials/editor/sky_default_grey_exr_98c96aa.png') 'Default must bind the recovered CSDK sky image.'
-Assert-True ($null -eq $default.rim) 'Absent CSDK rim data must stay absent.'
+Assert-True ([bool] $default.rim.enabled) 'Default must enable the runtime-confirmed NPR rim branch.'
+Assert-True ([math]::Abs([double] $default.rim.cutoff - 1.0) -lt 1e-9) 'Default rim cutoff must match cb0[11].y.'
+Assert-True ([math]::Abs([double] $default.rim.sharpness - 0.01) -lt 1e-9) 'Default rim sharpness must match cb0[11].z.'
+Assert-True ([math]::Abs([double] $default.rim.strength - 0.3) -lt 1e-9) 'Default rim strength must match cb0[11].w.'
+Assert-True (($default.rim.upRamp -join '|') -eq '0|1') 'Default rim up-ramp must match cb0[12].xy.'
+Assert-True ([bool] $default.rim.depthOcclusion) 'Default must retain the captured scene-depth occlusion intent.'
 
 $plugin = Get-Content -LiteralPath (Join-Path $shadeRoot 'painter_plugins\deadlimit_apply.py') -Raw
 $hero = Get-Content -LiteralPath (Join-Path $shadeRoot 'shaders\Deadlock_Hero.glsl') -Raw
@@ -52,6 +57,8 @@ Assert-True $plugin.Contains('"dl_environment_specular_enabled": bool(environmen
 Assert-True $hero.Contains('getAO(inputs.sparse_coord, true, true)') 'Deadlock authored AO must bypass Painter AO Intensity.'
 Assert-True $hero.Contains('if (dl_lighting_preset_mode && !dl_preset_environment_bound)') 'CSDK mode must reject an unrelated Painter environment.'
 Assert-True $hero.Contains('DLRimSettings dlActiveRimSettings()') 'Rim must be owned by Lighting Preview state.'
+Assert-True $hero.Contains('exp2(exponent - 1.0) * pow(wing, exponent)') 'Rim must use the recovered symmetric sharpness curve.'
+Assert-True $hero.Contains('settings.strength * ambientOcclusion * rimMask') 'Rim must use authored AO and tint_rim.g.'
 Assert-True (-not $hero.Contains('profile.rimLightingEnabled')) 'Character profiles must not hard-disable preset rim.'
 Assert-True ($null -eq $profile.rimLighting) 'Ivy profile must not own rim settings.'
 Assert-True $outline.Contains('//: state blend add_multiply') 'Outline must use the recovered dual-source blend family.'

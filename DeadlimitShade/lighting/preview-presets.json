@@ -12,7 +12,8 @@
         { "direction": [-0.6933344, 0.0712058, 0.7170894], "color": [1.0, 1.0, 1.0], "intensity": 0.55, "castsShadows": false }
       ],
       "environment": { "material": "materials/editor/sky_default_grey.vmat", "sourceImage": "materials/editor/sky_default_grey_exr_98c96aa.png", "rotationDegrees": 0.0, "brightnessScale": 0.22 },
-      "headlight": null, "rim": null
+      "headlight": null,
+      "rim": { "enabled": true, "cutoff": 1.0, "sharpness": 0.01, "strength": 0.3, "upRamp": [0.0, 1.0], "depthOcclusion": true, "occlusionSampleDistance": 0.5 }
     },
     {
       "name": "Old Default",
@@ -154,7 +155,8 @@
     }
   ],
   "globalBlockers": [
-    "CToolSceneLightRig and decoded maps expose no rim enable/color/intensity/falloff/wrap fields",
+    "Only Default has runtime-confirmed rim constants; the other preset rim states remain unavailable",
+    "Painter surface shaders expose no scene depth for the captured rim depth-occlusion branch",
     "Source maps contain probe bake volumes but no baked probe coefficients or cubemap textures",
     "Painter Python/Shader APIs expose shadow-mask reads but no supported setter for shadow_mask_enable",
     "toolscene/caldera/basepostprocess response curves are not recoverable from these static preset definitions"

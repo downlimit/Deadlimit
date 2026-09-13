@@ -151,19 +151,27 @@ placement at the initial value of `Ld` is confirmed by static code.
 
 ## Rim graph
 
-The non-depth rim factor is:
+The event-791 runtime rim factor is:
 
 ```text
-viewRamp = pow(saturate((dot(N, cameraToPixel) + wrap)/(1 + wrap)^2), falloff)
-upRamp   = saturate((N.z - upRampMin)/(upRampMax - upRampMin))
-rimFactor = viewRamp * upRamp * strength * AO * rimMask
+u = saturate((cutoff - abs(dot(N, cameraToPixel)) + 0.1) * 5)
+p = 1 / (1 - sharpness)
+wing = min(u, 1-u)
+shapedWing = exp2(p-1) * pow(wing, p)
+viewRamp = (u > 0.5) ? 1-shapedWing : shapedWing
+upRamp = saturate((N.z - upRampMin)/(upRampMax - upRampMin))
+rimFactor = viewRamp * upRamp * strength * authoredAO * tint_rim.g * depthOcclusion
 rim = (Ld + B) * rimFactor
 ```
 
+For Default + Ivy, event 791 binds `cutoff=1`, `sharpness=0.01`,
+`strength=0.3`, `upRamp=[0,1]`, depth occlusion enabled, and occlusion sample
+distance `0.5`. There is no wrap parameter or independent rim tint.
+
 If `g_bNPRRimLightingDepthOcclusion` is enabled, a projected offset point is
 compared against the scene-depth texture and multiplies `rimFactor`. Painter's
-surface shader has no equivalent scene-depth input, so this branch remains
-unimplemented there.
+surface shader has no equivalent scene-depth input, so the Painter path uses
+the explicit neutral approximation `depthOcclusion=1`.
 
 The retail shader uses Z as world up. Painter's Y-up conversion is an explicit
 pipeline adaptation.
@@ -238,11 +246,11 @@ therefore expected to differ on dielectrics.
 | base/tint/metalness/roughness/AO/normal | connected from retail inputs |
 | NPR direct diffuse | recovered equation with calibrated controls |
 | NPR direct specular | recovered equation with calibrated controls |
-| non-depth rim | recovered equation/masks with calibrated controls |
+| non-depth rim | recovered event-791 equation, material mask and Default constants |
 | self illumination | material-local approximation available |
 | six-direction probe bounce | fixed-color/directional calibrated approximation |
 | sun/barn attenuation and shadowing | unavailable |
-| depth-occluded rim | unavailable |
+| depth-occluded rim | Painter uses explicit neutral `1`; scene-depth input unavailable |
 | compatible environment/local-probe specular | unresolved and intentionally excluded |
 | engine tone mapping/post-processing | unresolved |
 

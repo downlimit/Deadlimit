@@ -79,7 +79,7 @@ Assert-True (
     $heroShader.Contains("directSpecularLighting +`r`n    rim.contribution") -or
     $heroShader.Contains("directSpecularLighting +`n    rim.contribution")
 ) 'Hero shaded composition must include the independently evaluated retail-structured rim term.'
-Assert-True $heroShader.Contains('lightingBeforeRim * settings.color * sample.steppedRim') 'Rim must modulate accumulated lighting with the selected preset color.'
+Assert-True $heroShader.Contains('lightingBeforeRim * sample.steppedRim') 'Rim must modulate the captured direct-plus-bounce lighting term without an independent tint.'
 Assert-True $heroShader.Contains('vec3(dot(baseColor, luminanceWeights))') 'Direct specular tint must derive from retail base color rather than Painter specular color.'
 Assert-True $heroShader.Contains('baseColor = sRGB2linear(retailColorMetalness.rgb);') 'Retail g_tColor RGB must receive its confirmed Source 2 sRGB decode without changing linear metalness alpha.'
 Assert-True $heroShader.Contains('max(baseColor.r, max(baseColor.g, baseColor.b)) * 25.0') 'Retail environment F0 must retain the recovered near-black authored-color visibility factor.'
@@ -93,6 +93,8 @@ Assert-True (-not $heroShader.Contains('directSpecularThreshold')) 'The removed 
 Assert-True (-not $heroShader.Contains('rimLightingColor')) 'The removed independently colored rim approximation must not return.'
 Assert-True $heroShader.Contains('settings.strength * ambientOcclusion * rimMask') 'Hero rim lighting must use the retail AO and packed-rim-mask gates.'
 Assert-True $heroShader.Contains('(normal.y - settings.upRamp.x) / rampWidth') 'Hero rim lighting must use the selected preset normal-up ramp.'
+Assert-True $heroShader.Contains('(settings.cutoff - nDotV + 0.1) * 5.0') 'Hero rim lighting must use the recovered cutoff coordinate.'
+Assert-True (-not $heroShader.Contains('settings.color')) 'Runtime rim must not gain an independent tint.'
 Assert-True $heroShader.Contains('vec3 dlEvaluateNprDiffuseResponse(') 'Hero shader must retain the recovered color-dependent NPR diffuse response.'
 Assert-True $heroShader.Contains('bounce.contribution * nprDiffuseResponse') 'The recovered NPR diffuse response must affect bounce before final material modulation.'
 Assert-True $heroShader.Contains('lightingBeforeRim') 'Rim must use the raw direct-plus-bounce accumulation recovered from retail.'
