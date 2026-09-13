@@ -4,10 +4,6 @@
 // NPR direct-diffuse equation. Runtime globals that have not been captured remain
 // explicit calibration controls and are not presented as retail defaults.
 
-// The captured display branch writes event-1531 sRGB bytes itself. This
-// shader-wide switch removes Painter's automatic framebuffer sRGB encoding.
-#define DISABLE_FRAMEBUFFER_SRGB_CONVERSION
-
 import lib-sss.glsl
 import lib-pbr.glsl
 import lib-emissive.glsl
@@ -471,21 +467,6 @@ uniform int dl_debug_view;
 //: param custom { "default": false, "label": "Captured Deadlock Display", "group": "Deadlimit Display" }
 uniform bool dl_captured_display;
 
-float dlDisplaySrgbEncode(float linearValue)
-{
-  float value = clamp(linearValue, 0.0, 1.0);
-  return value <= 0.003131
-    ? 12.92 * value
-    : 1.055 * pow(value, 1.0 / 2.4) - 0.055;
-}
-
-vec3 dlDisplaySrgbEncode(vec3 linearColor)
-{
-  return vec3(dlDisplaySrgbEncode(linearColor.r),
-              dlDisplaySrgbEncode(linearColor.g),
-              dlDisplaySrgbEncode(linearColor.b));
-}
-
 float dlCapturedDisplayChannel(float linearValue)
 {
   // Event 1531, with bloom fixed at zero until its filtering is reproduced.
@@ -505,7 +486,9 @@ float dlCapturedDisplayChannel(float linearValue)
     ((x * (a * x + c * b) + d * e) /
      (x * (a * x + b) + d) - e) * whiteScale,
     0.0, 1.0);
-  return dlDisplaySrgbEncode(mapped);
+  // Surface outputs remain linear. Painter performs its automatic framebuffer
+  // linear-to-sRGB conversion exactly once after the surface composition.
+  return mapped;
 }
 
 vec3 dlCapturedDisplay(vec3 linearColor)
@@ -1145,7 +1128,7 @@ void dlDebugOutput(vec3 value)
   albedoOutput(vec3(0.0));
   diffuseShadingOutput(vec3(0.0));
   specularShadingOutput(vec3(0.0));
-  emissiveColorOutput(dlDisplaySrgbEncode(value));
+  emissiveColorOutput(value);
   sssCoefficientsOutput(vec4(0.0));
 }
 
@@ -1444,8 +1427,11 @@ void shade(V2F inputs)
   // as a conventional PBR material.
   vec3 linearOpaque = nprLightingComposite +
     pbrComputeEmissive(emissive_tex, inputs.sparse_coord);
+  // Painter's surface API consumes linear lighting contributions. The
+  // captured branch applies only the recovered linear tonemap curve here;
+  // Painter owns the single final framebuffer sRGB conversion for both modes.
   diffuseShadingOutput(dl_captured_display
     ? dlCapturedDisplay(linearOpaque)
-    : dlDisplaySrgbEncode(linearOpaque));
+    : linearOpaque);
   sssCoefficientsOutput(getSSSCoefficients(inputs.sparse_coord));
 }

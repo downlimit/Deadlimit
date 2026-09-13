@@ -11,18 +11,18 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 source = (root / "shaders" / "Deadlock_Hero.glsl").read_text(encoding="utf-8")
 sys.path.insert(0, str(root / "tools"))
-from deadlock_display_reference import captured_display_tonemap
+from deadlock_display_reference import captured_display_tonemap, srgb_encode
 
-assert "#define DISABLE_FRAMEBUFFER_SRGB_CONVERSION" in source
+assert "#define DISABLE_FRAMEBUFFER_SRGB_CONVERSION" not in source
 assert 'uniform bool dl_captured_display;' in source
 assert 'diffuseShadingOutput(dl_captured_display\n    ? dlCapturedDisplay(linearOpaque)' in source
-assert 'dlDebugOutput' in source and 'emissiveColorOutput(dlDisplaySrgbEncode(value))' in source
+assert ': linearOpaque);' in source
+assert 'dlDebugOutput' in source and 'emissiveColorOutput(value)' in source
+assert 'dlDisplaySrgbEncode' not in source
 assert 'FXAA' not in source.upper()
 
 curve = source.split('float dlCapturedDisplayChannel(float linearValue)', 1)[1].split(
     'vec3 dlCapturedDisplay(vec3 linearColor)', 1)[0]
-encode = source.split('float dlDisplaySrgbEncode(float linearValue)', 1)[1].split(
-    'vec3 dlDisplaySrgbEncode(vec3 linearColor)', 1)[0]
 
 
 def glsl_constant(name):
@@ -37,20 +37,17 @@ values = {name: glsl_constant(name) for name in (
 assert values['bloom'] == 0.0
 assert 'float exposed = max(linearValue, 0.0) * exposure;' in curve
 assert 'float x = min(preCurveScale * (exposed + bloom), clampMax);' in curve
-assert 'return dlDisplaySrgbEncode(mapped);' in curve
-assert 'value <= 0.003131' in encode
-assert '12.92 * value' in encode
-assert '1.055 * pow(value, 1.0 / 2.4) - 0.055' in encode
+assert 'return mapped;' in curve
 
 
-def glsl_equivalent(channel):
+def glsl_linear_equivalent(channel):
     exposed = max(channel, 0.0) * values['exposure']
     x = min(values['preCurveScale'] * (exposed + values['bloom']), values['clampMax'])
     a, b, c, d, e = (values[name] for name in ('a', 'b', 'c', 'd', 'e'))
     mapped = ((x * (a * x + c * b) + d * e) /
               (x * (a * x + b) + d) - e) * values['whiteScale']
     mapped = max(0.0, min(1.0, mapped))
-    return 12.92 * mapped if mapped <= 0.003131 else 1.055 * mapped ** (1.0 / 2.4) - 0.055
+    return mapped
 
 
 # Event-1531 ISA output before UNORM storage; actual capture had tiny bloom.
@@ -62,10 +59,16 @@ samples = (
 )
 max_capture_error = 0.0
 for linear, captured in samples:
-    actual = tuple(glsl_equivalent(channel) for channel in linear)
-    cpu = captured_display_tonemap(
-        linear, (0.0, 0.0, 0.0), exposure=values['exposure'])['encoded']
-    assert max(abs(a - b) for a, b in zip(actual, cpu)) < 1e-12
+    linear_surface = tuple(glsl_linear_equivalent(channel) for channel in linear)
+    cpu_result = captured_display_tonemap(
+        linear, (0.0, 0.0, 0.0), exposure=values['exposure'])
+    assert max(abs(a - b) for a, b in zip(
+        linear_surface, cpu_result['linear_mapped'])) < 1e-12
+    # Painter owns the one framebuffer conversion. A second encode would be a
+    # visible double-gamma regression, so keep it outside the surface output.
+    actual = tuple(srgb_encode(channel) for channel in linear_surface)
+    double_encoded = tuple(srgb_encode(channel) for channel in actual)
+    assert max(abs(a - b) for a, b in zip(double_encoded, actual)) > 0.05
     max_capture_error = max(max_capture_error,
                             max(abs(a - b) for a, b in zip(actual, captured)))
 

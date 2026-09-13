@@ -174,7 +174,8 @@ Assert-True (($heroShader.Split('envIrradiance(').Count - 1) -eq 1) 'Painter pan
 Assert-True ($heroShader.Contains('environmentSpecular.contribution')) 'Deadlimit shaded composition must include the controlled probe-specular substitute.'
 Assert-True ($heroShader.Contains('dl_environment_specular_strength')) 'Environment specular must expose its calibrated preview strength.'
 Assert-True ($heroShader -match 'vec3 linearOpaque = nprLightingComposite \+\s*pbrComputeEmissive' -and
-    $heroShader -match 'diffuseShadingOutput\(dl_captured_display\s*\? dlCapturedDisplay\(linearOpaque\)\s*: dlDisplaySrgbEncode\(linearOpaque\)\)') 'Shaded output must use the self-composed Deadlimit color path.'
+    $heroShader -match 'diffuseShadingOutput\(dl_captured_display\s*\? dlCapturedDisplay\(linearOpaque\)\s*: linearOpaque\)') 'Shaded output must keep both Deadlimit modes on Painter linear surface outputs.'
+Assert-True (-not $heroShader.Contains('#define DISABLE_FRAMEBUFFER_SRGB_CONVERSION')) 'Painter must own the single framebuffer linear-to-sRGB conversion.'
 
 foreach ($value in @(0.0, 0.125, 0.25, 0.5, 0.75, 0.875, 1.0)) {
     Assert-Near (Invoke-NprQuantize $value 0.0) $value 0.0000001 'Sharpness 0 must preserve the input.'
