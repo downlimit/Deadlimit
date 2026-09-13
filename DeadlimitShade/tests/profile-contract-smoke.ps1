@@ -173,7 +173,8 @@ Assert-True (($heroShader.Split('pbrComputeSpecular(').Count - 1) -eq 2) 'Painte
 Assert-True (($heroShader.Split('envIrradiance(').Count - 1) -eq 1) 'Painter panorama irradiance must remain confined to the explicit PBR baseline view.'
 Assert-True ($heroShader.Contains('environmentSpecular.contribution')) 'Deadlimit shaded composition must include the controlled probe-specular substitute.'
 Assert-True ($heroShader.Contains('dl_environment_specular_strength')) 'Environment specular must expose its calibrated preview strength.'
-Assert-True ($heroShader -match 'diffuseShadingOutput\(\s*nprLightingComposite \+') 'Shaded output must use the self-composed Deadlimit color path.'
+Assert-True ($heroShader -match 'vec3 linearOpaque = nprLightingComposite \+\s*pbrComputeEmissive' -and
+    $heroShader -match 'diffuseShadingOutput\(dl_captured_display\s*\? dlCapturedDisplay\(linearOpaque\)\s*: dlDisplaySrgbEncode\(linearOpaque\)\)') 'Shaded output must use the self-composed Deadlimit color path.'
 
 foreach ($value in @(0.0, 0.125, 0.25, 0.5, 0.75, 0.875, 1.0)) {
     Assert-Near (Invoke-NprQuantize $value 0.0) $value 0.0000001 'Sharpness 0 must preserve the input.'

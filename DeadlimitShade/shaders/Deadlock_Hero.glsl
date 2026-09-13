@@ -4,6 +4,10 @@
 // NPR direct-diffuse equation. Runtime globals that have not been captured remain
 // explicit calibration controls and are not presented as retail defaults.
 
+// The captured display branch writes event-1531 sRGB bytes itself. This
+// shader-wide switch removes Painter's automatic framebuffer sRGB encoding.
+#define DISABLE_FRAMEBUFFER_SRGB_CONVERSION
+
 import lib-sss.glsl
 import lib-pbr.glsl
 import lib-emissive.glsl
@@ -463,6 +467,53 @@ uniform int dl_lighting_input_mode;
 //:   "group": "Deadlimit Diagnostics"
 //: }
 uniform int dl_debug_view;
+
+//: param custom { "default": false, "label": "Captured Deadlock Display", "group": "Deadlimit Display" }
+uniform bool dl_captured_display;
+
+float dlDisplaySrgbEncode(float linearValue)
+{
+  float value = clamp(linearValue, 0.0, 1.0);
+  return value <= 0.003131
+    ? 12.92 * value
+    : 1.055 * pow(value, 1.0 / 2.4) - 0.055;
+}
+
+vec3 dlDisplaySrgbEncode(vec3 linearColor)
+{
+  return vec3(dlDisplaySrgbEncode(linearColor.r),
+              dlDisplaySrgbEncode(linearColor.g),
+              dlDisplaySrgbEncode(linearColor.b));
+}
+
+float dlCapturedDisplayChannel(float linearValue)
+{
+  // Event 1531, with bloom fixed at zero until its filtering is reproduced.
+  const float exposure = 1.013959527015686;
+  const float preCurveScale = 2.8;
+  const float clampMax = 6.062026500701904;
+  const float bloom = 0.0; // Calibrated/blocked approximation.
+  const float a = 0.295199990272522;
+  const float b = 0.3856000006198883;
+  const float c = 0.5;
+  const float d = 0.3950999975204468;
+  const float e = 0.23810000717639923;
+  const float whiteScale = 1.5298149585723877;
+  float exposed = max(linearValue, 0.0) * exposure;
+  float x = min(preCurveScale * (exposed + bloom), clampMax);
+  float mapped = clamp(
+    ((x * (a * x + c * b) + d * e) /
+     (x * (a * x + b) + d) - e) * whiteScale,
+    0.0, 1.0);
+  return dlDisplaySrgbEncode(mapped);
+}
+
+vec3 dlCapturedDisplay(vec3 linearColor)
+{
+  return vec3(dlCapturedDisplayChannel(linearColor.r),
+              dlCapturedDisplayChannel(linearColor.g),
+              dlCapturedDisplayChannel(linearColor.b));
+}
 
 struct DLDirectDiffuseSample
 {
@@ -1094,7 +1145,7 @@ void dlDebugOutput(vec3 value)
   albedoOutput(vec3(0.0));
   diffuseShadingOutput(vec3(0.0));
   specularShadingOutput(vec3(0.0));
-  emissiveColorOutput(value);
+  emissiveColorOutput(dlDisplaySrgbEncode(value));
   sssCoefficientsOutput(vec4(0.0));
 }
 
@@ -1338,11 +1389,11 @@ void shade(V2F inputs)
   }
   if (dl_debug_view == 15)
   {
-    emissiveColorOutput(pbrComputeEmissive(emissive_tex, inputs.sparse_coord));
-    albedoOutput(diffColor);
-    diffuseShadingOutput(occlusion * envIrradiance(vectors.normal));
-    specularShadingOutput(specOcclusion * pbrComputeSpecular(vectors, specColor, roughness));
-    sssCoefficientsOutput(getSSSCoefficients(inputs.sparse_coord));
+    vec3 pbrBaseline =
+      pbrComputeEmissive(emissive_tex, inputs.sparse_coord) +
+      diffColor * (occlusion * envIrradiance(vectors.normal)) +
+      specOcclusion * pbrComputeSpecular(vectors, specColor, roughness);
+    dlDebugOutput(pbrBaseline);
     return;
   }
   if (dl_debug_view == 16)
@@ -1391,8 +1442,10 @@ void shade(V2F inputs)
   // path used by Painter's shipped Dota 2 shader; routing it back through the
   // standard albedo/lighting split makes Painter recombine and grade the terms
   // as a conventional PBR material.
-  diffuseShadingOutput(
-    nprLightingComposite +
-    pbrComputeEmissive(emissive_tex, inputs.sparse_coord));
+  vec3 linearOpaque = nprLightingComposite +
+    pbrComputeEmissive(emissive_tex, inputs.sparse_coord);
+  diffuseShadingOutput(dl_captured_display
+    ? dlCapturedDisplay(linearOpaque)
+    : dlDisplaySrgbEncode(linearOpaque));
   sssCoefficientsOutput(getSSSCoefficients(inputs.sparse_coord));
 }
