@@ -46,11 +46,6 @@ struct DLCharacterProfile
   float directSpecularTint;
   float directSpecularRoughnessBias;
   float directSpecularReflectance;
-  bool rimLightingEnabled;
-  float rimLightingWrap;
-  float rimLightingFalloff;
-  float rimLightingStrength;
-  vec2 rimLightingUpRamp;
   vec3 keyLightDirection;
   vec3 keyLightColor;
   float keyLightIntensity;
@@ -62,6 +57,9 @@ struct DLCharacterProfile
   vec3 referenceTint;
   bool outlineEnabled;
   vec3 outlineColor;
+  vec3 outlineAdditive;
+  float outlineMask;
+  float outlineVertexColorTint;
 };
 
 DLCharacterProfile dlCharacterProfileIvy()
@@ -95,11 +93,6 @@ DLCharacterProfile dlCharacterProfileIvy()
   profile.directSpecularTint = 0.35;
   profile.directSpecularRoughnessBias = 0.18;
   profile.directSpecularReflectance = 0.025;
-  profile.rimLightingEnabled = false;
-  profile.rimLightingWrap = 1.0;
-  profile.rimLightingFalloff = 2.0;
-  profile.rimLightingStrength = 0.75;
-  profile.rimLightingUpRamp = vec2(-0.25, 0.7);
   profile.keyLightDirection = vec3(0.494, 0.766, -0.411);
   profile.keyLightColor = vec3(1.0, 1.0, 1.0);
   profile.keyLightIntensity = 1.6;
@@ -111,6 +104,9 @@ DLCharacterProfile dlCharacterProfileIvy()
   profile.referenceTint = vec3(0.321569, 0.388235, 0.176471);
   profile.outlineEnabled = true;
   profile.outlineColor = vec3(0.164706, 0.054902, 0.054902);
+  profile.outlineAdditive = vec3(0.243137, 0.164706, 0.164706);
+  profile.outlineMask = 0.819;
+  profile.outlineVertexColorTint = 0.0;
   return profile;
 }
 
@@ -127,7 +123,10 @@ DLCharacterProfile dlBuiltInCharacterProfile(int characterId)
 // END GENERATED CHARACTER PROFILES
 
 //: state cull_face on
-//: state blend none
+// CSDK S_MODE_OUTLINE uses dual-source blending:
+//   out0 + framebuffer * out1
+// Painter's add_multiply state exposes that composition through color1Output.
+//: state blend add_multiply
 
 //: param custom {
 //:   "default": 0,
@@ -136,6 +135,23 @@ DLCharacterProfile dlBuiltInCharacterProfile(int characterId)
 //:   "group": "Deadlimit Outline"
 //: }
 uniform vec3 dl_outline_color;
+
+//: param custom {
+//:   "default": 0,
+//:   "label": "Outline Additive",
+//:   "widget": "color",
+//:   "group": "Deadlimit Outline"
+//: }
+uniform vec3 dl_outline_additive;
+
+//: param custom {
+//:   "default": 1.0,
+//:   "label": "Outline Mask",
+//:   "min": 0.0,
+//:   "max": 1.0,
+//:   "group": "Deadlimit Outline"
+//: }
+uniform float dl_outline_mask;
 
 //: param custom {
 //:   "default": 0,
@@ -161,17 +177,23 @@ uniform bool dl_outline_use_character_color;
 void shade(V2F inputs)
 {
   vec3 outlineColor = dl_outline_color;
+  vec3 outlineAdditive = dl_outline_additive;
+  float outlineMask = dl_outline_mask;
   if (dl_outline_character != DL_CHARACTER_CUSTOM && dl_outline_use_character_color)
   {
-    outlineColor = dlBuiltInCharacterProfile(dl_outline_character).outlineColor;
+    DLCharacterProfile profile = dlBuiltInCharacterProfile(dl_outline_character);
+    outlineColor = profile.outlineColor;
+    outlineAdditive = profile.outlineAdditive;
+    outlineMask = profile.outlineMask;
   }
 
-  // Keep Painter's Base Color solo view consistent with the flat color used by
-  // the material viewport. The outline Texture Set is preview-only, so this
-  // output never enters the authored hero texture export.
+  vec3 sourceAdditive = mix(vec3(0.0), outlineAdditive, vec3(outlineMask));
+  vec3 destinationTint = mix(vec3(1.0), outlineColor, vec3(outlineMask));
   albedoOutput(outlineColor);
-  diffuseShadingOutput(vec3(0.0));
+  diffuseShadingOutput(sourceAdditive);
   specularShadingOutput(vec3(0.0));
-  emissiveColorOutput(outlineColor);
+  emissiveColorOutput(vec3(0.0));
+  alphaOutput(1.0);
+  color1Output(vec4(destinationTint, 1.0));
   sssCoefficientsOutput(vec4(0.0));
 }

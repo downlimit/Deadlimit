@@ -11,6 +11,8 @@ function Assert-True([bool] $Condition, [string] $Message) {
 
 Assert-True ($profile.outline.widthMillimeters -gt 0) 'Ivy outline width must be positive.'
 Assert-True ($profile.outline.color.Count -eq 3) 'Ivy outline color must contain RGB.'
+Assert-True ($profile.outline.additive.Count -eq 3) 'Ivy outline additive term must contain RGB.'
+Assert-True ($profile.outline.mask -eq 0.819) 'Ivy outline mask must match the statically recovered material value.'
 Assert-True ($null -ne $profile.painterApply) 'Ivy must expose a Painter apply recipe.'
 Assert-True ($profile.painterApply.outlineAllMeshes -eq $true) 'Ivy Apply must outline the complete source scene.'
 Assert-True ($profile.painterApply.heroTextureSets.Count -eq 3) 'Ivy Apply must target its three authored Texture Sets for hero shading.'
@@ -66,7 +68,9 @@ Assert-True (-not $plugin.Contains('powershell.exe')) 'Painter Apply must not in
 
 $outlineShader = Get-Content -LiteralPath (Join-Path $shadeRoot 'shaders\Deadlock_Outline.glsl') -Raw
 $heroShader = Get-Content -LiteralPath (Join-Path $shadeRoot 'shaders\Deadlock_Hero.glsl') -Raw
-Assert-True $outlineShader.Contains('emissiveColorOutput(outlineColor)') 'Outline Material view must expose the resolved profile color.'
+Assert-True $outlineShader.Contains('//: state blend add_multiply') 'Outline must use Painter dual-source additive/multiply blending.'
+Assert-True $outlineShader.Contains('color1Output(vec4(destinationTint, 1.0))') 'Outline must expose the CSDK destination tint through Painter color1Output.'
+Assert-True $outlineShader.Contains('diffuseShadingOutput(sourceAdditive)') 'Outline must expose the CSDK additive source term.'
 Assert-True $outlineShader.Contains('albedoOutput(outlineColor)') 'Outline Base Color view must match the resolved Material-view color.'
 Assert-True ($heroShader.IndexOf('baseColor *= mix(vec3(1.0), vertexColor, dl_vertex_color_multiply);') -lt $heroShader.IndexOf('if (dl_debug_view == 1)')) 'Resolved Base Color must include VMAT vertex-color multiplication in both preview modes.'
 Assert-True $heroShader.Contains('directSpecularLighting +') 'Hero shaded composition must include the independently evaluated direct specular term.'
@@ -75,7 +79,7 @@ Assert-True (
     $heroShader.Contains("directSpecularLighting +`r`n    rim.contribution") -or
     $heroShader.Contains("directSpecularLighting +`n    rim.contribution")
 ) 'Hero shaded composition must include the independently evaluated retail-structured rim term.'
-Assert-True $heroShader.Contains('lightingBeforeRim * sample.steppedRim') 'Rim must modulate the accumulated diffuse/bounce lighting as recovered from retail SPIR-V.'
+Assert-True $heroShader.Contains('lightingBeforeRim * settings.color * sample.steppedRim') 'Rim must modulate accumulated lighting with the selected preset color.'
 Assert-True $heroShader.Contains('vec3(dot(baseColor, luminanceWeights))') 'Direct specular tint must derive from retail base color rather than Painter specular color.'
 Assert-True $heroShader.Contains('baseColor = sRGB2linear(retailColorMetalness.rgb);') 'Retail g_tColor RGB must receive its confirmed Source 2 sRGB decode without changing linear metalness alpha.'
 Assert-True $heroShader.Contains('max(baseColor.r, max(baseColor.g, baseColor.b)) * 25.0') 'Retail environment F0 must retain the recovered near-black authored-color visibility factor.'
@@ -87,8 +91,8 @@ Assert-True $heroShader.Contains('dlNprQuantizeWithExponent') 'Direct specular m
 Assert-True $heroShader.Contains('(profile.directDiffuseWrap - 0.5) + sample.lambert - 0.5') 'Wrapped direct diffuse must consume saturated N dot L as recovered from retail.'
 Assert-True (-not $heroShader.Contains('directSpecularThreshold')) 'The removed thresholded highlight approximation must not return.'
 Assert-True (-not $heroShader.Contains('rimLightingColor')) 'The removed independently colored rim approximation must not return.'
-Assert-True $heroShader.Contains('profile.rimLightingStrength * ambientOcclusion * rimMask') 'Hero rim lighting must use the retail AO and packed-rim-mask gates.'
-Assert-True $heroShader.Contains('(normal.y - profile.rimLightingUpRamp.x) / rampWidth') 'Hero rim lighting must use the reflected normal-up ramp.'
+Assert-True $heroShader.Contains('settings.strength * ambientOcclusion * rimMask') 'Hero rim lighting must use the retail AO and packed-rim-mask gates.'
+Assert-True $heroShader.Contains('(normal.y - settings.upRamp.x) / rampWidth') 'Hero rim lighting must use the selected preset normal-up ramp.'
 Assert-True $heroShader.Contains('vec3 dlEvaluateNprDiffuseResponse(') 'Hero shader must retain the recovered color-dependent NPR diffuse response.'
 Assert-True $heroShader.Contains('bounce.contribution * nprDiffuseResponse') 'The recovered NPR diffuse response must affect bounce before final material modulation.'
 Assert-True $heroShader.Contains('lightingBeforeRim') 'Rim must use the raw direct-plus-bounce accumulation recovered from retail.'
@@ -108,7 +112,8 @@ Assert-True $installer.Contains('substance_painter_plugins.start_plugin(module)'
 Assert-True $installer.Contains("'restart-painter'") 'Installer must report the deterministic fallback when the dock cannot open live.'
 Assert-True $installer.Contains('assets\shaders\DeadlimitShade') 'Installer must deploy both Painter shaders.'
 Assert-True $installer.Contains('$runtimeShaders') 'Installer must deploy content-addressed shader inputs with the plugin runtime.'
+Assert-True $installer.Contains("lighting\preview-presets.json") 'Installer must deploy the recovered CSDK Lighting Preview catalog.'
 Assert-True $plugin.Contains('def load_captured_environment(self, path):') 'Capture bundle must have a reusable loader.'
-Assert-True $plugin.Contains('captured_environment = self._captured_environment_settings()') 'Apply must retain the project capture bundle.'
-Assert-True $plugin.Contains('self._bind_captured_environment(captured_environment)') 'Apply must rebind the retained capture bundle.'
+Assert-True $plugin.Contains('lighting_parameters = _lighting_shader_parameters(preset, environment_bound)') 'Apply must bind the selected CSDK lighting state.'
+Assert-True (-not $plugin.Contains('captured_environment = self._captured_environment_settings()')) 'Preset Apply must not restore a captured Ivy environment over the selected CSDK environment.'
 Write-Output 'Deadlimit Painter Apply contract smoke passed.'

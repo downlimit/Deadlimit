@@ -14,7 +14,6 @@
     "directDiffuse",
     "bounceLighting",
     "directSpecular",
-    "rimLighting",
     "previewLighting",
     "referenceTint",
     "outline",
@@ -156,27 +155,6 @@
         "evidence": { "$ref": "#/$defs/evidence" }
       }
     },
-    "rimLighting": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["enabled", "wrap", "falloff", "strength", "upRamp", "evidence"],
-      "properties": {
-        "enabled": { "type": "boolean" },
-        "wrap": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
-        "falloff": { "type": "number", "minimum": 0.1, "maximum": 12.0 },
-        "strength": { "type": "number", "minimum": 0.0, "maximum": 8.0 },
-        "upRamp": {
-          "type": "array",
-          "items": { "type": "number", "minimum": -1.0, "maximum": 1.0 },
-          "minItems": 2,
-          "maxItems": 2
-        },
-        "runtimeSource": { "const": "reduced-csdk-asset-browser" },
-        "enabledEvidence": { "$ref": "#/$defs/evidence" },
-        "controlsEvidence": { "$ref": "#/$defs/evidence" },
-        "evidence": { "$ref": "#/$defs/evidence" }
-      }
-    },
     "previewLighting": {
       "type": "object",
       "additionalProperties": false,
@@ -204,6 +182,9 @@
       "required": [
         "enabled",
         "color",
+        "additive",
+        "mask",
+        "vertexColorTint",
         "colorEvidence",
         "widthMillimeters",
         "widthStatus"
@@ -211,6 +192,9 @@
       "properties": {
         "enabled": { "type": "boolean" },
         "color": { "$ref": "#/$defs/color" },
+        "additive": { "$ref": "#/$defs/color" },
+        "mask": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "vertexColorTint": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
         "colorEvidence": { "$ref": "#/$defs/evidence" },
         "widthMillimeters": { "type": "number", "exclusiveMinimum": 0.0, "maximum": 100.0 },
         "widthStatus": { "$ref": "#/$defs/evidence" }

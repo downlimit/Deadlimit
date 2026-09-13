@@ -58,20 +58,6 @@
     "controlsEvidence": "calibrated-approximation",
     "evidence": "calibrated-approximation"
   },
-  "rimLighting": {
-    "enabled": false,
-    "wrap": 1.0,
-    "falloff": 2.0,
-    "strength": 0.75,
-    "upRamp": [
-      -0.25,
-      0.7
-    ],
-    "runtimeSource": "reduced-csdk-asset-browser",
-    "enabledEvidence": "confirmed-pipeline-runtime",
-    "controlsEvidence": "calibrated-approximation",
-    "evidence": "calibrated-approximation"
-  },
   "previewLighting": {
     "keyDirection": [
       0.494,
@@ -117,6 +103,13 @@
       0.054902,
       0.054902
     ],
+    "additive": [
+      0.243137,
+      0.164706,
+      0.164706
+    ],
+    "mask": 0.819,
+    "vertexColorTint": 0.0,
     "colorEvidence": "confirmed-static-retail",
     "widthMillimeters": 1.0,
     "widthStatus": "calibrated-approximation"

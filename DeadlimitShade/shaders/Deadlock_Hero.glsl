@@ -14,6 +14,10 @@ import lib-utils.glsl
 //: param auto main_light
 uniform vec4 uniform_main_light;
 
+// Camera-relative CSDK headlight rigs use the actual viewport orientation.
+//: param auto world_camera_direction
+uniform vec3 uniform_world_camera_direction;
+
 // Retail preview textures use ordinary sampler2D resources and must remain
 // valid for the whole mesh while Painter is painting another Texture Set.
 // Painter otherwise applies its local sampling optimization and can display
@@ -57,11 +61,6 @@ struct DLCharacterProfile
   float directSpecularTint;
   float directSpecularRoughnessBias;
   float directSpecularReflectance;
-  bool rimLightingEnabled;
-  float rimLightingWrap;
-  float rimLightingFalloff;
-  float rimLightingStrength;
-  vec2 rimLightingUpRamp;
   vec3 keyLightDirection;
   vec3 keyLightColor;
   float keyLightIntensity;
@@ -73,6 +72,9 @@ struct DLCharacterProfile
   vec3 referenceTint;
   bool outlineEnabled;
   vec3 outlineColor;
+  vec3 outlineAdditive;
+  float outlineMask;
+  float outlineVertexColorTint;
 };
 
 DLCharacterProfile dlCharacterProfileIvy()
@@ -106,11 +108,6 @@ DLCharacterProfile dlCharacterProfileIvy()
   profile.directSpecularTint = 0.35;
   profile.directSpecularRoughnessBias = 0.18;
   profile.directSpecularReflectance = 0.025;
-  profile.rimLightingEnabled = false;
-  profile.rimLightingWrap = 1.0;
-  profile.rimLightingFalloff = 2.0;
-  profile.rimLightingStrength = 0.75;
-  profile.rimLightingUpRamp = vec2(-0.25, 0.7);
   profile.keyLightDirection = vec3(0.494, 0.766, -0.411);
   profile.keyLightColor = vec3(1.0, 1.0, 1.0);
   profile.keyLightIntensity = 1.6;
@@ -122,6 +119,9 @@ DLCharacterProfile dlCharacterProfileIvy()
   profile.referenceTint = vec3(0.321569, 0.388235, 0.176471);
   profile.outlineEnabled = true;
   profile.outlineColor = vec3(0.164706, 0.054902, 0.054902);
+  profile.outlineAdditive = vec3(0.243137, 0.164706, 0.164706);
+  profile.outlineMask = 0.819;
+  profile.outlineVertexColorTint = 0.0;
   return profile;
 }
 
@@ -411,6 +411,50 @@ uniform float dl_environment_specular_strength;
 //: param custom { "default": 0.0, "label": "Environment Roughness Bias", "min": 0.0, "max": 0.75, "group": "Deadlimit Environment Specular" }
 uniform float dl_environment_specular_roughness_bias;
 
+// Apply Deadlimit owns these values from lighting/preview-presets.json. They
+// are separate from the character profile so one hero can be inspected under
+// every CSDK Lighting Preview rig.
+//: param custom { "default": false, "label": "CSDK Lighting Preset", "group": "Deadlimit Lighting Preview" }
+uniform bool dl_lighting_preset_mode;
+//: param custom { "default": [0.0, 1.0, 0.0], "label": "Preset Key Direction", "group": "Deadlimit Lighting Preview" }
+uniform vec3 dl_preset_key_direction;
+//: param custom { "default": [1.0, 1.0, 1.0], "label": "Preset Key Color", "widget": "color", "group": "Deadlimit Lighting Preview" }
+uniform vec3 dl_preset_key_color;
+//: param custom { "default": 0.0, "label": "Preset Key Intensity", "group": "Deadlimit Lighting Preview" }
+uniform float dl_preset_key_intensity;
+//: param custom { "default": false, "label": "Preset Key Casts Shadows", "group": "Deadlimit Lighting Preview" }
+uniform bool dl_preset_key_casts_shadows;
+//: param custom { "default": [0.0, 1.0, 0.0], "label": "Preset Fill Direction", "group": "Deadlimit Lighting Preview" }
+uniform vec3 dl_preset_fill_direction;
+//: param custom { "default": [1.0, 1.0, 1.0], "label": "Preset Fill Color", "widget": "color", "group": "Deadlimit Lighting Preview" }
+uniform vec3 dl_preset_fill_color;
+//: param custom { "default": 0.0, "label": "Preset Fill Intensity", "group": "Deadlimit Lighting Preview" }
+uniform float dl_preset_fill_intensity;
+//: param custom { "default": false, "label": "Preset Headlight", "group": "Deadlimit Lighting Preview" }
+uniform bool dl_preset_headlight_enabled;
+//: param custom { "default": [1.0, 1.0, 1.0], "label": "Preset Headlight Color", "widget": "color", "group": "Deadlimit Lighting Preview" }
+uniform vec3 dl_preset_headlight_color;
+//: param custom { "default": 0.0, "label": "Preset Headlight Intensity", "group": "Deadlimit Lighting Preview" }
+uniform float dl_preset_headlight_intensity;
+//: param custom { "default": false, "label": "Preset Headlight Casts Shadows", "group": "Deadlimit Lighting Preview" }
+uniform bool dl_preset_headlight_casts_shadows;
+//: param custom { "default": false, "label": "Preset Rim", "group": "Deadlimit Lighting Preview" }
+uniform bool dl_preset_rim_enabled;
+//: param custom { "default": [1.0, 1.0, 1.0], "label": "Preset Rim Color", "widget": "color", "group": "Deadlimit Lighting Preview" }
+uniform vec3 dl_preset_rim_color;
+//: param custom { "default": 0.0, "label": "Preset Rim Wrap", "group": "Deadlimit Lighting Preview" }
+uniform float dl_preset_rim_wrap;
+//: param custom { "default": 1.0, "label": "Preset Rim Falloff", "group": "Deadlimit Lighting Preview" }
+uniform float dl_preset_rim_falloff;
+//: param custom { "default": 0.0, "label": "Preset Rim Intensity", "group": "Deadlimit Lighting Preview" }
+uniform float dl_preset_rim_strength;
+//: param custom { "default": [-1.0, 1.0], "label": "Preset Rim Up Ramp", "group": "Deadlimit Lighting Preview" }
+uniform vec2 dl_preset_rim_up_ramp;
+//: param custom { "default": false, "label": "CSDK Environment Bound", "group": "Deadlimit Lighting Preview" }
+uniform bool dl_preset_environment_bound;
+//: param custom { "default": 1.0, "label": "CSDK Environment Brightness", "group": "Deadlimit Lighting Preview" }
+uniform float dl_preset_environment_brightness;
+
 //: param custom {
 //:   "default": 0.0,
 //:   "label": "Vertex Color Multiply",
@@ -633,6 +677,12 @@ DLEnvironmentSpecularSample dlEvaluateEnvironmentSpecular(
       ? sample.raw : vec3(0.0);
     return sample;
   }
+  if (dl_lighting_preset_mode && !dl_preset_environment_bound)
+  {
+    sample.raw = vec3(0.0);
+    sample.contribution = vec3(0.0);
+    return sample;
+  }
   float previewRoughness = clamp(
     roughness + dl_environment_specular_roughness_bias,
     0.04,
@@ -641,8 +691,11 @@ DLEnvironmentSpecularSample dlEvaluateEnvironmentSpecular(
     vectors,
     specularColor,
     previewRoughness);
+  float environmentStrength = dl_lighting_preset_mode
+    ? dl_preset_environment_brightness
+    : dl_environment_specular_strength;
   sample.contribution = dl_environment_specular_enabled
-    ? sample.raw * dl_environment_specular_strength
+    ? sample.raw * environmentStrength
     : vec3(0.0);
   return sample;
 }
@@ -653,6 +706,39 @@ struct DLRimSample
   float steppedRim;
   vec3 contribution;
 };
+
+struct DLRimSettings
+{
+  bool enabled;
+  vec3 color;
+  float wrap;
+  float falloff;
+  float strength;
+  vec2 upRamp;
+};
+
+DLRimSettings dlActiveRimSettings()
+{
+  DLRimSettings settings;
+  if (dl_lighting_preset_mode)
+  {
+    settings.enabled = dl_preset_rim_enabled;
+    settings.color = dl_preset_rim_color;
+    settings.wrap = dl_preset_rim_wrap;
+    settings.falloff = dl_preset_rim_falloff;
+    settings.strength = dl_preset_rim_strength;
+    settings.upRamp = dl_preset_rim_up_ramp;
+    return settings;
+  }
+
+  settings.enabled = dl_npr_rim_lighting;
+  settings.color = vec3(1.0);
+  settings.wrap = dl_npr_rim_wrap;
+  settings.falloff = dl_npr_rim_falloff;
+  settings.strength = dl_npr_rim_strength;
+  settings.upRamp = vec2(dl_npr_rim_up_ramp_start, dl_npr_rim_up_ramp_end);
+  return settings;
+}
 
 DLCharacterProfile dlCustomCharacterProfile()
 {
@@ -698,11 +784,6 @@ DLCharacterProfile dlCustomCharacterProfile()
   profile.directSpecularTint = dl_npr_direct_specular_tint;
   profile.directSpecularRoughnessBias = dl_npr_direct_specular_roughness_bias;
   profile.directSpecularReflectance = dl_npr_direct_specular_reflectance;
-  profile.rimLightingEnabled = dl_npr_rim_lighting;
-  profile.rimLightingWrap = dl_npr_rim_wrap;
-  profile.rimLightingFalloff = dl_npr_rim_falloff;
-  profile.rimLightingStrength = dl_npr_rim_strength;
-  profile.rimLightingUpRamp = vec2(dl_npr_rim_up_ramp_start, dl_npr_rim_up_ramp_end);
   profile.keyLightDirection = dl_key_light_direction;
   profile.keyLightColor = dl_key_light_color;
   profile.keyLightIntensity = dl_key_light_intensity;
@@ -714,6 +795,9 @@ DLCharacterProfile dlCustomCharacterProfile()
   profile.referenceTint = vec3(0.18);
   profile.outlineEnabled = true;
   profile.outlineColor = vec3(0.08, 0.02, 0.02);
+  profile.outlineAdditive = vec3(0.0);
+  profile.outlineMask = 1.0;
+  profile.outlineVertexColorTint = 0.0;
   return profile;
 }
 
@@ -1099,26 +1183,26 @@ DLRimSample dlEvaluateRim(
   float rimMask,
   float ambientOcclusion,
   vec3 lightingBeforeRim,
-  DLCharacterProfile profile)
+  DLRimSettings settings)
 {
   DLRimSample sample;
-  float wrap = max(profile.rimLightingWrap, 0.0);
+  float wrap = max(settings.wrap, 0.0);
   float wrappedView = clamp(
     (dot(normal, -viewDirection) + wrap) / ((1.0 + wrap) * (1.0 + wrap)),
     0.0,
     1.0);
-  sample.rawRim = pow(wrappedView, max(profile.rimLightingFalloff, 0.1));
+  sample.rawRim = pow(wrappedView, max(settings.falloff, 0.1));
   float rampWidth = max(
-    profile.rimLightingUpRamp.y - profile.rimLightingUpRamp.x,
+    settings.upRamp.y - settings.upRamp.x,
     0.001);
   float upRamp = clamp(
-    (normal.y - profile.rimLightingUpRamp.x) / rampWidth,
+    (normal.y - settings.upRamp.x) / rampWidth,
     0.0,
     1.0);
   sample.steppedRim = sample.rawRim * upRamp *
-    profile.rimLightingStrength * ambientOcclusion * rimMask;
-  sample.contribution = profile.rimLightingEnabled
-    ? lightingBeforeRim * sample.steppedRim
+    settings.strength * ambientOcclusion * rimMask;
+  sample.contribution = settings.enabled
+    ? lightingBeforeRim * settings.color * sample.steppedRim
     : vec3(0.0);
   return sample;
 }
@@ -1143,7 +1227,9 @@ void shade(V2F inputs)
   vec3 baseColor = getBaseColor(basecolor_tex, inputs.sparse_coord);
   float metallic = getMetallic(metallic_tex, inputs.sparse_coord);
   float specularLevel = getSpecularLevel(specularlevel_tex, inputs.sparse_coord);
-  float ambientOcclusion = getAO(inputs.sparse_coord);
+  // Deadlock consumes authored AO at full strength. Painter's documented third
+  // argument bypasses the user-facing AO Intensity default of 0.75.
+  float ambientOcclusion = getAO(inputs.sparse_coord, true, true);
   float retailRimMask = 1.0;
   vec3 retailTransmissiveColor = vec3(0.0);
   vec3 retailNormal = vec3(0.0, 0.0, 1.0);
@@ -1167,6 +1253,15 @@ void shade(V2F inputs)
   vec3 vertexColor = clamp(inputs.color[0].rgb, vec3(0.0), vec3(1.0));
   float vertexAlpha = clamp(inputs.color[0].a, 0.0, 1.0);
   DLCharacterProfile characterProfile = dlActiveCharacterProfile();
+  if (dl_lighting_preset_mode)
+  {
+    characterProfile.keyLightDirection = dl_preset_key_direction;
+    characterProfile.keyLightColor = dl_preset_key_color;
+    characterProfile.keyLightIntensity = dl_preset_key_intensity;
+    characterProfile.fillLightDirection = dl_preset_fill_direction;
+    characterProfile.fillLightColor = dl_preset_fill_color;
+    characterProfile.fillLightIntensity = dl_preset_fill_intensity;
+  }
   if (!dl_use_retail_inputs)
   {
     retailTransmissiveColor = characterProfile.referenceTint;
@@ -1175,10 +1270,13 @@ void shade(V2F inputs)
   // Diagnostic Neutral replaces material inputs only. Keep Painter's light yaw
   // live in every lighting view so Shift+RMB can verify that direct diffuse,
   // direct specular and the lighting-derived rim all share one light rig.
-  characterProfile.keyLightDirection =
-    dlPainterYawAdjustedDirection(characterProfile.keyLightDirection);
-  characterProfile.fillLightDirection =
-    dlPainterYawAdjustedDirection(characterProfile.fillLightDirection);
+  if (!dl_lighting_preset_mode)
+  {
+    characterProfile.keyLightDirection =
+      dlPainterYawAdjustedDirection(characterProfile.keyLightDirection);
+    characterProfile.fillLightDirection =
+      dlPainterYawAdjustedDirection(characterProfile.fillLightDirection);
+  }
   LocalVectors vectors = dl_use_retail_inputs && !diagnosticInputs
     ? computeLocalFrame(inputs, tangentSpaceToWorldSpace(retailNormal, inputs), 0.0)
     : computeLocalFrame(inputs);
@@ -1201,6 +1299,11 @@ void shade(V2F inputs)
   DLDirectDiffuseSample fillDirectDiffuse = dlEvaluateDirectDiffuse(
     vectors.normal,
     characterProfile.fillLightDirection,
+    characterProfile);
+  vec3 headlightDirection = normalize(-uniform_world_camera_direction);
+  DLDirectDiffuseSample headlightDirectDiffuse = dlEvaluateDirectDiffuse(
+    vectors.normal,
+    headlightDirection,
     characterProfile);
 
   // VMAT vertex color is part of the resolved material Base Color. Apply it
@@ -1301,6 +1404,15 @@ void shade(V2F inputs)
     metallic,
     specColor,
     characterProfile);
+  DLDirectSpecularSample headlightDirectSpecular = dlEvaluateDirectSpecular(
+    vectors.normal,
+    viewDirection,
+    headlightDirection,
+    roughness,
+    baseColor,
+    metallic,
+    specColor,
+    characterProfile);
 
   DLBounceSample bounce = dlEvaluateBounce(
     vectors.normal,
@@ -1322,19 +1434,31 @@ void shade(V2F inputs)
       bounce.ordinaryProbe);
 
   // Material AO does not multiply the recovered retail direct-light loops.
-  float keyVisibility = getShadowFactor();
+  float keyVisibility = (!dl_lighting_preset_mode || dl_preset_key_casts_shadows)
+    ? getShadowFactor()
+    : 1.0;
   float fillVisibility = 1.0;
+  float headlightVisibility = dl_preset_headlight_casts_shadows
+    ? getShadowFactor()
+    : 1.0;
   vec3 keyDiffuseLighting = characterProfile.keyLightIntensity *
     characterProfile.keyLightColor * keyDirectDiffuse.finalValue;
   vec3 fillDiffuseLighting = characterProfile.fillLightIntensity *
     characterProfile.fillLightColor * fillDirectDiffuse.finalValue;
+  vec3 headlightDiffuseLighting = dl_preset_headlight_enabled
+    ? headlightVisibility * dl_preset_headlight_intensity * dl_preset_headlight_color *
+      headlightDirectDiffuse.finalValue
+    : vec3(0.0);
   vec3 directSpecularLighting = keyVisibility *
     characterProfile.keyLightIntensity * characterProfile.keyLightColor *
     keyDirectSpecular.contribution + fillVisibility *
     characterProfile.fillLightIntensity * characterProfile.fillLightColor *
-    fillDirectSpecular.contribution;
+    fillDirectSpecular.contribution + (dl_preset_headlight_enabled
+      ? headlightVisibility * dl_preset_headlight_intensity * dl_preset_headlight_color *
+        headlightDirectSpecular.contribution
+      : vec3(0.0));
   vec3 directDiffuseLighting = keyVisibility * keyDiffuseLighting +
-    fillVisibility * fillDiffuseLighting;
+    fillVisibility * fillDiffuseLighting + headlightDiffuseLighting;
   vec3 lightingBeforeRim = bounce.contribution + directDiffuseLighting;
   vec3 nprDiffuseResponse = dlEvaluateNprDiffuseResponse(
     baseColor,
@@ -1342,13 +1466,14 @@ void shade(V2F inputs)
     characterProfile.directDiffusePbrBlend);
   vec3 diffuseLighting = directDiffuseLighting +
     bounce.contribution * nprDiffuseResponse;
+  DLRimSettings rimSettings = dlActiveRimSettings();
   DLRimSample rim = dlEvaluateRim(
     vectors.normal,
     viewDirection,
     retailRimMask,
     ambientOcclusion,
     lightingBeforeRim,
-    characterProfile);
+    rimSettings);
   vec3 nprLightingComposite =
     diffColor * diffuseLighting +
     directSpecularLighting +

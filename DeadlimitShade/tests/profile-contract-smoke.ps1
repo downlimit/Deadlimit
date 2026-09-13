@@ -99,11 +99,11 @@ foreach ($profile in $profiles) {
     Assert-Near ([double] $profile.bounceLighting.exposureTargets[2]) 0.1 0.0000001 'Ivy must retain the captured down exposure target.'
     Assert-Near ([double] $profile.bounceLighting.exposurePbrBlend) 0.5 0.0000001 'Ivy must retain the captured exposure-control PBR blend.'
     Assert-True ($profile.directSpecular.evidence -eq 'calibrated-approximation') 'Uncaptured direct-specular values must be classified as calibrated approximations.'
-    Assert-True ($profile.rimLighting.evidence -eq 'calibrated-approximation') 'Uncaptured rim values must be classified as calibrated approximations.'
     Assert-True (-not $profile.directSpecular.enabled) 'Reduced CSDK Default runtime disables the direct-specular branch.'
     Assert-True ($profile.directSpecular.enabledEvidence -eq 'confirmed-pipeline-runtime') 'Direct-specular enablement must retain runtime provenance separately from calibrated controls.'
-    Assert-True (-not $profile.rimLighting.enabled) 'Reduced CSDK Default runtime disables the NPR rim branch.'
-    Assert-True ($profile.rimLighting.enabledEvidence -eq 'confirmed-pipeline-runtime') 'Rim enablement must retain runtime provenance separately from calibrated controls.'
+    Assert-True ($null -eq $profile.rimLighting) 'Rim must come from the selected Lighting Preview preset rather than the character profile.'
+    Assert-Near ([double] $profile.outline.mask) 0.819 0.0000001 'Ivy must retain the statically recovered outline blend mask.'
+    Assert-Near ([double] $profile.outline.additive[0]) 0.243137 0.0000001 'Ivy must retain the statically recovered outline additive red channel.'
     Assert-True ($profile.previewLighting.evidence -eq 'calibrated-approximation') 'Painter preview lighting must be classified as a calibrated approximation.'
 }
 
@@ -154,6 +154,7 @@ Assert-True ($heroShader.Contains('profile.bounceProbePositiveX')) 'The fixed Iv
 Assert-True ($heroShader.Contains('vec3 dlEvaluateSixDirectionalProbe(')) 'Bounce must evaluate the recovered ambient-cube basis.'
 Assert-True ($heroShader.Contains('DLDirectSpecularSample dlEvaluateDirectSpecular(')) 'Hero shader is missing the controlled direct-specular contribution.'
 Assert-True ($heroShader.Contains('DLRimSample dlEvaluateRim(')) 'Hero shader is missing the controlled rim contribution.'
+Assert-True ($heroShader.Contains('DLRimSettings dlActiveRimSettings()')) 'Rim must be selected independently from the character profile.'
 Assert-True ($heroShader.Contains('DLBounceSample dlEvaluateBounce(')) 'Hero shader is missing the Deadlock-structured bounce approximation.'
 Assert-True ($heroShader.Contains('profile.bounceDfaoInfluenceRange')) 'Bounce must expose the captured DfAO influence range.'
 Assert-True ($heroShader.Contains('profile.bounceLightWeights')) 'Bounce must consume the captured NPR light weights.'

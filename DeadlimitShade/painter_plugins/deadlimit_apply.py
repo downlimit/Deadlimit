@@ -42,6 +42,65 @@ def _profiles():
     return sorted(result, key=lambda item: int(item["id"]))
 
 
+def _lighting_presets():
+    document = json.loads(
+        (_shade_root() / "lighting" / "preview-presets.json").read_text(encoding="utf-8"))
+    source = {item["name"]: item for item in document["presets"]}
+    resolved = []
+    for item in document["presets"]:
+        value = dict(source[item["inherits"]]) if item.get("inherits") else {}
+        value.update(item)
+        resolved.append(value)
+    return resolved
+
+
+def _csdk_content_root():
+    configured = os.environ.get("DEADLIMIT_CSDK_ROOT")
+    candidates = []
+    if configured:
+        candidates.append(Path(configured))
+    candidates.append(Path(r"C:\WorkProjects\Deadlock\Reduced_CSDK_12"))
+    for candidate in candidates:
+        content = candidate / "content" / "citadel"
+        if content.is_dir():
+            return content
+    return None
+
+
+def _lighting_shader_parameters(preset, environment_bound):
+    lights = preset.get("lights", [])
+    key = lights[0] if lights else {}
+    fill = lights[1] if len(lights) > 1 else {}
+    headlight = preset.get("headlight") or {}
+    rim = preset.get("rim") or {}
+    return {
+        "dl_lighting_preset_mode": True,
+        "dl_preset_key_direction": key.get("direction", [0.0, 1.0, 0.0]),
+        "dl_preset_key_color": key.get("color", [1.0, 1.0, 1.0]),
+        "dl_preset_key_intensity": float(key.get("intensity") or 0.0),
+        "dl_preset_key_casts_shadows": bool(key.get("castsShadows", False)),
+        "dl_preset_fill_direction": fill.get("direction", [0.0, 1.0, 0.0]),
+        "dl_preset_fill_color": fill.get("color", [1.0, 1.0, 1.0]),
+        "dl_preset_fill_intensity": float(fill.get("intensity") or 0.0),
+        "dl_preset_headlight_enabled": bool(headlight.get("intensity")),
+        "dl_preset_headlight_color": headlight.get("color") or [1.0, 1.0, 1.0],
+        "dl_preset_headlight_intensity": float(headlight.get("intensity") or 0.0),
+        "dl_preset_headlight_casts_shadows": bool(
+            headlight.get("castsShadows", False)),
+        "dl_preset_rim_enabled": bool(rim.get("enabled", False)),
+        "dl_preset_rim_color": rim.get("color", [1.0, 1.0, 1.0]),
+        "dl_preset_rim_wrap": float(rim.get("wrap", 0.0)),
+        "dl_preset_rim_falloff": float(rim.get("falloff", 1.0)),
+        "dl_preset_rim_strength": float(rim.get("intensity", 0.0)),
+        "dl_preset_rim_up_ramp": rim.get("upRamp", [-1.0, 1.0]),
+        "dl_preset_environment_bound": bool(environment_bound),
+        "dl_preset_environment_brightness": float(
+            preset.get("environment", {}).get("brightnessScale", 1.0)),
+        "dl_environment_specular_enabled": bool(environment_bound),
+        "dl_captured_environment": False,
+    }
+
+
 def _converter_path():
     candidates = [
         _shade_root() / "tools" / "Deadlimit.MeshPreview.exe",
@@ -122,11 +181,15 @@ def _import_or_reuse_project_shader(path, role):
     return {"name": name, "url": resource.identifier().url()}
 
 
-def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None):
+def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None,
+                              lighting_parameters=None):
     character_id = int(profile["id"])
     hero_texture_sets = json.dumps(profile["painterApply"]["heroTextureSets"])
     retail_bindings_json = json.dumps(retail_bindings or {})
     shader_urls_json = json.dumps(shader_urls or {})
+    lighting_parameters = dict(lighting_parameters or {})
+    lighting_preset_name = lighting_parameters.pop("presetName", "")
+    lighting_parameters_json = json.dumps(lighting_parameters)
     return r"""
 (function() {
   alg.resources.refreshShelves();
@@ -138,6 +201,7 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None):
   var heroTextureSets = HERO_TEXTURE_SETS;
   var retailBindings = RETAIL_BINDINGS;
   var shaderResources = SHADER_RESOURCES;
+  var lightingParameters = LIGHTING_PARAMETERS;
   var sourceLabel = null;
   heroTextureSets.some(function(name) {
     if (current.texturesets[name]) {
@@ -205,11 +269,15 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None):
   if (!heroInstance || !outlineInstance) {
     throw new Error("Deadlimit shader instances were not created");
   }
-  alg.shaders.setParameters(heroInstance.id, {
+  var heroParameters = {
     dl_character: CHARACTER_ID,
     dl_debug_view: 0,
     dl_lighting_input_mode: 0
+  };
+  Object.keys(lightingParameters).forEach(function(name) {
+    heroParameters[name] = lightingParameters[name];
   });
+  alg.shaders.setParameters(heroInstance.id, heroParameters);
   alg.shaders.setParameters(outlineInstance.id, {
     dl_outline_character: CHARACTER_ID,
     dl_outline_use_character_color: true
@@ -226,7 +294,7 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None):
     if (!instance) {
       throw new Error("Retail shader instance was not created for " + textureSetName);
     }
-    alg.shaders.setParameters(instance.id, {
+    var retailParameters = {
       dl_character: CHARACTER_ID,
       dl_debug_view: 0,
       dl_lighting_input_mode: 0,
@@ -237,16 +305,21 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None):
       dl_retail_ambient_occlusion: binding.ambientOcclusion,
       dl_retail_tint_rim: binding.tintRim,
       dl_retail_npr_transmissive: binding.nprTransmissive
+    };
+    Object.keys(lightingParameters).forEach(function(name) {
+      retailParameters[name] = lightingParameters[name];
     });
+    alg.shaders.setParameters(instance.id, retailParameters);
   });
   return JSON.stringify({
     characterId: CHARACTER_ID,
     heroShader: heroInstance.shader,
     outlineShader: outlineInstance.shader,
-    textureSets: Object.keys(textureSets).sort()
+    textureSets: Object.keys(textureSets).sort(),
+    lightingPreset: LIGHTING_PRESET_NAME
   });
 })()
-""".replace("CHARACTER_ID", str(character_id)).replace("HERO_TEXTURE_SETS", hero_texture_sets).replace("RETAIL_BINDINGS", retail_bindings_json).replace("SHADER_RESOURCES", shader_urls_json)
+""".replace("CHARACTER_ID", str(character_id)).replace("HERO_TEXTURE_SETS", hero_texture_sets).replace("RETAIL_BINDINGS", retail_bindings_json).replace("SHADER_RESOURCES", shader_urls_json).replace("LIGHTING_PARAMETERS", lighting_parameters_json).replace("LIGHTING_PRESET_NAME", json.dumps(lighting_preset_name))
 
 
 class DeadlimitApplyDock(QtWidgets.QWidget):
@@ -258,6 +331,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self._generated_mesh = None
         self._source_mesh = None
         self._selected_profile = None
+        self._selected_lighting_preset = None
         self._retail_queue = []
         self._retail_outputs = []
         self._retail_bindings = {}
@@ -275,6 +349,11 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         for profile in _profiles():
             self.character_combo.addItem(profile["displayName"], profile)
         self.character_combo.currentIndexChanged.connect(self._update_preview_button)
+
+        self.lighting_preset_combo = QtWidgets.QComboBox(self)
+        self.lighting_preset_combo.setObjectName("DeadlimitLightingPreset")
+        for preset in _lighting_presets():
+            self.lighting_preset_combo.addItem(preset["name"], preset)
 
         self.preview_combo = QtWidgets.QComboBox(self)
         self.preview_combo.setObjectName("DeadlimitPreviewView")
@@ -330,6 +409,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
 
         form = QtWidgets.QFormLayout()
         form.addRow("Character", self.character_combo)
+        form.addRow("Lighting Preset", self.lighting_preset_combo)
         form.addRow("Lighting Inputs", self.lighting_input_combo)
         form.addRow("Deadlimit View", self.preview_combo)
         layout = QtWidgets.QVBoxLayout(self)
@@ -408,6 +488,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
 
     def _set_busy(self, busy, text):
         self.character_combo.setEnabled(not busy)
+        self.lighting_preset_combo.setEnabled(not busy)
         self.lighting_input_combo.setEnabled(not busy)
         self.preview_combo.setEnabled(not busy)
         self.apply_button.setEnabled(not busy)
@@ -554,6 +635,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
             return
 
         profile = self.character_combo.currentData()
+        lighting_preset = self.lighting_preset_combo.currentData()
         try:
             converter = _converter_path()
             vertex_color_dmx = self._vertex_color_dmx(source_mesh, profile)
@@ -564,6 +646,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
 
         self._generated_mesh = output
         self._selected_profile = profile
+        self._selected_lighting_preset = lighting_preset
         self._remember_source_mesh(output, source_mesh, profile)
         self._elapsed.start()
         self._status_timer.start()
@@ -821,7 +904,23 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
 
     def _apply_shaders(self):
         try:
-            captured_environment = self._captured_environment_settings()
+            preset = self._selected_lighting_preset
+            environment_bound = False
+            environment = preset.get("environment", {}) if preset else {}
+            source_image = environment.get("sourceImage")
+            content_root = _csdk_content_root()
+            if source_image and content_root:
+                environment_path = content_root / Path(source_image.replace("/", os.sep))
+                if environment_path.is_file():
+                    digest = hashlib.sha256(environment_path.read_bytes()).hexdigest()[:12]
+                    resource = _import_or_reuse_project_environment(
+                        environment_path,
+                        "Deadlimit_CSDK_{}_{}".format(
+                            preset["name"].replace(" ", "_"), digest))
+                    substance_painter.display.set_environment_resource(resource.identifier())
+                    environment_bound = True
+            lighting_parameters = _lighting_shader_parameters(preset, environment_bound)
+            lighting_parameters["presetName"] = preset["name"]
             shader_root = _shade_root() / "shaders"
             shader_urls = {
                 "hero": _import_or_reuse_project_shader(
@@ -830,15 +929,16 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
                     shader_root / "Deadlock_Outline.glsl", "Outline"),
             }
             result = substance_painter.js.evaluate(_shader_assignment_script(
-                self._selected_profile, self._retail_bindings, shader_urls))
+                self._selected_profile, self._retail_bindings, shader_urls,
+                lighting_parameters))
             summary = json.loads(result)
-            self._bind_captured_environment(captured_environment)
             profile = self._selected_profile
             elapsed_seconds = self._elapsed.elapsed() / 1000.0
             self._status_timer.stop()
-            self._set_busy(False, "Deadlock preview active for {} · {:.1f} s · calibrated Painter approximation\n"
-                                  "Use Deadlimit View for diffuse, specular, rim and bounce diagnostics.".format(
-                profile["displayName"], elapsed_seconds))
+            environment_status = "CSDK environment bound" if environment_bound else "CSDK environment unavailable; reflections disabled"
+            self._set_busy(False, "Deadlock preview active for {} / {} · {:.1f} s\n"
+                                  "{}; rim remains disabled where CSDK preset data is absent.".format(
+                profile["displayName"], preset["name"], elapsed_seconds, environment_status))
             self.setProperty("deadlimitLastApply", json.dumps(summary))
         except Exception as exc:
             self._status_timer.stop()

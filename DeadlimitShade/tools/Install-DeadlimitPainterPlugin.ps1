@@ -15,11 +15,12 @@ $pluginRoot = Join-Path $pythonRoot 'plugins'
 $startupRoot = Join-Path $pythonRoot 'startup'
 $runtimeRoot = Join-Path $startupRoot 'deadlimit_apply_runtime'
 $runtimeProfiles = Join-Path $runtimeRoot 'profiles'
+$runtimeLighting = Join-Path $runtimeRoot 'lighting'
 $runtimeTools = Join-Path $runtimeRoot 'tools'
 $runtimeShaders = Join-Path $runtimeRoot 'shaders'
 $shaderRoot = Join-Path $DocumentsPath 'Adobe\Adobe Substance 3D Painter\assets\shaders\DeadlimitShade'
 
-foreach ($directory in @($pluginRoot, $startupRoot, $runtimeRoot, $runtimeProfiles, $runtimeTools, $runtimeShaders, $shaderRoot)) {
+foreach ($directory in @($pluginRoot, $startupRoot, $runtimeRoot, $runtimeProfiles, $runtimeLighting, $runtimeTools, $runtimeShaders, $shaderRoot)) {
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
 }
 
@@ -47,6 +48,8 @@ Copy-Item -LiteralPath (Join-Path $shadeRoot 'profiles\ivy.json') `
     -Destination (Join-Path $runtimeProfiles 'ivy.json') -Force
 Copy-Item -LiteralPath (Join-Path $shadeRoot 'profiles\schema.json') `
     -Destination (Join-Path $runtimeProfiles 'schema.json') -Force
+Copy-Item -LiteralPath (Join-Path $shadeRoot 'lighting\preview-presets.json') `
+    -Destination (Join-Path $runtimeLighting 'preview-presets.json') -Force
 foreach ($shaderName in @('Deadlock_Hero.glsl', 'Deadlock_Outline.glsl')) {
     $sourceShader = Join-Path $shadeRoot "shaders\$shaderName"
     Copy-Item -LiteralPath $sourceShader -Destination (Join-Path $shaderRoot $shaderName) -Force
