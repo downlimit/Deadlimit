@@ -8,9 +8,30 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from deadlock_environment_reference import (environment_response, lookup_uv,
     normalized_radiance, read_captured_lut, sample_lut, dominant_reflection,
     box_project, projected_lookup_direction)
+from deadlock_environment_reference import environment_visibility, opaque_composition
 
 
 class EnvironmentReference(unittest.TestCase):
+    def test_composition_contribution_ownership(self):
+        # Metal removes diffuse; screen visibility removes environment specular.
+        # Rim and emission remain independent of the global visibility factor.
+        actual=opaque_composition((1,2,3),1,(9,9,9),(9,9,9),(0,0,0),
+            (0.1,0.2,0.3),2,(4,4,4),(8,8,8),0,0)
+        for got,expected in zip(actual,(2.1,4.2,6.3)):
+            self.assertAlmostEqual(got,expected)
+
+    def test_environment_visibility(self):
+        self.assertEqual(environment_visibility((2,4,8),0.5,0.25),(0.25,0.5,1))
+        self.assertEqual(environment_visibility((2,4,8),2,1),(2,4,8))
+
+    def test_captured_branch_excludes_painter_ao_correction(self):
+        shader=(Path(__file__).resolve().parents[1]/'shaders/Deadlock_Hero.glsl').read_text()
+        start=shader.index('DLEnvironmentSpecularSample dlEvaluateEnvironmentSpecular(')
+        branch=shader[start:shader.index('float previewRoughness',start)]
+        contribution=branch[branch.index('sample.contribution ='):]
+        self.assertNotIn('specularOcclusion',contribution)
+        self.assertIn('? sample.raw : vec3(0.0)',contribution)
+
     def test_dominant_direction_endpoints(self):
         normal, reflection = (0,0,1), (0.6,0,0.8)
         self.assertEqual(dominant_reflection(normal,reflection,0),reflection)

@@ -590,8 +590,13 @@ DLEnvironmentSpecularSample dlEvaluateEnvironmentSpecular(
     vec3 energy = lut.x + specularColor*(lut.y-lut.x);
     sample.raw = radiance*normalization*energy +
       ordinaryProbe*dlCapturedMultiple(lut, specularColor);
+    // Reduced CSDK ISA 1732-1734 uses min(screenSpecularVisibility, 1),
+    // followed by global visibility. Material AO does not enter this boundary.
+    // Painter exposes no corresponding captured screen buffer: neutral 1 is
+    // an unresolved-input fallback, not a measured runtime visibility value.
+    // Do not substitute Painter's AO/metalness/roughness occlusion correction.
     sample.contribution = dl_environment_specular_enabled
-      ? sample.raw*specularOcclusion : vec3(0.0);
+      ? sample.raw : vec3(0.0);
     return sample;
   }
   float previewRoughness = clamp(
@@ -772,6 +777,7 @@ DLDirectSpecularSample dlEvaluateDirectSpecular(
   float roughness,
   vec3 baseColor,
   float metallic,
+  vec3 materialF0,
   DLCharacterProfile profile)
 {
   DLDirectSpecularSample sample;
@@ -781,6 +787,27 @@ DLDirectSpecularSample dlEvaluateDirectSpecular(
     ? normalize(halfVectorInput)
     : normal;
   float baseRoughness = clamp(roughness, 0.0, 1.0);
+  if (dl_captured_environment && !profile.directSpecularEnabled)
+  {
+    // NPR specular disabled selects ordinary direct specular, not zero.
+    // Reduced CSDK ISA 1163-1188; numerically checked at pixel (660,290).
+    float r2 = baseRoughness*baseRoughness;
+    float r4 = r2*r2;
+    float nh = dot(normal, halfVector);
+    float nv = clamp(dot(normal, viewDirection), 0.0, 1.0);
+    float nl = clamp(dot(normal, lightDirection), 0.0, 1.0);
+    float denominator = 1.0+nh*nh*(r4-1.0);
+    // Singular zero-roughness guard is a Painter numerical safeguard.
+    float distribution = r4/max(denominator*denominator, 0.00000001);
+    float visibility = 0.5/max(nl*(nv*(1.0-r2)+r2)+nv*(nl*(1.0-r2)+r2), 0.00001);
+    float fresnel = pow(1.0-clamp(dot(lightDirection,halfVector),0.0,1.0),5.0);
+    vec3 energy = vec3(1.0)+2.0*r4*nv*materialF0;
+    sample.rawLobe = distribution*visibility*nl;
+    sample.steppedLobe = sample.rawLobe;
+    sample.materialTint = materialF0+(vec3(1.0)-materialF0)*fresnel;
+    sample.contribution = sample.rawLobe*sample.materialTint*energy;
+    return sample;
+  }
   float adjustedRoughness = max(
     baseRoughness * (1.0 - clamp(profile.directSpecularRoughnessBias, 0.0, 0.95)),
     0.02);
@@ -1229,6 +1256,7 @@ void shade(V2F inputs)
     roughness,
     baseColor,
     metallic,
+    specColor,
     characterProfile);
   DLDirectSpecularSample fillDirectSpecular = dlEvaluateDirectSpecular(
     vectors.normal,
@@ -1237,6 +1265,7 @@ void shade(V2F inputs)
     roughness,
     baseColor,
     metallic,
+    specColor,
     characterProfile);
 
   DLBounceSample bounce = dlEvaluateBounce(

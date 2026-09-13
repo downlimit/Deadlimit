@@ -182,3 +182,35 @@ Evidence classification:
   cubemap cross-face filtering; exact specular occlusion; final display transform.
   RGBE atlas export and UNORM16 LUT transfer retain their documented precision
   limits. Full image parity and cross-project reproduction remain unproved.
+
+## Screen visibility and composition boundary — 2026-09-13
+
+Continuing after checkpoint `e8f7f5d`, the CSDK coordinate chain was identified:
+ISA 104 reconstructs world position as `v2 + cb1[19].xyz`; ISA 374–376
+transforms that position with the selected probe's three affine rows. Painter's
+installed shader documentation exposes `scene_original_radius` and explicitly
+describes scene normalization. Consequently, directly using `inputs.position`
+with CSDK's box bounds is unjustified; original scale and translation are still
+unresolved. Box projection remains unwired pending coordinate evidence.
+
+ISA 1732–1734 applies `min(screenSpecularVisibility,1)` and global visibility
+to environment specular. The former comes from the captured screen-buffer path
+(ISA 208–231), independently of the material AO polynomial used for bounce.
+The CPU reference for this boundary matches both pixel traces exactly.
+
+Removed Painter's material-AO/metalness/roughness specular-occlusion substitute
+from the captured environment branch. Missing screen and global visibility use
+neutral one in this preview path: **blocked/unresolved input fallback**, not
+confirmed runtime values. The standard Painter fallback is unchanged. This
+does not remove material AO from the recovered diffuse/bounce path.
+
+Added a CPU reference for linear opaque composition (ISA 1731–1742), preserving
+the separate placement of diffuse AO, metalness, rim, emission, direct specular
+and environment visibility. Maximum error against the two traces is 1.01e-7.
+This validates the summation boundary with traced inputs; it does not validate
+all input producers, post-processing, or Painter pixel output.
+
+Updated source installed in the user's Painter shader/plugin folders with
+`-SkipOpenDock`. Painter was not running; no project was opened or saved and no
+viewport PASS is claimed. Ten unit/contract tests and the isolated GLSL harness
+pass. Changes after the checkpoint remain uncommitted.

@@ -96,6 +96,33 @@ def environment_response(lut_rg, f0, prefiltered_radiance, probe_irradiance,
             tuple(p*(1-e-m) for p, e, m in zip(probe_irradiance, ess, extra)))
 
 
+def environment_visibility(specular, screen_visibility, global_visibility):
+    """ISA 1732-1734. Material AO is deliberately not an input."""
+    return tuple(c*min(screen_visibility,1)*global_visibility for c in specular)
+
+
+def ordinary_direct_specular(roughness, ndoth, ndotv, ndotl, ldoth, f0, compensation):
+    """CSDK ISA 1163-1188: ordinary GGX response before light radiance."""
+    r2=roughness*roughness
+    r4=r2*r2
+    denominator=1+ndoth*ndoth*(r4-1)
+    distribution=r4/(denominator*denominator)
+    visibility=0.5/max(ndotl*(ndotv*(1-r2)+r2)+ndotv*(ndotl*(1-r2)+r2),0.00001)
+    fresnel=(1-max(0,min(1,ldoth)))**5
+    return tuple(distribution*visibility*ndotl*(f+(1-f)*fresnel)*e for f,e in zip(f0,compensation))
+
+
+def opaque_composition(base, metalness, direct_diffuse, bounce, ao_response,
+                       rim, emissive_amount, direct_specular, environment_specular,
+                       screen_specular_visibility, global_visibility):
+    """ISA 1731-1742, linear output before debug overrides and later passes."""
+    env=environment_visibility(environment_specular,screen_specular_visibility,global_visibility)
+    return tuple(
+        (d+b*a)*global_visibility*c*(1-metalness) + r + emissive_amount*c +
+        sp*global_visibility + e
+        for c,d,b,a,r,sp,e in zip(base,direct_diffuse,bounce,ao_response,rim,direct_specular,env))
+
+
 def normalized_radiance(radiance, probe, roughness, normalization_luminance,
                         enabled=True, coefficients=(34.4444465637207, -2.444446563720703)):
     """Instructions 841-847. Caller supplies traced r6.y, not guessed exposure."""

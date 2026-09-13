@@ -12,6 +12,8 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 from deadlock_environment_reference import dominant_reflection, box_project, projected_lookup_direction, environment_response, normalized_radiance, lookup_uv, read_captured_lut, sample_lut
+from deadlock_environment_reference import environment_visibility, opaque_composition
+from deadlock_environment_reference import ordinary_direct_specular
 
 
 def snapshots(trace):
@@ -59,6 +61,22 @@ def compare(path, lut_data=None):
     spec,diff=environment_response(lut,a['r12'][:3],a['r9'][:3],a['r19'][:3])
     check('multiple scattering specular',spec,s[863][0]['r9'][:3])
     check('multiple scattering diffuse',diff,s[863][0]['r19'][:3])
+    a=s[1732][0]
+    check('environment visibility',environment_visibility(
+        a['r9'][:3],a['r11'][3],a['r7'][3]),s[1735][0]['r9'][:3])
+    if 1166 in s:
+        a=s[1166][0]
+        check('ordinary direct specular',ordinary_direct_specular(
+            a['r5'][0],a['r3'][1],a['r5'][3],a['r20'][2],a['r5'][1],
+            a['r12'][:3],a['r13'][:3]),s[1189][0]['r23'][:3])
+    else:
+        print(path.name, ': ordinary sun specular branch not executed')
+    a=s[1731][0]
+    check('opaque composition',opaque_composition(
+        a['r4'][:3],a['r4'][3],a['r26'][:3],a['r28'][:3],
+        [a['r6'][i] for i in (0,2,3)],a['r31'][:3],a['r5'][2],
+        a['r27'][:3],a['r9'][:3],a['r11'][3],a['r7'][3]),
+        [s[1743][0]['r8'][i] for i in (0,2,3)])
     print(path.name, ':', ', '.join(f'{name}={err:.3g}' for name,err in checks))
 
 

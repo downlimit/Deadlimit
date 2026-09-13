@@ -622,12 +622,12 @@ controls, rim controls, and preview light colors remain calibrated
 approximations or blocked where noted. The profile uses the captured diffuse
 and bounce constants while keeping that provenance boundary explicit.
 
-The two disabled flags are composition-critical. In the deterministic Default
-preview, ordinary Shaded must not add the calibrated direct-specular or rim
-lobes over the environment response. Their equations stay available for
-diagnostics and for future captures where the corresponding runtime flags are
-enabled; the red silhouette visible in this preview is supplied by the outline
-pass, not evidence that the NPR rim flag is active.
+The two disabled flags are composition-critical. `g_bNPRDirectSpecularEnabled=0`
+selects the ordinary direct-specular path; it does not remove direct specular.
+That ordinary path is now traced separately and is retained in captured-mode
+Shaded. `g_bNPRRimLightingEnabled=0` contributes no NPR rim in this Default draw.
+The red silhouette visible in this preview is supplied by the outline pass and
+is not evidence that the NPR rim flag is active.
 
 The Painter bounce path now includes the recovered exposure-control topology.
 For each probe color it preserves linear-RGB chromaticity, fits luminance to

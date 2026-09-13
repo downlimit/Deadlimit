@@ -489,3 +489,33 @@ The user explicitly requested committing the current progress before continuing.
 This checkpoint preserves source, tests and documentation despite the pending
 full visual gate. It is not a release or an accepted Deadlock viewport match.
 Local captures, decoded assets, SPP, scratch data and user worktrees are excluded.
+
+### Post-checkpoint implementation — 2026-09-13
+
+Checkpoint is `e8f7f5d`. Further source changes remove Painter's material-AO
+specular-occlusion correction from the captured environment branch. CSDK uses
+separate screen visibility here (traced exactly); missing Painter screen input
+uses explicitly unresolved neutral one. Material AO on bounce is preserved.
+Linear opaque composition now has a CPU trace check (maximum error 1.01e-7).
+
+Coordinate investigation found Painter scene normalization; its position cannot
+be passed directly into CSDK box projection. Original scale/translation remain
+unresolved. See the environment evidence document for the instruction chain.
+Updated files installed with SkipOpenDock while Painter is closed; no project
+mutation or visual PASS. These post-checkpoint changes are uncommitted.
+
+### Ordinary direct specular correction — 2026-09-13
+
+The previous interpretation of `g_bNPRDirectSpecularEnabled=0` was wrong. It
+selects the ordinary direct-specular path; it does not zero all direct specular.
+For trace pixel (660,290), the recovered ISA 1163–1188 GGX response matches the
+RenderDoc trace with maximum absolute error 3.46e-10. The other selected pixel
+does not execute the sun-specular branch and is reported as such by the test.
+
+The corrected ordinary branch is implemented in captured mode, installed, and
+compiled by Painter. Real Computer Use frames are local under
+`.scratch/visual-proof/20260913`: `03-ordinary-direct-restored.png` and
+`04-direct-specular-only.png`. The isolated view visibly contains the restored
+response, especially on the copper cuffs and wrapped arm pieces. Eyes, retail
+maps and inverted-hull outline remain present. This is visible progress for one
+lighting contribution; full Deadlock image parity remains open.
