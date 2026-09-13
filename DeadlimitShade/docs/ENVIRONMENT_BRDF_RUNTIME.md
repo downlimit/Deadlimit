@@ -214,3 +214,100 @@ Updated source installed in the user's Painter shader/plugin folders with
 `-SkipOpenDock`. Painter was not running; no project was opened or saved and no
 viewport PASS is claimed. Ten unit/contract tests and the isolated GLSL harness
 pass. Changes after the checkpoint remain uncommitted.
+
+## Ordinary direct-specular two-material validation — 2026-09-13
+
+Scope: the same Reduced CSDK capture and pixel shader `ResourceId::6491`, draw
+event 804. This draw was selected after a bounded scan showed that event 791's
+covered candidates were dielectric. The event-804 traces are local evidence at
+`.scratch/direct-spec-reference-event804-20260913` and remain out of Git.
+
+Material data comes from event-804 `t13` (`ResourceId::7610`, BC7, 1024x1024)
+and `t16` (`ResourceId::7631`, BC7, 1024x1024). ISA 23–67 samples/prepares the
+color/metalness and normal/roughness inputs; ISA 139–160 finishes prepared color,
+constructs F0, and constructs the multiple-scattering compensation. The material
+F0 equation executed at ISA 150–155 is:
+
+```text
+authoredVisibility = saturate(max(baseColor) * 25)
+F0 = mix(0.04, baseColor, metalness) * authoredVisibility
+compensation = 1 + 2 * roughness^4 * NdotV * F0
+```
+
+The ordinary sun BRDF executes at ISA 1153–1188. ISA 86–89 supplies the
+normalized view direction, ISA 1159–1162 constructs the half vector, and ISA
+1163–1188 evaluates the following traced terms. Values below are
+**confirmed by pipeline/runtime** for these exact event/pixel identities.
+
+| Value | dielectric `(565,99)` | metallic `(602,140)` |
+| --- | ---: | ---: |
+| prepared base color | `[0.05664063, 0.02922058, 0.04135132]` | `[0.81591809, 0.25952151, 0.15625004]` |
+| metalness | `0` | `0.95068282` |
+| roughness | `0.71392387` | `0.76945144` |
+| normal | `[0.64796305, 0.42351583, -0.63307029]` | `[0.58288836, 0.33196920, 0.74164510]` |
+| view direction | `[0.59019670, 0.67222235, 0.44697311]` | `[0.59878644, 0.64858128, 0.46989054]` |
+| light direction | `[0.49446416, 0.41070834, 0.76604432]` | same |
+| half vector | `[0.55491434, 0.55402918, 0.62058178]` | `[0.55754684, 0.54022708, 0.63031438]` |
+| `NdotL` | `0.009376109` | `0.99269295` |
+| `NdotV` | `0.38415706` | `0.91282666` |
+| `NdotH` | `0.20133221` | `0.97179598` |
+| `LdotH` | `0.97732282` | `0.98041153` |
+| F0 | `[0.04, 0.04, 0.04]` | `[0.77765203, 0.24869534, 0.15051693]` |
+| `roughness^2` | `0.50968729` | `0.59205552` |
+| `roughness^4` | `0.25978114` | `0.35052974` |
+| Fresnel scalar `(1-LdotH)^5` | `5.99716e-9` | `2.88405e-9` |
+| distribution `D` | `0.27610114` | `2.34472714` |
+| visibility/geometry `V` | `2.44964786` | `0.26773811` |
+| raw lobe `D*V*NdotL` | `0.006341536` | `0.62318565` |
+| material/specular tint | `[0.040000005, 0.040000005, 0.040000005]` | `[0.77765203, 0.24869535, 0.15051693]` |
+| compensation | `[1.00798368, 1.00798368, 1.00798368]` | `[1.49765503, 1.15915155, 1.09632266]` |
+| BRDF before radiance/visibility | `[0.000255687, 0.000255687, 0.000255687]` | `[0.72579595, 0.17964921, 0.10283505]` |
+
+The light direction is `PerViewLightingConstantBufferGpu_t` `cb3[19].xyz`.
+The unoccluded RGB radiance is `cb3[20].rgb = [1.6,1.6,1.6]`. Sun visibility
+is generated at ISA 965–1149: cascade selection and transforms use the tail of
+`cb3`, 16x4 stochastic gathers read PS `t6` (`ResourceId::6650`,
+`shadow_atlas_1.vtex`, R32 typeless, 6144x4608) through `s1`, and the selected
+cascades are blended into `r8.y` at ISA 1149. Visibility is `0.87788045` at the
+dielectric pixel and `1` at the metallic pixel. ISA 1156 multiplies that value
+by `cb3[20].rgb`, producing visible radiance `[1.40460873]*3` and `[1.6]*3`.
+
+ISA 1243 multiplies the ordinary BRDF by visible radiance. ISA 1290–1292 moves
+the result into the direct-specular accumulator `r27`. The clustered/barn-light
+loop at ISA 1298–1717 does not change `r27` at either tested pixel, proving one
+contributing direct light at this boundary. ISA 1741 adds `r27 * r7.w` to the
+opaque composition; captured global visibility `r7.w` is one for both pixels.
+
+| Boundary | dielectric `(565,99)` | metallic `(602,140)` |
+| --- | ---: | ---: |
+| direct specular before composition | `[0.000359140]*3` | `[1.16127360, 0.28743875, 0.16453609]` |
+| final `r27` | `[0.000359140]*3` | `[1.16127360, 0.28743875, 0.16453609]` |
+| actual add into final composition | `[0.000359140]*3` | `[1.16127364, 0.28743876, 0.16453610]` |
+| BRDF max absolute CPU/trace error | `2.40e-12` | `3.33e-8` |
+| pre-composition RGB max error | `1.07e-11` | `5.97e-8` |
+| final-add RGB max error | `6.40e-10` | `3.73e-8` |
+| maximum error across direct checks | `1.93e-7` | `1.34e-7` |
+
+`tests/captured-pixel-reference-smoke.py` now checks material F0, H/dot terms,
+roughness powers, Fresnel, distribution, visibility, raw lobe, tint,
+compensation, captured sun radiance/shadow multiplication, the unchanged barn
+loop accumulator, and the final composition add. Its 2e-6 tolerance covers the
+largest observed float-replay difference above.
+
+The current `Deadlock_Hero.glsl` ordinary captured-environment branch has the
+same F0 construction, roughness interpretation, Fresnel, distribution,
+visibility, `NdotL`, material tint/compensation, light-radiance multiplication,
+visibility multiplication and final additive placement. The profile's Z-up to
+Painter direction adaptation maps the captured `cb3[19].xyz` to its key-light
+direction; `keyLightIntensity * keyLightColor` is `[1.6,1.6,1.6]`, matching
+captured `cb3[20].rgb`. Fill intensity is zero, consistent with the lack of a
+second contributing direct light at these pixels.
+
+Result: **confirmed by pipeline/runtime** PASS for the Reduced CSDK event-804
+main-sun ordinary direct-specular equation, radiance multiplication, shadow
+visibility multiplication and `r27` composition at these two material samples.
+This does not prove other draws, barn lights, roughness ranges, current retail
+runtime identity, or Painter pixel parity. Painter's `getShadowFactor()` has the
+same multiplication role, while reproducing the captured shadow-atlas field in
+Painter remains **blocked/unresolved**. No GLSL change is justified by this
+evidence.

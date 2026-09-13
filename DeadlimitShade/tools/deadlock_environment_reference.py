@@ -103,13 +103,37 @@ def environment_visibility(specular, screen_visibility, global_visibility):
 
 def ordinary_direct_specular(roughness, ndoth, ndotv, ndotl, ldoth, f0, compensation):
     """CSDK ISA 1163-1188: ordinary GGX response before light radiance."""
+    return ordinary_direct_specular_breakdown(
+        roughness, ndoth, ndotv, ndotl, ldoth, f0, compensation)['contribution']
+
+
+def material_f0(base_color, metalness):
+    """Captured opaque material F0 producer before direct/environment BRDF use."""
+    authored_visibility=max(0, min(1, max(base_color)*25))
+    return tuple((0.04+(c-0.04)*metalness)*authored_visibility for c in base_color)
+
+
+def ordinary_direct_specular_breakdown(roughness, ndoth, ndotv, ndotl, ldoth,
+                                       f0, compensation):
+    """Return every scalar/vector boundary executed at CSDK ISA 1163-1188."""
     r2=roughness*roughness
     r4=r2*r2
     denominator=1+ndoth*ndoth*(r4-1)
     distribution=r4/(denominator*denominator)
-    visibility=0.5/max(ndotl*(ndotv*(1-r2)+r2)+ndotv*(ndotl*(1-r2)+r2),0.00001)
+    visibility_denominator=max(
+        ndotl*(ndotv*(1-r2)+r2)+ndotv*(ndotl*(1-r2)+r2), 0.00001)
+    visibility=0.5/visibility_denominator
     fresnel=(1-max(0,min(1,ldoth)))**5
-    return tuple(distribution*visibility*ndotl*(f+(1-f)*fresnel)*e for f,e in zip(f0,compensation))
+    tint=tuple(f+(1-f)*fresnel for f in f0)
+    raw_lobe=distribution*visibility*ndotl
+    contribution=tuple(raw_lobe*t*e for t,e in zip(tint,compensation))
+    return dict(roughness2=r2, roughness4=r4,
+                distribution_denominator=denominator,
+                distribution=distribution,
+                visibility_denominator=visibility_denominator,
+                visibility=visibility, fresnel=fresnel, tint=tint,
+                raw_lobe=raw_lobe, compensation=tuple(compensation),
+                contribution=contribution)
 
 
 def opaque_composition(base, metalness, direct_diffuse, bounce, ao_response,
