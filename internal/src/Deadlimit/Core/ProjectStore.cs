@@ -10,6 +10,11 @@ public sealed class ToolPathSettings
     public string RetailDeadlockRoot { get; set; } = string.Empty;
     public string UiLanguage { get; set; } = "en";
     public string UiTheme { get; set; } = "system";
+
+    // Compatibility only for older pipeline call sites. This is not a user setting,
+    // is not persisted, and carries no extraction state. Per-run extraction state lives
+    // on ProjectManifest and HeroExtractionOptions.
+    public bool ExtractHeroTextures => true;
 }
 
 public static class ProjectStore
@@ -23,11 +28,6 @@ public static class ProjectStore
         PropertyNameCaseInsensitive = true,
     };
 
-    // Library drawing and background preparation can race with an otherwise valid
-    // project.json being temporarily unavailable to readers. Keep only the last raw
-    // JSON that was successfully parsed in this process. A real JSON parse failure is
-    // never masked by this cache, so the project library can still show its red error
-    // state for genuinely broken metadata.
     private static readonly ConcurrentDictionary<string, string> LastKnownGoodManifestJson =
         new(StringComparer.OrdinalIgnoreCase);
 
@@ -60,8 +60,6 @@ public static class ProjectStore
         }
         catch (JsonException)
         {
-            // Invalid JSON is a real project metadata error. Do not hide it behind the
-            // last-known-good snapshot; the library's red warning is meaningful here.
             return null;
         }
         catch (IOException)
@@ -84,6 +82,7 @@ public static class ProjectStore
     public static void Save(ProjectManifest manifest)
     {
         CanonicalizeProjectIdentity(manifest, manifest.ProjectFolder);
+        manifest.SchemaVersion = Math.Max(manifest.SchemaVersion, 4);
 
         var metadataFolder = GetMetadataFolder(manifest.ProjectFolder);
         Directory.CreateDirectory(metadataFolder);
@@ -208,6 +207,12 @@ public static class ProjectStore
         manifest.SourceDumpFolderName = SafePath.NormalizeRelative(
             string.IsNullOrWhiteSpace(manifest.SourceDumpFolderName) ? "0source" : manifest.SourceDumpFolderName,
             "Project source-dump folder");
+
+        if (manifest.Mode == ProjectMode.ImportedVpk && manifest.ImportedVpk is null)
+        {
+            throw new InvalidDataException(
+                "ImportedVpk project metadata is missing its imported VPK source contract.");
+        }
     }
 
     private static LocalSettings LoadSettings()

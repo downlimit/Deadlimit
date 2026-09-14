@@ -92,7 +92,7 @@ internal static class ProjectFilesFeature
             Padding = Padding.Empty,
         };
 
-        var dmxColumn = CreateFileColumn("DMX", dmxList, new Padding(0, 0, 5, 0));
+        var dmxColumn = CreateFileColumn("DMX / FBX / glTF", dmxList, new Padding(0, 0, 5, 0));
         var pngColumn = CreateFileColumn("PNG", pngList, new Padding(5, 0, 0, 0));
         fileColumns.Controls.Add(dmxColumn);
         fileColumns.Controls.Add(pngColumn);
@@ -132,7 +132,7 @@ internal static class ProjectFilesFeature
                 var folder = folderText.Text.Trim();
                 if (!Directory.Exists(folder))
                 {
-                    summaryLabel.Text = "DMX: 0     PNG: 0";
+                    summaryLabel.Text = UiText.T("MODELS: 0     PNG: 0", "МОДЕЛИ: 0     PNG: 0");
                     sourceCountLabel.Text = UiText.T("Hero source: not extracted", "Исходники героя: не извлечены");
                     mainModelLabel.Text = UiText.T("Main file: —", "Основной файл: —");
                     toolTip.SetToolTip(mainModelLabel, string.Empty);
@@ -140,11 +140,23 @@ internal static class ProjectFilesFeature
                 }
 
                 var scan = ProjectScanner.Scan(folder);
-                summaryLabel.Text = $"DMX: {scan.DmxFiles.Count}     PNG: {scan.PngTextures.Count}";
+                summaryLabel.Text = UiText.T(
+                    $"MODELS: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}     PNG: {scan.PngTextures.Count}",
+                    $"МОДЕЛИ: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}     PNG: {scan.PngTextures.Count}");
 
                 foreach (var file in scan.DmxFiles)
                 {
-                    dmxList.Items.Add(file);
+                    dmxList.Items.Add($"[DMX] {file}");
+                }
+
+                foreach (var file in scan.FbxFiles)
+                {
+                    dmxList.Items.Add($"[FBX] {file}");
+                }
+
+                foreach (var file in scan.GltfFiles)
+                {
+                    dmxList.Items.Add($"[{Path.GetExtension(file).TrimStart('.').ToUpperInvariant()}] {file}");
                 }
 
                 foreach (var file in scan.PngTextures)

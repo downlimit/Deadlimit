@@ -42,9 +42,15 @@ jobs:
       - name: Prepare behavior smoke
         shell: pwsh
         run: internal/tests/prepare-behavior-smoke.ps1
+      - name: glTF and FBX authoring pipeline smoke
+        shell: pwsh
+        run: internal/tests/gltf-authoring-pipeline-smoke.ps1
       - name: UI localization smoke
         shell: pwsh
         run: internal/tests/ui-localization-smoke.ps1
+      - name: Window shell visibility smoke
+        shell: pwsh
+        run: internal/tests/window-shell-visibility-smoke.ps1
       - name: Verify Manager and updater contract
         shell: pwsh
         run: |

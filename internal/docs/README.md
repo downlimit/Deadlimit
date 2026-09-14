@@ -7,7 +7,7 @@ The umbrella `Deadlimit` repository also contains `Deadlimit Scripts` and `Deadl
 ## Target workflow
 
 1. **Extract** — choose a Deadlock hero and export/decompile the relevant source assets into a working folder.
-2. **Author** — point Deadlimit Manager at a folder containing DMX model files and textures; create a project; prepare a CSDK workspace; open the model/material authoring stage for shader and texture setup.
+2. **Author** — point Deadlimit Manager at a folder containing DMX, FBX, or glTF/GLB model files and textures; create a project; prepare a CSDK workspace; open the model/material authoring stage for shader and texture setup.
 3. **Iterate in game** — after authoring is established, use one `BUILD & TEST` action to prepare changes, compile, restore required model post-processing, package the VPK, and deploy it directly to the installed Deadlock game client addons. If the Deadlock game client is currently running, Deadlimit Manager must close it first because the loaded VPK is file-locked by the game.
 
 The user-facing normal iteration loop is:
@@ -35,6 +35,7 @@ Export DMX / save textures
 - `OUTPUT_LIFECYCLE.md` — authoritative `content` vs disposable compiled `game` contract, clean authoring PREPARE behavior, and incremental BUILD & TEST stale-output handling.
 - `BUILD_TEST.md` — accepted one-click daily iteration transaction: incremental prepare/compile, AG2 restoration, VPK packaging and direct game-client addons deployment.
 - `RUNNING_GAME.md` — live-confirmed VPK file-lock behavior when Deadlock is running and the resulting close-before-deploy contract.
+- `VPK_IMPORT_REPAIR.md` — staged plan for importing an existing addon VPK as a compiled-payload project, repairing model animation bindings against current Deadlock resources, rebuilding the same Release ID and validating the result in the Deadlock game client.
 - `ARCHITECTURE.md` — environment roots, architecture, pipeline structure, and confirmed technical facts.
 - `ROADMAP.md` — implementation stages and acceptance criteria.
 - `OPEN_SOURCE_PLAN.md` — live readiness plan, provenance audit, public-release gates, and implementation status for opening the repository to outside users and contributors.

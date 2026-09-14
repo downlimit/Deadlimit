@@ -191,7 +191,7 @@ internal static class MessageBox
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false,
             MinimizeBox = false,
-            ShowInTaskbar = false,
+            ShowInTaskbar = true,
             ShowIcon = false,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink,
@@ -290,14 +290,24 @@ internal static class MessageBox
             }
         };
 
-        if (owner is null)
+        var effectiveOwner = owner
+            ?? Form.ActiveForm
+            ?? Application.OpenForms
+                .Cast<Form>()
+                .Reverse()
+                .FirstOrDefault(form =>
+                    form.Visible
+                    && form.Enabled
+                    && form is not StartupProgressForm);
+
+        if (effectiveOwner is null)
         {
             dialog.StartPosition = FormStartPosition.CenterScreen;
             dialog.ShowDialog();
         }
         else
         {
-            dialog.ShowDialog(owner);
+            dialog.ShowDialog(effectiveOwner);
         }
 
         return result == DeadlimitDialogChoice.None
@@ -485,3 +495,5 @@ internal static class MessageBox
         _ => DialogResult.Cancel,
     };
 }
+
+

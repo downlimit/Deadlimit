@@ -443,6 +443,7 @@ public sealed class ToolchainDependencyService
         string csdkRoot,
         string retailDeadlockRoot,
         IProgress<string>? progress = null,
+        bool force = false,
         CancellationToken cancellationToken = default)
     {
         ReleaseChannelPolicy.RequireUnverifiedToolchainAutomation();
@@ -465,57 +466,92 @@ public sealed class ToolchainDependencyService
                 throw new InvalidOperationException("The current CSDK guide does not expose the required full-game depot manifests.");
             }
 
+            var depotKeys = catalog.Depots.Select(GetDepotKey).ToArray();
+            if (!force && IsCsdkSetupCurrent(csdkRoot, catalog.Generation, depotKeys))
+            {
+                var alreadyComplete = ProgressText(
+                    "CSDK fine-tuning is already complete for the current guide. No files were downloaded or changed.",
+                    "Донастройка CSDK по текущей инструкции уже выполнена. Файлы не скачивались и не изменялись.");
+                Report(operation, progress, alreadyComplete, 100);
+                ToolchainOperationHub.Complete(operation, alreadyComplete);
+                return;
+            }
+
             Report(operation, progress, ProgressText("Preparing DepotDownloader…", "Подготовка DepotDownloader…"), 5);
             var depotDownloader = await EnsureDepotDownloaderAsync(operation, progress).ConfigureAwait(false);
-            var fallbackApplied = false;
-            for (var depotIndex = 0; depotIndex < catalog.Depots.Count; depotIndex++)
+            var stagingRoot = CreateTempFolder("csdk-setup");
+            try
             {
-                var depot = catalog.Depots[depotIndex];
-                Report(
-                    operation,
-                    progress,
-                    ProgressText(
-                        $"Downloading Deadlock depot {depot.DepotId} ({depotIndex + 1}/{catalog.Depots.Count})…",
-                        $"Загрузка депо Deadlock {depot.DepotId} ({depotIndex + 1}/{catalog.Depots.Count})…"),
-                    null);
-                try
+                var fallbackApplied = false;
+                for (var depotIndex = 0; depotIndex < catalog.Depots.Count; depotIndex++)
                 {
-                    await RunInteractiveAsync(
-                        depotDownloader,
-                        DepotArguments(depot, csdkRoot),
-                        Path.GetDirectoryName(depotDownloader)!,
-                        operation.Token).ConfigureAwait(false);
+                    var depot = catalog.Depots[depotIndex];
+                    Report(
+                        operation,
+                        progress,
+                        ProgressText(
+                            $"Downloading Deadlock depot {depot.DepotId} ({depotIndex + 1}/{catalog.Depots.Count}) to staging…",
+                            $"Загрузка депо Deadlock {depot.DepotId} ({depotIndex + 1}/{catalog.Depots.Count}) во временную папку…"),
+                        null);
+                    try
+                    {
+                        await RunInteractiveAsync(
+                            depotDownloader,
+                            DepotArguments(depot, stagingRoot),
+                            Path.GetDirectoryName(depotDownloader)!,
+                            operation.Token).ConfigureAwait(false);
+                    }
+                    catch (InvalidOperationException) when (!fallbackApplied && catalog.ManifestArchiveUri is not null)
+                    {
+                        Report(operation, progress, ProgressText("Applying manifest fallback…", "Применение fallback-манифестов…"), 38);
+                        await ApplyManifestFallbackAsync(catalog.ManifestArchiveUri, stagingRoot, operation, progress).ConfigureAwait(false);
+                        fallbackApplied = true;
+                        await RunInteractiveAsync(
+                            depotDownloader,
+                            DepotArguments(depot, stagingRoot),
+                            Path.GetDirectoryName(depotDownloader)!,
+                            operation.Token).ConfigureAwait(false);
+                    }
                 }
-                catch (InvalidOperationException) when (!fallbackApplied && catalog.ManifestArchiveUri is not null)
+
+                var stagedCitadelRoot = Path.Combine(stagingRoot, "game", "citadel");
+                var citadelVpk = Path.Combine(stagedCitadelRoot, "pak01_dir.vpk");
+                if (!File.Exists(citadelVpk))
                 {
-                    Report(operation, progress, ProgressText("Applying manifest fallback…", "Применение fallback-манифестов…"), 38);
-                    await ApplyManifestFallbackAsync(catalog.ManifestArchiveUri, csdkRoot, operation, progress).ConfigureAwait(false);
-                    fallbackApplied = true;
-                    await RunInteractiveAsync(
-                        depotDownloader,
-                        DepotArguments(depot, csdkRoot),
-                        Path.GetDirectoryName(depotDownloader)!,
-                        operation.Token).ConfigureAwait(false);
+                    throw new FileNotFoundException("DepotDownloader completed, but staged game\\citadel\\pak01_dir.vpk was not found.", citadelVpk);
                 }
+
+                Report(operation, progress, ProgressText("Extracting full game files from staged VPK…", "Извлечение полных файлов игры из временного VPK…"), 52);
+                ExtractVpkAsIs(citadelVpk, stagedCitadelRoot, operation, progress, operation.Token, 52, 76);
+                DeletePak01Vpks(stagedCitadelRoot);
+                DeletePak01Vpks(Path.Combine(stagingRoot, "game", "core"));
+
+                var stagedGameRoot = Path.Combine(stagingRoot, "game");
+                if (!Directory.Exists(stagedGameRoot))
+                {
+                    throw new DirectoryNotFoundException($"Staged Deadlock game folder was not found: {stagedGameRoot}");
+                }
+
+                var stagedCsdkRoot = Path.Combine(stagingRoot, "csdk-overlay");
+                Report(operation, progress, ProgressText("Staging the current Reduced CSDK overlay…", "Подготовка актуального оверлея Reduced CSDK во временной папке…"), 77);
+                await InstallCsdkArchiveAsync(catalog, stagedCsdkRoot, false, operation, progress, 77, 88).ConfigureAwait(false);
+                ValidateCsdkRoot(stagedCsdkRoot);
+
+                Report(operation, progress, ProgressText("Applying validated staged game files…", "Применение проверенных временных файлов игры…"), 89);
+                CopyDirectory(stagedGameRoot, Path.Combine(csdkRoot, "game"), true, operation.Token, operation, progress, 89, 94);
+
+                Report(operation, progress, ProgressText("Applying validated Reduced CSDK files…", "Применение проверенных файлов Reduced CSDK…"), 95);
+                CopyDirectory(stagedCsdkRoot, csdkRoot, true, operation.Token, operation, progress, 95, 98);
+            }
+            finally
+            {
+                TryDeleteDirectory(stagingRoot);
             }
 
-            var citadelRoot = Path.Combine(csdkRoot, "game", "citadel");
-            var citadelVpk = Path.Combine(citadelRoot, "pak01_dir.vpk");
-            if (!File.Exists(citadelVpk))
-            {
-                throw new FileNotFoundException("DepotDownloader completed, but game\\citadel\\pak01_dir.vpk was not found.", citadelVpk);
-            }
-
-            Report(operation, progress, ProgressText("Extracting full game files from VPK…", "Извлечение полных файлов игры из VPK…"), 52);
-            ExtractVpkAsIs(citadelVpk, citadelRoot, operation, progress, operation.Token, 52, 80);
-            DeletePak01Vpks(citadelRoot);
-            DeletePak01Vpks(Path.Combine(csdkRoot, "game", "core"));
-
-            Report(operation, progress, ProgressText("Re-applying current Reduced CSDK files…", "Повторное наложение актуальных файлов Reduced CSDK…"), 82);
-            await InstallCsdkArchiveAsync(catalog, csdkRoot, true, operation, progress, 82, 98).ConfigureAwait(false);
             WriteCsdkMarker(csdkRoot, catalog, setup: true);
-            progress?.Report("CSDK setup complete.");
-            ToolchainOperationHub.Complete(operation, ProgressText("CSDK setup complete.", "Настройка CSDK завершена."));
+            var complete = ProgressText("CSDK fine-tuning complete.", "Донастройка CSDK завершена.");
+            progress?.Report(complete);
+            ToolchainOperationHub.Complete(operation, complete);
         }
         catch (OperationCanceledException)
         {
@@ -1090,6 +1126,64 @@ public sealed class ToolchainDependencyService
             depots = catalog.Depots,
         }, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(Path.Combine(root, CsdkSetupMarkerFileName), setupMarker);
+    }
+
+    internal static bool IsCsdkSetupCurrent(
+        string root,
+        int generation,
+        IReadOnlyCollection<string> expectedDepotKeys)
+    {
+        if (string.IsNullOrWhiteSpace(root)
+            || !File.Exists(Path.Combine(root, "csdkcfg.exe"))
+            || !File.Exists(Path.Combine(root, "game", "citadel", "gameinfo.gi")))
+        {
+            return false;
+        }
+
+        var markerPath = Path.Combine(root, CsdkSetupMarkerFileName);
+        if (!File.Exists(markerPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(markerPath));
+            var marker = document.RootElement;
+            if (!marker.TryGetProperty("generation", out var markerGeneration)
+                || !markerGeneration.TryGetInt32(out var parsedGeneration)
+                || parsedGeneration != generation
+                || !marker.TryGetProperty("depots", out var markerDepots)
+                || markerDepots.ValueKind != JsonValueKind.Array)
+            {
+                return false;
+            }
+
+            var actualDepotKeys = markerDepots
+                .EnumerateArray()
+                .Select(GetDepotKey)
+                .ToHashSet(StringComparer.Ordinal);
+            return actualDepotKeys.SetEquals(expectedDepotKeys);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static string GetDepotKey(DepotManifest depot) =>
+        $"{depot.AppId}:{depot.DepotId}:{depot.ManifestId}";
+
+    private static string GetDepotKey(JsonElement depot)
+    {
+        if (!depot.TryGetProperty("AppId", out var appId)
+            || !depot.TryGetProperty("DepotId", out var depotId)
+            || !depot.TryGetProperty("ManifestId", out var manifestId))
+        {
+            return string.Empty;
+        }
+
+        return $"{appId.GetString()}:{depotId.GetString()}:{manifestId.GetString()}";
     }
 
     private static void WriteDeadlockToolsMarker(string root, DeadlockToolsRelease release)

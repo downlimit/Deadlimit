@@ -1,6 +1,7 @@
 param(
     [switch]$ResolveRootOnly,
-    [switch]$NoWait
+    [switch]$NoWait,
+    [switch]$NoLaunch
 )
 
 $ErrorActionPreference = "Stop"
@@ -134,8 +135,8 @@ try {
         throw "DeadlimitManager.cmd was not found after update."
     }
 
-    # Keep the Manager executable and the two root shortcuts current, but do not
-    # launch the Manager. The updater is a repository maintenance action only.
+    # Keep the Manager executable and the two root shortcuts current before
+    # relaunching the Manager after a successful updater run.
     & $env:ComSpec /d /c "`"$launcher`" --refresh-only"
     if ($LASTEXITCODE -ne 0) {
         throw "Deadlimit Manager refresh failed with exit code $LASTEXITCODE."
@@ -167,7 +168,22 @@ try {
     }
 
     Write-Host ""
-    Write-Host "Update complete."
+    if ($NoLaunch) {
+        Write-Host "Update complete."
+    }
+    else {
+        $managerShortcut = Join-Path $rootPath "Deadlimit Manager.lnk"
+        if (-not (Test-Path -LiteralPath $managerShortcut -PathType Leaf)) {
+            throw "Deadlimit Manager shortcut was not found after update."
+        }
+
+        Write-Host "Update complete. Restarting Deadlimit Manager..."
+        $startInfo = [Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = $managerShortcut
+        $startInfo.WorkingDirectory = $rootPath
+        $startInfo.UseShellExecute = $true
+        [Diagnostics.Process]::Start($startInfo) | Out-Null
+    }
     Wait-ForAnyKey
     exit 0
 }

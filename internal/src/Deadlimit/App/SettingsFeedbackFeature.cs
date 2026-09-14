@@ -46,22 +46,11 @@ internal static class SettingsFeedbackFeature
             Anchor = AnchorStyles.Left,
             Margin = new Padding(0, 8, 10, 8),
         };
-        var openButton = new Button
-        {
-            Text = UiText.T("Open", "Перейти"),
-            AutoSize = true,
-            Anchor = AnchorStyles.Left,
-            Margin = new Padding(0, 4, 0, 4),
-        };
+        var openButton = SettingsUiFactory.CreateActionButton();
+        openButton.Text = UiText.T("Open", "Перейти");
         openButton.Click += (_, _) => OpenFeedback(form);
 
-        var toolTip = new ToolTip
-        {
-            ShowAlways = true,
-            InitialDelay = 350,
-            ReshowDelay = 100,
-            AutoPopDelay = 12000,
-        };
+        var toolTip = new RichToolTip();
         toolTip.SetToolTip(
             openButton,
             UiText.T(

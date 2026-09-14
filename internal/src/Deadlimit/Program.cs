@@ -11,6 +11,7 @@ internal static class Program
     private const string StartupSmokeArgument = "--startup-smoke";
     private const string ReleasePolicySmokeArgument = "--release-policy-smoke";
     private const string WriteVertexColorScriptArgument = "--write-vertex-color-script";
+    private const string ExtractDmxVertexColorTransferArgument = "--extract-dmx-vertex-color-transfer";
     private const string SingleInstanceMutexName = @"Local\Deadlimit.Gui.SingleInstance.v1";
     private const int SwRestore = 9;
 
@@ -24,6 +25,12 @@ internal static class Program
             && string.Equals(args[0], WriteVertexColorScriptArgument, StringComparison.OrdinalIgnoreCase))
         {
             return WriteVertexColorScript(args);
+        }
+
+        if (args.Length > 0
+            && string.Equals(args[0], ExtractDmxVertexColorTransferArgument, StringComparison.OrdinalIgnoreCase))
+        {
+            return ExtractDmxVertexColorTransfer(args);
         }
 
         if (args.Any(argument =>
@@ -105,6 +112,36 @@ internal static class Program
 
         if (startupSmoke)
         {
+            var vpkOwnershipResult = VpkSlotOwnershipSmoke.Run();
+            if (vpkOwnershipResult != 0)
+            {
+                return 10 + vpkOwnershipResult;
+            }
+
+            var repairInspectionResult = ImportedVpkRepairInspectionSmoke.Run();
+            if (repairInspectionResult != 0)
+            {
+                return 30 + repairInspectionResult;
+            }
+
+            var bindingRepairResult = CompiledModelAnimationBindingRepairSmoke.Run();
+            if (bindingRepairResult != 0)
+            {
+                return 40 + bindingRepairResult;
+            }
+
+            var repackResult = ImportedVpkRepackSmoke.Run();
+            if (repackResult != 0)
+            {
+                return 50 + repackResult;
+            }
+
+            var importedBuildResult = ImportedVpkBuildAndTestSmoke.Run();
+            if (importedBuildResult != 0)
+            {
+                return 60 + importedBuildResult;
+            }
+
             var settingsLayoutResult = SettingsForm.RunFooterLayoutSmoke();
             if (settingsLayoutResult != 0)
             {
@@ -126,6 +163,7 @@ internal static class Program
         }
 
         SettingsVersionFeature.Attach();
+        SettingsShiftShortcutFeature.Attach();
         SettingsToolchainProgressFeature.Attach();
         using var context = new DeadlimitApplicationContext(startupSmoke, startup);
         Application.Run(context);
@@ -146,6 +184,7 @@ internal static class Program
             MaximumSize = MainWindowSize,
             FormBorderStyle = FormBorderStyle.FixedSingle,
             MaximizeBox = false,
+            ShowInTaskbar = true,
         };
 
         UpdateStartup(startup, 46, UiText.T("Initializing CSDK actions...", "Инициализация действий CSDK..."));
@@ -156,9 +195,11 @@ internal static class Program
         UpdateStartup(startup, 62, UiText.T("Loading project controls...", "Загрузка элементов проекта..."));
         ProjectLibraryHotfixFeature.Attach(form);
         ProjectLibraryFeature.Attach(form);
+        ProjectCreationChoiceFeature.Attach(form);
         HeroCatalogFeature.Attach(form);
         ProjectLogsFeature.Attach(form);
         ProjectSaveStateFeature.Attach(form);
+        ProjectExternalChangeFeature.Attach(form);
 
         UpdateStartup(startup, 78, UiText.T("Preparing project workspace...", "Подготовка рабочей области проекта..."));
         ProjectHeaderFeature.Attach(form);
@@ -322,8 +363,15 @@ internal static class Program
                     continue;
                 }
 
-                ShowWindow(process.MainWindowHandle, SwRestore);
-                SetForegroundWindow(process.MainWindowHandle);
+                var targetWindow = process.MainWindowHandle;
+                var popupWindow = GetLastActivePopup(targetWindow);
+                if (popupWindow != IntPtr.Zero && IsWindowVisible(popupWindow))
+                {
+                    targetWindow = popupWindow;
+                }
+
+                ShowWindow(targetWindow, SwRestore);
+                SetForegroundWindow(targetWindow);
                 return;
             }
         }
@@ -332,6 +380,13 @@ internal static class Program
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ShowWindow(IntPtr windowHandle, int command);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetLastActivePopup(IntPtr windowHandle);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(IntPtr windowHandle);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -354,6 +409,39 @@ internal static class Program
         {
             Console.Error.WriteLine($"Failed: {ex.Message}");
             return 70;
+        }
+    }
+
+    private static int ExtractDmxVertexColorTransfer(string[] args)
+    {
+        if (args.Length != 6
+            || string.IsNullOrWhiteSpace(args[1])
+            || string.IsNullOrWhiteSpace(args[2])
+            || string.IsNullOrWhiteSpace(args[5])
+            || !int.TryParse(args[3], out var vertexCount)
+            || !int.TryParse(args[4], out var faceCount))
+        {
+            Console.Error.WriteLine(
+                "Usage: DeadlimitManager.exe --extract-dmx-vertex-color-transfer <source.dmx> <mesh-name> <vertex-count> <face-count> <output.ms>");
+            return 65;
+        }
+
+        try
+        {
+            var result = DmxVertexColorTransferService.ExportMaxScriptPayload(
+                args[1],
+                args[2],
+                vertexCount,
+                faceCount,
+                args[5]);
+            Console.Out.WriteLine(
+                $"{result.MeshName}: {result.VertexCount} verts, {result.FaceCount} faces, {result.CornerCount} color corners");
+            return 0;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            Console.Error.WriteLine(ex.Message);
+            return 71;
         }
     }
 

@@ -12,9 +12,12 @@ public sealed record HeroExtractionResult(
     string SourceVpkPath,
     string OutputFolder,
     int ExtractedFileCount,
-    string? Source2ViewerVersion);
+    string? Source2ViewerVersion,
+    int CsdkMaterialCopiedCount = 0,
+    int CsdkAbilityFxCopiedCount = 0,
+    string? CsdkEditingBackupFolder = null);
 
-public sealed class HeroExtractionService
+public sealed partial class HeroExtractionService
 {
     private readonly DeadlimitPaths _paths;
 
@@ -27,16 +30,55 @@ public sealed class HeroExtractionService
         ProjectManifest manifest,
         IProgress<HeroExtractionProgress>? progress = null,
         CancellationToken cancellationToken = default) =>
-        Task.Run(() => Extract(manifest, progress, cancellationToken), cancellationToken);
+        ExtractAsync(manifest, HeroExtractionOptions.SourceOnly, progress, cancellationToken);
+
+    public Task<HeroExtractionResult> ExtractAsync(
+        ProjectManifest manifest,
+        HeroExtractionOptions options,
+        IProgress<HeroExtractionProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return Task.Run(() => Extract(manifest, options, progress, cancellationToken), cancellationToken);
+    }
 
     private HeroExtractionResult Extract(
         ProjectManifest manifest,
+        HeroExtractionOptions options,
         IProgress<HeroExtractionProgress>? progress,
         CancellationToken cancellationToken)
     {
         if (!Directory.Exists(manifest.ProjectFolder))
         {
             throw new DirectoryNotFoundException(manifest.ProjectFolder);
+        }
+
+        if (!options.HasAnyExtractionScope)
+        {
+            throw new InvalidOperationException(
+                "Select at least one extraction scope: hero, abilities, or portraits/UI.");
+        }
+        if (!Enum.IsDefined(options.Format))
+        {
+            throw new ArgumentOutOfRangeException(nameof(options), "Unknown hero extraction format.");
+        }
+        if (options.CopyAbilityFxToCsdkForEditing)
+        {
+            throw new InvalidOperationException(
+                "Copy ability FX to CSDK for editing is disabled for Reduced CSDK 12 because current Deadlock VPCF sources may use an incompatible newer format.");
+        }
+        if (options.Format == HeroExtractionFormat.Gltf
+            && options.CopyMaterialsToCsdkForEditing)
+        {
+            throw new InvalidOperationException(
+                "Copy materials to CSDK for editing is available only for DMX source extraction.");
+        }
+        if (options.CopyMaterialsToCsdkForEditing
+            && !options.ExtractHero
+            && !options.ExtractAbilities)
+        {
+            throw new InvalidOperationException(
+                "Copy materials to CSDK for editing requires Extract hero and/or Extract abilities.");
         }
 
         var hero = manifest.Hero.Trim();
@@ -52,9 +94,10 @@ public sealed class HeroExtractionService
         }
 
         var vrfVersion = typeof(Resource).Assembly.GetName().Version?.ToString();
+        var vpkPaths = GetVpkPaths(retailGameRoot);
 
         progress?.Report(new HeroExtractionProgress("Locating current retail hero model..."));
-        var candidate = FindMainModel(retailGameRoot, hero, progress, cancellationToken);
+        var candidate = FindMainModel(vpkPaths, hero, progress, cancellationToken);
         if (candidate is null)
         {
             throw new InvalidOperationException(
@@ -63,57 +106,244 @@ public sealed class HeroExtractionService
 
         var resourceFolder = GetResourceFolder(candidate.ResourcePath);
         var metadataFolder = ProjectStore.GetMetadataFolder(manifest.ProjectFolder);
-        var stagingFolder = Path.Combine(metadataFolder, "source-extract-staging");
-        var outputFolder = SafePath.ResolveUnderRoot(
+        var isGltf = options.Format == HeroExtractionFormat.Gltf;
+        var stagingFolder = Path.Combine(
+            metadataFolder,
+            isGltf ? "gltf-source-extract-staging" : "source-extract-staging");
+        var scopeStagingFolder = Path.Combine(stagingFolder, "scopes");
+        var publishStagingFolder = Path.Combine(stagingFolder, "publish");
+        var scopeStatePath = Path.Combine(
+            metadataFolder,
+            isGltf ? "gltf-source-extraction-state.json" : "source-extraction-state.json");
+        var sourceOutputFolder = SafePath.ResolveUnderRoot(
             manifest.ProjectFolder,
             manifest.SourceDumpFolderName,
             "Project source-extraction folder");
-        var previousFolder = Path.Combine(metadataFolder, "0source.previous");
+        var outputFolder = isGltf
+            ? SafePath.ResolveUnderRoot(
+                sourceOutputFolder,
+                ExtractedSourceLayout.GltfPipelineFolderName,
+                "Project glTF source-extraction folder")
+            : sourceOutputFolder;
+        var previousFolder = Path.Combine(
+            metadataFolder,
+            isGltf ? "glTFpipeline.previous" : "0source.previous");
 
         Directory.CreateDirectory(metadataFolder);
         DeleteDirectoryIfExists(stagingFolder);
-        Directory.CreateDirectory(stagingFolder);
+        Directory.CreateDirectory(scopeStagingFolder);
 
         try
         {
-            progress?.Report(new HeroExtractionProgress($"Decompiling {resourceFolder}..."));
-            ExtractResourceFolder(
-                candidate.VpkPath,
-                resourceFolder,
-                stagingFolder,
-                progress,
-                cancellationToken);
+            var freshScopeFolders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-            var extractedFileCount = Directory.EnumerateFiles(stagingFolder, "*", SearchOption.AllDirectories).Count();
-            if (extractedFileCount == 0)
+            if (options.ExtractHero)
             {
-                throw new InvalidOperationException(
-                    "ValveResourceFormat completed without an error, but no files were written to the extraction folder.");
+                var heroStagingFolder = Path.Combine(
+                    scopeStagingFolder,
+                    HeroExtractionScopePublisher.HeroScope);
+                Directory.CreateDirectory(heroStagingFolder);
+                freshScopeFolders[HeroExtractionScopePublisher.HeroScope] = heroStagingFolder;
+
+                if (isGltf)
+                {
+                    progress?.Report(new HeroExtractionProgress(
+                        $"Exporting {Path.GetFileName(candidate.ResourcePath)} to glTF..."));
+                    ExtractGltfResourceLocations(
+                        vpkPaths,
+                        [new ResourceLocation(candidate.VpkPath, candidate.ResourcePath)],
+                        heroStagingFolder,
+                        options.ExtractTextures,
+                        progress,
+                        cancellationToken);
+
+                    // CSDK cannot consume glTF directly. Keep the Source 2 Viewer-style
+                    // glTF export and place its decompiled ModelDoc/DMX companions in the
+                    // same isolated pipeline so PREPARE can adapt an edited root glTF.
+                    progress?.Report(new HeroExtractionProgress(
+                        $"Decompiling CSDK companion sources for {Path.GetFileName(candidate.ResourcePath)}..."));
+                    ExtractResourceFolder(
+                        candidate.VpkPath,
+                        resourceFolder,
+                        heroStagingFolder,
+                        options.ExtractTextures,
+                        progress,
+                        cancellationToken);
+                }
+                else
+                {
+                    progress?.Report(new HeroExtractionProgress($"Decompiling {resourceFolder}..."));
+                    ExtractResourceFolder(
+                        candidate.VpkPath,
+                        resourceFolder,
+                        heroStagingFolder,
+                        true,
+                        progress,
+                        cancellationToken);
+
+                    if (options.ExtractTextures || options.CopyMaterialsToCsdkForEditing)
+                    {
+                        ExtractHeroTextureDependencies(
+                            vpkPaths,
+                            candidate,
+                            heroStagingFolder,
+                            includeTextures: true,
+                            progress,
+                            cancellationToken);
+                    }
+                }
             }
+
+            if (options.ExtractAbilities)
+            {
+                var abilitiesStagingFolder = Path.Combine(
+                    scopeStagingFolder,
+                    HeroExtractionScopePublisher.AbilitiesScope);
+                Directory.CreateDirectory(abilitiesStagingFolder);
+                freshScopeFolders[HeroExtractionScopePublisher.AbilitiesScope] = abilitiesStagingFolder;
+
+                if (isGltf)
+                {
+                    ExtractHeroAbilityGltfResources(
+                        vpkPaths,
+                        candidate,
+                        abilitiesStagingFolder,
+                        options.ExtractTextures,
+                        progress,
+                        cancellationToken);
+
+                    ExtractHeroAbilityDependencies(
+                        vpkPaths,
+                        candidate,
+                        abilitiesStagingFolder,
+                        options.ExtractTextures,
+                        progress,
+                        cancellationToken);
+                }
+                else
+                {
+                    ExtractHeroAbilityDependencies(
+                        vpkPaths,
+                        candidate,
+                        abilitiesStagingFolder,
+                        options.ExtractTextures
+                        || options.CopyAbilityFxToCsdkForEditing
+                        || options.CopyMaterialsToCsdkForEditing,
+                        progress,
+                        cancellationToken);
+                }
+            }
+
+            if (options.ExtractPortraitsAndUi)
+            {
+                var uiStagingFolder = Path.Combine(
+                    scopeStagingFolder,
+                    HeroExtractionScopePublisher.PortraitsAndUiScope);
+                Directory.CreateDirectory(uiStagingFolder);
+                freshScopeFolders[HeroExtractionScopePublisher.PortraitsAndUiScope] = uiStagingFolder;
+
+                ExtractHeroUiResources(
+                    vpkPaths,
+                    candidate,
+                    uiStagingFolder,
+                    progress,
+                    cancellationToken);
+            }
+
+            var scopeState = HeroExtractionScopePublisher.TryLoadState(scopeStatePath);
+            var publication = HeroExtractionScopePublisher.Prepare(
+                outputFolder,
+                publishStagingFolder,
+                freshScopeFolders,
+                scopeState,
+                isGltf
+                    ? null
+                    : [
+                        ExtractedSourceLayout.GltfPipelineFolderName,
+                        ExtractedSourceLayout.LegacyGltfPipelineFolderName,
+                    ]);
 
             progress?.Report(new HeroExtractionProgress("Publishing refreshed 0source..."));
             PublishRefreshedSource(
-                stagingFolder,
+                publishStagingFolder,
                 outputFolder,
                 previousFolder,
                 progress);
+            HeroExtractionScopePublisher.SaveState(scopeStatePath, publication.State);
 
-            manifest.SchemaVersion = Math.Max(manifest.SchemaVersion, 2);
+            if (!isGltf)
+            {
+                // glTF has its own refresh lifecycle and backup. Keep the DMX backup bounded
+                // to compile-ready source instead of duplicating the isolated glTF tree.
+                DeleteDirectoryIfExists(Path.Combine(previousFolder, ExtractedSourceLayout.GltfPipelineFolderName));
+                DeleteDirectoryIfExists(Path.Combine(previousFolder, ExtractedSourceLayout.LegacyGltfPipelineFolderName));
+            }
+
+            var extractedFileCount = publication.FinalFileCount;
+            if (!isGltf)
+            {
+                var preservedGltfFolder = Path.Combine(outputFolder, ExtractedSourceLayout.GltfPipelineFolderName);
+                if (Directory.Exists(preservedGltfFolder))
+                {
+                    extractedFileCount -= Directory
+                        .EnumerateFiles(preservedGltfFolder, "*", SearchOption.AllDirectories)
+                        .Count();
+                }
+                var preservedLegacyGltfFolder = Path.Combine(
+                    outputFolder,
+                    ExtractedSourceLayout.LegacyGltfPipelineFolderName);
+                if (Directory.Exists(preservedLegacyGltfFolder))
+                {
+                    extractedFileCount -= Directory
+                        .EnumerateFiles(preservedLegacyGltfFolder, "*", SearchOption.AllDirectories)
+                        .Count();
+                }
+            }
+
             manifest.RetailMainModel = candidate.ResourcePath;
             manifest.RetailSourceVpk = candidate.VpkPath;
-            manifest.LastSourceExtractionUtc = DateTimeOffset.UtcNow;
             manifest.Source2ViewerVersion = vrfVersion is null ? "ValveResourceFormat" : $"ValveResourceFormat {vrfVersion}";
-            manifest.ExtractedSourceFileCount = extractedFileCount;
-            ProjectStore.Save(manifest);
+            if (!isGltf)
+            {
+                manifest.SchemaVersion = Math.Max(manifest.SchemaVersion, 2);
+                manifest.LastSourceExtractionUtc = DateTimeOffset.UtcNow;
+                manifest.ExtractedSourceFileCount = extractedFileCount;
+                manifest.LastSourceExtractionIncludedTextures = options.ExtractTextures;
+                manifest.LastSourceExtractionIncludedAbilities = options.ExtractAbilities;
+            }
 
-            progress?.Report(new HeroExtractionProgress("Hero source extraction complete."));
+            var csdkCopy = isGltf
+                ? new CsdkEditableAssetCopyResult(0, 0, 0, null)
+                : new CsdkEditableAssetCopyService(_paths).Copy(
+                    manifest,
+                    outputFolder,
+                    options,
+                    progress,
+                    cancellationToken);
+
+            ProjectStore.Save(manifest);
+            DeleteDirectoryIfExists(stagingFolder);
+
+            var completionMessage = isGltf
+                ? $"glTF source extraction complete: {extractedFileCount} file(s) in 0source\\{ExtractedSourceLayout.GltfPipelineFolderName}."
+                : (options.ExtractTextures, options.ExtractAbilities) switch
+            {
+                (true, true) => "Hero source, dependency textures and abilities extraction complete.",
+                (true, false) => "Hero source and dependency texture extraction complete.",
+                (false, true) => "Hero source and abilities extraction complete.",
+                _ => "Hero source extraction complete.",
+            };
+            progress?.Report(new HeroExtractionProgress(completionMessage));
 
             return new HeroExtractionResult(
                 candidate.ResourcePath,
                 candidate.VpkPath,
                 outputFolder,
                 extractedFileCount,
-                manifest.Source2ViewerVersion);
+                manifest.Source2ViewerVersion,
+                csdkCopy.MaterialCopiedCount,
+                csdkCopy.AbilityFxCopiedCount,
+                csdkCopy.BackupFolder);
         }
         catch
         {
@@ -122,11 +352,7 @@ public sealed class HeroExtractionService
         }
     }
 
-    private ModelCandidate? FindMainModel(
-        string retailGameRoot,
-        string hero,
-        IProgress<HeroExtractionProgress>? progress,
-        CancellationToken cancellationToken)
+    private static IReadOnlyList<string> GetVpkPaths(string retailGameRoot)
     {
         var primaryVpk = Path.Combine(retailGameRoot, "citadel", "pak01_dir.vpk");
         var vpks = new List<string>();
@@ -145,6 +371,15 @@ public sealed class HeroExtractionService
             }
         }
 
+        return vpks;
+    }
+
+    private ModelCandidate? FindMainModel(
+        IReadOnlyList<string> vpks,
+        string hero,
+        IProgress<HeroExtractionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
         ModelCandidate? best = null;
         foreach (var vpkPath in vpks)
         {
@@ -194,10 +429,373 @@ public sealed class HeroExtractionService
         return best;
     }
 
+    private static void ExtractHeroTextureDependencies(
+        IReadOnlyList<string> vpkPaths,
+        ModelCandidate candidate,
+        string outputRoot,
+        bool includeTextures,
+        IProgress<HeroExtractionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        progress?.Report(new HeroExtractionProgress(
+            includeTextures
+                ? "Resolving hero model, material and texture dependencies..."
+                : "Resolving hero model and material dependencies..."));
+
+        var pendingBridges = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var pendingMaterials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var texturePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        CollectTextureDependencyReferences(
+            ReadExternalReferences(
+                new ResourceLocation(candidate.VpkPath, candidate.ResourcePath),
+                cancellationToken),
+            pendingBridges,
+            pendingMaterials,
+            texturePaths);
+
+        var processedBridges = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            candidate.ResourcePath,
+        };
+
+        while (pendingBridges.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var request = pendingBridges
+                .Where(path => !processedBridges.Contains(path))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            pendingBridges.Clear();
+
+            if (request.Count == 0)
+            {
+                break;
+            }
+
+            var locations = ResolveResourceLocations(vpkPaths, request, progress, cancellationToken);
+            foreach (var missing in request.Where(path => !locations.ContainsKey(path)))
+            {
+                progress?.Report(new HeroExtractionProgress(
+                    $"Referenced retail model/mesh bridge was not found: {missing}"));
+                processedBridges.Add(missing);
+            }
+
+            foreach (var location in locations.Values)
+            {
+                if (!processedBridges.Add(location.ResourcePath))
+                {
+                    continue;
+                }
+
+                CollectTextureDependencyReferences(
+                    ReadExternalReferences(location, cancellationToken),
+                    pendingBridges,
+                    pendingMaterials,
+                    texturePaths);
+            }
+        }
+
+        var resolvedMaterials = new Dictionary<string, ResourceLocation>(StringComparer.OrdinalIgnoreCase);
+        var processedMaterials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        while (pendingMaterials.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var request = pendingMaterials
+                .Where(path => !processedMaterials.Contains(path))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            pendingMaterials.Clear();
+
+            if (request.Count == 0)
+            {
+                break;
+            }
+
+            var locations = ResolveResourceLocations(vpkPaths, request, progress, cancellationToken);
+            foreach (var missing in request.Where(path => !locations.ContainsKey(path)))
+            {
+                progress?.Report(new HeroExtractionProgress(
+                    $"Referenced retail material was not found: {missing}"));
+                processedMaterials.Add(missing);
+            }
+
+            foreach (var location in locations.Values)
+            {
+                if (!processedMaterials.Add(location.ResourcePath))
+                {
+                    continue;
+                }
+
+                resolvedMaterials[location.ResourcePath] = location;
+                foreach (var reference in ReadExternalReferences(location, cancellationToken))
+                {
+                    if (IsTextureReference(reference))
+                    {
+                        texturePaths.Add(ToCompiledResourcePath(reference));
+                    }
+                    else if (IsMaterialReference(reference))
+                    {
+                        var materialPath = ToCompiledResourcePath(reference);
+                        if (!processedMaterials.Contains(materialPath))
+                        {
+                            pendingMaterials.Add(materialPath);
+                        }
+                    }
+                }
+            }
+        }
+
+        IReadOnlyDictionary<string, ResourceLocation> textureLocations =
+            new Dictionary<string, ResourceLocation>(StringComparer.OrdinalIgnoreCase);
+        if (includeTextures)
+        {
+            textureLocations = ResolveResourceLocations(
+                vpkPaths,
+                texturePaths,
+                progress,
+                cancellationToken);
+
+            var missingTextures = texturePaths
+                .Where(path => !textureLocations.ContainsKey(path))
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            foreach (var missing in missingTextures)
+            {
+                progress?.Report(new HeroExtractionProgress(
+                    $"Referenced retail texture was not found: {missing}"));
+            }
+        }
+
+        var dependencies = resolvedMaterials.Values
+            .Concat(textureLocations.Values)
+            .GroupBy(location => location.ResourcePath, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderBy(location => location.ResourcePath, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        progress?.Report(new HeroExtractionProgress(
+            $"Hero dependencies: {processedBridges.Count - 1} model/mesh bridge(s), " +
+            $"{resolvedMaterials.Count} material(s), {textureLocations.Count} texture resource(s)."));
+
+        if (dependencies.Length == 0)
+        {
+            progress?.Report(new HeroExtractionProgress(
+                "No external hero material or texture dependencies were found."));
+            return;
+        }
+
+        ExtractResourceLocations(
+            dependencies,
+            outputRoot,
+            progress,
+            cancellationToken);
+    }
+
+    private static void CollectTextureDependencyReferences(
+        IEnumerable<string> references,
+        HashSet<string> pendingBridges,
+        HashSet<string> pendingMaterials,
+        HashSet<string> texturePaths)
+    {
+        foreach (var reference in references)
+        {
+            if (IsTextureReference(reference))
+            {
+                texturePaths.Add(ToCompiledResourcePath(reference));
+            }
+            else if (IsMaterialReference(reference))
+            {
+                pendingMaterials.Add(ToCompiledResourcePath(reference));
+            }
+            else if (IsTextureDependencyBridgeReference(reference))
+            {
+                pendingBridges.Add(ToCompiledResourcePath(reference));
+            }
+        }
+    }
+
+    private static IReadOnlyDictionary<string, ResourceLocation> ResolveResourceLocations(
+        IReadOnlyList<string> vpkPaths,
+        IReadOnlySet<string> requestedResourcePaths,
+        IProgress<HeroExtractionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var remaining = requestedResourcePaths
+            .Select(NormalizeResourcePath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var resolved = new Dictionary<string, ResourceLocation>(StringComparer.OrdinalIgnoreCase);
+
+        if (remaining.Count == 0)
+        {
+            return resolved;
+        }
+
+        foreach (var vpkPath in vpkPaths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (remaining.Count == 0)
+            {
+                break;
+            }
+
+            try
+            {
+                using var package = new Package();
+                package.Read(vpkPath);
+                var packageEntries = package.Entries
+                    ?? throw new InvalidDataException($"VPK entry table was not available: {vpkPath}");
+
+                foreach (var entry in packageEntries.SelectMany(group => group.Value))
+                {
+                    var resourcePath = NormalizeResourcePath(entry.GetFullPath());
+                    if (!remaining.Remove(resourcePath))
+                    {
+                        continue;
+                    }
+
+                    resolved[resourcePath] = new ResourceLocation(vpkPath, resourcePath);
+                    if (remaining.Count == 0)
+                    {
+                        break;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException)
+            {
+                progress?.Report(new HeroExtractionProgress(
+                    $"Skipping unreadable VPK {Path.GetFileName(vpkPath)} while resolving dependencies: {ex.Message}"));
+            }
+        }
+
+        return resolved;
+    }
+
+    private static IReadOnlyList<string> ReadExternalReferences(
+        ResourceLocation location,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var package = new Package();
+        package.Read(location.VpkPath);
+        var packageEntries = package.Entries
+            ?? throw new InvalidDataException($"VPK entry table was not available: {location.VpkPath}");
+
+        var entry = packageEntries
+            .SelectMany(group => group.Value)
+            .FirstOrDefault(candidate => string.Equals(
+                NormalizeResourcePath(candidate.GetFullPath()),
+                location.ResourcePath,
+                StringComparison.OrdinalIgnoreCase));
+
+        if (entry is null)
+        {
+            throw new InvalidOperationException(
+                $"Referenced retail resource was not found in its indexed VPK: {location.ResourcePath}");
+        }
+
+        package.ReadEntry(entry, out byte[] rawData);
+        using var stream = new MemoryStream(rawData, writable: false);
+        using var resource = new Resource { FileName = location.ResourcePath };
+        resource.Read(stream);
+
+        return resource.ExternalReferences?.ResourceRefInfoList
+            .Select(reference => NormalizeResourcePath(reference.Name))
+            .Where(reference => reference.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(reference => reference, StringComparer.OrdinalIgnoreCase)
+            .ToArray()
+            ?? Array.Empty<string>();
+    }
+
+    private static void ExtractResourceLocations(
+        IReadOnlyList<ResourceLocation> locations,
+        string outputRoot,
+        IProgress<HeroExtractionProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        var groups = locations
+            .GroupBy(location => location.VpkPath, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var completed = 0;
+        var total = locations.Count;
+
+        foreach (var group in groups)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            using var package = new Package();
+            package.Read(group.Key);
+            var packageEntries = package.Entries
+                ?? throw new InvalidDataException($"VPK entry table was not available: {group.Key}");
+            using var fileLoader = new GameFileLoader(package, package.FileName);
+
+            var requested = group
+                .Select(location => location.ResourcePath)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var entries = packageEntries
+                .SelectMany(packageGroup => packageGroup.Value)
+                .Select(entry => (Entry: entry, Path: NormalizeResourcePath(entry.GetFullPath())))
+                .Where(item => requested.Contains(item.Path))
+                .OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            foreach (var (entry, filePath) in entries)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                completed++;
+                progress?.Report(new HeroExtractionProgress(
+                    $"Decompiling hero dependency {completed}/{total}: {Path.GetFileName(filePath)}"));
+
+                try
+                {
+                    package.ReadEntry(entry, out byte[] rawData);
+
+                    if (!entry.TypeName.EndsWith(GameFileLoader.CompiledFileSuffix, StringComparison.Ordinal))
+                    {
+                        WriteFile(
+                            SafePath.ResolveUnderRoot(outputRoot, ToWindowsPath(filePath), "Extracted VPK dependency"),
+                            rawData);
+                        continue;
+                    }
+
+                    using var stream = new MemoryStream(rawData, writable: false);
+                    using var resource = new Resource { FileName = filePath };
+                    resource.Read(stream);
+
+                    var outputExtension = FileExtract.GetExtension(resource) ?? entry.TypeName[..^2];
+                    var decompiledPath = Path.ChangeExtension(filePath, outputExtension);
+                    var outputPath = SafePath.ResolveUnderRoot(
+                        outputRoot,
+                        ToWindowsPath(decompiledPath),
+                        "Decompiled VPK dependency");
+
+                    using var contentFile = resource.ResourceType == ResourceType.Texture
+                        ? new TextureExtract(resource).ToContentFile()
+                        : FileExtract.Extract(resource, fileLoader, null);
+
+                    DumpContentFile(outputRoot, outputPath, contentFile);
+                }
+                catch (Exception ex)
+                {
+                    throw new InvalidOperationException(
+                        $"ValveResourceFormat failed while decompiling dependency '{filePath}': {ex.Message}",
+                        ex);
+                }
+            }
+        }
+    }
+
     private static void ExtractResourceFolder(
         string vpkPath,
         string resourceFolder,
         string outputRoot,
+        bool includeTextures,
         IProgress<HeroExtractionProgress>? progress,
         CancellationToken cancellationToken)
     {
@@ -211,6 +809,7 @@ public sealed class HeroExtractionService
             .SelectMany(group => group.Value)
             .Select(entry => (Entry: entry, Path: NormalizeResourcePath(entry.GetFullPath())))
             .Where(item => item.Path.StartsWith(resourceFolder, StringComparison.OrdinalIgnoreCase))
+            .Where(item => includeTextures || !IsTextureReference(item.Path))
             .OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -315,6 +914,37 @@ public sealed class HeroExtractionService
             || path.StartsWith("models/heroes_wip/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("models/heroes_staging/", StringComparison.OrdinalIgnoreCase));
 
+    private static bool IsTextureDependencyBridgeReference(string path)
+    {
+        var normalized = NormalizeResourcePath(path);
+        return normalized.EndsWith(".vmdl", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith(".vmdl_c", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith(".vmesh", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith(".vmesh_c", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsMaterialReference(string path)
+    {
+        var normalized = NormalizeResourcePath(path);
+        return normalized.EndsWith(".vmat", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith(".vmat_c", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsTextureReference(string path)
+    {
+        var normalized = NormalizeResourcePath(path);
+        return normalized.EndsWith(".vtex", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith(".vtex_c", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ToCompiledResourcePath(string resourcePath)
+    {
+        var normalized = NormalizeResourcePath(resourcePath);
+        return normalized.EndsWith(GameFileLoader.CompiledFileSuffix, StringComparison.OrdinalIgnoreCase)
+            ? normalized
+            : normalized + GameFileLoader.CompiledFileSuffix;
+    }
+
     private static int ScoreModelCandidate(string resourcePath, string hero)
     {
         var normalizedHero = NormalizeToken(hero);
@@ -372,7 +1002,8 @@ public sealed class HeroExtractionService
     private static string NormalizeToken(string value) =>
         new(value.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
 
-    private static string NormalizeResourcePath(string value) => value.Replace('\\', '/').TrimStart('/');
+    private static string NormalizeResourcePath(string value) =>
+        value.Replace('\\', '/').Trim().Trim('"').TrimStart('/');
 
     private static string GetResourceFolder(string resourcePath)
     {
@@ -390,6 +1021,10 @@ public sealed class HeroExtractionService
         string previousFolder,
         IProgress<HeroExtractionProgress>? progress)
     {
+        Directory.CreateDirectory(Path.GetDirectoryName(outputFolder)
+                                  ?? throw new ArgumentException(
+                                      "Source extraction output folder has no parent.",
+                                      nameof(outputFolder)));
         DeleteDirectoryIfExists(previousFolder);
 
         if (!Directory.Exists(outputFolder))
@@ -520,6 +1155,7 @@ public sealed class HeroExtractionService
             }
         }
     }
+
     private static void DeleteDirectoryIfExists(string path)
     {
         if (Directory.Exists(path))
@@ -529,4 +1165,6 @@ public sealed class HeroExtractionService
     }
 
     private sealed record ModelCandidate(string VpkPath, string ResourcePath, int Score);
+
+    private sealed record ResourceLocation(string VpkPath, string ResourcePath);
 }

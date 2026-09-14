@@ -23,7 +23,8 @@ public sealed class MainForm : Form
     };
     private readonly Button _extractHeroButton = new()
     {
-        Text = UiText.T("EXTRACT HERO SOURCE", "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ"),
+        Name = UiControlNames.ExtractHeroSourceButton,
+        Text = UiText.T("EXTRACT HERO SOURCE…", "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ…"),
         AutoSize = true,
     };
 
@@ -44,13 +45,6 @@ public sealed class MainForm : Form
         {
             _libraryInitialized = true;
             InitializeProjectLibrary();
-        };
-        Activated += (_, _) =>
-        {
-            if (_libraryInitialized)
-            {
-                RefreshProjectLibrary(preserveSelection: true, rescanSelected: true);
-            }
         };
     }
 
@@ -233,6 +227,22 @@ public sealed class MainForm : Form
             preserveSelection: false,
             rescanSelected: false,
             preferredFolder: ProjectStore.GetLastProjectFolder());
+    }
+
+    internal void RefreshExternalProjectState(bool projectLibraryChanged)
+    {
+        if (!_libraryInitialized || IsDisposed)
+        {
+            return;
+        }
+
+        if (projectLibraryChanged)
+        {
+            RefreshProjectLibrary(preserveSelection: true, rescanSelected: true);
+            return;
+        }
+
+        RefreshScan(showStatus: false);
     }
 
     private void RefreshProjectLibrary(
@@ -485,8 +495,8 @@ public sealed class MainForm : Form
         {
             RefreshProjectLibrary(preserveSelection: true, rescanSelected: true);
             SetStatus(UiText.T(
-                $"Saved. DMX: {_loadedManifest!.DmxFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}.",
-                $"Сохранено. DMX: {_loadedManifest!.DmxFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}."));
+                $"Saved. Models: {_loadedManifest!.DmxFiles.Count + _loadedManifest.FbxFiles.Count + _loadedManifest.GltfFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}.",
+                $"Сохранено. Моделей: {_loadedManifest!.DmxFiles.Count + _loadedManifest.FbxFiles.Count + _loadedManifest.GltfFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}."));
         }
     }
 
@@ -547,6 +557,8 @@ public sealed class MainForm : Form
                 ReleaseTarget = releaseTarget,
                 SourceDumpFolderName = existing?.SourceDumpFolderName ?? "0source",
                 DmxFiles = [.. scan.DmxFiles],
+                FbxFiles = [.. scan.FbxFiles],
+                GltfFiles = [.. scan.GltfFiles],
                 PngTextures = [.. scan.PngTextures],
                 CreatedUtc = existing?.CreatedUtc ?? DateTimeOffset.UtcNow,
                 RetailMainModel = existing?.RetailMainModel,
@@ -554,6 +566,8 @@ public sealed class MainForm : Form
                 LastSourceExtractionUtc = existing?.LastSourceExtractionUtc,
                 Source2ViewerVersion = existing?.Source2ViewerVersion,
                 ExtractedSourceFileCount = existing?.ExtractedSourceFileCount,
+                LastSourceExtractionIncludedTextures = existing?.LastSourceExtractionIncludedTextures ?? false,
+                LastSourceExtractionIncludedAbilities = existing?.LastSourceExtractionIncludedAbilities ?? false,
                 SourceVmdl = existing?.SourceVmdl,
                 CompiledVmdl = existing?.CompiledVmdl,
                 AnimGraph2Refs = existing?.AnimGraph2Refs ?? [],
@@ -585,22 +599,25 @@ public sealed class MainForm : Form
         }
 
         var outputFolder = Path.Combine(_loadedManifest.ProjectFolder, _loadedManifest.SourceDumpFolderName);
-        if (Directory.Exists(outputFolder) && Directory.EnumerateFileSystemEntries(outputFolder).Any())
+        var gltfOutputFolder = Path.Combine(outputFolder, ExtractedSourceLayout.GltfPipelineFolderName);
+        var legacyGltfOutputFolder = Path.Combine(outputFolder, ExtractedSourceLayout.LegacyGltfPipelineFolderName);
+        var hasExistingDmxSource = Directory.Exists(outputFolder)
+            && Directory.EnumerateFileSystemEntries(outputFolder)
+                .Any(path => !new[] { gltfOutputFolder, legacyGltfOutputFolder }.Any(gltfFolder => string.Equals(
+                    Path.GetFullPath(path),
+                    Path.GetFullPath(gltfFolder),
+                    StringComparison.OrdinalIgnoreCase)));
+        var hasExistingGltfSource = new[] { gltfOutputFolder, legacyGltfOutputFolder }
+            .Any(folder => Directory.Exists(folder)
+                && Directory.EnumerateFileSystemEntries(folder).Any());
+        var dialogResult = HeroExtractionOptionsDialog.Show(
+            this,
+            hasExistingDmxSource,
+            hasExistingGltfSource);
+        if (!dialogResult.Accepted)
         {
-            var answer = MessageBox.Show(
-                this,
-                UiText.T(
-                    "0source already contains files. Refresh it from the current Deadlock game client build?\n\nThe previous 0source will be preserved as a hidden backup until the new extraction succeeds.",
-                    "0source уже содержит файлы. Обновить его из текущей установленной версии Deadlock?\n\nПредыдущий 0source будет сохранён как скрытый backup до успешного завершения нового извлечения."),
-                UiText.T("Refresh hero source", "Обновить исходники героя"),
-                MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question);
-
-            if (answer != DialogResult.Yes)
-            {
-                SetStatus(UiText.T("Hero source extraction cancelled.", "Извлечение исходников героя отменено."));
-                return;
-            }
+            SetStatus(UiText.T("Hero source extraction cancelled.", "Извлечение исходников героя отменено."));
+            return;
         }
 
         _extractHeroButton.Enabled = false;
@@ -608,23 +625,42 @@ public sealed class MainForm : Form
         {
             var progress = new Progress<HeroExtractionProgress>(update => SetStatus(update.Message));
             var service = new HeroExtractionService(new DeadlimitPaths());
-            var result = await service.ExtractAsync(_loadedManifest, progress);
+            var result = await service.ExtractAsync(_loadedManifest, dialogResult.Options, progress);
+
+            var backupCleanupWarning = dialogResult.RemoveBackupAfterSuccess
+                ? TryRemovePreviousHeroSourceBackup(
+                    _loadedManifest.ProjectFolder,
+                    dialogResult.Options.Format)
+                : null;
 
             RefreshScan(showStatus: false);
             SetStatus(UiText.T(
                 $"Hero source ready: {result.ExtractedFileCount} files.",
                 $"Исходники героя готовы: {result.ExtractedFileCount} файлов."));
 
+            var successMessage = UiText.T(
+                $"Hero source refreshed successfully.\n\nMain model: {result.MainModelResourcePath}\nFiles: {result.ExtractedFileCount}\nOutput: {result.OutputFolder}",
+                $"Исходники героя успешно обновлены.\n\nОсновная модель: {result.MainModelResourcePath}\nФайлов: {result.ExtractedFileCount}\nПапка: {result.OutputFolder}");
+            if (!string.IsNullOrWhiteSpace(backupCleanupWarning))
+            {
+                successMessage += UiText.T(
+                    $"\n\nBackup cleanup warning:\n{backupCleanupWarning}",
+                    $"\n\nНе удалось удалить предыдущую резервную копию:\n{backupCleanupWarning}");
+            }
+
             MessageBox.Show(
                 this,
-                UiText.T(
-                    $"Hero source refreshed successfully.\n\nMain model: {result.MainModelResourcePath}\nFiles: {result.ExtractedFileCount}\nOutput: {result.OutputFolder}",
-                    $"Исходники героя успешно обновлены.\n\nОсновная модель: {result.MainModelResourcePath}\nФайлов: {result.ExtractedFileCount}\nПапка: {result.OutputFolder}"),
+                successMessage,
                 "Deadlimit Manager",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or NotSupportedException)
+        catch (Exception ex) when (ex is IOException
+            or UnauthorizedAccessException
+            or InvalidOperationException
+            or InvalidDataException
+            or ArgumentException
+            or NotSupportedException)
         {
             SetStatus(UiText.T("Hero source extraction failed.", "Не удалось извлечь исходники героя."));
             MessageBox.Show(
@@ -637,6 +673,34 @@ public sealed class MainForm : Form
         finally
         {
             _extractHeroButton.Enabled = true;
+        }
+    }
+
+    private static string? TryRemovePreviousHeroSourceBackup(
+        string projectFolder,
+        HeroExtractionFormat format)
+    {
+        try
+        {
+            var backupFolderName = format == HeroExtractionFormat.Gltf
+                ? "glTFpipeline.previous"
+                : "0source.previous";
+            var previousFolder = Path.Combine(
+                ProjectStore.GetMetadataFolder(projectFolder),
+                backupFolderName);
+            if (Directory.Exists(previousFolder))
+            {
+                Directory.Delete(previousFolder, recursive: true);
+            }
+
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException
+            or UnauthorizedAccessException
+            or ArgumentException
+            or NotSupportedException)
+        {
+            return ex.Message;
         }
     }
 
@@ -657,7 +721,7 @@ public sealed class MainForm : Form
 
         if (!Directory.Exists(folder))
         {
-            _dmxCountLabel.Text = "DMX: 0";
+            _dmxCountLabel.Text = UiText.T("MODELS: 0", "МОДЕЛИ: 0");
             _pngCountLabel.Text = "PNG: 0";
             _sourceFolderLabel.Text = UiText.T(
                 "Hero source destination: 0source (created on demand by hero extraction).",
@@ -668,7 +732,9 @@ public sealed class MainForm : Form
         try
         {
             var scan = ProjectScanner.Scan(folder);
-            _dmxCountLabel.Text = $"DMX: {scan.DmxFiles.Count}";
+            _dmxCountLabel.Text = UiText.T(
+                $"MODELS: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}",
+                $"МОДЕЛИ: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}");
             _pngCountLabel.Text = $"PNG: {scan.PngTextures.Count}";
 
             var sourcePath = Path.Combine(folder, _loadedManifest?.SourceDumpFolderName ?? "0source");
@@ -690,6 +756,16 @@ public sealed class MainForm : Form
                 _assetList.Items.Add($"[DMX] {file}");
             }
 
+            foreach (var file in scan.FbxFiles)
+            {
+                _assetList.Items.Add($"[FBX] {file}");
+            }
+
+            foreach (var file in scan.GltfFiles)
+            {
+                _assetList.Items.Add($"[{Path.GetExtension(file).TrimStart('.').ToUpperInvariant()}] {file}");
+            }
+
             foreach (var file in scan.PngTextures)
             {
                 _assetList.Items.Add($"[PNG] {file}");
@@ -698,8 +774,8 @@ public sealed class MainForm : Form
             if (showStatus)
             {
                 SetStatus(UiText.T(
-                    $"Scan complete. DMX: {scan.DmxFiles.Count}; PNG: {scan.PngTextures.Count}.",
-                    $"Сканирование завершено. DMX: {scan.DmxFiles.Count}; PNG: {scan.PngTextures.Count}."));
+                    $"Scan complete. Models: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}; PNG: {scan.PngTextures.Count}.",
+                    $"Сканирование завершено. Моделей: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}; PNG: {scan.PngTextures.Count}."));
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -716,7 +792,7 @@ public sealed class MainForm : Form
         _heroText.Clear();
         _releaseTargetText.Clear();
         _assetList.Items.Clear();
-        _dmxCountLabel.Text = "DMX: 0";
+        _dmxCountLabel.Text = UiText.T("MODELS: 0", "МОДЕЛИ: 0");
         _pngCountLabel.Text = "PNG: 0";
         _sourceFolderLabel.Text = UiText.T(
             "Select a project folder from the library.",

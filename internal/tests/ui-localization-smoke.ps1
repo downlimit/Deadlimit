@@ -131,7 +131,7 @@ Assert-TooltipPlain 'vertex-color-ru' `
 
 Assert-TooltipPlain 'csdk-fine-tune-en' `
     'Run the optional CSDK fine-tuning from the current installation guide.\n\nDeadlimit downloads the required Deadlock depots, extracts the downloaded VPK as-is, removes the temporary pak01 VPK set, then re-applies Reduced CSDK.\n\nDepotDownloader may open a console for Steam QR authentication.\n\nThe configured Deadlock client folder is only validated and is **never modified**.' `
-    @('Reduced CSDK', 'QR code', 'never changed') `
+    @('Reduced CSDK', '**SHIFT**', 'does not download', 'staged', 'QR code', 'never changed') `
     @('depot', 'VPK', 'pak01', 'DepotDownloader', 'console', 'validated')
 
 Assert-TooltipPlain 'deadlocktools-path-en' `

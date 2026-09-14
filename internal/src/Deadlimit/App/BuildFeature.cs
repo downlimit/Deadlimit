@@ -4,12 +4,20 @@ namespace Deadlimit.App;
 
 internal static class BuildFeature
 {
+    private static readonly HashSet<MainForm> ActiveBuildForms = [];
+
+    internal static event Action<MainForm, bool>? BuildForTestStateChanged;
+
+    internal static bool IsBuildForTestRunning(MainForm form) => ActiveBuildForms.Contains(form);
+
     public static void Attach(MainForm form)
     {
         var topBar = FindDescendants<FlowLayoutPanel>(form)
             .FirstOrDefault(panel => panel.Controls.OfType<Button>()
-                .Any(button => string.Equals(button.Text, "EXTRACT HERO SOURCE", StringComparison.Ordinal)
-                    || string.Equals(button.Text, "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ", StringComparison.Ordinal)));
+                .Any(button => string.Equals(
+                    button.Name,
+                    UiControlNames.ExtractHeroSourceButton,
+                    StringComparison.Ordinal)));
 
         if (topBar is null)
         {
@@ -59,6 +67,98 @@ internal static class BuildFeature
 
         var buildProgressBar = AddBuildProgressBar(form);
         var actionButtons = new[] { prepareButton, buildAndTestButton, launchCsdkButton };
+        var csdkStateTimer = new System.Windows.Forms.Timer
+        {
+            Interval = 2000,
+        };
+        var csdkStateProbeActive = false;
+        var csdkIsRunning = false;
+
+        bool IsOnlineCsdkState() =>
+            launchCsdkButton.Text.Contains("CSDK", StringComparison.OrdinalIgnoreCase)
+            && (launchCsdkButton.Text.Contains("ONLINE", StringComparison.OrdinalIgnoreCase)
+                || launchCsdkButton.Text.Contains("ОНЛАЙН", StringComparison.OrdinalIgnoreCase));
+
+        void ApplyCsdkButtonState()
+        {
+            if (launchCsdkButton.IsDisposed || IsOnlineCsdkState())
+            {
+                return;
+            }
+
+            launchCsdkButton.Text = csdkIsRunning
+                ? UiText.T("CSDK RUNNING", "CSDK ЗАПУЩЕН")
+                : UiText.T("▶  LAUNCH CSDK", "▶  ЗАПУСК CSDK");
+
+            toolTip.SetToolTip(
+                launchCsdkButton,
+                csdkIsRunning
+                    ? UiText.T(
+                        "Reduced CSDK12 is already running. Click to bring its most recently active visible window to the foreground.\n\nHold SHIFT to keep using the ONLINE PREPARATION shortcut.",
+                        "Reduced CSDK12 уже запущен. Нажмите, чтобы вывести его последнее активное видимое окно на передний план.\n\nУдерживайте SHIFT, чтобы использовать действие ОНЛАЙН-ПОДГОТОВКИ.")
+                    : UiText.T(
+                        "Launch the configured Reduced CSDK12 environment.\n\nHold SHIFT while clicking to prepare once, enable ONLINE PREPARATION and launch CSDK. Repeat SHIFT+click to stop online synchronization without launching another CSDK instance.",
+                        "Запустить настроенное окружение Reduced CSDK12.\n\nУдерживайте SHIFT при клике, чтобы выполнить подготовку, включить ОНЛАЙН-ПОДГОТОВКУ и запустить CSDK. Повторный SHIFT+клик остановит онлайн-синхронизацию без запуска ещё одного CSDK."));
+
+            launchCsdkButton.Invalidate();
+        }
+
+        async Task RefreshCsdkButtonStateAsync()
+        {
+            if (csdkStateProbeActive || launchCsdkButton.IsDisposed || form.IsDisposed)
+            {
+                return;
+            }
+
+            csdkStateProbeActive = true;
+            try
+            {
+                var running = await Task.Run(() => CsdkProcessService.IsRunning(new DeadlimitPaths()));
+                if (launchCsdkButton.IsDisposed || form.IsDisposed)
+                {
+                    return;
+                }
+
+                csdkIsRunning = running;
+                ApplyCsdkButtonState();
+            }
+            catch (Exception ex) when (ex is IOException
+                or UnauthorizedAccessException
+                or InvalidOperationException
+                or System.ComponentModel.Win32Exception
+                or NotSupportedException
+                or ArgumentException)
+            {
+                // Process observation is best-effort. Keep the last known button state.
+            }
+            finally
+            {
+                csdkStateProbeActive = false;
+            }
+        }
+
+        async Task RefreshCsdkAfterLaunchAsync()
+        {
+            await Task.Delay(600);
+            await RefreshCsdkButtonStateAsync();
+        }
+
+        bool ActivateRunningCsdk(DeadlimitPaths paths)
+        {
+            try
+            {
+                return CsdkProcessService.TryActivateRunningWindow(paths);
+            }
+            catch (Exception ex) when (ex is IOException
+                or UnauthorizedAccessException
+                or InvalidOperationException
+                or System.ComponentModel.Win32Exception
+                or NotSupportedException
+                or ArgumentException)
+            {
+                return false;
+            }
+        }
 
         prepareButton.Click += async (_, _) =>
             await RunPrepareAsync(form, actionButtons, buildProgressBar);
@@ -66,21 +166,70 @@ internal static class BuildFeature
             await RunBuildAndTestAsync(form, actionButtons, buildProgressBar);
         launchCsdkButton.Click += async (_, _) =>
         {
+            var paths = new DeadlimitPaths();
             if ((Control.ModifierKeys & Keys.Shift) != Keys.Shift)
             {
+                var running = csdkIsRunning || await Task.Run(() => CsdkProcessService.IsRunning(paths));
+                if (running)
+                {
+                    csdkIsRunning = true;
+                    ApplyCsdkButtonState();
+                    if (!ActivateRunningCsdk(paths))
+                    {
+                        MessageBox.Show(
+                            form,
+                            UiText.T(
+                                "CSDK is running, but Deadlimit Manager could not find a visible CSDK window to activate yet.",
+                                "CSDK запущен, но Deadlimit Manager пока не смог найти видимое окно CSDK для переключения."),
+                            UiText.T("CSDK window not found", "Окно CSDK не найдено"),
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Information);
+                    }
+                    return;
+                }
+
                 LaunchCsdk(form);
+                _ = RefreshCsdkAfterLaunchAsync();
                 return;
             }
 
             if (await OnlinePreparationFeature.ToggleFromLaunchButtonAsync())
             {
-                LaunchCsdk(form);
+                var running = csdkIsRunning || await Task.Run(() => CsdkProcessService.IsRunning(paths));
+                if (running)
+                {
+                    csdkIsRunning = true;
+                    _ = ActivateRunningCsdk(paths);
+                }
+                else
+                {
+                    LaunchCsdk(form);
+                    _ = RefreshCsdkAfterLaunchAsync();
+                }
             }
+            else
+            {
+                _ = RefreshCsdkButtonStateAsync();
+            }
+        };
+
+        csdkStateTimer.Tick += (_, _) => _ = RefreshCsdkButtonStateAsync();
+        form.Shown += (_, _) =>
+        {
+            csdkStateTimer.Start();
+            _ = RefreshCsdkButtonStateAsync();
+        };
+        form.Activated += (_, _) => _ = RefreshCsdkButtonStateAsync();
+        form.FormClosed += (_, _) =>
+        {
+            csdkStateTimer.Stop();
+            csdkStateTimer.Dispose();
         };
 
         topBar.Controls.Add(prepareButton);
         topBar.Controls.Add(buildAndTestButton);
         topBar.Controls.Add(launchCsdkButton);
+        GameLaunchInterlockFeature.Attach(form);
     }
 
     private static async Task RunPrepareAsync(
@@ -272,15 +421,16 @@ internal static class BuildFeature
         }
 
         var forceFullRebuild = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
-        SetButtonsEnabled(actionButtons, false);
         var originalTitle = form.Text;
         using var animator = new BuildProgressAnimator(form, progressBar, originalTitle);
 
         string? forceStatePath = null;
         string? forceStateBackupPath = null;
 
+        SetBuildForTestRunning(form, true);
         try
         {
+            SetButtonsEnabled(actionButtons, false);
             animator.Start();
             var paths = new DeadlimitPaths();
 
@@ -409,6 +559,18 @@ internal static class BuildFeature
         {
             form.Text = originalTitle;
             SetButtonsEnabled(actionButtons, true);
+            SetBuildForTestRunning(form, false);
+        }
+    }
+
+    private static void SetBuildForTestRunning(MainForm form, bool running)
+    {
+        var changed = running
+            ? ActiveBuildForms.Add(form)
+            : ActiveBuildForms.Remove(form);
+        if (changed)
+        {
+            BuildForTestStateChanged?.Invoke(form, running);
         }
     }
 
@@ -438,7 +600,8 @@ internal static class BuildFeature
         {
             return 25;
         }
-        if (message.StartsWith("Overlaying artist", StringComparison.OrdinalIgnoreCase) || message.StartsWith("Наложение пользовательских", StringComparison.OrdinalIgnoreCase))
+        if (message.StartsWith("Overlaying", StringComparison.OrdinalIgnoreCase)
+            || message.StartsWith("Подготовка моделей", StringComparison.OrdinalIgnoreCase))
         {
             return 45;
         }
@@ -516,7 +679,7 @@ internal static class BuildFeature
             MessageBox.Show(
                 form,
                 ex.Message,
-                UiText.T("Could not launch CSDK", "Не удалось запустить CSDK"),
+                UiText.T("Could not launch CSDK", "CSDK не удалось запустить"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }

@@ -2,6 +2,8 @@ namespace Deadlimit.Core;
 
 public sealed record ProjectScanResult(
     IReadOnlyList<string> DmxFiles,
+    IReadOnlyList<string> FbxFiles,
+    IReadOnlyList<string> GltfFiles,
     IReadOnlyList<string> PngTextures);
 
 public static class ProjectScanner
@@ -33,6 +35,24 @@ public static class ProjectScanner
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        return new ProjectScanResult(dmx, png);
+        var fbx = files
+            .Where(path => string.Equals(Path.GetExtension(path), ".fbx", StringComparison.OrdinalIgnoreCase))
+            .Where(path => !VertexColorSidecarService.IsSidecarPath(path))
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name!)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var gltf = files
+            .Where(path => Path.GetExtension(path).Equals(".gltf", StringComparison.OrdinalIgnoreCase)
+                || Path.GetExtension(path).Equals(".glb", StringComparison.OrdinalIgnoreCase))
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name!)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return new ProjectScanResult(dmx, fbx, gltf, png);
     }
 }

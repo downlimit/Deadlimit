@@ -75,7 +75,7 @@ artist changes DMX / PNG
 Implemented safeguards/UX:
 
 - first build is clean/full; later builds use `.deadlimit/build-test-state.json` hashes;
-- changed DMX invalidates VMDL; changed images invalidate VMATs;
+- changed DMX/FBX render meshes invalidate VMDL; changed images invalidate VMATs;
 - known removed outputs are deleted; ambiguous removals force clean rebuild;
 - `SHIFT + BUILD & TEST` is the hidden forced-full-rebuild escape hatch and is documented by tooltip;
 - overall 0–100 progress + animated title spinner + status-bar progress;

@@ -1,0 +1,44 @@
+name: Hero texture pipeline smoke
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  hero-texture-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore
+        run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj
+      - name: Build Deadlimit Manager
+        run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
+      - name: Hero texture dependency and wiring smoke
+        shell: pwsh
+        run: internal/tests/hero-texture-dependency-contract-smoke.ps1
+      - name: Hero ability extraction contract smoke
+        shell: pwsh
+        run: internal/tests/hero-ability-extraction-contract-smoke.ps1
+      - name: Hero portrait and UI extraction contract smoke
+        shell: pwsh
+        run: internal/tests/hero-ui-extraction-contract-smoke.ps1
+      - name: CSDK editing copy and backup smoke
+        shell: pwsh
+        run: internal/tests/csdk-editing-copy-smoke.ps1
+      - name: Retail texture override resolution smoke
+        shell: pwsh
+        run: internal/tests/retail-texture-override-resolution-smoke.ps1
+      - name: PREPARE authoring texture preservation smoke
+        shell: pwsh
+        run: internal/tests/prepare-retail-material-fallback-smoke.ps1
+      - name: Retail texture VPK reuse smoke
+        shell: pwsh
+        run: internal/tests/retail-texture-packaging-reuse-smoke.ps1

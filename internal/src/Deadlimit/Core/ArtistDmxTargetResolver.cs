@@ -9,15 +9,10 @@ internal static class ArtistDmxTargetResolver
     public static IReadOnlyList<ArtistDmxTargetMapping> Resolve(
         string preparedVmdlPath,
         string hero,
-        IReadOnlyList<string> artistDmxFiles)
+        IReadOnlyList<string> artistDmxFiles,
+        string? extractedSourceRoot = null)
     {
         var renderMeshes = RetailVmdlInheritance.ReadRenderMeshes(preparedVmdlPath);
-        if (renderMeshes.Count == 0)
-        {
-            throw new InvalidOperationException(
-                "The prepared VMDL has no RenderMeshFile entries, so ONLINE PREPARATION cannot map artist DMX files safely.");
-        }
-
         var usedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var mappings = new List<ArtistDmxTargetMapping>();
 
@@ -31,34 +26,45 @@ internal static class ArtistDmxTargetResolver
                     StringComparison.OrdinalIgnoreCase))
                 .ToArray();
 
-            RetailRenderMeshEntry target;
+            string targetResourcePath;
             if (exactMatches.Length == 1)
             {
-                target = exactMatches[0];
-            }
-            else if (artistDmxFiles.Count == 1)
-            {
-                target = ChoosePrimaryRenderMesh(renderMeshes, hero, artistFileName)
-                    ?? throw new InvalidOperationException(
-                        $"Could not identify a unique primary prepared render mesh for '{artistFileName}'. " +
-                        "Rename the artist DMX to match the retail render-mesh source filename.");
+                targetResourcePath = NormalizeResourcePath(exactMatches[0].Filename);
             }
             else
             {
-                throw new InvalidOperationException(
-                    $"Artist DMX '{artistFileName}' does not uniquely match a prepared RenderMeshFile. " +
-                    "For multi-DMX projects, keep the original retail DMX filenames.");
+                var sourceTarget = ExtractedSourceAssetResolver.ResolveDmxTarget(
+                    artistDmx,
+                    extractedSourceRoot);
+                if (sourceTarget is not null)
+                {
+                    targetResourcePath = NormalizeResourcePath(sourceTarget.ResourcePath);
+                }
+                else if (artistDmxFiles.Count == 1)
+                {
+                    var primary = ChoosePrimaryRenderMesh(renderMeshes, hero, artistFileName)
+                        ?? throw new InvalidOperationException(
+                            $"Could not identify a unique prepared DMX target for '{artistFileName}'. " +
+                            "Use an original extracted DMX source filename; render-mesh fallback is available only when a unique primary mesh can be identified.");
+                    targetResourcePath = NormalizeResourcePath(primary.Filename);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"Artist DMX '{artistFileName}' does not uniquely match a prepared or extracted DMX source. " +
+                        "Deadlimit will not guess which retail resource to replace.");
+                }
             }
 
-            if (!usedTargets.Add(target.Filename))
+            if (!usedTargets.Add(targetResourcePath))
             {
                 throw new InvalidOperationException(
-                    $"More than one artist DMX resolved to the same prepared render mesh: {target.Filename}");
+                    $"More than one artist DMX resolved to the same prepared DMX source: {targetResourcePath}");
             }
 
             mappings.Add(new ArtistDmxTargetMapping(
                 Path.GetFullPath(artistDmx),
-                NormalizeResourcePath(target.Filename)));
+                targetResourcePath));
         }
 
         return mappings;

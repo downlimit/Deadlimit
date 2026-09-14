@@ -19,6 +19,11 @@ public sealed record ArtistDmxOverlayResult(
     string PreparedDmxPath,
     VertexColorSidecarResult VertexColor);
 
+public sealed record ArtistFbxOverlayResult(
+    string ArtistFbxPath,
+    string ResourcePath,
+    string PreparedFbxPath);
+
 public sealed record RetailVmdlPatchResult(
     IReadOnlyList<string> RemovedClasses,
     int ExistingMaterialRemapCount,
@@ -62,30 +67,23 @@ public static class RetailVmdlInheritance
         ".exr",
         ".vtex",
     };
+
     public static string? FindRetailVmdl(ProjectManifest manifest)
     {
-        var sourceRoot = SafePath.ResolveUnderRoot(
-            manifest.ProjectFolder,
-            manifest.SourceDumpFolderName,
-            "Project source-dump folder");
-        if (!Directory.Exists(sourceRoot) || string.IsNullOrWhiteSpace(manifest.RetailMainModel))
+        if (string.IsNullOrWhiteSpace(manifest.RetailMainModel))
         {
             return null;
         }
 
         var retailSourceResource = ToSourceVmdlResourcePath(manifest.RetailMainModel);
-        var exactPath = SafePath.ResolveUnderRoot(
-            sourceRoot,
-            retailSourceResource.Replace('/', Path.DirectorySeparatorChar),
-            "Retail main model resource");
-
-        if (File.Exists(exactPath))
+        var exactPath = ExtractedSourceLayout.ResolveResource(manifest, retailSourceResource);
+        if (exactPath is not null)
         {
             return exactPath;
         }
 
         var desiredName = Path.GetFileName(retailSourceResource);
-        return Directory.EnumerateFiles(sourceRoot, "*.vmdl", SearchOption.AllDirectories)
+        return ExtractedSourceLayout.EnumerateFilesByPriority(manifest, "*.vmdl")
             .Where(path => string.Equals(Path.GetFileName(path), desiredName, StringComparison.OrdinalIgnoreCase))
             .OrderBy(path => path.Length)
             .FirstOrDefault();
@@ -113,10 +111,7 @@ public static class RetailVmdlInheritance
             addonContentRoot,
             resourceFolder,
             "Retail VMDL destination folder");
-        var sourceRoot = SafePath.ResolveUnderRoot(
-            manifest.ProjectFolder,
-            manifest.SourceDumpFolderName,
-            "Project source-dump folder");
+        var sourceRoot = ExtractedSourceLayout.SelectOwningRoot(manifest, sourceVmdl);
 
         Directory.CreateDirectory(destinationFolder);
 
@@ -133,10 +128,23 @@ public static class RetailVmdlInheritance
             copied++;
         }
 
+        copied += CopyMissingRenderMeshSources(
+            sourceVmdl,
+            sourceRoot,
+            addonContentRoot);
+
         copied += CopyExternalRetailTextureDependencies(
             sourceFolder,
             sourceRoot,
             addonContentRoot);
+
+        var textureTargets = RetailTextureOverrideService.BuildTargetIndex(sourceRoot);
+        var textureOverrides = RetailTextureOverrideService.ResolveProjectRootOverrides(
+            manifest,
+            textureTargets);
+        copied += RetailTextureOverrideService.StageProjectRootOverrides(
+            addonContentRoot,
+            textureOverrides);
 
         var destinationVmdl = Path.Combine(destinationFolder, Path.GetFileName(sourceVmdl));
         if (!File.Exists(destinationVmdl))
@@ -150,6 +158,35 @@ public static class RetailVmdlInheritance
             destinationVmdl,
             destinationFolder,
             copied);
+    }
+
+    private static int CopyMissingRenderMeshSources(
+        string sourceVmdl,
+        string sourceRoot,
+        string addonContentRoot)
+    {
+        var copied = 0;
+        foreach (var renderMesh in ReadRenderMeshes(sourceVmdl))
+        {
+            var destination = SafePath.ResolveUnderRoot(
+                addonContentRoot,
+                renderMesh.Filename.Replace('/', Path.DirectorySeparatorChar),
+                "Retail render-mesh destination");
+            if (File.Exists(destination))
+            {
+                continue;
+            }
+
+            var fallback = ExtractedSourceLayout.ResolveResource(sourceRoot, renderMesh.Filename);
+            if (fallback is null)
+            {
+                continue;
+            }
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(fallback, destination, overwrite: false);
+            copied++;
+        }
+        return copied;
     }
 
     private static int CopyExternalRetailTextureDependencies(
@@ -176,17 +213,16 @@ public static class RetailVmdlInheritance
                 string sourcePath;
                 try
                 {
-                    sourcePath = SafePath.ResolveUnderRoot(
-                        sourceRoot,
-                        resourcePath.Replace('/', Path.DirectorySeparatorChar),
-                        "Retail VMAT texture dependency");
+                    sourcePath = ExtractedSourceLayout.ResolveResource(sourceRoot, resourcePath) ?? string.Empty;
                 }
                 catch (InvalidOperationException)
                 {
                     continue;
                 }
 
-                if (!File.Exists(sourcePath) || IsPathUnderRoot(sourceFolder, sourcePath))
+                if (sourcePath.Length == 0
+                    || !File.Exists(sourcePath)
+                    || IsPathUnderRoot(sourceFolder, sourcePath))
                 {
                     continue;
                 }
@@ -216,6 +252,7 @@ public static class RetailVmdlInheritance
         var normalizedPath = Path.GetFullPath(path);
         return normalizedPath.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase);
     }
+
     public static IReadOnlyList<RetailRenderMeshEntry> ReadRenderMeshes(string vmdlPath)
     {
         var text = File.ReadAllText(vmdlPath);
@@ -261,34 +298,61 @@ public static class RetailVmdlInheritance
                     StringComparison.OrdinalIgnoreCase))
                 .ToArray();
 
-            RetailRenderMeshEntry target;
+            string targetResourcePath;
             if (exactMatches.Length == 1)
             {
-                target = exactMatches[0];
-            }
-            else if (artistDmxFiles.Count == 1)
-            {
-                target = ChoosePrimaryRenderMesh(renderMeshes, hero, artistFileName)
-                    ?? throw new InvalidOperationException(
-                        $"Could not identify a unique primary retail render mesh for '{artistFileName}'. " +
-                        "Rename the artist DMX to match the retail render-mesh source filename.");
+                targetResourcePath = NormalizeResourcePath(exactMatches[0].Filename);
             }
             else
             {
-                throw new InvalidOperationException(
-                    $"Artist DMX '{artistFileName}' does not uniquely match a retail RenderMeshFile. " +
-                    "For multi-DMX projects, keep the original retail DMX filenames.");
+                var sourceRoot = ExtractedSourceAssetResolver.TryResolveSourceRootForArtistPath(artistDmx);
+                var sourceTarget = sourceRoot is null
+                    ? null
+                    : ExtractedSourceAssetResolver.ResolveDmxTarget(artistDmx, sourceRoot);
+
+                if (sourceTarget is not null && sourceRoot is not null)
+                {
+                    targetResourcePath = NormalizeResourcePath(sourceTarget.ResourcePath);
+                    ExtractedSourceAssetResolver.StageOwningVmdlSourceTrees(
+                        sourceTarget.SourceRoot,
+                        addonContentRoot,
+                        sourceTarget.OwnerVmdlSourcePaths,
+                        sourceCopy.DestinationVmdlPath);
+
+                    foreach (var ownerFolder in sourceTarget.OwnerVmdlSourcePaths
+                                 .Select(Path.GetDirectoryName)
+                                 .Where(folder => !string.IsNullOrWhiteSpace(folder))
+                                 .Select(folder => folder!)
+                                 .Distinct(StringComparer.OrdinalIgnoreCase))
+                    {
+                        CopyExternalRetailTextureDependencies(ownerFolder, sourceTarget.SourceRoot, addonContentRoot);
+                    }
+                }
+                else if (artistDmxFiles.Count == 1)
+                {
+                    var primary = ChoosePrimaryRenderMesh(renderMeshes, hero, artistFileName)
+                        ?? throw new InvalidOperationException(
+                            $"Could not identify a unique primary retail render mesh for '{artistFileName}'. " +
+                            "Use an original extracted source filename or rename the artist DMX to match the retail render-mesh source filename.");
+                    targetResourcePath = NormalizeResourcePath(primary.Filename);
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        $"Artist DMX '{artistFileName}' does not uniquely match the main retail VMDL and has no unique extracted-source target. " +
+                        "Deadlimit will not guess which retail resource to replace.");
+                }
             }
 
-            if (!usedTargets.Add(target.Filename))
+            if (!usedTargets.Add(targetResourcePath))
             {
                 throw new InvalidOperationException(
-                    $"More than one artist DMX resolved to the same retail render mesh: {target.Filename}");
+                    $"More than one artist DMX resolved to the same retail render mesh: {targetResourcePath}");
             }
 
             var targetPath = SafePath.ResolveUnderRoot(
                 addonContentRoot,
-                target.Filename.Replace('/', Path.DirectorySeparatorChar),
+                targetResourcePath.Replace('/', Path.DirectorySeparatorChar),
                 "VMDL RenderMeshFile target");
             Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
             File.Copy(artistDmx, targetPath, overwrite: true);
@@ -296,7 +360,7 @@ public static class RetailVmdlInheritance
             var vertexColor = stagedVertexColor.VertexColor;
             replaced.Add(new ArtistDmxOverlayResult(
                 artistDmx,
-                target.Filename,
+                targetResourcePath,
                 targetPath,
                 vertexColor));
         }
@@ -304,11 +368,156 @@ public static class RetailVmdlInheritance
         return replaced;
     }
 
+    public static IReadOnlyList<ArtistFbxOverlayResult> OverlayArtistFbx(
+        RetailModelSourceCopyResult sourceCopy,
+        string addonContentRoot,
+        string hero,
+        IReadOnlyList<string> artistFbxFiles)
+    {
+        var renderMeshes = ReadRenderMeshes(sourceCopy.DestinationVmdlPath);
+        if (artistFbxFiles.Count == 0)
+        {
+            return [];
+        }
+        if (renderMeshes.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "The retail VMDL has no RenderMeshFile entries, so Deadlimit cannot map artist FBX files safely.");
+        }
+
+        var replacements = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var results = new List<ArtistFbxOverlayResult>();
+        foreach (var artistFbx in artistFbxFiles)
+        {
+            var artistStem = Path.GetFileNameWithoutExtension(artistFbx);
+            var exact = renderMeshes
+                .Where(entry => string.Equals(
+                    Path.GetFileNameWithoutExtension(entry.Filename),
+                    artistStem,
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            RetailRenderMeshEntry target;
+            if (exact.Length == 1)
+            {
+                target = exact[0];
+            }
+            else if (artistFbxFiles.Count == 1)
+            {
+                target = ChoosePrimaryRenderMesh(renderMeshes, hero, Path.GetFileName(artistFbx))
+                    ?? throw new InvalidOperationException(
+                        $"Could not identify a unique primary retail render mesh for '{Path.GetFileName(artistFbx)}'. " +
+                        "Use the original extracted render-mesh basename for the FBX file.");
+            }
+            else
+            {
+                throw new InvalidOperationException(
+                    $"Artist FBX '{Path.GetFileName(artistFbx)}' does not uniquely match a retail render mesh. " +
+                    "Use the original extracted render-mesh basename for each FBX file.");
+            }
+
+            if (replacements.ContainsKey(target.Filename))
+            {
+                throw new InvalidOperationException(
+                    $"More than one artist FBX resolved to the same retail render mesh: {target.Filename}");
+            }
+
+            var fbxResource = NormalizeResourcePath(Path.ChangeExtension(target.Filename, ".fbx"));
+            var destination = SafePath.ResolveUnderRoot(
+                addonContentRoot,
+                fbxResource.Replace('/', Path.DirectorySeparatorChar),
+                "VMDL artist FBX destination");
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(artistFbx, destination, overwrite: true);
+            replacements.Add(target.Filename, fbxResource);
+            results.Add(new ArtistFbxOverlayResult(artistFbx, fbxResource, destination));
+        }
+
+        ReplaceRenderMeshFilenames(sourceCopy.DestinationVmdlPath, replacements);
+        return results;
+    }
+
+    private static void ReplaceRenderMeshFilenames(
+        string vmdlPath,
+        IReadOnlyDictionary<string, string> replacements)
+    {
+        if (replacements.Count == 0)
+        {
+            return;
+        }
+
+        var text = File.ReadAllText(vmdlPath);
+        var replaced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var updated = RenderMeshRegex.Replace(text, match =>
+        {
+            var current = NormalizeResourcePath(match.Groups["filename"].Value);
+            if (!replacements.TryGetValue(current, out var replacement))
+            {
+                return match.Value;
+            }
+            replaced.Add(current);
+            var relativeStart = match.Groups["filename"].Index - match.Index;
+            return match.Value[..relativeStart]
+                + EscapeKv3(replacement)
+                + match.Value[(relativeStart + match.Groups["filename"].Length)..];
+        });
+
+        var missing = replacements.Keys.Where(key => !replaced.Contains(key)).ToArray();
+        if (missing.Length > 0)
+        {
+            throw new InvalidOperationException(
+                $"Could not update VMDL RenderMeshFile target(s): {string.Join(", ", missing)}");
+        }
+        File.WriteAllText(vmdlPath, updated, new UTF8Encoding(false));
+    }
+
     public static RetailVmdlPatchResult PatchAuthoringVmdl(
         string destinationVmdlPath,
         IReadOnlyList<VmdlMaterialRemap> additionalMaterialRemaps)
     {
+        var mainResult = PatchSingleAuthoringVmdl(
+            destinationVmdlPath,
+            additionalMaterialRemaps,
+            stripSupportingMarker: false);
+
+        var addonContentRoot = FindAddonContentRoot(destinationVmdlPath);
+        if (addonContentRoot is null)
+        {
+            return mainResult;
+        }
+
+        var mainFullPath = Path.GetFullPath(destinationVmdlPath);
+        foreach (var supportingVmdl in Directory.EnumerateFiles(addonContentRoot, "*.vmdl", SearchOption.AllDirectories)
+                     .Where(path => !string.Equals(Path.GetFullPath(path), mainFullPath, StringComparison.OrdinalIgnoreCase))
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            var text = File.ReadAllText(supportingVmdl);
+            if (!text.StartsWith(ExtractedSourceAssetResolver.SupportingVmdlMarker, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            PatchSingleAuthoringVmdl(
+                supportingVmdl,
+                additionalMaterialRemaps,
+                stripSupportingMarker: true);
+        }
+
+        return mainResult;
+    }
+
+    private static RetailVmdlPatchResult PatchSingleAuthoringVmdl(
+        string destinationVmdlPath,
+        IReadOnlyList<VmdlMaterialRemap> additionalMaterialRemaps,
+        bool stripSupportingMarker)
+    {
         var text = File.ReadAllText(destinationVmdlPath);
+        if (stripSupportingMarker
+            && text.StartsWith(ExtractedSourceAssetResolver.SupportingVmdlMarker, StringComparison.Ordinal))
+        {
+            text = text[ExtractedSourceAssetResolver.SupportingVmdlMarker.Length..]
+                .TrimStart('\r', '\n');
+        }
+
         var root = LocateRootChildren(text);
 
         var removedClasses = root.Nodes
@@ -369,6 +578,22 @@ public static class RetailVmdlInheritance
             existingRemapCount,
             addedRemapCount,
             renderMeshCount);
+    }
+
+    private static string? FindAddonContentRoot(string vmdlPath)
+    {
+        var current = new DirectoryInfo(Path.GetDirectoryName(Path.GetFullPath(vmdlPath))!);
+        while (current.Parent is not null)
+        {
+            if (string.Equals(current.Parent.Name, "citadel_addons", StringComparison.OrdinalIgnoreCase))
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        return null;
     }
 
     private static RetailRenderMeshEntry? ChoosePrimaryRenderMesh(
@@ -486,7 +711,7 @@ public static class RetailVmdlInheritance
             + insertion
             + materialGroupNode[arrayEnd..];
 
-        return new MaterialMergeResult(merged, existing.Length, 0 + additions.Length);
+        return new MaterialMergeResult(merged, existing.Length, additions.Length);
     }
 
     private static string CreateMaterialGroupList(IReadOnlyList<VmdlMaterialRemap> remaps)

@@ -120,6 +120,24 @@ internal sealed class RichToolTip : IDisposable
         _toolTip.SetToolTip(control, normalized);
     }
 
+    internal static bool TryAppendToolTip(Control control, string text)
+    {
+        if (!KeepAlive.TryGetValue(control, out var owner)
+            || !owner._texts.TryGetValue(control, out var current))
+        {
+            return false;
+        }
+
+        var suffix = Normalize(text);
+        if (suffix.Length == 0 || current.Contains(suffix, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        owner.SetToolTip(control, $"{current}\n\n{suffix}");
+        return true;
+    }
+
     public void Dispose()
     {
         foreach (var control in _texts.Keys.ToArray())

@@ -42,9 +42,24 @@ foreach ($required in @(
     'if exist "%DEADLIMIT_ROOT%\.git"',
     'DeadlimitUpdater.bat',
     'internal\DeadlimitPortableUpdater.ps1',
-    '-InstallRoot "%DEADLIMIT_ROOT%"'
+    '-InstallRoot "%DEADLIMIT_ROOT%"',
+    'DEADLIMIT_UPDATE_RELAUNCH',
+    'DEADLIMIT_UPDATER_DEFAULT_ARGS=-NoLaunch',
+    '%* %DEADLIMIT_UPDATER_DEFAULT_ARGS%'
 )) {
     Assert-Contains $entry $required 'Unified updater'
+}
+
+$rootLauncher = Get-Content -LiteralPath 'DeadlimitManager.cmd' -Raw
+Assert-Contains $rootLauncher 'set "UPDATER=%ROOT%Update Deadlimit.cmd"' 'Updater shortcut routing'
+
+$originFeature = Get-Content -LiteralPath 'internal/src/Deadlimit/App/UpdaterLaunchOriginFeature.cs' -Raw
+foreach ($required in @(
+    'DEADLIMIT_UPDATE_RELAUNCH',
+    'ModuleInitializer',
+    'EnvironmentVariableTarget.Process'
+)) {
+    Assert-Contains $originFeature $required 'In-app updater relaunch marker'
 }
 
 $worker = Get-Content -LiteralPath 'internal/DeadlimitPortableUpdater.ps1' -Raw
@@ -64,4 +79,4 @@ foreach ($required in @(
     Assert-Contains $workflow $required 'Continuous artist delivery'
 }
 
-Write-Host 'Single installer, package, and unified updater entry contract passed.'
+Write-Host 'Single installer, package, updater relaunch policy, and unified updater entry contract passed.'

@@ -7,7 +7,7 @@ set "MANAGER_ICON=%ROOT%internal\assets\DeadlimitManager_128_v4.ico"
 set "UPDATER_ICON=%ROOT%internal\assets\DeadlimitUpdater_128_v4.ico"
 set "PROJECT=%ROOT%internal\src\Deadlimit\Deadlimit.csproj"
 set "APP=%ROOT%internal\src\Deadlimit\bin\Release\net10.0-windows\DeadlimitManager.exe"
-set "UPDATER=%ROOT%DeadlimitUpdater.bat"
+set "UPDATER=%ROOT%Update Deadlimit.cmd"
 
 if not exist "%MANAGER_ICON%" (
     echo ERROR: Deadlimit Manager icon not found.

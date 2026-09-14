@@ -196,7 +196,7 @@ Later runs:
 1. preserve the last compiled addon `game` output while normal authoring PREPARE synchronizes DMX/material/texture sources;
 2. compare the prepared content hashes against the last successful Build & Test snapshot;
 3. compile only changed direct Source 2 inputs;
-4. if a DMX dependency changed, force the addon's VMDL source(s) into the compile set;
+4. if a DMX or FBX render-mesh dependency changed, force the addon's VMDL source(s) into the compile set;
 5. if an image source changed, force the addon's VMAT source(s) into the compile set;
 6. if a known source was removed, delete its proven one-to-one compiled output before packing;
 7. if a removed source has no proven compiled-output mapping, fall back to a clean addon rebuild instead of risking stale runtime data;
@@ -246,7 +246,7 @@ The headless compile adapter currently accepts the model-replacement-relevant CS
 .vsvg
 ```
 
-Raw image changes are treated as VMAT dependencies. Project DMX changes are treated as VMDL dependencies.
+Raw image changes are treated as VMAT dependencies. Project DMX and FBX render-mesh changes are treated as VMDL dependencies.
 
 Compilation is batched at 25 direct inputs and uses the validated CSDK12 `game/bin_cs2/win64/resourcecompiler.exe` with repeated `-i <file>` arguments plus `-nop4`.
 

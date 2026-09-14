@@ -21,6 +21,7 @@ public sealed record BuildAndTestResult(
 public sealed class BuildAndTestService
 {
     private const int CompileBatchSize = 25;
+    private const int Csdk12MaximumParticleFormatVersion = 63;
 
     private static readonly HashSet<string> DirectCompileExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -49,6 +50,10 @@ public sealed class BuildAndTestService
     private static readonly Regex NmSkeletonRegex = new(
         @"models/[A-Za-z0-9_./\\-]+\.vnmskel",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static readonly Regex ParticleFormatRegex = new(
+        @"\bformat:vpcf(?<version>\d+)\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private readonly DeadlimitPaths _paths;
 
@@ -133,6 +138,26 @@ public sealed class BuildAndTestService
             Report(progress, 33, LocalizedText.T("Comparing prepared content with the previous successful build...", "Сравнение подготовленного content с предыдущей успешной сборкой..."));
 
             var currentHashes = HashContentTree(prepare.AddonContentRoot, cancellationToken);
+            var unsupportedParticles = FindUnsupportedParticleSources(
+                prepare.AddonContentRoot,
+                Csdk12MaximumParticleFormatVersion,
+                cancellationToken);
+            if (unsupportedParticles.Count > 0)
+            {
+                log.AppendLine($"Unsupported particle sources for Reduced CSDK 12: {unsupportedParticles.Count}");
+                foreach (var path in unsupportedParticles)
+                {
+                    log.AppendLine($"  {Path.GetRelativePath(prepare.AddonContentRoot, path)}");
+                }
+
+                var examples = string.Join(", ", unsupportedParticles
+                    .Take(4)
+                    .Select(path => Path.GetFileName(path)));
+                throw new InvalidOperationException(LocalizedText.T(
+                    $"Reduced CSDK 12 supports particle sources through vpcf{Csdk12MaximumParticleFormatVersion}, but this project contains {unsupportedParticles.Count} newer particle file(s). If the skin changes ability models, keep 'Extract abilities' enabled and leave 'Copy ability FX to CSDK for editing' disabled. If ability models are not needed, extract without abilities. Ability FX editing requires a compatible newer CSDK. First files: {examples}",
+                    $"Reduced CSDK 12 поддерживает исходники particles до vpcf{Csdk12MaximumParticleFormatVersion}, а в этом проекте есть {unsupportedParticles.Count} более новых файлов. Если скин меняет модели способностей, оставьте «Извлекать способности» включённым и выключите «Копировать FX способностей в CSDK для редактирования». Если модели способностей не нужны, извлеките исходники без способностей. Для редактирования FX способностей нужен совместимый более новый CSDK. Первые файлы: {examples}"));
+            }
+
             var previousHashes = previousState?.ContentHashes
                 ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -229,7 +254,34 @@ public sealed class BuildAndTestService
             Directory.CreateDirectory(retailAddonsRoot);
             var vpkPath = Path.Combine(retailAddonsRoot, $"pak{releaseSlot:D2}_dir.vpk");
 
-            PackVpk(addonGameRoot, vpkPath, log, progress, cancellationToken);
+            var sourceRoot = SafePath.ResolveUnderRoot(
+                manifest.ProjectFolder,
+                manifest.SourceDumpFolderName,
+                "Project source-dump folder");
+            var packagingPlan = RetailResourcePackagingPolicy.Resolve(
+                manifest,
+                _paths.RetailDeadlockRoot,
+                sourceRoot,
+                prepare.AddonContentRoot,
+                addonGameRoot,
+                compiledMainModel,
+                cancellationToken,
+                message => log.AppendLine(message));
+            log.AppendLine($"Compiled output paths also available from retail: {packagingPlan.RetailResourceCount}");
+            log.AppendLine($"Project-owned compiled roots: {packagingPlan.ProjectRootCount}");
+            log.AppendLine($"Retail/redundant compiled outputs omitted from VPK: {packagingPlan.ExcludedRelativePaths.Count}");
+            foreach (var reusableResource in packagingPlan.ExcludedRelativePaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                log.AppendLine($"  reuse {reusableResource}");
+            }
+
+            PackVpk(
+                addonGameRoot,
+                vpkPath,
+                packagingPlan.ExcludedRelativePaths,
+                log,
+                progress,
+                cancellationToken);
 
             SaveState(statePath, new BuildTestState
             {
@@ -326,6 +378,34 @@ public sealed class BuildAndTestService
         return hashes;
     }
 
+    internal static IReadOnlyList<string> FindUnsupportedParticleSources(
+        string contentRoot,
+        int maximumSupportedVersion,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Directory.Exists(contentRoot))
+        {
+            return [];
+        }
+
+        var unsupported = new List<string>();
+        foreach (var path in Directory.EnumerateFiles(contentRoot, "*.vpcf", SearchOption.AllDirectories)
+                     .OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var header = File.ReadLines(path).FirstOrDefault() ?? string.Empty;
+            var match = ParticleFormatRegex.Match(header);
+            if (match.Success
+                && int.TryParse(match.Groups["version"].Value, out var version)
+                && version > maximumSupportedVersion)
+            {
+                unsupported.Add(path);
+            }
+        }
+
+        return unsupported;
+    }
+
     private static HashSet<string> ResolveIncrementalCompileTargets(
         string contentRoot,
         string gameRoot,
@@ -347,9 +427,11 @@ public sealed class BuildAndTestService
             }
         }
 
-        var dmxDependencyChanged = changed.Concat(removed)
-            .Any(path => string.Equals(Path.GetExtension(path), ".dmx", StringComparison.OrdinalIgnoreCase));
-        if (dmxDependencyChanged)
+        var renderMeshDependencyChanged = changed.Concat(removed)
+            .Any(path =>
+                string.Equals(Path.GetExtension(path), ".dmx", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(Path.GetExtension(path), ".fbx", StringComparison.OrdinalIgnoreCase));
+        if (renderMeshDependencyChanged)
         {
             foreach (var vmdl in allDirectSources.Where(path =>
                          string.Equals(Path.GetExtension(path), ".vmdl", StringComparison.OrdinalIgnoreCase)))
@@ -546,12 +628,12 @@ public sealed class BuildAndTestService
         }
 
         manifest.NmSkeletonRef = nmSkeletonRef;
-        ProjectStore.Save(manifest);
     }
 
     private static void PackVpk(
         string addonGameRoot,
         string outputVpk,
+        IReadOnlySet<string> excludedRelativePaths,
         StringBuilder log,
         IProgress<BuildAndTestProgress>? progress,
         CancellationToken cancellationToken)
@@ -563,12 +645,18 @@ public sealed class BuildAndTestService
         }
 
         var files = Directory.EnumerateFiles(addonGameRoot, "*", SearchOption.AllDirectories)
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .Select(path => new
+            {
+                Path = path,
+                RelativePath = NormalizeRelativePath(Path.GetRelativePath(addonGameRoot, path)),
+            })
+            .Where(item => !excludedRelativePaths.Contains(item.RelativePath))
+            .OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         if (files.Length == 0)
         {
             throw new InvalidOperationException(
-                $"Cannot create VPK because the compiled addon game folder is empty: {addonGameRoot}");
+                $"Cannot create VPK because the compiled addon game folder is empty after retail-resource reuse filtering: {addonGameRoot}");
         }
 
         var targetDirectory = Path.GetDirectoryName(outputVpk)!;
@@ -590,8 +678,7 @@ public sealed class BuildAndTestService
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var file = files[index];
-                    var relative = NormalizeRelativePath(Path.GetRelativePath(addonGameRoot, file));
-                    package.AddFile(relative, File.ReadAllBytes(file));
+                    package.AddFile(file.RelativePath, File.ReadAllBytes(file.Path));
 
                     var percent = 90 + (int)Math.Floor(6.0 * (index + 1) / files.Length);
                     Report(progress, percent, $"Packing VPK — {index + 1}/{files.Length} files...");
@@ -614,6 +701,7 @@ public sealed class BuildAndTestService
             log.AppendLine();
             log.AppendLine("[ValvePak in-process packaging]");
             log.AppendLine($"Packed files: {files.Length}");
+            log.AppendLine($"Retail/redundant compiled outputs omitted: {excludedRelativePaths.Count}");
             log.AppendLine("VPK version: 2");
             log.AppendLine($"Output: {outputVpk}");
             Report(progress, 99, "VPK deployed to retail Deadlock addons.");
@@ -847,11 +935,7 @@ public sealed class BuildAndTestService
 
     private static string? FindNmSkeletonReference(ProjectManifest manifest)
     {
-        var sourceRoot = SafePath.ResolveUnderRoot(
-            manifest.ProjectFolder,
-            manifest.SourceDumpFolderName,
-            "Project source-dump folder");
-        if (!Directory.Exists(sourceRoot))
+        if (!ExtractedSourceLayout.GetOrderedRoots(manifest).Any(Directory.Exists))
         {
             return null;
         }
@@ -860,7 +944,7 @@ public sealed class BuildAndTestService
             ? null
             : Path.GetFileName(ToSourceVmdlResourcePath(manifest.RetailMainModel));
 
-        var candidates = Directory.EnumerateFiles(sourceRoot, "*.vmdl", SearchOption.AllDirectories)
+        var candidates = ExtractedSourceLayout.EnumerateFilesByPriority(manifest, "*.vmdl")
             .OrderByDescending(path => desiredVmdlName is not null
                 && string.Equals(Path.GetFileName(path), desiredVmdlName, StringComparison.OrdinalIgnoreCase))
             .ThenBy(path => path.Length)
@@ -1065,7 +1149,7 @@ public sealed class BuildAndTestService
         {
             return 12;
         }
-        if (message.StartsWith("Overlaying artist", StringComparison.OrdinalIgnoreCase))
+        if (message.StartsWith("Overlaying", StringComparison.OrdinalIgnoreCase))
         {
             return 17;
         }

@@ -3,6 +3,79 @@ $ErrorActionPreference = 'Stop'
 $assemblyPath = Resolve-Path 'internal/src/Deadlimit/bin/Release/net10.0-windows/DeadlimitManager.dll'
 $assembly = [Reflection.Assembly]::LoadFrom($assemblyPath)
 $nonPublicStatic = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Static
+$publicStatic = [Reflection.BindingFlags]::Public -bor [Reflection.BindingFlags]::Static
+
+$atomicFileType = $assembly.GetType('Deadlimit.Core.AtomicFile', $true)
+$atomicWriteAllText = $atomicFileType.GetMethod(
+    'WriteAllText',
+    $publicStatic,
+    $null,
+    [Type[]]@([string], [string], [Text.Encoding]),
+    $null)
+if ($null -eq $atomicWriteAllText) { throw 'AtomicFile.WriteAllText was not found.' }
+$atomicRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-atomic-file-$([Guid]::NewGuid().ToString('N'))"
+$atomicTarget = Join-Path $atomicRoot 'project.json'
+$atomicReady = Join-Path $atomicRoot 'locked.ready'
+$atomicLocker = $null
+try {
+    [IO.Directory]::CreateDirectory($atomicRoot) | Out-Null
+    [IO.File]::WriteAllText($atomicTarget, 'before')
+    $escapedTarget = $atomicTarget.Replace("'", "''")
+    $escapedReady = $atomicReady.Replace("'", "''")
+    $lockerCode = @"
+`$stream = [IO.File]::Open('$escapedTarget', [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+try {
+    [IO.File]::WriteAllText('$escapedReady', '')
+    Start-Sleep -Milliseconds 350
+}
+finally {
+    `$stream.Dispose()
+}
+"@
+    $encodedLockerCode = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($lockerCode))
+    $atomicLocker = Start-Process `
+        -FilePath (Get-Command pwsh).Source `
+        -ArgumentList @('-NoProfile', '-EncodedCommand', $encodedLockerCode) `
+        -WindowStyle Hidden `
+        -PassThru
+    $readyDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (-not (Test-Path -LiteralPath $atomicReady) -and [DateTime]::UtcNow -lt $readyDeadline) {
+        Start-Sleep -Milliseconds 25
+    }
+    if (-not (Test-Path -LiteralPath $atomicReady)) {
+        throw 'AtomicFile contention smoke could not establish the external file lock.'
+    }
+
+    $atomicWriteArguments = [object[]]::new(3)
+    $atomicWriteArguments[0] = [string]$atomicTarget
+    $atomicWriteArguments[1] = [string]'after'
+    $atomicWriteArguments[2] = $null
+    $atomicWriteAllText.Invoke($null, $atomicWriteArguments)
+    if ([IO.File]::ReadAllText($atomicTarget) -ne 'after') {
+        throw 'AtomicFile contention retry did not publish the replacement contents.'
+    }
+    if (@(Get-ChildItem -LiteralPath $atomicRoot -Force -File -Filter '.project.json.tmp-*').Count -ne 0) {
+        throw 'AtomicFile contention retry left a temporary file behind.'
+    }
+}
+finally {
+    if ($null -ne $atomicLocker) {
+        if (-not $atomicLocker.HasExited -and -not $atomicLocker.WaitForExit(2000)) {
+            $atomicLocker.Kill($true)
+            $atomicLocker.WaitForExit()
+        }
+        $atomicLocker.Dispose()
+    }
+    if (Test-Path -LiteralPath $atomicRoot) {
+        Remove-Item -LiteralPath $atomicRoot -Recurse -Force
+    }
+}
+
+$buildServiceSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/BuildAndTestService.cs' -Raw
+$manifestSaveCount = ([regex]::Matches($buildServiceSource, 'ProjectStore\.Save\(manifest\);')).Count
+if ($manifestSaveCount -ne 1) {
+    throw "BuildAndTestService must publish its manifest once after AG2 and compiled-model updates; found $manifestSaveCount saves."
+}
 
 # Portable releases are identified by package-owned release metadata. Their
 # unverified external tool installers must stay behind the service-layer guard.
@@ -59,6 +132,75 @@ $toolchainSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/Toolcha
 $guardCount = ([regex]::Matches($toolchainSource, 'ReleaseChannelPolicy\.RequireUnverifiedToolchainAutomation\(\);')).Count
 if ($guardCount -ne 5) {
     throw "Expected five service-layer external-tool automation guards; found $guardCount."
+}
+foreach ($required in @(
+    'IsCsdkSetupCurrent(csdkRoot, catalog.Generation, depotKeys)',
+    'DepotArguments(depot, stagingRoot)',
+    'InstallCsdkArchiveAsync(catalog, stagedCsdkRoot',
+    'CopyDirectory(stagedGameRoot, Path.Combine(csdkRoot, "game")')) {
+    if (-not $toolchainSource.Contains($required, [StringComparison]::Ordinal)) {
+        throw "CSDK fine-tuning safety contract is missing: $required"
+    }
+}
+if ($toolchainSource.Contains('DepotArguments(depot, csdkRoot)', [StringComparison]::Ordinal)) {
+    throw 'CSDK fine-tuning still downloads depots directly into the live CSDK folder.'
+}
+
+$toolchainType = $assembly.GetType('Deadlimit.Core.ToolchainDependencyService', $true)
+$isSetupCurrent = $toolchainType.GetMethod('IsCsdkSetupCurrent', $nonPublicStatic)
+if ($null -eq $isSetupCurrent) { throw 'ToolchainDependencyService.IsCsdkSetupCurrent was not found.' }
+$setupRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-csdk-setup-$([Guid]::NewGuid().ToString('N'))"
+try {
+    [IO.Directory]::CreateDirectory((Join-Path $setupRoot 'game\citadel')) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $setupRoot 'csdkcfg.exe'), '')
+    [IO.File]::WriteAllText((Join-Path $setupRoot 'game\citadel\gameinfo.gi'), '')
+    $marker = @{
+        generation = 12
+        depots = @(
+            @{ AppId = '1422450'; DepotId = '1422451'; ManifestId = 'manifest-a' }
+            @{ AppId = '1422450'; DepotId = '1422456'; ManifestId = 'manifest-b' }
+        )
+    } | ConvertTo-Json -Depth 4
+    [IO.File]::WriteAllText((Join-Path $setupRoot '.deadlimit-csdk-setup.json'), $marker)
+    [string[]]$expectedDepots = @(
+        '1422450:1422451:manifest-a',
+        '1422450:1422456:manifest-b'
+    )
+    $currentArgs = [object[]]@([string]$setupRoot, [int]12, [string[]]$expectedDepots)
+    if (-not [bool]$isSetupCurrent.Invoke($null, $currentArgs)) {
+        throw 'A complete matching CSDK fine-tuning marker was not recognized.'
+    }
+    [string[]]$changedDepots = @('1422450:1422451:different')
+    $changedArgs = [object[]]@([string]$setupRoot, [int]12, [string[]]$changedDepots)
+    if ([bool]$isSetupCurrent.Invoke($null, $changedArgs)) {
+        throw 'A mismatched CSDK fine-tuning marker was incorrectly treated as current.'
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $setupRoot) {
+        Remove-Item -LiteralPath $setupRoot -Recurse -Force
+    }
+}
+
+$buildType = $assembly.GetType('Deadlimit.Core.BuildAndTestService', $true)
+$findUnsupportedParticles = $buildType.GetMethod('FindUnsupportedParticleSources', $nonPublicStatic)
+if ($null -eq $findUnsupportedParticles) { throw 'BuildAndTestService.FindUnsupportedParticleSources was not found.' }
+$particleRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-particle-format-$([Guid]::NewGuid().ToString('N'))"
+try {
+    [IO.Directory]::CreateDirectory($particleRoot) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $particleRoot 'supported.vpcf'), '<!-- kv3 encoding:text format:vpcf63:version{x} -->')
+    [IO.File]::WriteAllText((Join-Path $particleRoot 'newer-64.vpcf'), '<!-- kv3 encoding:text format:vpcf64:version{x} -->')
+    [IO.File]::WriteAllText((Join-Path $particleRoot 'newer-65.vpcf'), '<!-- kv3 encoding:text format:vpcf65:version{x} -->')
+    $particleArgs = [object[]]@([string]$particleRoot, [int]63, [Threading.CancellationToken]::None)
+    $unsupported = @($findUnsupportedParticles.Invoke($null, $particleArgs))
+    if ($unsupported.Count -ne 2) {
+        throw "Expected two unsupported particle sources; found $($unsupported.Count)."
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $particleRoot) {
+        Remove-Item -LiteralPath $particleRoot -Recurse -Force
+    }
 }
 $settingsSource = Get-Content -LiteralPath 'internal/src/Deadlimit/App/SettingsForm.cs' -Raw
 foreach ($required in @(
@@ -230,6 +372,43 @@ if (-not $mixedShapes.Contains($jointShape.ID.ToString())) {
 }
 if ($mixedShapes.Contains($renderMesh.ID.ToString())) {
     throw 'A DmeDag render mesh listed in jointList must remain eligible for Vertex Color transfer.'
+}
+
+# DMX and FBX exporters may split control points differently and may write different
+# evaluated positions. Ordered polygon ownership is still a safe proof when repeated
+# DMX control points map consistently to the same FBX control points across the surface.
+$orderedTopologyType = $assembly.GetType('Deadlimit.Core.VertexColorOrderedTopologyFallbackService', $true)
+$hasOrderedTopology = $orderedTopologyType.GetMethod('HasOrderedSplitTopologyCorrespondence', $nonPublicStatic)
+if ($null -eq $hasOrderedTopology) {
+    throw 'Ordered split-topology Vertex Color fallback contract was not found.'
+}
+$targetPolygons = [int[][]]@(
+    [int[]]@(0, 1, 2),
+    [int[]]@(2, 1, 3),
+    [int[]]@(4, 3, 5),
+    [int[]]@(5, 3, 6)
+)
+$matchingSourcePolygons = [int[][]]@(
+    [int[]]@(10, 11, 12),
+    [int[]]@(12, 11, 13),
+    [int[]]@(14, 13, 15),
+    [int[]]@(15, 13, 16)
+)
+$reorderedSourcePolygons = [int[][]]@(
+    [int[]]@(10, 11, 12),
+    [int[]]@(14, 13, 15),
+    [int[]]@(12, 11, 13),
+    [int[]]@(15, 13, 16)
+)
+if (-not [bool]$hasOrderedTopology.Invoke($null, [object[]]@($targetPolygons, $matchingSourcePolygons))) {
+    throw 'Ordered split-topology correspondence rejected a valid exporter-split surface.'
+}
+if ([bool]$hasOrderedTopology.Invoke($null, [object[]]@($targetPolygons, $reorderedSourcePolygons))) {
+    throw 'Ordered split-topology correspondence accepted reordered polygon ownership.'
+}
+$guardSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/VertexColorSourceGuard.cs' -Raw
+if (([regex]::Matches($guardSource, 'VertexColorTransferService\.TryApply\(')).Count -ne 2) {
+    throw 'PREPARE validation and staged transfer must both use the safe Vertex Color transfer wrapper.'
 }
 
 & (Join-Path $PSScriptRoot 'hero-extraction-dependency-path-smoke.ps1')

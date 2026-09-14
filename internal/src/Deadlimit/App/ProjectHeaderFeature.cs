@@ -25,6 +25,7 @@ internal static class ProjectHeaderFeature
     private static readonly Color GameGradientEnd = Color.FromArgb(0x13, 0xA5, 0x44);
     private static readonly Color GameActiveGradientStart = Color.FromArgb(0x39, 0x9A, 0xED);
     private static readonly Color GameActiveGradientEnd = Color.FromArgb(0x24, 0x5E, 0xCF);
+    private static readonly Dictionary<MainForm, Action> HeaderRefreshers = [];
 
     private static string? _cachedSteamExecutable;
 
@@ -333,6 +334,7 @@ internal static class ProjectHeaderFeature
         gameStateTimer.Tick += (_, _) => _ = RefreshGameButtonStateAsync();
         form.FormClosed += (_, _) =>
         {
+            HeaderRefreshers.Remove(form);
             gameStateTimer.Stop();
             gameStateTimer.Dispose();
         };
@@ -353,19 +355,52 @@ internal static class ProjectHeaderFeature
             launchGameButton.Location = new Point(rightX, launchY);
         }
 
-        void RefreshHeaderImage()
+        string? loadedHeaderPath = null;
+        DateTime loadedHeaderWriteTimeUtc = DateTime.MinValue;
+
+        void RefreshHeaderImage(bool force = false)
         {
             var folder = folderText.Text.Trim();
             if (!Directory.Exists(folder) || header.ClientSize.Width <= 0 || header.ClientSize.Height <= 0)
             {
-                ReplaceBackgroundImage(header, null);
+                loadedHeaderPath = null;
+                loadedHeaderWriteTimeUtc = DateTime.MinValue;
+                if (header.BackgroundImage is not null)
+                {
+                    ReplaceBackgroundImage(header, null);
+                }
                 return;
             }
 
             var path = EnsureHeaderImage(folder, header.ClientSize);
+            DateTime writeTimeUtc;
+            try
+            {
+                writeTimeUtc = File.GetLastWriteTimeUtc(path);
+            }
+            catch (Exception ex) when (ex is IOException
+                or UnauthorizedAccessException
+                or ArgumentException
+                or NotSupportedException)
+            {
+                writeTimeUtc = DateTime.MinValue;
+            }
+
+            if (!force
+                && header.BackgroundImage is not null
+                && string.Equals(loadedHeaderPath, path, StringComparison.OrdinalIgnoreCase)
+                && loadedHeaderWriteTimeUtc == writeTimeUtc)
+            {
+                return;
+            }
+
             ReplaceBackgroundImage(header, TryLoadImage(path));
+            loadedHeaderPath = path;
+            loadedHeaderWriteTimeUtc = writeTimeUtc;
             header.Invalidate();
         }
+
+        HeaderRefreshers[form] = () => RefreshHeaderImage(force: true);
 
         void OpenHeaderImage()
         {
@@ -418,7 +453,6 @@ internal static class ProjectHeaderFeature
             }
         };
         folderText.TextChanged += (_, _) => RefreshHeaderImage();
-        form.Activated += (_, _) => RefreshHeaderImage();
 
         form.Shown += (_, _) =>
         {
@@ -439,6 +473,14 @@ internal static class ProjectHeaderFeature
 
         // Warm the Steam path off the UI thread so LAUNCH GAME can dispatch immediately.
         _ = Task.Run(FindSteamExecutable);
+    }
+
+    internal static void Refresh(MainForm form)
+    {
+        if (HeaderRefreshers.TryGetValue(form, out var refresh))
+        {
+            refresh();
+        }
     }
 
     private static string EnsureHeaderImage(string projectFolder, Size headerSize)

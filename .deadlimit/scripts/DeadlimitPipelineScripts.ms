@@ -833,13 +833,13 @@ fn deadlimitVertexColorRefreshTrackedDisplay =
 )
 
 /*
-    FEATURE: EXACT VERTEX-COLOR UNDO FOR DIRECT EDITABLE POLY WRITES
+    FEATURE: EXACT VERTEX-COLOR UNDO FOR DIRECT EDITABLE POLY/MESH WRITES
 
     polyop map-channel writes do not create a channel RestoreObj, even inside an Undo context
     and even when polyop receives the scene node. Max still creates the named Undo entry for
     the accompanying node display changes, so a plain Ctrl+Z can misleadingly report success
     while channel 0 remains filled. Keep an in-session transaction stack containing exact
-    before/after channel-0 arrays and display flags for Editable Poly targets.
+    before/after channel-0 arrays and display flags for Editable Poly/Editable Mesh targets.
 
     #sceneUndo/#sceneRedo supplies the named Undo entry after Max finishes its own restore.
     When that name matches the top Deadlimit transaction, restore the corresponding snapshot
@@ -850,18 +850,24 @@ fn deadlimitVertexColorRefreshTrackedDisplay =
 fn deadlimitVertexColorCaptureUndoSnapshots nodes =
 (
     local snapshots = #()
-    for node in nodes where isValidNode node and (classOf node.baseObject) == Editable_Poly do
+    for node in nodes where isValidNode node and ((classOf node.baseObject) == Editable_Poly or (classOf node.baseObject) == Editable_Mesh) do
     (
-        local editablePoly = node.baseObject
-        local mapSupported = polyop.getMapSupport editablePoly 0
+        local editableObject = node.baseObject
+        local targetKind = if (classOf editableObject) == Editable_Poly then #poly else #mesh
+        local mapSupported = if targetKind == #poly then (polyop.getMapSupport editableObject 0) else (meshop.getMapSupport editableObject 0)
         local mapVertices = #()
         local mapFaces = #()
         if mapSupported do
         (
-            local mapVertexCount = polyop.getNumMapVerts editablePoly 0
-            local mapFaceCount = polyop.getNumMapFaces editablePoly 0
-            for mapVertexIndex = 1 to mapVertexCount do append mapVertices (copy (polyop.getMapVert editablePoly 0 mapVertexIndex))
-            for mapFaceIndex = 1 to mapFaceCount do append mapFaces (deepCopy (polyop.getMapFace editablePoly 0 mapFaceIndex))
+            local mapVertexCount = if targetKind == #poly then (polyop.getNumMapVerts editableObject 0) else (meshop.getNumCPVVerts editableObject)
+            local mapFaceCount = if targetKind == #poly then (polyop.getNumMapFaces editableObject 0) else (meshop.getNumMapFaces editableObject 0)
+            for mapVertexIndex = 1 to mapVertexCount do
+                append mapVertices (copy (if targetKind == #poly then (polyop.getMapVert editableObject 0 mapVertexIndex) else (meshop.getMapVert editableObject 0 mapVertexIndex)))
+            for mapFaceIndex = 1 to mapFaceCount do
+            (
+                local mapFace = if targetKind == #poly then (deepCopy (polyop.getMapFace editableObject 0 mapFaceIndex)) else (copy (meshop.getMapFace editableObject 0 mapFaceIndex))
+                append mapFaces mapFace
+            )
         )
         append snapshots #(
             node,
@@ -870,12 +876,12 @@ fn deadlimitVertexColorCaptureUndoSnapshots nodes =
             mapFaces,
             node.vertexColorType,
             node.showVertexColors,
-            node.vertexColorsShaded
+            node.vertexColorsShaded,
+            targetKind
         )
     )
     snapshots
 )
-
 fn deadlimitVertexColorRestoreUndoSnapshots snapshots =
 (
     local restoredNodes = #()
@@ -884,25 +890,42 @@ fn deadlimitVertexColorRestoreUndoSnapshots snapshots =
         for snapshot in snapshots do
         (
             local node = snapshot[1]
-            if isValidNode node and (classOf node.baseObject) == Editable_Poly do
+            if isValidNode node do
             (
-                local editablePoly = node.baseObject
-                if snapshot[2] then
+                local editableObject = node.baseObject
+                local currentKind = if (classOf editableObject) == Editable_Poly then #poly else if (classOf editableObject) == Editable_Mesh then #mesh else #unsupported
+                local targetKind = if snapshot.count >= 8 then snapshot[8] else currentKind
+                if currentKind == targetKind and targetKind != #unsupported do
                 (
-                    polyop.setMapSupport editablePoly 0 true
-                    polyop.setNumMapVerts editablePoly 0 snapshot[3].count keep:false
-                    for mapVertexIndex = 1 to snapshot[3].count do polyop.setMapVert editablePoly 0 mapVertexIndex snapshot[3][mapVertexIndex]
-                    polyop.setNumMapFaces editablePoly 0 snapshot[4].count keep:false
-                    for mapFaceIndex = 1 to snapshot[4].count do polyop.setMapFace editablePoly 0 mapFaceIndex snapshot[4][mapFaceIndex]
-                )
-                else
-                    polyop.setMapSupport editablePoly 0 false
+                    if snapshot[2] then
+                    (
+                        if targetKind == #poly then
+                        (
+                            polyop.setMapSupport editableObject 0 true
+                            polyop.setNumMapVerts editableObject 0 snapshot[3].count keep:false
+                            for mapVertexIndex = 1 to snapshot[3].count do polyop.setMapVert editableObject 0 mapVertexIndex snapshot[3][mapVertexIndex]
+                            polyop.setNumMapFaces editableObject 0 snapshot[4].count keep:false
+                            for mapFaceIndex = 1 to snapshot[4].count do polyop.setMapFace editableObject 0 mapFaceIndex snapshot[4][mapFaceIndex]
+                        )
+                        else
+                        (
+                            meshop.setMapSupport editableObject 0 true
+                            meshop.setNumCPVVerts editableObject snapshot[3].count
+                            for mapVertexIndex = 1 to snapshot[3].count do meshop.setMapVert editableObject 0 mapVertexIndex snapshot[3][mapVertexIndex]
+                            for mapFaceIndex = 1 to snapshot[4].count do meshop.setMapFace editableObject 0 mapFaceIndex snapshot[4][mapFaceIndex]
+                        )
+                    )
+                    else
+                    (
+                        if targetKind == #poly then polyop.setMapSupport editableObject 0 false else meshop.setMapSupport editableObject 0 false
+                    )
 
-                node.vertexColorType = snapshot[5]
-                node.showVertexColors = snapshot[6]
-                node.vertexColorsShaded = snapshot[7]
-                update node
-                append restoredNodes node
+                    node.vertexColorType = snapshot[5]
+                    node.showVertexColors = snapshot[6]
+                    node.vertexColorsShaded = snapshot[7]
+                    update node
+                    append restoredNodes node
+                )
             )
         )
     )
@@ -910,7 +933,6 @@ fn deadlimitVertexColorRestoreUndoSnapshots snapshots =
     deadlimitVertexColorRefreshDisplay restoredNodes
     restoredNodes.count
 )
-
 fn deadlimitVertexColorRecordUndoTransaction undoLabel beforeSnapshots afterSnapshots =
 (
     if beforeSnapshots.count == 0 then return false
@@ -997,9 +1019,12 @@ fn deadlimitVertexColorToggleLineartDisplay =
     FEATURE: BONE DISPLAY TOOLS
 
     These commands edit BoneGeometry presentation only:
-    - FIT X uses average pivot-to-child-pivot distance; a leaf uses half its distance to
-      the parent. Length planning happens before mutation so a multi-selection is stable.
-    - SET applies a world-space centimeter length while compensating local X scale.
+    - FIT X uses average pivot-to-child-pivot distance. Leaf-length fitting can be disabled;
+      when enabled a leaf uses half its distance to the parent. Optional thickness fitting sets
+      Width and Height to the configured percentage of the resulting display length (40% by
+      default) and Taper to 33%. Planning happens before mutation so a multi-selection is stable.
+    - SET applies a world-space centimeter length while compensating local X scale. When Affect
+      Thickness is enabled it applies the same configurable Width/Height percentage and Taper.
     - FLIP X normalizes negative length and rotates objectOffsetRot 180 degrees, producing
       a convex tail while the node transform/pivot remains unchanged. Its optional suffix
       filter accepts only selected names ending exactly in _R or _r.
@@ -1022,17 +1047,21 @@ fn deadlimitVertexColorSelectedBones =
     bones
 )
 
-fn deadlimitVertexColorFitBoneLengths =
+fn deadlimitVertexColorFitBoneLengths affectThickness:true affectLeafLengths:true thicknessPercent:40.0 =
 (
+    if affectThickness and thicknessPercent <= 0.0 then throw "Bone thickness percentage must be greater than zero."
     local bones = deadlimitVertexColorSelectedBones()
 
-    -- Build the complete plan first so every target uses the original hierarchy.
-    local lengthPlan = #()
+    -- Build the complete display plan first so every target uses the original hierarchy.
+    local displayPlan = #()
     local skipped = 0
+    local leafLengthsKept = 0
     for bone in bones do
     (
         local boneChildren = for child in bone.children where isValidNode child and (classOf child) == BoneGeometry collect child
+        local isLeaf = boneChildren.count == 0
         local targetWorldLength = undefined
+        local shouldFitLength = true
 
         if boneChildren.count > 0 then
         (
@@ -1040,33 +1069,69 @@ fn deadlimitVertexColorFitBoneLengths =
             for child in boneChildren do totalDistance += distance bone.pos child.pos
             targetWorldLength = totalDistance / boneChildren.count
         )
+        else if not affectLeafLengths then
+        (
+            shouldFitLength = false
+            leafLengthsKept += 1
+        )
         else if isValidNode bone.parent then
         (
             targetWorldLength = (distance bone.pos bone.parent.pos) * 0.5
         )
-
-        local localXAxisScale = length bone.transform.row1
-        if targetWorldLength != undefined and targetWorldLength >= 0.0 and localXAxisScale > 0.000000001 then
-        (
-            local direction = if bone.length < 0.0 then -1.0 else 1.0
-            append lengthPlan #(bone, direction * targetWorldLength / localXAxisScale)
-        )
         else
+        (
+            shouldFitLength = false
             skipped += 1
+        )
+
+        local plannedLength = undefined
+        if shouldFitLength do
+        (
+            local localXAxisScale = length bone.transform.row1
+            if targetWorldLength != undefined and targetWorldLength >= 0.0 and localXAxisScale > 0.000000001 then
+            (
+                local direction = if bone.length < 0.0 then -1.0 else 1.0
+                plannedLength = direction * targetWorldLength / localXAxisScale
+            )
+            else
+                skipped += 1
+        )
+
+        local resultingLength = if plannedLength != undefined then abs plannedLength else abs bone.length
+        local plannedThickness = undefined
+        if affectThickness and resultingLength > 0.000000001 do plannedThickness = resultingLength * (thicknessPercent / 100.0)
+        append displayPlan #(bone, plannedLength, plannedThickness)
     )
 
-    undo "Fit Selected Bone Display Lengths" on
+    local fittedLengths = 0
+    local fittedThickness = 0
+    undo "Fit Selected Bone Display" on
     (
-        for item in lengthPlan do item[1].length = item[2]
+        for item in displayPlan do
+        (
+            if item[2] != undefined do
+            (
+                item[1].length = item[2]
+                fittedLengths += 1
+            )
+            if item[3] != undefined do
+            (
+                item[1].width = item[3]
+                item[1].height = item[3]
+                item[1].taper = 33.0
+                fittedThickness += 1
+            )
+        )
     )
 
     redrawViews()
-    #(lengthPlan.count, skipped)
+    #(fittedLengths, skipped, fittedThickness, leafLengthsKept)
 )
 
-fn deadlimitVertexColorSetSelectedBoneLength centimeters =
+fn deadlimitVertexColorSetSelectedBoneLength centimeters affectThickness:false thicknessPercent:40.0 =
 (
     if centimeters < 0.0 then throw "Bone display length cannot be negative. Use Flip Selected X for direction."
+    if affectThickness and thicknessPercent <= 0.0 then throw "Bone thickness percentage must be greater than zero."
     local targetWorldLength = units.decodeValue ((centimeters as string) + "cm")
     local bones = deadlimitVertexColorSelectedBones()
     local lengthPlan = #()
@@ -1078,7 +1143,10 @@ fn deadlimitVertexColorSetSelectedBoneLength centimeters =
         if localXAxisScale > 0.000000001 then
         (
             local direction = if bone.length < 0.0 then -1.0 else 1.0
-            append lengthPlan #(bone, direction * targetWorldLength / localXAxisScale)
+            local plannedLength = direction * targetWorldLength / localXAxisScale
+            local plannedThickness = undefined
+            if affectThickness and abs plannedLength > 0.000000001 do plannedThickness = abs plannedLength * (thicknessPercent / 100.0)
+            append lengthPlan #(bone, plannedLength, plannedThickness)
         )
         else
             skipped += 1
@@ -1086,7 +1154,16 @@ fn deadlimitVertexColorSetSelectedBoneLength centimeters =
 
     undo "Set Selected Bone Display Length" on
     (
-        for item in lengthPlan do item[1].length = item[2]
+        for item in lengthPlan do
+        (
+            item[1].length = item[2]
+            if item[3] != undefined do
+            (
+                item[1].width = item[3]
+                item[1].height = item[3]
+                item[1].taper = 33.0
+            )
+        )
     )
 
     redrawViews()
@@ -3375,19 +3452,22 @@ rollout deadlimitVertexColorToolsRollout "VERTEX COLOR"
 
 rollout deadlimitVertexColorBoneToolsRollout "BONE TOOLS"
 (
-    button fitBoneLengthsButton "Fit to Hierarchy" width:125 height:22 across:3 tooltip:"Fit selected BoneGeometry lengths to the average bone-child pivot distance. Selected leaf bones use half the parent-pivot distance."
+    button fitBoneLengthsButton "Fit to Hierarchy" width:125 height:22 across:3 tooltip:"Fit selected BoneGeometry lengths to the average bone-child pivot distance. Leaf fitting and thickness fitting follow the options below."
     button flipBoneXButton "Flip X" width:58 height:22 tooltip:"Flip selected BoneGeometry display meshes along local X while preserving node transforms, pivots, hierarchy, and names."
     checkbox flipRightSuffixOnlyCheckbox "_R/_r" checked:false width:60 height:22 tooltip:"When enabled, Flip X affects only selected bones whose names end exactly in _R or _r."
+    checkbox fitBoneThicknessCheckbox "Affect Thickness" checked:true width:120 across:2 tooltip:"When enabled, Fit to Hierarchy and SET also set Width and Height from Thickness (%) and set Taper to 33%."
+    checkbox fitLeafBoneLengthCheckbox "Affect Leaf Length" checked:true width:130 tooltip:"When Fit to Hierarchy runs, leaf bones use half the parent-pivot distance. Turn this off to keep leaf bone lengths unchanged."
     spinner boneLengthCmSpinner "Length (cm):" range:[0.0,100000.0,10.0] type:#float scale:0.1 fieldWidth:62 width:150 align:#left across:2 tooltip:"Visual length in centimeters."
-    button setBoneLengthButton "SET" width:94 height:22 tooltip:"Set selected bones to this visual length while preserving their current X direction."
+    button setBoneLengthButton "SET" width:94 height:22 tooltip:"Set selected bones to this visual length while preserving their current X direction. Affect Thickness also applies the configured Thickness (%)."
+    spinner boneThicknessPercentSpinner "Thickness (%):" range:[1.0,1000.0,40.0] type:#float scale:1.0 fieldWidth:62 width:150 align:#left tooltip:"Width and Height as a percentage of bone display length when Affect Thickness is enabled. Default: 40%."
     button restoreConvertedBonesButton "RESTORE CONVERTED BRANCH" width:244 height:22 align:#center tooltip:"Restore selected accidental 9-vertex/9-face Editable Poly bone branches to BoneGeometry. Preserves nodes, controllers, hierarchy, transforms, names, and display dimensions; one Ctrl+Z reverts the whole repair."
 
     on fitBoneLengthsButton pressed do
     (
         try
         (
-            local result = deadlimitVertexColorFitBoneLengths()
-            deadlimitVertexColorFbxRollout.statusLabel.text = "Fit Selected: " + (result[1] as string) + " resized, " + (result[2] as string) + " skipped."
+            local result = deadlimitVertexColorFitBoneLengths affectThickness:fitBoneThicknessCheckbox.checked affectLeafLengths:fitLeafBoneLengthCheckbox.checked thicknessPercent:boneThicknessPercentSpinner.value
+            deadlimitVertexColorFbxRollout.statusLabel.text = "Fit: " + (result[1] as string) + " length, " + (result[3] as string) + " thickness, " + (result[4] as string) + " leaf kept, " + (result[2] as string) + " skipped."
         )
         catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
     )
@@ -3396,8 +3476,9 @@ rollout deadlimitVertexColorBoneToolsRollout "BONE TOOLS"
     (
         try
         (
-            local result = deadlimitVertexColorSetSelectedBoneLength boneLengthCmSpinner.value
-            deadlimitVertexColorFbxRollout.statusLabel.text = "Set Length: " + (result[1] as string) + " resized, " + (result[2] as string) + " skipped."
+            local result = deadlimitVertexColorSetSelectedBoneLength boneLengthCmSpinner.value affectThickness:fitBoneThicknessCheckbox.checked thicknessPercent:boneThicknessPercentSpinner.value
+            local setLabel = if fitBoneThicknessCheckbox.checked then "Set Length + Thickness: " else "Set Length: "
+            deadlimitVertexColorFbxRollout.statusLabel.text = setLabel + (result[1] as string) + " resized, " + (result[2] as string) + " skipped."
         )
         catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
     )
@@ -3428,7 +3509,7 @@ rollout deadlimitVertexColorBoneToolsRollout "BONE TOOLS"
 rollout deadlimitVertexColorInnerLineartRollout "INNER LINEART"
 (
     spinner lineartWidthMmSpinner "Width (mm):" range:[0.01,1000.0,1.0] type:#float scale:0.1 fieldWidth:58 width:160 across:2 tooltip:"Full world-space width of the generated strip in millimeters."
-    checkbox copyLineartSkinCheckbox "Copy Skin" checked:false width:105 tooltip:"Copy Skin modifiers and source-vertex weights to the separate lineart object."
+    checkbox copyLineartSkinCheckbox "Copy Skin" checked:false width:105 offset:[12,0] tooltip:"Copy Skin modifiers and source-vertex weights to the separate lineart object."
     checkbox flipLineartCheckbox "Flip Polygons" checked:true width:105 across:2 tooltip:"Reverse generated face winding."
     checkbox invertLineartNormalsCheckbox "Invert Normals" checked:true width:115 tooltip:"Reverse generated vertex normals and bake them into the Editable Poly base."
     checkbox taperLineartCheckbox "Taper Ends" checked:true width:105 across:2 tooltip:"Collapse degree-1 lineart endpoints to a single vertex."
@@ -3537,7 +3618,7 @@ rollout deadlimitVertexColorFbxRollout "EXPORT VERTEX COLOR"
 
 )
 
-deadlimitPipelineFloater = newRolloutFloater "Deadlimit Scripts" 380 410
+deadlimitPipelineFloater = newRolloutFloater "Deadlimit Scripts" 380 432
 addRollout deadlimitVertexColorBoneToolsRollout deadlimitPipelineFloater rolledUp:false
 addRollout deadlimitVertexColorToolsRollout deadlimitPipelineFloater rolledUp:false
 addRollout deadlimitVertexColorInnerLineartRollout deadlimitPipelineFloater rolledUp:false
@@ -3548,3 +3629,296 @@ addRollout deadlimitVertexColorFbxRollout deadlimitPipelineFloater rolledUp:fals
 callbacks.removeScripts id:#DeadlimitVertexColorViewportRefresh
 callbacks.addScript #sceneUndo "try(deadlimitVertexColorHandleSceneUndoRedo false)catch()" id:#DeadlimitVertexColorViewportRefresh persistent:false
 callbacks.addScript #sceneRedo "try(deadlimitVertexColorHandleSceneUndoRedo true)catch()" id:#DeadlimitVertexColorViewportRefresh persistent:false
+
+/*
+    EXPERIMENTAL
+    Artist-facing experiments live in this same Deadlimit Scripts file and floater.
+*/
+global deadlimitExperimentalScriptPath
+global deadlimitExperimentalDmxVertexColorRollout
+global deadlimitDmxVertexColorTransferPayload
+global deadlimitExperimentalPullDmxVertexColor
+global deadlimitExperimentalFindManagerExe
+global deadlimitExperimentalFaceKey
+
+deadlimitExperimentalScriptPath = getSourceFileName()
+fn deadlimitExperimentalFindManagerExe =
+(
+    local pathClass = dotNetClass "System.IO.Path"
+    local scriptsFolder = getFilenamePath deadlimitExperimentalScriptPath
+    local bundleRoot = pathClass.GetFullPath (scriptsFolder + "..\\..\\")
+    local candidates = #(
+        bundleRoot + "DeadlimitManager.exe",
+        bundleRoot + "internal\\src\\Deadlimit\\bin\\Release\\net10.0-windows\\DeadlimitManager.exe",
+        bundleRoot + "internal\\src\\Deadlimit\\bin\\Debug\\net10.0-windows\\DeadlimitManager.exe"
+    )
+
+    for candidate in candidates where doesFileExist candidate do return candidate
+    undefined
+)
+
+fn deadlimitExperimentalFaceKey vertexIds =
+(
+    local ordered = for vertexId in vertexIds collect (vertexId as integer)
+    sort ordered
+    local key = ""
+    for vertexId in ordered do key += (vertexId as string) + ","
+    key
+)
+
+fn deadlimitExperimentalQuoteProcessArg value =
+(
+    local text = value as string
+    "\"" + (substituteString text "\"" "\\\"") + "\""
+)
+
+fn deadlimitExperimentalRunDmxPayloadHelper managerExe dmxPath meshName vertexCount faceCount payloadPath =
+(
+    local processStartInfo = dotNetObject "System.Diagnostics.ProcessStartInfo"
+    processStartInfo.FileName = managerExe
+    processStartInfo.UseShellExecute = false
+    processStartInfo.CreateNoWindow = true
+    processStartInfo.RedirectStandardOutput = true
+    processStartInfo.RedirectStandardError = true
+    processStartInfo.Arguments =
+        "--extract-dmx-vertex-color-transfer " +
+        (deadlimitExperimentalQuoteProcessArg dmxPath) + " " +
+        (deadlimitExperimentalQuoteProcessArg meshName) + " " +
+        (vertexCount as string) + " " +
+        (faceCount as string) + " " +
+        (deadlimitExperimentalQuoteProcessArg payloadPath)
+
+    local processClass = dotNetClass "System.Diagnostics.Process"
+    local process = processClass.Start processStartInfo
+    local standardOutput = process.StandardOutput.ReadToEnd()
+    local standardError = process.StandardError.ReadToEnd()
+    process.WaitForExit()
+
+    if process.ExitCode != 0 then
+    (
+        local reason = trimRight (trimLeft standardError)
+        if reason.count == 0 do reason = trimRight (trimLeft standardOutput)
+        if reason.count == 0 do reason = "Deadlimit Manager helper failed with exit code " + (process.ExitCode as string) + "."
+        throw reason
+    )
+
+    trimRight (trimLeft standardOutput)
+)
+
+fn deadlimitExperimentalValidateAndMapPayload targetNode payload =
+(
+    if payload == undefined or (classOf payload) != Array or payload.count != 5 then
+        throw "DMX helper returned an invalid Vertex Color payload."
+
+    local editableObject = targetNode.baseObject
+    local targetKind = if (classOf editableObject) == Editable_Poly then #poly else if (classOf editableObject) == Editable_Mesh then #mesh else #unsupported
+    if targetKind == #unsupported then
+        throw "Experimental DMX Vertex Color transfer currently requires an Editable Poly or Editable Mesh base object."
+
+    local targetVertexCount = if targetKind == #poly then (polyop.getNumVerts editableObject) else editableObject.numVerts
+    local targetFaceCount = if targetKind == #poly then (polyop.getNumFaces editableObject) else editableObject.numFaces
+    if payload[2] != targetVertexCount or payload[3] != targetFaceCount then
+        throw "Selected mesh topology changed while the DMX payload was being prepared."
+
+    local sourceFaces = payload[4]
+    local sourceColors = payload[5]
+    if sourceFaces.count != targetFaceCount or sourceColors.count != targetFaceCount then
+        throw "DMX payload face count is inconsistent."
+
+    local sourceByKey = dotNetObject "System.Collections.Hashtable"
+    for sourceFaceIndex = 1 to sourceFaces.count do
+    (
+        local sourceVerts = sourceFaces[sourceFaceIndex]
+        local sourceFaceColors = sourceColors[sourceFaceIndex]
+        if sourceVerts.count < 3 or sourceFaceColors.count != sourceVerts.count then
+            throw ("DMX payload contains an invalid polygon at face " + (sourceFaceIndex as string) + ".")
+
+        local key = deadlimitExperimentalFaceKey sourceVerts
+        if sourceByKey.ContainsKey key then
+            throw ("DMX contains duplicate polygon vertex sets; exact face ownership is ambiguous at " + key)
+        sourceByKey.Add key sourceFaceIndex
+    )
+
+    local mappedColors = for faceIndex = 1 to targetFaceCount collect undefined
+    local usedSourceFaces = dotNetObject "System.Collections.Hashtable"
+
+    for targetFaceIndex = 1 to targetFaceCount do
+    (
+        local targetVerts = if targetKind == #poly then
+            (for vertexId in (polyop.getFaceVerts editableObject targetFaceIndex) collect (vertexId as integer))
+        else
+        (
+            local meshFace = meshop.getFace editableObject targetFaceIndex
+            #(meshFace.x as integer, meshFace.y as integer, meshFace.z as integer)
+        )
+        local key = deadlimitExperimentalFaceKey targetVerts
+        if not (sourceByKey.ContainsKey key) then
+            throw ("Selected mesh topology differs from the DMX at face " + (targetFaceIndex as string) + ". Nothing was changed.")
+
+        local sourceFaceIndex = sourceByKey.Item[key]
+        if usedSourceFaces.ContainsKey sourceFaceIndex then
+            throw "Selected mesh maps more than one face to the same DMX polygon. Nothing was changed."
+        usedSourceFaces.Add sourceFaceIndex true
+
+        local sourceVerts = sourceFaces[sourceFaceIndex]
+        local sourceFaceColors = sourceColors[sourceFaceIndex]
+        if sourceVerts.count != targetVerts.count then
+            throw ("Polygon degree differs at selected face " + (targetFaceIndex as string) + ". Nothing was changed.")
+
+        local targetColors = #()
+        for targetVertex in targetVerts do
+        (
+            local sourceCorner = findItem sourceVerts targetVertex
+            if sourceCorner == 0 then
+                throw ("Vertex numbering differs at selected face " + (targetFaceIndex as string) + ". Nothing was changed.")
+            append targetColors sourceFaceColors[sourceCorner]
+        )
+        mappedColors[targetFaceIndex] = targetColors
+    )
+
+    if usedSourceFaces.Count != sourceFaces.count then
+        throw "Not every DMX polygon matched the selected mesh. Nothing was changed."
+
+    mappedColors
+)
+fn deadlimitExperimentalApplyMappedColors targetNode mappedColors =
+(
+    local editableObject = targetNode.baseObject
+    local targetKind = if (classOf editableObject) == Editable_Poly then #poly else if (classOf editableObject) == Editable_Mesh then #mesh else #unsupported
+    if targetKind == #unsupported then
+        throw "Experimental DMX Vertex Color transfer currently requires an Editable Poly or Editable Mesh base object."
+
+    local faceCount = if targetKind == #poly then (polyop.getNumFaces editableObject) else editableObject.numFaces
+    local totalCorners = 0
+    for faceIndex = 1 to faceCount do totalCorners += mappedColors[faceIndex].count
+    if totalCorners <= 0 then throw "No DMX Vertex Color corners were available to transfer."
+
+    local beforeSnapshots = deadlimitVertexColorCaptureUndoSnapshots #(targetNode)
+    if beforeSnapshots.count != 1 then
+        throw "Could not capture the selected editable mesh before Vertex Color transfer."
+
+    try
+    (
+        undo "Pull Vertex Color from DMX" on
+        (
+            if targetKind == #poly then
+            (
+                polyop.setMapSupport editableObject 0 true
+                polyop.setNumMapVerts editableObject 0 totalCorners keep:false
+                polyop.setNumMapFaces editableObject 0 faceCount keep:false
+
+                local mapVertexIndex = 0
+                for faceIndex = 1 to faceCount do
+                (
+                    local mapFace = #()
+                    for colorValue in mappedColors[faceIndex] do
+                    (
+                        mapVertexIndex += 1
+                        polyop.setMapVert editableObject 0 mapVertexIndex colorValue
+                        append mapFace mapVertexIndex
+                    )
+                    polyop.setMapFace editableObject 0 faceIndex mapFace
+                )
+            )
+            else
+            (
+                meshop.setMapSupport editableObject 0 true
+                meshop.setNumCPVVerts editableObject totalCorners
+
+                local mapVertexIndex = 0
+                for faceIndex = 1 to faceCount do
+                (
+                    local faceColors = mappedColors[faceIndex]
+                    if faceColors.count != 3 then
+                        throw ("Editable Mesh face " + (faceIndex as string) + " is not triangular. Nothing was changed.")
+                    local firstMapVertex = mapVertexIndex + 1
+                    for colorValue in faceColors do
+                    (
+                        mapVertexIndex += 1
+                        meshop.setMapVert editableObject 0 mapVertexIndex colorValue
+                    )
+                    meshop.setMapFace editableObject 0 faceIndex [firstMapVertex, firstMapVertex + 1, firstMapVertex + 2]
+                )
+            )
+
+            targetNode.vertexColorType = #color
+            targetNode.showVertexColors = true
+            targetNode.vertexColorsShaded = true
+            update targetNode
+        )
+
+        local afterSnapshots = deadlimitVertexColorCaptureUndoSnapshots #(targetNode)
+        deadlimitVertexColorRecordUndoTransaction "Pull Vertex Color from DMX" beforeSnapshots afterSnapshots
+        deadlimitVertexColorRememberDisplayNodes #(targetNode)
+        deadlimitVertexColorRefreshDisplay #(targetNode)
+        totalCorners
+    )
+    catch
+    (
+        deadlimitVertexColorRestoreUndoSnapshots beforeSnapshots
+        throw()
+    )
+)
+fn deadlimitExperimentalPullDmxVertexColor =
+(
+    if selection.count != 1 then throw "Select exactly one mesh."
+    local targetNode = selection[1]
+    if not isValidNode targetNode or (superClassOf targetNode) != GeometryClass then
+        throw "Select exactly one valid geometry mesh."
+    local editableObject = targetNode.baseObject
+    local targetKind = if (classOf editableObject) == Editable_Poly then #poly else if (classOf editableObject) == Editable_Mesh then #mesh else #unsupported
+    if targetKind == #unsupported then
+        throw "Experimental DMX Vertex Color transfer currently requires an Editable Poly or Editable Mesh base object."
+
+    local vertexCount = if targetKind == #poly then (polyop.getNumVerts editableObject) else editableObject.numVerts
+    local faceCount = if targetKind == #poly then (polyop.getNumFaces editableObject) else editableObject.numFaces
+    if vertexCount <= 0 or faceCount <= 0 then throw "Selected mesh has no usable polygon topology."
+
+    local dmxPath = getOpenFileName caption:"Select source DMX with original Vertex Color" types:"DMX (*.dmx)|*.dmx|"
+    if dmxPath == undefined then return undefined
+
+    local managerExe = deadlimitExperimentalFindManagerExe()
+    if managerExe == undefined then
+        throw "DeadlimitManager.exe was not found beside this Deadlimit Scripts installation. Update/reinstall Deadlimit and copy the current script command again."
+
+    local pathClass = dotNetClass "System.IO.Path"
+    local guidValue = ((dotNetClass "System.Guid").NewGuid()).ToString "N"
+    local payloadPath = pathClass.Combine (pathClass.GetTempPath()) ("deadlimit-dmx-vertexcolor-" + guidValue + ".ms")
+    local result = undefined
+    deadlimitDmxVertexColorTransferPayload = undefined
+
+    try
+    (
+        local helperResult = deadlimitExperimentalRunDmxPayloadHelper managerExe dmxPath targetNode.name vertexCount faceCount payloadPath
+        if not (doesFileExist payloadPath) then throw "Deadlimit Manager did not create the DMX Vertex Color payload."
+        fileIn payloadPath
+        if deadlimitDmxVertexColorTransferPayload == undefined then throw "DMX Vertex Color payload did not load."
+
+        local mappedColors = deadlimitExperimentalValidateAndMapPayload targetNode deadlimitDmxVertexColorTransferPayload
+        local cornerCount = deadlimitExperimentalApplyMappedColors targetNode mappedColors
+        local sourceMeshName = deadlimitDmxVertexColorTransferPayload[1]
+        format "Deadlimit experimental Vertex Color: % <- % (% corners)\n" targetNode.name sourceMeshName cornerCount
+        result = #(targetNode, sourceMeshName, cornerCount, helperResult)
+    )
+    catch
+    (
+        local errorText = getCurrentException()
+        format "Deadlimit experimental Vertex Color failed: %\n" errorText
+        messageBox (errorText as string) title:"Deadlimit Scripts — Experimental"
+    )
+
+    deadlimitDmxVertexColorTransferPayload = undefined
+    try(if doesFileExist payloadPath do deleteFile payloadPath)catch()
+    result
+)
+
+rollout deadlimitExperimentalDmxVertexColorRollout "EXPERIMENTAL"
+(
+    label lblDmxPull "Copies original DMX channel 0 to one identical selected mesh." width:340 align:#left
+    button btnDmxPull "PULL VERTEX COLOR FOR SELECTED MESH..." width:340 height:30
+
+    on btnDmxPull pressed do deadlimitExperimentalPullDmxVertexColor()
+)
+
+if deadlimitPipelineFloater != undefined do
+    addRollout deadlimitExperimentalDmxVertexColorRollout deadlimitPipelineFloater rolledUp:false

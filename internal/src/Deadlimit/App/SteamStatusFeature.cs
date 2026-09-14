@@ -6,6 +6,7 @@ internal static class SteamStatusFeature
 {
     private const int StatusHeight = 40;
     private const int StatusTopGap = 8;
+    private static readonly Dictionary<MainForm, Action> ContextUpdaters = [];
 
     public static void Attach(MainForm form, string theme)
     {
@@ -204,6 +205,8 @@ internal static class SteamStatusFeature
             }
         }
 
+        ContextUpdaters[form] = UpdateContext;
+
         statusSource.TextChanged += (_, _) => UpdateOperation();
         if (folderText is not null)
         {
@@ -214,7 +217,6 @@ internal static class SteamStatusFeature
             releaseId.ValueChanged += (_, _) => UpdateContext();
             releaseId.TextChanged += (_, _) => UpdateContext();
         }
-        form.Activated += (_, _) => UpdateContext();
 
         var timer = new System.Windows.Forms.Timer
         {
@@ -225,6 +227,7 @@ internal static class SteamStatusFeature
 
         form.FormClosed += (_, _) =>
         {
+            ContextUpdaters.Remove(form);
             timer.Stop();
             timer.Dispose();
             statusStrip.Dispose();
@@ -232,6 +235,14 @@ internal static class SteamStatusFeature
 
         UpdateContext();
         UpdateOperation();
+    }
+
+    internal static void Refresh(MainForm form)
+    {
+        if (ContextUpdaters.TryGetValue(form, out var update))
+        {
+            update();
+        }
     }
 
     private static int GetWorkspaceRightInset(TableLayoutPanel root)

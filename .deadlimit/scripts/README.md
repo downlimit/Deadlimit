@@ -4,8 +4,12 @@
 
 The implementation filename and existing MAXScript class/global identifiers are retained for compatibility. `Deadlimit Scripts` is the product name; `Deadlimit Pipeline Scripts` is its long form. Additional DCC implementations, including Blender, share this product scope.
 
-The window uses four open stacked sections: BONE TOOLS, VERTEX COLOR, INNER LINEART, and the always-last EXPORT VERTEX COLOR section. The native MAXScript rollout floater keeps the sections in flow when any section is collapsed or reopened, so they cannot overlap.
+The window uses five stacked sections: BONE TOOLS, VERTEX COLOR, INNER LINEART, EXPORT VERTEX COLOR, and EXPERIMENTAL. The native MAXScript rollout floater keeps the sections in flow when any section is collapsed or reopened, so they cannot overlap.
 
+
+## Experimental
+
+EXPERIMENTAL is a rollout inside the same `DeadlimitPipelineScripts.ms` window, not a separate artist-facing script. `PULL VERTEX COLOR FOR SELECTED MESH...` lets the artist select one Editable Poly or Editable Mesh base object, choose a source DMX, and restore DMX channel 0 only when Deadlimit can prove an identical mesh by name/topology. Both base-object paths write channel 0 directly without collapsing the modifier stack. The command fails without changing the mesh if matching is ambiguous or topology differs.
 ## Vertex Color FBX export
 
 1. Export the normal DMX with Wall Worm.
@@ -35,8 +39,8 @@ Vertex Color write commands retain exact before/after channel-0 snapshots for af
 
 BONE TOOLS operations affect selected BoneGeometry display meshes and use one Undo step:
 
-- Fit to Hierarchy uses the average pivot distance to direct bone children. A leaf uses half the distance to its parent pivot.
-- Length (cm) plus SET assigns an exact visual length in centimeters.
+- Fit to Hierarchy uses the average pivot distance to direct bone children. `Affect Leaf Length` is on by default; leaves then use half the distance to the parent pivot, while turning it off keeps their current lengths. `Affect Thickness` is also on by default and sets Width and Height from the adjacent `Thickness (%)` value plus Taper to 33%. The default is 40%, preserving the previous `length / 2.5` behavior. When leaf-length fitting is off, thickness fitting still uses the leaf's unchanged current length.
+- Length (cm) plus SET assigns an exact visual length in centimeters. When `Affect Thickness` is enabled, SET also applies the configured `Thickness (%)` to Width and Height and sets Taper to 33%.
 - Flip X reverses display geometry along local X while preserving node transforms, pivots, hierarchy, animation, and names. The bone base remains convex. The adjacent `_R/_r` checkbox is off by default; when enabled, Flip X filters the current selection to names ending exactly in `_R` or `_r`.
 - Restore Converted Branch repairs an accidental Convert to Editable Poly on selected native-bone roots and their compatible converted descendants. It recognizes the native converted bone display cage (`Editable Poly`, 9 vertices, 9 faces, no modifiers), recovers length/width/height from that cage, and swaps only the base object back to `BoneGeometry`. Node handles, names, layers, transforms, object offsets, hierarchy, animation controllers, and external Skin references remain attached to the original nodes. The complete branch repair is one `Restore Converted Skeleton Bones` Undo step. Ordinary child geometry and modifier stacks are excluded.
 
