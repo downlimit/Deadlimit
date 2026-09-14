@@ -164,6 +164,12 @@ uniform SamplerSparse specularlevel_tex;
 //: param auto channel_user0
 uniform SamplerSparse dl_rim_mask_tex;
 
+// Deadlock authored material AO is independent from Painter's technical baked
+// AO slot. User1 is paintable/exportable and falls back through the recovered
+// retail map to Painter AO when it has no authored samples.
+//: param auto channel_user1
+uniform SamplerSparse dl_artistic_ao_tex;
+
 // Optional default-character preview maps. They are decoded locally from the
 // artist's Deadlimit 0source extraction or its recorded read-only retail VPK.
 // They bypass Painter channels only on the dedicated Valve Texture Sets.
@@ -1257,9 +1263,10 @@ void shade(V2F inputs)
   vec3 baseColor = getBaseColor(basecolor_tex, inputs.sparse_coord);
   float metallic = getMetallic(metallic_tex, inputs.sparse_coord);
   float specularLevel = getSpecularLevel(specularlevel_tex, inputs.sparse_coord);
-  // Deadlock consumes authored AO at full strength. Painter's documented third
-  // argument bypasses the user-facing AO Intensity default of 0.75.
-  float ambientOcclusion = getAO(inputs.sparse_coord, true, true);
+  // Painter AO remains the final fallback and the PBR-baseline input. The
+  // documented third argument bypasses Painter's AO Intensity default of 0.75.
+  float painterAmbientOcclusion = getAO(inputs.sparse_coord, true, true);
+  float ambientOcclusionFallback = painterAmbientOcclusion;
   float retailRimMask = 1.0;
   vec3 retailTransmissiveColor = vec3(0.0);
   vec3 retailNormal = vec3(0.0, 0.0, 1.0);
@@ -1274,7 +1281,9 @@ void shade(V2F inputs)
     metallic = retailColorMetalness.a;
     retailNormal = normalUnpack(retailNormalRoughness);
     roughness = retailNormalRoughness.a;
-    ambientOcclusion = texture(dl_retail_ambient_occlusion, inputs.tex_coord).r;
+    ambientOcclusionFallback = texture(
+      dl_retail_ambient_occlusion,
+      inputs.tex_coord).r;
     retailRimMask = texture(dl_retail_tint_rim, inputs.tex_coord).g;
     retailTransmissiveColor = sRGB2linear(
       texture(dl_retail_npr_transmissive, inputs.tex_coord).rgb);
@@ -1317,7 +1326,7 @@ void shade(V2F inputs)
     roughness = 0.48;
     metallic = 0.0;
     specularLevel = 0.5;
-    ambientOcclusion = 1.0;
+    ambientOcclusionFallback = 1.0;
     retailRimMask = 1.0;
     retailTransmissiveColor = characterProfile.referenceTint;
   }
@@ -1325,6 +1334,15 @@ void shade(V2F inputs)
     dl_rim_mask_tex,
     inputs.sparse_coord,
     retailRimMask);
+  float ambientOcclusion = dlSampleWithFallback(
+    dl_artistic_ao_tex,
+    inputs.sparse_coord,
+    ambientOcclusionFallback);
+  // Diagnostic Neutral replaces material inputs, including authored User1.
+  if (diagnosticInputs)
+  {
+    ambientOcclusion = 1.0;
+  }
 
   DLDirectDiffuseSample keyDirectDiffuse = dlEvaluateDirectDiffuse(
     vectors.normal,
@@ -1457,8 +1475,14 @@ void shade(V2F inputs)
     roughness,
     characterProfile);
 
-  float occlusion = ambientOcclusion * getShadowFactor();
+  float shadowFactor = getShadowFactor();
+  float occlusion = ambientOcclusion * shadowFactor;
   float specOcclusion = specularOcclusionCorrection(occlusion, metallic, roughness);
+  float baselineOcclusion = ambientOcclusionFallback * shadowFactor;
+  float baselineSpecOcclusion = specularOcclusionCorrection(
+    baselineOcclusion,
+    metallic,
+    roughness);
   DLEnvironmentSpecularSample environmentSpecular =
     dlEvaluateEnvironmentSpecular(
       vectors,
@@ -1533,8 +1557,8 @@ void shade(V2F inputs)
   {
     vec3 pbrBaseline =
       pbrComputeEmissive(emissive_tex, inputs.sparse_coord) +
-      diffColor * (occlusion * envIrradiance(vectors.normal)) +
-      specOcclusion * pbrComputeSpecular(vectors, specColor, roughness);
+      diffColor * (baselineOcclusion * envIrradiance(vectors.normal)) +
+      baselineSpecOcclusion * pbrComputeSpecular(vectors, specColor, roughness);
     dlDebugOutput(pbrBaseline);
     return;
   }

@@ -20,6 +20,8 @@ import substance_painter.ui
 PLUGIN_WIDGETS = []
 RIM_MASK_CHANNEL = substance_painter.textureset.ChannelType.User0
 RIM_MASK_LABEL = "Deadlimit Rim Mask"
+ARTISTIC_AO_CHANNEL = substance_painter.textureset.ChannelType.User1
+ARTISTIC_AO_LABEL = "Deadlimit Artistic AO"
 
 
 def _shade_root():
@@ -467,6 +469,14 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
             "Export Rim Mask PNGs…", self)
         self.rim_export_button.setObjectName("DeadlimitRimMaskExport")
         self.rim_export_button.clicked.connect(self._export_rim_masks)
+        self.artistic_ao_button = QtWidgets.QPushButton(
+            "Create Artistic AO", self)
+        self.artistic_ao_button.setObjectName("DeadlimitArtisticAOCreate")
+        self.artistic_ao_button.clicked.connect(self._create_artistic_ao_channels)
+        self.artistic_ao_export_button = QtWidgets.QPushButton(
+            "Export Artistic AO PNGs…", self)
+        self.artistic_ao_export_button.setObjectName("DeadlimitArtisticAOExport")
+        self.artistic_ao_export_button.clicked.connect(self._export_artistic_ao)
         self.progress = QtWidgets.QProgressBar(self)
         self.progress.setRange(0, 0)
         self.progress.setVisible(False)
@@ -491,12 +501,23 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         rim_layout.addWidget(self.rim_reset_button)
         rim_layout.addWidget(self.rim_mask_button)
         rim_layout.addWidget(self.rim_export_button)
+        artistic_ao_group = QtWidgets.QGroupBox("Deadlimit Artistic AO", self)
+        artistic_ao_layout = QtWidgets.QVBoxLayout(artistic_ao_group)
+        artistic_ao_help = QtWidgets.QLabel(
+            "User1 is a paintable linear AO channel. It overrides retail and "
+            "Painter AO only in the recovered Deadlock AO consumers.",
+            artistic_ao_group)
+        artistic_ao_help.setWordWrap(True)
+        artistic_ao_layout.addWidget(artistic_ao_help)
+        artistic_ao_layout.addWidget(self.artistic_ao_button)
+        artistic_ao_layout.addWidget(self.artistic_ao_export_button)
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(self.instructions_label)
         layout.addLayout(form)
         layout.addWidget(self.apply_button)
         layout.addWidget(self.environment_button)
         layout.addWidget(rim_group)
+        layout.addWidget(artistic_ao_group)
         layout.addWidget(self.progress)
         layout.addWidget(self.status_label)
         layout.addStretch(1)
@@ -631,6 +652,106 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         except Exception as exc:
             self.status_label.setText("Rim Mask export failed: {}".format(exc))
 
+    def _artistic_ao_stacks(self):
+        stacks = []
+        conflicts = []
+        for texture_set in substance_painter.textureset.all_texture_sets():
+            if texture_set.name() == "__deadlimit_outline":
+                continue
+            try:
+                stack = texture_set.get_stack()
+            except ValueError:
+                continue
+            if stack.has_channel(ARTISTIC_AO_CHANNEL):
+                label = stack.get_channel(ARTISTIC_AO_CHANNEL).label()
+                if label != ARTISTIC_AO_LABEL:
+                    conflicts.append("{} ({})".format(
+                        texture_set.name(), label or "User1"))
+                    continue
+            stacks.append((texture_set, stack))
+        if conflicts:
+            raise RuntimeError(
+                "User1 is already used by another channel: {}".format(
+                    ", ".join(conflicts)))
+        return stacks
+
+    def _create_artistic_ao_channels(self):
+        if not substance_painter.project.is_open():
+            self.status_label.setText("Open a Painter project first.")
+            return
+        try:
+            stacks = self._artistic_ao_stacks()
+            created = 0
+            for _texture_set, stack in stacks:
+                if not stack.has_channel(ARTISTIC_AO_CHANNEL):
+                    stack.add_channel(
+                        ARTISTIC_AO_CHANNEL,
+                        substance_painter.textureset.ChannelFormat.L8,
+                        ARTISTIC_AO_LABEL)
+                    created += 1
+            self.status_label.setText(
+                "Deadlimit Artistic AO ready on {} Texture Set(s); {} created.".format(
+                    len(stacks), created))
+        except Exception as exc:
+            self.status_label.setText(
+                "Artistic AO channel creation failed: {}".format(exc))
+
+    def _export_artistic_ao(self):
+        if not substance_painter.project.is_open():
+            self.status_label.setText("Open a Painter project first.")
+            return
+        try:
+            stacks = [
+                (texture_set, stack)
+                for texture_set, stack in self._artistic_ao_stacks()
+                if stack.has_channel(ARTISTIC_AO_CHANNEL)
+            ]
+            if not stacks:
+                self.status_label.setText(
+                    "Create a paintable Deadlimit Artistic AO channel first.")
+                return
+            output = QtWidgets.QFileDialog.getExistingDirectory(
+                self, "Export Deadlimit Artistic AO PNGs")
+            if not output:
+                return
+            preset_name = "Deadlimit Artistic AO PNG"
+            config = {
+                "exportPath": output,
+                "exportShaderParams": False,
+                "exportPresets": [{
+                    "name": preset_name,
+                    "maps": [{
+                        "fileName": "$textureSet_Deadlimit_Artistic_AO",
+                        "channels": [{
+                            "destChannel": "L",
+                            "srcChannel": "L",
+                            "srcMapType": "documentMap",
+                            "srcMapName": "user1",
+                        }],
+                    }],
+                }],
+                "exportList": [{
+                    "rootPath": texture_set.name(),
+                    "exportPreset": preset_name,
+                } for texture_set, _stack in stacks],
+                "exportParameters": [{
+                    "parameters": {
+                        "fileFormat": "png",
+                        "bitDepth": "8",
+                        "dithering": False,
+                        "paddingAlgorithm": "infinite",
+                    },
+                }],
+            }
+            result = substance_painter.export.export_project_textures(config)
+            exported = sum(len(paths) for paths in result.textures.values())
+            self.status_label.setText(
+                "Exported {} Deadlimit Artistic AO PNG(s) to {}.".format(
+                    exported, output))
+        except Exception as exc:
+            self.status_label.setText(
+                "Artistic AO export failed: {}".format(exc))
+
     def _load_captured_environment(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, "Load prepared CSDK environment", "", "Environment bundle (environment.json)")
@@ -700,6 +821,8 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self.rim_reset_button.setEnabled(not busy)
         self.rim_mask_button.setEnabled(not busy)
         self.rim_export_button.setEnabled(not busy)
+        self.artistic_ao_button.setEnabled(not busy)
+        self.artistic_ao_export_button.setEnabled(not busy)
         self.progress.setVisible(busy)
         self.status_label.setText(text)
 

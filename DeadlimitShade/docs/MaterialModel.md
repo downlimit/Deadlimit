@@ -590,6 +590,29 @@ textures remain read-only. The Deadlimit panel can export every authored User0
 channel as an 8-bit grayscale `$textureSet_Deadlimit_Rim_Mask.png`; VMAT and
 package wiring remain outside this stage.
 
+## Painter Artistic AO authoring
+
+`Deadlimit Artistic AO` is Painter `User1`, stored as a linear paintable `L8`
+channel. It leaves the `User0` rim mask unchanged. The shader resolves the
+authored material AO producer in this order:
+
+```text
+painted Deadlimit Artistic AO
+  -> retail g_tAmbientOcclusion.R when User1 is absent
+  -> Painter AO when retail input is absent
+  -> 1 when none of those sources exists
+```
+
+The resolved value replaces only the authored material AO producer feeding the
+recovered Deadlock topology: NPR bounce weighting, NPR diffuse response, rim
+multiplication and specular occlusion. Direct diffuse and Base Color do not
+receive an AO multiply. Screen DfAO remains separate. The Painter PBR Baseline
+diagnostic keeps its pre-User1 AO source for a stable comparison.
+
+The Deadlimit panel creates User1 without recreating the project and exports it
+as an 8-bit grayscale `$textureSet_Deadlimit_Artistic_AO.png`. Reapplying the
+character preview preserves Painter channels and strokes.
+
 Before final material modulation, retail applies this color-dependent response
 to bounce lighting only (`x = materialAO * screenDfAO`):
 

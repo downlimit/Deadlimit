@@ -54,6 +54,23 @@ locally and one allows the full recovered rim response. **Export Rim Mask
 PNGs…** writes the authored channel as a separate grayscale PNG per Texture
 Set; it does not modify retail textures or build a VMAT/package.
 
+## Authoring Artistic AO
+
+After **Preview as Deadlock**, click **Create Artistic AO**. This adds the
+linear grayscale `Deadlimit Artistic AO` (`User1`) channel to every non-outline
+Texture Set without touching the `User0` rim mask. Enable it on a Fill or Paint
+layer, place baked AO in that channel, then use later Fill/Paint layers to
+lighten or darken local areas. The Deadlock shader consumes the stack result
+immediately in bounce weighting, the NPR diffuse response, rim and specular
+occlusion. Direct diffuse and Base Color remain independent from this channel.
+
+When User1 has no authored sample, the shader uses retail
+`g_tAmbientOcclusion.R`, then Painter's standard AO channel, then neutral white.
+**Deadlimit View > Ambient Occlusion** displays this resolved value.
+**Export Artistic AO PNGs…** writes one 8-bit grayscale
+`$textureSet_Deadlimit_Artistic_AO.png` per Texture Set. Reapplying Preview does
+not remove the channel or its painted layer data.
+
 The current Ivy look is a calibrated Painter approximation. The dock says so
 explicitly; profile numbers are not claimed as retail runtime values.
 
