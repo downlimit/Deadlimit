@@ -159,16 +159,17 @@ uniform SamplerSparse metallic_tex;
 //: param auto channel_specularlevel
 uniform SamplerSparse specularlevel_tex;
 
-// Painter user channels are paintable and exportable document maps. Sparse
-// sampling preserves the retail/default fallback while User0 is absent.
+// Painter user channels are paintable and exportable document maps.
 //: param auto channel_user0
 uniform SamplerSparse dl_rim_mask_tex;
 
 // Deadlock authored material AO is independent from Painter's technical baked
-// AO slot. User1 is paintable/exportable and falls back through the recovered
-// retail map to Painter AO when it has no authored samples.
+// AO slot. User1 is paintable/exportable. Once its channel exists, its resolved
+// document value is authoritative even where no paint sample was authored.
 //: param auto channel_user1
 uniform SamplerSparse dl_artistic_ao_tex;
+//: param custom { "default": false, "label": "Authored AO Channel Present", "visible": "false" }
+uniform bool dl_artistic_ao_present;
 
 // Optional default-character preview maps. They are decoded locally from the
 // artist's Deadlimit 0source extraction or its recorded read-only retail VPK.
@@ -422,16 +423,11 @@ uniform vec3 dl_environment_color;
 //: }
 uniform float dl_environment_diffuse;
 
-// Painter panorama radiance is the available preview substitute for Deadlock's
-// local/fallback probe radiance. Neutral defaults preserve this substitute's
-// energy and authored roughness; they do not establish Deadlock BRDF parity.
-//: param custom { "default": true, "label": "Environment Specular", "group": "Deadlimit Environment Specular" }
+// Environment selection, rotation and strength are owned by the panel.
+//: param custom { "default": true, "label": "Environment Specular", "visible": "false" }
 uniform bool dl_environment_specular_enabled;
 
-//: param custom { "default": 1.0, "label": "Environment Specular Strength", "min": 0.0, "max": 2.0, "group": "Deadlimit Environment Specular" }
-uniform float dl_environment_specular_strength;
-
-//: param custom { "default": 0.0, "label": "Environment Roughness Bias", "min": 0.0, "max": 0.75, "group": "Deadlimit Environment Specular" }
+//: param custom { "default": 0.0, "label": "Environment Roughness Bias", "visible": "false" }
 uniform float dl_environment_specular_roughness_bias;
 
 // Apply Deadlimit owns these values from lighting/preview-presets.json. They
@@ -471,10 +467,6 @@ uniform float dl_preset_rim_sharpness;
 uniform float dl_preset_rim_strength;
 //: param custom { "default": [-1.0, 1.0], "label": "Preset Rim Up Ramp", "group": "Deadlimit Lighting Preview" }
 uniform vec2 dl_preset_rim_up_ramp;
-//: param custom { "default": false, "label": "CSDK Environment Bound", "group": "Deadlimit Lighting Preview" }
-uniform bool dl_preset_environment_bound;
-//: param custom { "default": 1.0, "label": "CSDK Environment Brightness", "group": "Deadlimit Lighting Preview" }
-uniform float dl_preset_environment_brightness;
 
 //: param custom {
 //:   "default": 0.0,
@@ -599,18 +591,38 @@ struct DLEnvironmentSpecularSample
 
 // Optional, explicitly loaded Reduced CSDK proof resources. No runtime assets
 // are embedded. The fallback remains available when this bundle is absent.
-//: param custom { "default": false, "label": "Captured CSDK Environment", "group": "Deadlimit Captured Environment" }
+//: param custom { "default": false, "label": "Captured CSDK Environment", "visible": "false" }
 uniform bool dl_captured_environment;
-//: param custom { "default": "", "default_color": [0.0, 0.0, 0.0, 1.0], "label": "Engine Mip Atlas", "usage": "texture", "group": "Deadlimit Captured Environment" }
+//: param custom { "default": "", "default_color": [0.0, 0.0, 0.0, 1.0], "label": "Engine Mip Atlas", "usage": "texture", "visible": "false" }
 uniform sampler2D dl_captured_atlas;
-//: param custom { "default": "", "default_color": [0.0, 1.0, 0.0, 1.0], "label": "Engine BRDF LUT", "usage": "texture", "group": "Deadlimit Captured Environment" }
+//: param custom { "default": "", "default_color": [0.0, 1.0, 0.0, 1.0], "label": "Engine BRDF LUT", "usage": "texture", "visible": "false" }
 uniform sampler2D dl_captured_brdf;
+// The panel owns the selector. Painter Display Environment affects only the
+// viewport background, never Deadlimit's character-reflection source.
+//: param custom { "default": "", "label": "Selected Environment", "usage": "environment", "visible": "false" }
+uniform sampler2D dl_selected_environment;
+//: param custom { "default": 0.0, "label": "Environment Rotation", "visible": "false" }
+uniform float dl_environment_rotation;
+//: param custom { "default": 1.0, "label": "Environment Strength", "visible": "false" }
+uniform float dl_environment_strength;
+//: param custom { "default": false, "label": "Environment Available", "visible": "false" }
+uniform bool dl_environment_available;
+
+vec3 dlPanoramaRadiance(vec3 direction, float roughness)
+{
+  // Same lat-long projection as the shipped Dota Painter shader. This is a
+  // Painter-only CSDK-panorama approximation; its mips are not Source 2 probes.
+  vec2 uv = vec2(atan(-direction.z, -direction.x) / (2.0 * 3.14159265359) + 0.5,
+    asin(clamp(-direction.y, -1.0, 1.0)) / 3.14159265359 + 0.5);
+  uv.x = fract(uv.x + dl_environment_rotation / 360.0);
+  return textureLod(dl_selected_environment, uv, clamp(roughness, 0.0, 1.0) * 5.0).rgb;
+}
 
 vec3 dlCapturedFrameDirection(vec3 direction)
 {
-  vec2 horizontal = -uniform_main_light.xz;
-  horizontal = length(horizontal) > 0.000001 ? normalize(horizontal) : vec2(1.0, 0.0);
-  // Inverse of the same Painter yaw applied to our direct-light direction.
+  float angle = radians(dl_environment_rotation);
+  vec2 horizontal = vec2(cos(angle), sin(angle));
+  // Independent of Painter Display Environment and main-light rotation.
   vec3 local = vec3(horizontal.x * direction.x + horizontal.y * direction.z,
     direction.y, -horizontal.y * direction.x + horizontal.x * direction.z);
   return vec3(local.x, -local.z, local.y);
@@ -695,10 +707,10 @@ DLEnvironmentSpecularSample dlEvaluateEnvironmentSpecular(
     // an unresolved-input fallback, not a measured runtime visibility value.
     // Do not substitute Painter's AO/metalness/roughness occlusion correction.
     sample.contribution = dl_environment_specular_enabled
-      ? sample.raw : vec3(0.0);
+      ? sample.raw * dl_environment_strength : vec3(0.0);
     return sample;
   }
-  if (dl_lighting_preset_mode && !dl_preset_environment_bound)
+  if (!dl_environment_available)
   {
     sample.raw = vec3(0.0);
     sample.contribution = vec3(0.0);
@@ -708,15 +720,14 @@ DLEnvironmentSpecularSample dlEvaluateEnvironmentSpecular(
     roughness + dl_environment_specular_roughness_bias,
     0.04,
     1.0);
-  sample.raw = specularOcclusion * pbrComputeSpecular(
-    vectors,
-    specularColor,
-    previewRoughness);
-  float environmentStrength = dl_lighting_preset_mode
-    ? dl_preset_environment_brightness
-    : dl_environment_specular_strength;
+  vec3 reflectionDirection = reflect(-vectors.eye, vectors.normal);
+  vec3 radiance = dlPanoramaRadiance(reflectionDirection, previewRoughness);
+  float nDotV = clamp(dot(vectors.normal, vectors.eye), 0.0, 1.0);
+  vec3 fresnel = specularColor + (vec3(1.0) - specularColor) *
+    pow(1.0 - nDotV, 5.0);
+  sample.raw = specularOcclusion * radiance * fresnel;
   sample.contribution = dl_environment_specular_enabled
-    ? sample.raw * environmentStrength
+    ? sample.raw * dl_environment_strength
     : vec3(0.0);
   return sample;
 }
@@ -1221,10 +1232,12 @@ DLRimSample dlEvaluateRim(
     (normal.y - settings.upRamp.x) / rampWidth,
     0.0,
     1.0);
-  // Reduced CSDK also multiplies by a screen-depth occlusion sample. Painter's
-  // surface shader has no scene-depth input, so this uses the neutral D=1.
+  // Painter-only substitute for absent screen-depth occlusion. The recovered
+  // view/up/lighting/AO/mask equation above is retained; this smooth grazing
+  // gate suppresses face-on spill without claiming runtime depthAO parity.
+  float painterDepthOcclusion = 1.0 - smoothstep(0.18, 0.72, nDotV);
   sample.steppedRim = viewRamp * upRamp *
-    settings.strength * ambientOcclusion * rimMask;
+    settings.strength * ambientOcclusion * rimMask * painterDepthOcclusion;
   sample.contribution = settings.enabled
     ? lightingBeforeRim * sample.steppedRim
     : vec3(0.0);
@@ -1334,10 +1347,9 @@ void shade(V2F inputs)
     dl_rim_mask_tex,
     inputs.sparse_coord,
     retailRimMask);
-  float ambientOcclusion = dlSampleWithFallback(
-    dl_artistic_ao_tex,
-    inputs.sparse_coord,
-    ambientOcclusionFallback);
+  float ambientOcclusion = dl_artistic_ao_present
+    ? clamp(textureSparse(dl_artistic_ao_tex, inputs.sparse_coord).r, 0.0, 1.0)
+    : ambientOcclusionFallback;
   // Diagnostic Neutral replaces material inputs, including authored User1.
   if (diagnosticInputs)
   {

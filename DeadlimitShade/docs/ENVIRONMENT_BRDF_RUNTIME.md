@@ -1,5 +1,10 @@
 # Environment BRDF runtime decomposition — 2026-09-12
 
+The manual captured-bundle UI procedure below describes the earlier Preview.
+TЗ 14 moved environment selection to the `Deadlimit Environment` panel; see
+`PREVIEW_STABILITY_TZ14.md` for the current artist workflow and internal
+Default bundle loading.
+
 Scope: Reduced CSDK Ivy capture event 791, shader ResourceId::6491.
 This does not establish current retail runtime identity. No captured assets
 belong in Git. The numerical reference is `tools/deadlock_environment_reference.py`.

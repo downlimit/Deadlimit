@@ -16,12 +16,21 @@ import substance_painter.resource
 import substance_painter.textureset
 import substance_painter.ui
 
+try:
+    import substance_painter.layerstack as painter_layerstack
+    import substance_painter.colormanagement as painter_colormanagement
+except ImportError:
+    # Painter 9.1 ships API 0.2.11. Official layer creation arrived in 10.0.
+    painter_layerstack = None
+    painter_colormanagement = None
+
 
 PLUGIN_WIDGETS = []
 RIM_MASK_CHANNEL = substance_painter.textureset.ChannelType.User0
 RIM_MASK_LABEL = "Deadlimit Rim Mask"
 ARTISTIC_AO_CHANNEL = substance_painter.textureset.ChannelType.User1
 ARTISTIC_AO_LABEL = "Deadlimit Artistic AO"
+ARTISTIC_AO_BASE_LABEL = "Deadlimit Artistic AO Base"
 
 
 def _shade_root():
@@ -58,6 +67,21 @@ def _lighting_presets():
         value.update(item)
         resolved.append(value)
     return resolved
+
+
+def _environment_options():
+    """CSDK panoramas proven by the Lighting Preview manifest and local depot."""
+    content_root = _csdk_content_root()
+    options = []
+    seen = set()
+    for preset in _lighting_presets():
+        source = (preset.get("environment") or {}).get("sourceImage")
+        if not source or source in seen:
+            continue
+        if content_root and (content_root / Path(source.replace("/", os.sep))).is_file():
+            options.append((preset["name"], source))
+            seen.add(source)
+    return options
 
 
 def _csdk_content_root():
@@ -98,9 +122,6 @@ def _lighting_shader_parameters(preset, environment_bound):
         "dl_preset_rim_sharpness": float(rim.get("sharpness", 0.01)),
         "dl_preset_rim_strength": float(rim.get("strength", 0.0)),
         "dl_preset_rim_up_ramp": rim.get("upRamp", [-1.0, 1.0]),
-        "dl_preset_environment_bound": bool(environment_bound),
-        "dl_preset_environment_brightness": float(
-            preset.get("environment", {}).get("brightnessScale", 1.0)),
         "dl_environment_specular_enabled": bool(environment_bound),
         "dl_captured_environment": False,
     }
@@ -199,7 +220,8 @@ def _import_or_reuse_project_shader(path, role):
 
 
 def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None,
-                              lighting_parameters=None, rim_parameters=None):
+                              lighting_parameters=None, rim_parameters=None,
+                              artistic_ao_texture_sets=None):
     character_id = int(profile["id"])
     hero_texture_sets = json.dumps(profile["painterApply"]["heroTextureSets"])
     retail_bindings_json = json.dumps(retail_bindings or {})
@@ -208,6 +230,7 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None,
     lighting_preset_name = lighting_parameters.pop("presetName", "")
     lighting_parameters_json = json.dumps(lighting_parameters)
     rim_parameters_json = json.dumps(rim_parameters or _rim_shader_parameters(profile))
+    artistic_ao_texture_sets_json = json.dumps(artistic_ao_texture_sets or [])
     return r"""
 (function() {
   alg.resources.refreshShelves();
@@ -221,6 +244,7 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None,
   var shaderResources = SHADER_RESOURCES;
   var lightingParameters = LIGHTING_PARAMETERS;
   var rimDefaults = RIM_PARAMETERS;
+  var artisticAoTextureSets = ARTISTIC_AO_TEXTURE_SETS;
   var rimParameterNames = Object.keys(rimDefaults);
   var previousInstances = alg.shaders.instances();
   function parameterValue(parameters, name) {
@@ -325,7 +349,10 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None,
   var heroParameters = {
     dl_character: CHARACTER_ID,
     dl_debug_view: 0,
-    dl_lighting_input_mode: 0
+    dl_lighting_input_mode: 0,
+    dl_artistic_ao_present: heroTextureSets.filter(function(name) {
+      return !!current.texturesets[name];
+    }).every(function(name) { return artisticAoTextureSets.indexOf(name) >= 0; })
   };
   Object.keys(lightingParameters).forEach(function(name) {
     heroParameters[name] = lightingParameters[name];
@@ -354,6 +381,7 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None,
       dl_character: CHARACTER_ID,
       dl_debug_view: 0,
       dl_lighting_input_mode: 0,
+      dl_artistic_ao_present: artisticAoTextureSets.indexOf(textureSetName) >= 0,
       dl_use_retail_inputs: true,
       dl_vertex_color_multiply: binding.vertexColorMultiply,
       dl_retail_color: binding.color,
@@ -378,7 +406,7 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None,
     lightingPreset: LIGHTING_PRESET_NAME
   });
 })()
-""".replace("CHARACTER_ID", str(character_id)).replace("HERO_TEXTURE_SETS", hero_texture_sets).replace("RETAIL_BINDINGS", retail_bindings_json).replace("SHADER_RESOURCES", shader_urls_json).replace("LIGHTING_PARAMETERS", lighting_parameters_json).replace("RIM_PARAMETERS", rim_parameters_json).replace("LIGHTING_PRESET_NAME", json.dumps(lighting_preset_name))
+""".replace("CHARACTER_ID", str(character_id)).replace("HERO_TEXTURE_SETS", hero_texture_sets).replace("RETAIL_BINDINGS", retail_bindings_json).replace("SHADER_RESOURCES", shader_urls_json).replace("LIGHTING_PARAMETERS", lighting_parameters_json).replace("RIM_PARAMETERS", rim_parameters_json).replace("ARTISTIC_AO_TEXTURE_SETS", artistic_ao_texture_sets_json).replace("LIGHTING_PRESET_NAME", json.dumps(lighting_preset_name))
 
 
 class DeadlimitApplyDock(QtWidgets.QWidget):
@@ -397,6 +425,9 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self._retail_current = None
         self._environment_output = None
         self._environment_recipe = None
+        self._retail_environment_url = None
+        self._captured_environment_parameters = None
+        self._environment_digests = {}
         self._phase = ""
         self._elapsed = QtCore.QElapsedTimer()
         self._status_timer = QtCore.QTimer(self)
@@ -413,6 +444,29 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self.lighting_preset_combo.setObjectName("DeadlimitLightingPreset")
         for preset in _lighting_presets():
             self.lighting_preset_combo.addItem(preset["name"], preset)
+
+        self.environment_combo = QtWidgets.QComboBox(self)
+        self.environment_combo.setObjectName("DeadlimitEnvironment")
+        self.environment_combo.addItem("None", None)
+        for label, source in _environment_options():
+            self.environment_combo.addItem(label, source)
+        self.environment_rotation = QtWidgets.QDoubleSpinBox(self)
+        self.environment_rotation.setObjectName("DeadlimitEnvironmentRotation")
+        self.environment_rotation.setRange(0.0, 360.0)
+        self.environment_rotation.setSuffix("°")
+        self.environment_rotation.setSingleStep(5.0)
+        self.environment_strength = QtWidgets.QDoubleSpinBox(self)
+        self.environment_strength.setObjectName("DeadlimitEnvironmentStrength")
+        self.environment_strength.setRange(0.0, 2.0)
+        self.environment_strength.setSingleStep(0.05)
+        self.environment_strength.setDecimals(2)
+        self.environment_strength.setValue(1.0)
+        self.lighting_preset_combo.currentIndexChanged.connect(
+            self._lighting_preset_changed)
+        self.environment_combo.currentIndexChanged.connect(
+            self._selected_environment_changed)
+        self.environment_rotation.valueChanged.connect(self._environment_changed)
+        self.environment_strength.valueChanged.connect(self._environment_changed)
 
         self.preview_combo = QtWidgets.QComboBox(self)
         self.preview_combo.setObjectName("DeadlimitPreviewView")
@@ -455,8 +509,6 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self.apply_button.setObjectName("ApplyDeadlimit")
         self.apply_button.setMinimumHeight(36)
         self.apply_button.clicked.connect(self.apply_deadlimit)
-        self.environment_button = QtWidgets.QPushButton("Load CSDK environment bundle…", self)
-        self.environment_button.clicked.connect(self._load_captured_environment)
         self.rim_reset_button = QtWidgets.QPushButton(
             "Reset to Character Preset", self)
         self.rim_reset_button.setObjectName("DeadlimitRimReset")
@@ -491,6 +543,11 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         form.addRow("Lighting Preset", self.lighting_preset_combo)
         form.addRow("Lighting Inputs", self.lighting_input_combo)
         form.addRow("Deadlimit View", self.preview_combo)
+        environment_group = QtWidgets.QGroupBox("Deadlimit Environment", self)
+        environment_form = QtWidgets.QFormLayout(environment_group)
+        environment_form.addRow("Environment", self.environment_combo)
+        environment_form.addRow("Rotation", self.environment_rotation)
+        environment_form.addRow("Strength", self.environment_strength)
         rim_group = QtWidgets.QGroupBox("Deadlimit Rim Light", self)
         rim_layout = QtWidgets.QVBoxLayout(rim_group)
         rim_help = QtWidgets.QLabel(
@@ -515,17 +572,56 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         layout.addWidget(self.instructions_label)
         layout.addLayout(form)
         layout.addWidget(self.apply_button)
-        layout.addWidget(self.environment_button)
+        layout.addWidget(environment_group)
         layout.addWidget(rim_group)
         layout.addWidget(artistic_ao_group)
         layout.addWidget(self.progress)
         layout.addWidget(self.status_label)
         layout.addStretch(1)
         self._update_preview_button()
+        self._lighting_preset_changed()
 
     def _update_preview_button(self, _index=None):
         character = self.character_combo.currentText() or "character"
         self.apply_button.setText("Preview {} as Deadlock".format(character))
+
+    def _lighting_preset_changed(self, _index=None):
+        preset = self.lighting_preset_combo.currentData() or {}
+        environment = preset.get("environment") or {}
+        source = environment.get("sourceImage")
+        index = self.environment_combo.findData(source)
+        self.environment_combo.blockSignals(True)
+        self.environment_rotation.blockSignals(True)
+        self.environment_strength.blockSignals(True)
+        self.environment_combo.setCurrentIndex(index if index >= 0 else 0)
+        self.environment_rotation.setValue(float(environment.get("rotationDegrees", 0.0)))
+        self.environment_strength.setValue(float(environment.get("brightnessScale", 1.0)))
+        self.environment_combo.blockSignals(False)
+        self.environment_rotation.blockSignals(False)
+        self.environment_strength.blockSignals(False)
+        self._environment_changed()
+
+    def _environment_changed(self, _value=None):
+        if not substance_painter.project.is_open() or self._process is not None:
+            return
+        try:
+            parameters = self._selected_environment_parameters()
+            self._bind_captured_environment(parameters)
+        except Exception as exc:
+            self.status_label.setText("Environment update failed: {}".format(exc))
+
+    def _selected_environment_changed(self, _index=None):
+        name = self.environment_combo.currentText()
+        preset = next((item for item in _lighting_presets()
+                       if item["name"] == name), None)
+        environment = (preset or {}).get("environment") or {}
+        self.environment_rotation.blockSignals(True)
+        self.environment_strength.blockSignals(True)
+        self.environment_rotation.setValue(float(environment.get("rotationDegrees", 0.0)))
+        self.environment_strength.setValue(float(environment.get("brightnessScale", 1.0)))
+        self.environment_rotation.blockSignals(False)
+        self.environment_strength.blockSignals(False)
+        self._environment_changed()
 
     def _reset_rim_to_character_preset(self):
         if not substance_painter.project.is_open():
@@ -679,22 +775,71 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         if not substance_painter.project.is_open():
             self.status_label.setText("Open a Painter project first.")
             return
+        if painter_layerstack is None:
+            self.status_label.setText(
+                "Automatic Artistic AO Base needs Painter 10+ (official layerstack API). "
+                "Painter 9.1 cannot create or wire a Fill Layer through its supported API; "
+                "no channel or paint was changed.")
+            return
         try:
             stacks = self._artistic_ao_stacks()
             created = 0
-            for _texture_set, stack in stacks:
+            bases = 0
+            for texture_set, stack in stacks:
                 if not stack.has_channel(ARTISTIC_AO_CHANNEL):
                     stack.add_channel(
                         ARTISTIC_AO_CHANNEL,
                         substance_painter.textureset.ChannelFormat.L8,
                         ARTISTIC_AO_LABEL)
                     created += 1
+                roots = painter_layerstack.get_root_layer_nodes(stack)
+                if any(node.get_name() == ARTISTIC_AO_BASE_LABEL for node in roots):
+                    continue
+                position = (painter_layerstack.InsertPosition.below_node(roots[-1])
+                            if roots else painter_layerstack.InsertPosition.from_textureset_stack(stack))
+                fill = painter_layerstack.insert_fill(position)
+                fill.set_name(ARTISTIC_AO_BASE_LABEL)
+                fill.active_channels = {ARTISTIC_AO_CHANNEL}
+                baked_ao = texture_set.get_mesh_map_resource(
+                    substance_painter.textureset.MeshMapUsage.AO)
+                if baked_ao is not None:
+                    fill.set_source(ARTISTIC_AO_CHANNEL, baked_ao)
+                else:
+                    fill.set_source(ARTISTIC_AO_CHANNEL,
+                                    painter_colormanagement.Color(1.0, 1.0, 1.0))
+                bases += 1
+            self._bind_artistic_ao_presence(stacks)
             self.status_label.setText(
-                "Deadlimit Artistic AO ready on {} Texture Set(s); {} created.".format(
-                    len(stacks), created))
+                "Deadlimit Artistic AO ready on {} Texture Set(s); {} channels and {} "
+                "baked/white base Fill Layers created.".format(len(stacks), created, bases))
         except Exception as exc:
             self.status_label.setText(
                 "Artistic AO channel creation failed: {}".format(exc))
+
+    def _bind_artistic_ao_presence(self, stacks):
+        authored = [texture_set.name() for texture_set, stack in stacks
+                    if stack.has_channel(ARTISTIC_AO_CHANNEL)]
+        script = r'''(function(names) {
+          var current = alg.shaders.shaderInstancesToObject();
+          var labels = {};
+          Object.keys(current.texturesets).forEach(function(name) {
+            var label = current.texturesets[name].shader;
+            if (!/^Deadlimit (Hero|Retail)/.test(label)) return;
+            if (!labels[label]) labels[label] = [];
+            labels[label].push(name);
+          });
+          alg.shaders.instances().forEach(function(instance) {
+            var sets = labels[instance.label];
+            if (!sets || !Object.prototype.hasOwnProperty.call(
+                alg.shaders.parameters(instance.id), "dl_artistic_ao_present")) return;
+            alg.shaders.setParameters(instance.id, {
+              dl_artistic_ao_present: sets.every(function(name) {
+                return names.indexOf(name) >= 0;
+              })
+            });
+          });
+        })(NAMES)'''.replace("NAMES", json.dumps(authored))
+        substance_painter.js.evaluate(script)
 
     def _export_artistic_ao(self):
         if not substance_painter.project.is_open():
@@ -752,17 +897,8 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
             self.status_label.setText(
                 "Artistic AO export failed: {}".format(exc))
 
-    def _load_captured_environment(self):
-        path, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Load prepared CSDK environment", "", "Environment bundle (environment.json)")
-        if path:
-            try:
-                self.load_captured_environment(path)
-                self.status_label.setText("Captured CSDK environment loaded · single-probe proof mode")
-            except Exception as exc:
-                self.status_label.setText("Environment load failed: {}".format(exc))
-
     def load_captured_environment(self, path):
+        """Internal Default backend hook; intentionally absent from artist UI."""
         if not substance_painter.project.is_open():
             raise RuntimeError("Open a project first")
         manifest_path = Path(path).resolve()
@@ -777,7 +913,50 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
             digest = hashlib.sha256(texture_path.read_bytes()).hexdigest()[:12]
             resource = _import_or_reuse_project_texture(texture_path, "Deadlimit_Captured_{}_{}".format(key, digest))
             parameters[field] = resource.identifier().url()
-        self._bind_captured_environment(parameters)
+        self._captured_environment_parameters = parameters
+        if self.environment_combo.currentText() == "Default":
+            self._bind_captured_environment(self._selected_environment_parameters())
+
+    def _selected_environment_parameters(self):
+        source = self.environment_combo.currentData()
+        content_root = _csdk_content_root()
+        parameters = {
+            "dl_environment_available": False,
+            "dl_captured_environment": False,
+            "dl_environment_rotation": float(self.environment_rotation.value()),
+            "dl_environment_strength": float(self.environment_strength.value()),
+        }
+        if source and content_root:
+            path = content_root / Path(source.replace("/", os.sep))
+            if path.is_file():
+                if source not in self._environment_digests:
+                    self._environment_digests[source] = hashlib.sha256(
+                        path.read_bytes()).hexdigest()[:12]
+                resource = _import_or_reuse_project_environment(
+                    path, "Deadlimit_CSDK_{}_{}".format(
+                        path.stem, self._environment_digests[source]))
+                parameters["dl_selected_environment"] = resource.identifier().url()
+                parameters["dl_environment_available"] = True
+        if self.environment_combo.currentText() == "Default":
+            if self._retail_environment_url:
+                parameters["dl_selected_environment"] = self._retail_environment_url
+                parameters["dl_environment_available"] = True
+            if self._captured_environment_parameters is None:
+                bundle = os.environ.get("DEADLIMIT_CAPTURED_ENVIRONMENT_BUNDLE")
+                if bundle and Path(bundle).is_file():
+                    self.load_captured_environment(bundle)
+            if self._captured_environment_parameters:
+                parameters.update(self._captured_environment_parameters)
+                parameters["dl_environment_available"] = True
+                # The captured atlas already contains native probe energy. The
+                # Default preset's panorama brightness is the panel's neutral
+                # slider value, while the captured backend needs unit gain.
+                default_preset = next(item for item in _lighting_presets()
+                                      if item["name"] == "Default")
+                neutral = float(default_preset["environment"]["brightnessScale"])
+                parameters["dl_environment_strength"] /= max(neutral, 0.0001)
+        parameters["dl_environment_specular_enabled"] = parameters["dl_environment_available"]
+        return parameters
 
     def _bind_captured_environment(self, parameters):
         if not parameters:
@@ -792,29 +971,16 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
             alg.shaders.setParameters(instance.id, parameters);
             count++;
           });
-          if (!count) throw new Error("Apply Deadlimit before loading environment");
           return count;
         })(PARAMETERS)'''.replace("PARAMETERS", json.dumps(parameters))
         substance_painter.js.evaluate(script)
 
-    def _captured_environment_settings(self):
-        script = r'''(function() {
-          var shaders = alg.shaders.shaderInstancesToObject().shaders;
-          for (var name in shaders) {
-            var s = shaders[name];
-            var p = (s.parameters || {})["Deadlimit Captured Environment"] || {};
-            var t = (s.materials || {})["Deadlimit Captured Environment"] || {};
-            if (p.dl_captured_environment && t.dl_captured_atlas && t.dl_captured_brdf)
-              return JSON.stringify({dl_captured_environment:true,
-                dl_captured_atlas:t.dl_captured_atlas, dl_captured_brdf:t.dl_captured_brdf});
-          }
-          return "{}";
-        })()'''
-        return json.loads(substance_painter.js.evaluate(script))
-
     def _set_busy(self, busy, text):
         self.character_combo.setEnabled(not busy)
         self.lighting_preset_combo.setEnabled(not busy)
+        self.environment_combo.setEnabled(not busy)
+        self.environment_rotation.setEnabled(not busy)
+        self.environment_strength.setEnabled(not busy)
         self.lighting_input_combo.setEnabled(not busy)
         self.preview_combo.setEnabled(not busy)
         self.apply_button.setEnabled(not busy)
@@ -1050,6 +1216,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self._retail_queue = []
         self._retail_current = None
         self._environment_output = None
+        self._retail_environment_url = None
         self._environment_recipe = self._selected_profile.get(
             "painterApply", {}).get("environmentPreview")
         if not recipe or not context or not context["retailVpk"].is_file():
@@ -1189,7 +1356,7 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
                     "Deadlimit_{}_Default_{}".format(
                         self._selected_profile["key"],
                         environment_manifest["compiledSha256"][:12]))
-                substance_painter.display.set_environment_resource(environment.identifier())
+                self._retail_environment_url = environment.identifier().url()
             for index, binding, output in sorted(self._retail_outputs):
                 manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
                 urls = {}
@@ -1236,21 +1403,10 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
     def _apply_shaders(self):
         try:
             preset = self._selected_lighting_preset
-            environment_bound = False
-            environment = preset.get("environment", {}) if preset else {}
-            source_image = environment.get("sourceImage")
-            content_root = _csdk_content_root()
-            if source_image and content_root:
-                environment_path = content_root / Path(source_image.replace("/", os.sep))
-                if environment_path.is_file():
-                    digest = hashlib.sha256(environment_path.read_bytes()).hexdigest()[:12]
-                    resource = _import_or_reuse_project_environment(
-                        environment_path,
-                        "Deadlimit_CSDK_{}_{}".format(
-                            preset["name"].replace(" ", "_"), digest))
-                    substance_painter.display.set_environment_resource(resource.identifier())
-                    environment_bound = True
+            environment_parameters = self._selected_environment_parameters()
+            environment_bound = environment_parameters["dl_environment_available"]
             lighting_parameters = _lighting_shader_parameters(preset, environment_bound)
+            lighting_parameters.update(environment_parameters)
             lighting_parameters["presetName"] = preset["name"]
             shader_root = _shade_root() / "shaders"
             shader_urls = {
@@ -1261,12 +1417,15 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
             }
             result = substance_painter.js.evaluate(_shader_assignment_script(
                 self._selected_profile, self._retail_bindings, shader_urls,
-                lighting_parameters, _rim_shader_parameters(self._selected_profile)))
+                lighting_parameters, _rim_shader_parameters(self._selected_profile),
+                [texture_set.name() for texture_set, stack in self._artistic_ao_stacks()
+                 if stack.has_channel(ARTISTIC_AO_CHANNEL)]))
             summary = json.loads(result)
             profile = self._selected_profile
             elapsed_seconds = self._elapsed.elapsed() / 1000.0
             self._status_timer.stop()
-            environment_status = "CSDK environment bound" if environment_bound else "CSDK environment unavailable; reflections disabled"
+            environment_status = "Deadlimit environment: {}".format(
+                self.environment_combo.currentText()) if environment_bound else "Environment unavailable; reflections disabled"
             self._set_busy(False, "Deadlock preview active for {} / {} · {:.1f} s\n"
                                   "{}; editable rim values loaded from the character preset.".format(
                 profile["displayName"], preset["name"], elapsed_seconds, environment_status))

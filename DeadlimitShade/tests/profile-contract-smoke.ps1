@@ -184,10 +184,10 @@ Assert-True ($heroShader.Contains('"NPR Bounce": 17')) 'Hero shader is missing t
 Assert-True ($heroShader.Contains('"Retail NPR Transmissive": 18')) 'Hero shader is missing the material-local transmissive diagnostic.'
 Assert-True ($heroShader.Contains('"Environment Specular Raw": 19')) 'Hero shader is missing the raw environment-specular diagnostic.'
 Assert-True ($heroShader.Contains('"Environment Specular Final": 20')) 'Hero shader is missing the scaled environment-specular diagnostic.'
-Assert-True (($heroShader.Split('pbrComputeSpecular(').Count - 1) -eq 2) 'Painter environment sampling must remain confined to the Deadlimit probe substitute and explicit PBR baseline view.'
+Assert-True (($heroShader.Split('pbrComputeSpecular(').Count - 1) -eq 1) 'Painter environment sampling must remain confined to the explicit PBR baseline view.'
 Assert-True (($heroShader.Split('envIrradiance(').Count - 1) -eq 1) 'Painter panorama irradiance must remain confined to the explicit PBR baseline view.'
 Assert-True ($heroShader.Contains('environmentSpecular.contribution')) 'Deadlimit shaded composition must include the controlled probe-specular substitute.'
-Assert-True ($heroShader.Contains('dl_environment_specular_strength')) 'Environment specular must expose its calibrated preview strength.'
+Assert-True ($heroShader.Contains('dl_environment_strength')) 'Environment strength must be owned by the unified selector.'
 Assert-True ($heroShader -match 'vec3 linearOpaque = nprLightingComposite \+\s*pbrComputeEmissive' -and
     $heroShader -match 'diffuseShadingOutput\(dl_captured_display\s*\? dlCapturedDisplay\(linearOpaque\)\s*: linearOpaque\)') 'Shaded output must keep both Deadlimit modes on Painter linear surface outputs.'
 Assert-True (-not $heroShader.Contains('#define DISABLE_FRAMEBUFFER_SRGB_CONVERSION')) 'Painter must own the single framebuffer linear-to-sRGB conversion.'

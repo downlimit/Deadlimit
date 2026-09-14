@@ -30,7 +30,7 @@ class EnvironmentReference(unittest.TestCase):
         branch=shader[start:shader.index('float previewRoughness',start)]
         contribution=branch[branch.index('sample.contribution ='):]
         self.assertNotIn('specularOcclusion',contribution)
-        self.assertIn('? sample.raw : vec3(0.0)',contribution)
+        self.assertIn('? sample.raw * dl_environment_strength : vec3(0.0)',contribution)
 
     def test_dominant_direction_endpoints(self):
         normal, reflection = (0,0,1), (0.6,0,0.8)

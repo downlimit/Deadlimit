@@ -31,9 +31,10 @@ assert "uniform SamplerSparse dl_artistic_ao_tex;" in shader
 assert "float painterAmbientOcclusion = getAO(inputs.sparse_coord, true, true);" in shader
 assert "float ambientOcclusionFallback = painterAmbientOcclusion;" in shader
 assert "ambientOcclusionFallback = texture(" in shader
-assert "float ambientOcclusion = dlSampleWithFallback(" in shader
-assert "dl_artistic_ao_tex," in shader
-assert "ambientOcclusionFallback);" in shader
+assert "uniform bool dl_artistic_ao_present;" in shader
+assert "float ambientOcclusion = dl_artistic_ao_present" in shader
+assert "textureSparse(dl_artistic_ao_tex, inputs.sparse_coord).r" in shader
+assert ": ambientOcclusionFallback;" in shader
 
 # The resolved producer must feed the recovered Deadlock consumer topology.
 assert "dlEvaluateBounce(\n    vectors.normal,\n    viewDirection,\n    ambientOcclusion," in shader
