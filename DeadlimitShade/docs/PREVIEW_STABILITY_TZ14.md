@@ -33,9 +33,13 @@ Artistic AO` uses Adobe's `layerstack` API to insert a bottom Fill Layer named
 Set's baked AO mesh map or uniform white. Existing base layers and paint are
 preserved. [Adobe's API history](https://experienceleague.adobe.com/en/docs/substance-3d-dev/painter-python/api/api-overview)
 places layerstack creation in Painter 10.0 (API 0.3.0). The installed Painter
-9.1 has API 0.2.11: its button reports this incompatibility without creating
-an uninitialized channel. Full AO initialization on this host requires Painter
-10+ or a separately approved non-official UI automation path.
+9.1 has API 0.2.11. TЗ 15 verified live through Painter's remote scripting
+endpoint: `alg.layerstack` is undefined, and the exported `alg` namespaces
+contain no layerstack editor. `alg.ui` exposes button/menu hooks, with no
+supported source/channel/bottom-stack editing API. On 9.1 the button now
+creates User1 and makes it authoritative, then instructs the artist to add a
+Fill Layer and assign baked AO manually. No other channel is changed. Full
+automatic AO initialization on this host requires Painter 10+.
 
 No Computer Use or viewport visual PASS was performed for this TЗ. Static
 tests verify the source/consumer topology and parameter wiring; they do not

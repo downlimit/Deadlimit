@@ -775,12 +775,6 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         if not substance_painter.project.is_open():
             self.status_label.setText("Open a Painter project first.")
             return
-        if painter_layerstack is None:
-            self.status_label.setText(
-                "Automatic Artistic AO Base needs Painter 10+ (official layerstack API). "
-                "Painter 9.1 cannot create or wire a Fill Layer through its supported API; "
-                "no channel or paint was changed.")
-            return
         try:
             stacks = self._artistic_ao_stacks()
             created = 0
@@ -792,6 +786,8 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
                         substance_painter.textureset.ChannelFormat.L8,
                         ARTISTIC_AO_LABEL)
                     created += 1
+                if painter_layerstack is None:
+                    continue
                 roots = painter_layerstack.get_root_layer_nodes(stack)
                 if any(node.get_name() == ARTISTIC_AO_BASE_LABEL for node in roots):
                     continue
@@ -809,6 +805,11 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
                                     painter_colormanagement.Color(1.0, 1.0, 1.0))
                 bases += 1
             self._bind_artistic_ao_presence(stacks)
+            if painter_layerstack is None:
+                self.status_label.setText(
+                    "Artistic AO channel created. Add a Fill Layer and assign "
+                    "baked AO to Deadlimit Artistic AO.")
+                return
             self.status_label.setText(
                 "Deadlimit Artistic AO ready on {} Texture Set(s); {} channels and {} "
                 "baked/white base Fill Layers created.".format(len(stacks), created, bases))
