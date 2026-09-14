@@ -89,7 +89,7 @@ Painter's surface-shader API cannot create or expand the outline geometry. The
 mesh-processing step is therefore required, but it is an implementation detail
 of the installed workflow rather than an artist-authored preparation step.
 The shipped workflow uses the bundled native mesh processor. It does not
-require 3ds Max, Blender or another user-installed DCC.
+require an Autodesk DCC, Blender or another user-installed DCC.
 
 ## Shader inventory
 
@@ -466,7 +466,7 @@ the same mechanism works on at least one materially different hero.
 The production form of this milestone is a standalone preview-mesh processor.
 It accepts a supported Painter source format, writes a canonical disposable
 Painter-compatible scene, and preserves stable source material/Texture Set
-identities. FBX-native validation through 3ds Max is the current correctness
+identities. FBX-native validation through the Autodesk DCC is the current correctness
 oracle for normals, transforms, material assignments and winding; it is not a
 runtime dependency of the finished artist workflow.
 
@@ -693,7 +693,7 @@ acceptance result.
   preserving reload contract as a reusable tool;
 - Painter visually passed width changes `0.04 -> 0.08 -> 0.04`; each reload
   retained the hero/outline mapping and Ivy diagnostic profile values;
-- a 3ds Max batch bridge exported only `ivy_ivy*` nodes from the controlled FBX
+- an Autodesk DCC batch bridge exported only `ivy_ivy*` nodes from the controlled FBX
   with normals, UVs and materials, without modifying the source;
 - the FBX-native inverted-hull generator now emits a disposable 3-mm Ivy shell
   with two source nodes and 32,084 source faces; a full-face-corner split keeps
