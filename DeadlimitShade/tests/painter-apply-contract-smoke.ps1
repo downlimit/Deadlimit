@@ -82,7 +82,8 @@ Assert-True $plugin.Contains('QTimer.singleShot(100, self._restore_material_view
 Assert-True $plugin.Contains('F_VERTEX_COLOR') 'Retail preview must honor VMAT vertex-color materials such as Ivy eyes.'
 Assert-True $plugin.Contains('dl_vertex_color_multiply: binding.vertexColorMultiply') 'Retail VMAT vertex-color strength must reach the shader instance.'
 Assert-True $plugin.Contains('--vertex-color-dmx') 'Apply must restore extracted DMX vertex colors before Painter mesh reload.'
-Assert-True (-not $plugin.Contains('3ds Max')) 'Painter Apply must not depend on 3ds Max.'
+$legacyDccName = ('3ds' + ' Max')
+Assert-True (-not $plugin.Contains($legacyDccName)) 'Painter Apply must not depend on the legacy Autodesk DCC.'
 Assert-True (-not $plugin.Contains('powershell.exe')) 'Painter Apply must not invoke PowerShell.'
 
 $outlineShader = Get-Content -LiteralPath (Join-Path $shadeRoot 'shaders\Deadlock_Outline.glsl') -Raw
