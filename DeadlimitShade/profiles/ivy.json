@@ -58,6 +58,15 @@
     "controlsEvidence": "calibrated-approximation",
     "evidence": "calibrated-approximation"
   },
+  "rim": {
+    "enabled": true,
+    "cutoff": 1.0,
+    "sharpness": 0.01,
+    "strength": 0.3,
+    "upRamp": [0.0, 1.0],
+    "runtimeSource": "reduced-csdk-asset-browser",
+    "evidence": "confirmed-pipeline-runtime"
+  },
   "previewLighting": {
     "keyDirection": [
       0.494,

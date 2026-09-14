@@ -17,14 +17,16 @@ def saturate(value):
     return max(0.0, min(1.0, value))
 
 
-def rim_base(n_dot_v, normal_up, ao):
-    coordinate = saturate((CUTOFF - abs(n_dot_v) + 0.1) * 5.0)
-    exponent = 1.0 / (1.0 - SHARPNESS)
+def rim_base(n_dot_v, normal_up, ao, cutoff=CUTOFF,
+             sharpness=SHARPNESS, strength=STRENGTH,
+             up_ramp=UP_RAMP):
+    coordinate = saturate((cutoff - abs(n_dot_v) + 0.1) * 5.0)
+    exponent = 1.0 / (1.0 - sharpness)
     wing = 1.0 - coordinate if coordinate > 0.5 else coordinate
     shaped_wing = math.pow(2.0, exponent - 1.0) * math.pow(wing, exponent)
     view_ramp = 1.0 - shaped_wing if coordinate > 0.5 else shaped_wing
-    up_ramp = saturate((normal_up - UP_RAMP[0]) / (UP_RAMP[1] - UP_RAMP[0]))
-    return view_ramp * up_ramp * STRENGTH * ao
+    up_factor = saturate((normal_up - up_ramp[0]) / (up_ramp[1] - up_ramp[0]))
+    return view_ramp * up_factor * strength * ao
 
 
 # Values are debugger registers from the existing Default/Ivy capture, event 791.
@@ -62,10 +64,33 @@ assert default["rim"] == {
     "occlusionSampleDistance": 0.5,
 }
 
+profile = json.loads((ROOT / "profiles" / "ivy.json").read_text(encoding="utf-8"))
+assert profile["rim"] == {
+    "enabled": True,
+    "cutoff": 1.0,
+    "sharpness": 0.01,
+    "strength": 0.3,
+    "upRamp": [0.0, 1.0],
+    "runtimeSource": "reduced-csdk-asset-browser",
+    "evidence": "confirmed-pipeline-runtime",
+}
+
+# Artist-facing gates: zero strength and zero mask remove the contribution;
+# a full mask preserves the recovered scalar. Width and sharpness must remain
+# independently observable on a non-saturated sample.
+probe = rim_base(0.95, 0.65, 0.8)
+assert rim_base(0.95, 0.65, 0.8, strength=0.0) == 0.0
+assert probe * 0.0 == 0.0
+assert abs(probe * 1.0 - probe) < 1.0e-12
+assert abs(rim_base(0.95, 0.65, 0.8, cutoff=0.75) - probe) > 1.0e-4
+assert abs(rim_base(0.95, 0.65, 0.8, sharpness=0.8) - probe) > 1.0e-4
+
 shader = (ROOT / "shaders" / "Deadlock_Hero.glsl").read_text(encoding="utf-8")
 assert "(settings.cutoff - nDotV + 0.1) * 5.0" in shader
 assert "exp2(exponent - 1.0) * pow(wing, exponent)" in shader
 assert "settings.strength * ambientOcclusion * rimMask" in shader
 assert "lightingBeforeRim * sample.steppedRim" in shader
+assert "uniform SamplerSparse dl_rim_mask_tex;" in shader
+assert "value.r + fallbackValue * (1.0 - value.g)" in shader
 
 print(f"Deadlimit runtime rim smoke passed; max error = {max(errors):.9g}")

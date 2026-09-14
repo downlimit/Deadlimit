@@ -61,6 +61,11 @@ struct DLCharacterProfile
   float directSpecularTint;
   float directSpecularRoughnessBias;
   float directSpecularReflectance;
+  bool rimEnabled;
+  float rimCutoff;
+  float rimSharpness;
+  float rimStrength;
+  vec2 rimUpRamp;
   vec3 keyLightDirection;
   vec3 keyLightColor;
   float keyLightIntensity;
@@ -108,6 +113,11 @@ DLCharacterProfile dlCharacterProfileIvy()
   profile.directSpecularTint = 0.35;
   profile.directSpecularRoughnessBias = 0.18;
   profile.directSpecularReflectance = 0.025;
+  profile.rimEnabled = true;
+  profile.rimCutoff = 1.0;
+  profile.rimSharpness = 0.01;
+  profile.rimStrength = 0.3;
+  profile.rimUpRamp = vec2(0.0, 1.0);
   profile.keyLightDirection = vec3(0.494, 0.766, -0.411);
   profile.keyLightColor = vec3(1.0, 1.0, 1.0);
   profile.keyLightIntensity = 1.6;
@@ -148,6 +158,11 @@ uniform SamplerSparse metallic_tex;
 
 //: param auto channel_specularlevel
 uniform SamplerSparse specularlevel_tex;
+
+// Painter user channels are paintable and exportable document maps. Sparse
+// sampling preserves the retail/default fallback while User0 is absent.
+//: param auto channel_user0
+uniform SamplerSparse dl_rim_mask_tex;
 
 // Optional default-character preview maps. They are decoded locally from the
 // artist's Deadlimit 0source extraction or its recorded read-only retail VPK.
@@ -292,8 +307,8 @@ uniform float dl_npr_bounce_transmissive_strength;
 //: param custom { "default": 0.55, "label": "Bounce AO Strength", "min": 0.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
 uniform float dl_npr_bounce_ao_strength;
 
-// The direct-specular and rim equations below follow the reflected retail
-// static-combo-24/dynamic-0 instruction graph. These exposed numeric values
+// The direct-specular equation below follows the reflected retail
+// static-combo-24/dynamic-0 instruction graph. Its exposed numeric values
 // remain Painter calibration values until a runtime constants capture exists.
 //: param custom { "default": true, "label": "NPR Direct Specular", "group": "Deadlimit NPR Calibration" }
 uniform bool dl_npr_direct_specular;
@@ -313,22 +328,24 @@ uniform float dl_npr_direct_specular_roughness_bias;
 //: param custom { "default": 0.055, "label": "Specular Reflectance", "min": 0.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
 uniform float dl_npr_direct_specular_reflectance;
 
-//: param custom { "default": true, "label": "NPR Rim Lighting", "group": "Deadlimit NPR Calibration" }
+// Runtime-backed Ivy defaults are applied by Preview as Deadlock. These remain
+// editable after application and are preserved by subsequent previews.
+//: param custom { "default": true, "label": "Enable", "group": "Deadlimit Rim Light" }
 uniform bool dl_npr_rim_lighting;
 
-//: param custom { "default": 1.0, "label": "Rim Cutoff", "min": 0.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
-uniform float dl_npr_rim_cutoff;
-
-//: param custom { "default": 0.01, "label": "Rim Sharpness", "min": 0.0, "max": 0.99, "group": "Deadlimit NPR Calibration" }
-uniform float dl_npr_rim_sharpness;
-
-//: param custom { "default": 0.3, "label": "Rim Strength", "min": 0.0, "max": 8.0, "group": "Deadlimit NPR Calibration" }
+//: param custom { "default": 0.3, "label": "Strength", "min": 0.0, "max": 8.0, "group": "Deadlimit Rim Light" }
 uniform float dl_npr_rim_strength;
 
-//: param custom { "default": 0.0, "label": "Rim Up Ramp Start", "min": -1.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
+//: param custom { "default": 1.0, "label": "Cutoff / Width", "min": 0.0, "max": 1.0, "group": "Deadlimit Rim Light" }
+uniform float dl_npr_rim_cutoff;
+
+//: param custom { "default": 0.01, "label": "Sharpness", "min": 0.0, "max": 0.99, "group": "Deadlimit Rim Light" }
+uniform float dl_npr_rim_sharpness;
+
+//: param custom { "default": 0.0, "label": "Up Ramp Min", "min": -1.0, "max": 1.0, "group": "Deadlimit Rim Light" }
 uniform float dl_npr_rim_up_ramp_start;
 
-//: param custom { "default": 1.0, "label": "Rim Up Ramp End", "min": -1.0, "max": 1.0, "group": "Deadlimit NPR Calibration" }
+//: param custom { "default": 1.0, "label": "Up Ramp Max", "min": -1.0, "max": 1.0, "group": "Deadlimit Rim Light" }
 uniform float dl_npr_rim_up_ramp_end;
 
 //: param custom {
@@ -496,7 +513,7 @@ uniform int dl_lighting_input_mode;
 //:     "Rim Contribution": 13,
 //:     "NPR Lighting Composite": 14,
 //:     "Painter PBR Baseline": 15,
-//:     "Retail Rim Mask": 16,
+//:     "Deadlimit Rim Mask": 16,
 //:     "NPR Bounce": 17,
 //:     "Retail NPR Transmissive": 18,
 //:     "Environment Specular Raw": 19,
@@ -717,16 +734,6 @@ struct DLRimSettings
 DLRimSettings dlActiveRimSettings()
 {
   DLRimSettings settings;
-  if (dl_lighting_preset_mode)
-  {
-    settings.enabled = dl_preset_rim_enabled;
-    settings.cutoff = dl_preset_rim_cutoff;
-    settings.sharpness = dl_preset_rim_sharpness;
-    settings.strength = dl_preset_rim_strength;
-    settings.upRamp = dl_preset_rim_up_ramp;
-    return settings;
-  }
-
   settings.enabled = dl_npr_rim_lighting;
   settings.cutoff = dl_npr_rim_cutoff;
   settings.sharpness = dl_npr_rim_sharpness;
@@ -779,6 +786,13 @@ DLCharacterProfile dlCustomCharacterProfile()
   profile.directSpecularTint = dl_npr_direct_specular_tint;
   profile.directSpecularRoughnessBias = dl_npr_direct_specular_roughness_bias;
   profile.directSpecularReflectance = dl_npr_direct_specular_reflectance;
+  profile.rimEnabled = dl_npr_rim_lighting;
+  profile.rimCutoff = dl_npr_rim_cutoff;
+  profile.rimSharpness = dl_npr_rim_sharpness;
+  profile.rimStrength = dl_npr_rim_strength;
+  profile.rimUpRamp = vec2(
+    dl_npr_rim_up_ramp_start,
+    dl_npr_rim_up_ramp_end);
   profile.keyLightDirection = dl_key_light_direction;
   profile.keyLightColor = dl_key_light_color;
   profile.keyLightIntensity = dl_key_light_intensity;
@@ -1211,6 +1225,18 @@ DLRimSample dlEvaluateRim(
   return sample;
 }
 
+float dlSampleWithFallback(
+  SamplerSparse samplerSparse,
+  SparseCoord coord,
+  float fallbackValue)
+{
+  // Painter's sparse sample stores the resolved value in R and channel
+  // residency in G. This is the same supported fallback mechanism used by
+  // Painter's shipped Dota shader for optional user channels.
+  vec2 value = textureSparse(samplerSparse, coord).rg;
+  return clamp(value.r + fallbackValue * (1.0 - value.g), 0.0, 1.0);
+}
+
 void dlDebugOutput(vec3 value)
 {
   albedoOutput(vec3(0.0));
@@ -1295,6 +1321,10 @@ void shade(V2F inputs)
     retailRimMask = 1.0;
     retailTransmissiveColor = characterProfile.referenceTint;
   }
+  float rimMask = dlSampleWithFallback(
+    dl_rim_mask_tex,
+    inputs.sparse_coord,
+    retailRimMask);
 
   DLDirectDiffuseSample keyDirectDiffuse = dlEvaluateDirectDiffuse(
     vectors.normal,
@@ -1474,7 +1504,7 @@ void shade(V2F inputs)
   DLRimSample rim = dlEvaluateRim(
     vectors.normal,
     viewDirection,
-    retailRimMask,
+    rimMask,
     ambientOcclusion,
     lightingBeforeRim,
     rimSettings);
@@ -1510,7 +1540,7 @@ void shade(V2F inputs)
   }
   if (dl_debug_view == 16)
   {
-    dlDebugOutput(vec3(retailRimMask));
+    dlDebugOutput(vec3(rimMask));
     return;
   }
   if (dl_debug_view == 17)

@@ -567,6 +567,29 @@ rimFactor = viewRamp * upRamp * strength * authoredAO * tint_rim.g * depthOcclus
 rimColor = (directDiffuseLighting + bounceLighting) * rimFactor
 ```
 
+## Painter rim authoring
+
+Character profiles now own the starting rim controls. Ivy stores the captured
+Reduced-CSDK values `enabled=true`, `cutoff=1`, `sharpness=0.01`,
+`strength=0.3`, and `upRamp=[0,1]`. **Preview as Deadlock** applies those values
+to a new shader instance. Existing values from the same character are retained
+on subsequent previews, so Shader Settings remains an editable override layer.
+**Reset to Character Preset** explicitly reapplies the profile values.
+
+`Deadlimit Rim Mask` is Painter `User0`, stored as a linear `L8` paintable
+channel. The shader uses Painter's sparse-channel validity lane to resolve:
+
+```text
+painted Deadlimit Rim Mask
+  -> retail g_tTintMaskRimLightMask.G when User0 is absent
+  -> 1 when neither authored nor retail data exists
+```
+
+Creating or painting User0 changes only the Painter document channel. Retail
+textures remain read-only. The Deadlimit panel can export every authored User0
+channel as an 8-bit grayscale `$textureSet_Deadlimit_Rim_Mask.png`; VMAT and
+package wiring remain outside this stage.
+
 Before final material modulation, retail applies this color-dependent response
 to bounce lighting only (`x = materialAO * screenDfAO`):
 

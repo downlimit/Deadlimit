@@ -38,6 +38,22 @@ There is no manual shader-instance or texture-map setup.
 - `Material / Retail` plus `Shaded` is the artist-facing preview;
 - `Painter PBR Baseline` provides a same-scene comparison.
 
+## Authoring the rim mask
+
+After **Preview as Deadlock**, expand **Deadlimit Rim Light** in Shader
+Settings to edit Enable, Strength, Cutoff / Width, Sharpness and the two Up Ramp
+limits. The values start from the selected character profile. Reapplying the
+same character preserves edits; use **Reset to Character Preset** in the
+Deadlimit Shade panel when the captured defaults are wanted again.
+
+The retail `tint_rim.g` mask remains active until an artist creates the Painter
+channel. Click **Create Paintable Rim Mask** to add the linear grayscale
+`Deadlimit Rim Mask` (`User0`) channel to non-outline Texture Sets. It can then
+be enabled on paint/fill layers like any other Painter channel. Zero removes rim
+locally and one allows the full recovered rim response. **Export Rim Mask
+PNGs…** writes the authored channel as a separate grayscale PNG per Texture
+Set; it does not modify retail textures or build a VMAT/package.
+
 The current Ivy look is a calibrated Painter approximation. The dock says so
 explicitly; profile numbers are not claimed as retail runtime values.
 

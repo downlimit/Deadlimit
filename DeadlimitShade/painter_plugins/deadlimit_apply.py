@@ -10,12 +10,16 @@ from PySide2 import QtCore, QtWidgets
 
 import substance_painter.js
 import substance_painter.display
+import substance_painter.export
 import substance_painter.project
 import substance_painter.resource
+import substance_painter.textureset
 import substance_painter.ui
 
 
 PLUGIN_WIDGETS = []
+RIM_MASK_CHANNEL = substance_painter.textureset.ChannelType.User0
+RIM_MASK_LABEL = "Deadlimit Rim Mask"
 
 
 def _shade_root():
@@ -100,6 +104,18 @@ def _lighting_shader_parameters(preset, environment_bound):
     }
 
 
+def _rim_shader_parameters(profile):
+    rim = profile["rim"]
+    return {
+        "dl_npr_rim_lighting": bool(rim["enabled"]),
+        "dl_npr_rim_cutoff": float(rim["cutoff"]),
+        "dl_npr_rim_sharpness": float(rim["sharpness"]),
+        "dl_npr_rim_strength": float(rim["strength"]),
+        "dl_npr_rim_up_ramp_start": float(rim["upRamp"][0]),
+        "dl_npr_rim_up_ramp_end": float(rim["upRamp"][1]),
+    }
+
+
 def _converter_path():
     candidates = [
         _shade_root() / "tools" / "Deadlimit.MeshPreview.exe",
@@ -181,7 +197,7 @@ def _import_or_reuse_project_shader(path, role):
 
 
 def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None,
-                              lighting_parameters=None):
+                              lighting_parameters=None, rim_parameters=None):
     character_id = int(profile["id"])
     hero_texture_sets = json.dumps(profile["painterApply"]["heroTextureSets"])
     retail_bindings_json = json.dumps(retail_bindings or {})
@@ -189,6 +205,7 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None,
     lighting_parameters = dict(lighting_parameters or {})
     lighting_preset_name = lighting_parameters.pop("presetName", "")
     lighting_parameters_json = json.dumps(lighting_parameters)
+    rim_parameters_json = json.dumps(rim_parameters or _rim_shader_parameters(profile))
     return r"""
 (function() {
   alg.resources.refreshShelves();
@@ -201,6 +218,41 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None,
   var retailBindings = RETAIL_BINDINGS;
   var shaderResources = SHADER_RESOURCES;
   var lightingParameters = LIGHTING_PARAMETERS;
+  var rimDefaults = RIM_PARAMETERS;
+  var rimParameterNames = Object.keys(rimDefaults);
+  var previousInstances = alg.shaders.instances();
+  function parameterValue(parameters, name) {
+    var parameter = parameters[name];
+    return parameter && Object.prototype.hasOwnProperty.call(parameter, "value")
+      ? parameter.value
+      : undefined;
+  }
+  function preservedRim(label) {
+    var matches = previousInstances.filter(function(item) { return item.label === label; });
+    var instance = matches[matches.length - 1];
+    if (!instance) return {};
+    var parameters = alg.shaders.parameters(instance.id);
+    if (parameterValue(parameters, "dl_character") !== CHARACTER_ID) return {};
+    var result = {};
+    rimParameterNames.forEach(function(name) {
+      var value = parameterValue(parameters, name);
+      if (value !== undefined) result[name] = value;
+    });
+    return result;
+  }
+  function rimParametersFor(label) {
+    var result = {};
+    rimParameterNames.forEach(function(name) { result[name] = rimDefaults[name]; });
+    var preserved = preservedRim(label);
+    Object.keys(preserved).forEach(function(name) { result[name] = preserved[name]; });
+    return result;
+  }
+  var previousHeroRim = rimParametersFor("Deadlimit Hero");
+  var previousRetailRim = {};
+  Object.keys(retailBindings).forEach(function(textureSetName) {
+    previousRetailRim[retailBindings[textureSetName].instance] =
+      rimParametersFor(retailBindings[textureSetName].instance);
+  });
   var sourceLabel = null;
   heroTextureSets.some(function(name) {
     if (current.texturesets[name]) {
@@ -276,6 +328,9 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None,
   Object.keys(lightingParameters).forEach(function(name) {
     heroParameters[name] = lightingParameters[name];
   });
+  Object.keys(previousHeroRim).forEach(function(name) {
+    heroParameters[name] = previousHeroRim[name];
+  });
   alg.shaders.setParameters(heroInstance.id, heroParameters);
   alg.shaders.setParameters(outlineInstance.id, {
     dl_outline_character: CHARACTER_ID,
@@ -308,6 +363,9 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None,
     Object.keys(lightingParameters).forEach(function(name) {
       retailParameters[name] = lightingParameters[name];
     });
+    Object.keys(previousRetailRim[binding.instance]).forEach(function(name) {
+      retailParameters[name] = previousRetailRim[binding.instance][name];
+    });
     alg.shaders.setParameters(instance.id, retailParameters);
   });
   return JSON.stringify({
@@ -318,7 +376,7 @@ def _shader_assignment_script(profile, retail_bindings=None, shader_urls=None,
     lightingPreset: LIGHTING_PRESET_NAME
   });
 })()
-""".replace("CHARACTER_ID", str(character_id)).replace("HERO_TEXTURE_SETS", hero_texture_sets).replace("RETAIL_BINDINGS", retail_bindings_json).replace("SHADER_RESOURCES", shader_urls_json).replace("LIGHTING_PARAMETERS", lighting_parameters_json).replace("LIGHTING_PRESET_NAME", json.dumps(lighting_preset_name))
+""".replace("CHARACTER_ID", str(character_id)).replace("HERO_TEXTURE_SETS", hero_texture_sets).replace("RETAIL_BINDINGS", retail_bindings_json).replace("SHADER_RESOURCES", shader_urls_json).replace("LIGHTING_PARAMETERS", lighting_parameters_json).replace("RIM_PARAMETERS", rim_parameters_json).replace("LIGHTING_PRESET_NAME", json.dumps(lighting_preset_name))
 
 
 class DeadlimitApplyDock(QtWidgets.QWidget):
@@ -397,6 +455,18 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self.apply_button.clicked.connect(self.apply_deadlimit)
         self.environment_button = QtWidgets.QPushButton("Load CSDK environment bundle…", self)
         self.environment_button.clicked.connect(self._load_captured_environment)
+        self.rim_reset_button = QtWidgets.QPushButton(
+            "Reset to Character Preset", self)
+        self.rim_reset_button.setObjectName("DeadlimitRimReset")
+        self.rim_reset_button.clicked.connect(self._reset_rim_to_character_preset)
+        self.rim_mask_button = QtWidgets.QPushButton(
+            "Create Paintable Rim Mask", self)
+        self.rim_mask_button.setObjectName("DeadlimitRimMaskCreate")
+        self.rim_mask_button.clicked.connect(self._create_rim_mask_channels)
+        self.rim_export_button = QtWidgets.QPushButton(
+            "Export Rim Mask PNGs…", self)
+        self.rim_export_button.setObjectName("DeadlimitRimMaskExport")
+        self.rim_export_button.clicked.connect(self._export_rim_masks)
         self.progress = QtWidgets.QProgressBar(self)
         self.progress.setRange(0, 0)
         self.progress.setVisible(False)
@@ -411,11 +481,22 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         form.addRow("Lighting Preset", self.lighting_preset_combo)
         form.addRow("Lighting Inputs", self.lighting_input_combo)
         form.addRow("Deadlimit View", self.preview_combo)
+        rim_group = QtWidgets.QGroupBox("Deadlimit Rim Light", self)
+        rim_layout = QtWidgets.QVBoxLayout(rim_group)
+        rim_help = QtWidgets.QLabel(
+            "Edit Enable, Strength, Cutoff / Width, Sharpness and Up Ramp in "
+            "Shader Settings. User0 is the paintable Deadlimit Rim Mask.", rim_group)
+        rim_help.setWordWrap(True)
+        rim_layout.addWidget(rim_help)
+        rim_layout.addWidget(self.rim_reset_button)
+        rim_layout.addWidget(self.rim_mask_button)
+        rim_layout.addWidget(self.rim_export_button)
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(self.instructions_label)
         layout.addLayout(form)
         layout.addWidget(self.apply_button)
         layout.addWidget(self.environment_button)
+        layout.addWidget(rim_group)
         layout.addWidget(self.progress)
         layout.addWidget(self.status_label)
         layout.addStretch(1)
@@ -424,6 +505,131 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
     def _update_preview_button(self, _index=None):
         character = self.character_combo.currentText() or "character"
         self.apply_button.setText("Preview {} as Deadlock".format(character))
+
+    def _reset_rim_to_character_preset(self):
+        if not substance_painter.project.is_open():
+            self.status_label.setText("Open a Painter project first.")
+            return
+        profile = self.character_combo.currentData()
+        parameters = _rim_shader_parameters(profile)
+        script = r'''(function(parameters) {
+          var changed = 0;
+          alg.shaders.instances().forEach(function(instance) {
+            if (!/^Deadlimit (Hero|Retail)/.test(instance.label)) return;
+            var current = alg.shaders.parameters(instance.id);
+            if (!Object.prototype.hasOwnProperty.call(current, "dl_npr_rim_strength")) return;
+            alg.shaders.setParameters(instance.id, parameters);
+            changed++;
+          });
+          return changed;
+        })(PARAMETERS)'''.replace("PARAMETERS", json.dumps(parameters))
+        try:
+            changed = int(substance_painter.js.evaluate(script))
+            if changed:
+                self.status_label.setText(
+                    "Rim reset to {} character preset on {} shader instance(s).".format(
+                        profile["displayName"], changed))
+            else:
+                self.status_label.setText("Preview as Deadlock before resetting rim values.")
+        except Exception as exc:
+            self.status_label.setText("Rim preset reset failed: {}".format(exc))
+
+    def _rim_mask_stacks(self):
+        stacks = []
+        conflicts = []
+        for texture_set in substance_painter.textureset.all_texture_sets():
+            if texture_set.name() == "__deadlimit_outline":
+                continue
+            try:
+                stack = texture_set.get_stack()
+            except ValueError:
+                continue
+            if stack.has_channel(RIM_MASK_CHANNEL):
+                label = stack.get_channel(RIM_MASK_CHANNEL).label()
+                if label != RIM_MASK_LABEL:
+                    conflicts.append("{} ({})".format(texture_set.name(), label or "User0"))
+                    continue
+            stacks.append((texture_set, stack))
+        if conflicts:
+            raise RuntimeError(
+                "User0 is already used by another channel: {}".format(
+                    ", ".join(conflicts)))
+        return stacks
+
+    def _create_rim_mask_channels(self):
+        if not substance_painter.project.is_open():
+            self.status_label.setText("Open a Painter project first.")
+            return
+        try:
+            stacks = self._rim_mask_stacks()
+            created = 0
+            for _texture_set, stack in stacks:
+                if not stack.has_channel(RIM_MASK_CHANNEL):
+                    stack.add_channel(
+                        RIM_MASK_CHANNEL,
+                        substance_painter.textureset.ChannelFormat.L8,
+                        RIM_MASK_LABEL)
+                    created += 1
+            self.status_label.setText(
+                "Deadlimit Rim Mask ready on {} Texture Set(s); {} created.".format(
+                    len(stacks), created))
+        except Exception as exc:
+            self.status_label.setText("Rim Mask channel creation failed: {}".format(exc))
+
+    def _export_rim_masks(self):
+        if not substance_painter.project.is_open():
+            self.status_label.setText("Open a Painter project first.")
+            return
+        try:
+            stacks = [
+                (texture_set, stack)
+                for texture_set, stack in self._rim_mask_stacks()
+                if stack.has_channel(RIM_MASK_CHANNEL)
+            ]
+            if not stacks:
+                self.status_label.setText("Create a paintable Deadlimit Rim Mask first.")
+                return
+            output = QtWidgets.QFileDialog.getExistingDirectory(
+                self, "Export Deadlimit Rim Mask PNGs")
+            if not output:
+                return
+            preset_name = "Deadlimit Rim Mask PNG"
+            map_name = "$textureSet_Deadlimit_Rim_Mask"
+            config = {
+                "exportPath": output,
+                "exportShaderParams": False,
+                "exportPresets": [{
+                    "name": preset_name,
+                    "maps": [{
+                        "fileName": map_name,
+                        "channels": [{
+                            "destChannel": "L",
+                            "srcChannel": "L",
+                            "srcMapType": "documentMap",
+                            "srcMapName": "user0",
+                        }],
+                    }],
+                }],
+                "exportList": [{
+                    "rootPath": texture_set.name(),
+                    "exportPreset": preset_name,
+                } for texture_set, _stack in stacks],
+                "exportParameters": [{
+                    "parameters": {
+                        "fileFormat": "png",
+                        "bitDepth": "8",
+                        "dithering": False,
+                        "paddingAlgorithm": "infinite",
+                    },
+                }],
+            }
+            result = substance_painter.export.export_project_textures(config)
+            exported = sum(len(paths) for paths in result.textures.values())
+            self.status_label.setText(
+                "Exported {} Deadlimit Rim Mask PNG(s) to {}.".format(
+                    exported, output))
+        except Exception as exc:
+            self.status_label.setText("Rim Mask export failed: {}".format(exc))
 
     def _load_captured_environment(self):
         path, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -491,6 +697,9 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
         self.lighting_input_combo.setEnabled(not busy)
         self.preview_combo.setEnabled(not busy)
         self.apply_button.setEnabled(not busy)
+        self.rim_reset_button.setEnabled(not busy)
+        self.rim_mask_button.setEnabled(not busy)
+        self.rim_export_button.setEnabled(not busy)
         self.progress.setVisible(busy)
         self.status_label.setText(text)
 
@@ -929,14 +1138,14 @@ class DeadlimitApplyDock(QtWidgets.QWidget):
             }
             result = substance_painter.js.evaluate(_shader_assignment_script(
                 self._selected_profile, self._retail_bindings, shader_urls,
-                lighting_parameters))
+                lighting_parameters, _rim_shader_parameters(self._selected_profile)))
             summary = json.loads(result)
             profile = self._selected_profile
             elapsed_seconds = self._elapsed.elapsed() / 1000.0
             self._status_timer.stop()
             environment_status = "CSDK environment bound" if environment_bound else "CSDK environment unavailable; reflections disabled"
             self._set_busy(False, "Deadlock preview active for {} / {} · {:.1f} s\n"
-                                  "{}; rim remains disabled where CSDK preset data is absent.".format(
+                                  "{}; editable rim values loaded from the character preset.".format(
                 profile["displayName"], preset["name"], elapsed_seconds, environment_status))
             self.setProperty("deadlimitLastApply", json.dumps(summary))
         except Exception as exc:

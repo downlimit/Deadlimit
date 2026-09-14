@@ -46,6 +46,11 @@ struct DLCharacterProfile
   float directSpecularTint;
   float directSpecularRoughnessBias;
   float directSpecularReflectance;
+  bool rimEnabled;
+  float rimCutoff;
+  float rimSharpness;
+  float rimStrength;
+  vec2 rimUpRamp;
   vec3 keyLightDirection;
   vec3 keyLightColor;
   float keyLightIntensity;
@@ -93,6 +98,11 @@ DLCharacterProfile dlCharacterProfileIvy()
   profile.directSpecularTint = 0.35;
   profile.directSpecularRoughnessBias = 0.18;
   profile.directSpecularReflectance = 0.025;
+  profile.rimEnabled = true;
+  profile.rimCutoff = 1.0;
+  profile.rimSharpness = 0.01;
+  profile.rimStrength = 0.3;
+  profile.rimUpRamp = vec2(0.0, 1.0);
   profile.keyLightDirection = vec3(0.494, 0.766, -0.411);
   profile.keyLightColor = vec3(1.0, 1.0, 1.0);
   profile.keyLightIntensity = 1.6;
