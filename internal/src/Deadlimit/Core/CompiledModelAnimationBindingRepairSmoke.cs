@@ -160,7 +160,6 @@ internal static class CompiledModelAnimationBindingRepairSmoke
 
             var meshResource = "models/particle/ability_mesh.dmx";
             var animationResource = "models/particle/ability_animation.dmx";
-            var orphanResource = "models/particle/orphan.dmx";
             File.WriteAllText(Path.Combine(sourceFolder, "ability_mesh.dmx"), "retail mesh");
             File.WriteAllText(Path.Combine(sourceFolder, "ability_animation.dmx"), "retail animation");
             File.WriteAllText(Path.Combine(sourceFolder, "orphan.dmx"), "orphan");
