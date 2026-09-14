@@ -154,7 +154,12 @@ static int ApplyDmxVertexColors(Scene scene, string path)
                     CanonicalMaterial(scene.Materials[mesh.MaterialIndex].Name) == material &&
                     mesh.Faces.Count == dmxFaces.Count)
                 .ToArray();
-            if (candidates.Length != 1)
+            // Source DMX can contain technical/helper face sets that are not
+            // present in the Painter FBX. They carry no transferable target
+            // geometry and should not make the whole preview fail.
+            if (candidates.Length == 0)
+                continue;
+            if (candidates.Length > 1)
                 throw new InvalidDataException(
                     $"DMX vertex colors for '{material}' matched {candidates.Length} FBX meshes; expected exactly one.");
             var target = candidates[0];
