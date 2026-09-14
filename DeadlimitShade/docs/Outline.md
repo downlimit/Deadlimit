@@ -37,6 +37,13 @@ Current Adobe references:
 
 ## Prototype architecture
 
+Retail evidence currently confirms `F_SOLID_COLOR_OUTLINE`, a separate outline
+dynamic path, outline tint/additive/mask parameters and the presence of the
+retail `pbr` vertex module. The repository has not yet proved the vertex-stage
+expansion equation or width units. The Painter geometry path below is therefore
+a literal inverted-hull prototype whose remaining retail-parity claims are
+evidence gated.
+
 Deadlimit Shade prepares a temporary Painter-only mesh containing:
 
 1. unchanged original render geometry;
@@ -147,6 +154,14 @@ The prototype must answer these before automatic shell generation is considered 
 ## Production isolation
 
 The shell is derived preview data.
+
+The OBJ prototype is implemented by `tools/New-OutlinePreviewMesh.ps1`. It
+preserves the complete source OBJ text and appends shell-only vertices and
+faces. `SplitRenderNormal` is the literal/default path: each render vertex moves
+along its existing normal and shell winding is reversed. `SourcePosition` and
+`WeldedPosition` are diagnostic experiments prompted by visible boundaries;
+they do not define the product algorithm. Ivy proved that blanket coordinate
+welding is unsafe because some coincident positions have opposing normals.
 
 It must live outside the authoritative source/production asset path and must never be used by:
 

@@ -1,0 +1,156 @@
+{
+  "schemaVersion": 1,
+  "id": 1,
+  "key": "ivy",
+  "displayName": "Ivy",
+  "status": "calibration",
+  "retailReference": {
+    "appId": 1422450,
+    "buildId": 24882156,
+    "material": "models/heroes_staging/tengu/tengu_v2/materials/ivy_bodyv3.vmat_c",
+    "materialSha256": "74815a7acecd73483268d2b5a4ea0db459e9c8e3f86f3b7552fc753659f406c1",
+    "pixelShaderSha256": "eceff13193baccd5310db90ac9b3dd36928d941753c98494e349fa9e29826930"
+  },
+  "directDiffuse": {
+    "enabled": true,
+    "steps": 2.0,
+    "stepSharpness": 0.9,
+    "pbrBlend": 0.25,
+    "wrap": 0.8,
+    "normalization": 0.625,
+    "runtimeSource": "reduced-csdk-asset-browser",
+    "evidence": "confirmed-pipeline-runtime"
+  },
+  "bounceLighting": {
+    "enabled": true,
+    "diffuseRange": [-1.0, 1.0],
+    "dfaoInfluenceRange": [0.4, 1.0],
+    "lightWeights": [0.42, 0.42, 0.126],
+    "exposureControlEnabled": true,
+    "exposureTargets": [1.0, 0.5, 0.1],
+    "exposurePbrBlend": 0.5,
+    "probePositiveX": [1.064453125, 1.064453125, 1.064453125],
+    "probePositiveY": [0.9052734375, 0.9052734375, 0.9052734375],
+    "probePositiveZ": [1.462890625, 1.462890625, 1.462890625],
+    "probeNegativeX": [0.5595703125, 0.5595703125, 0.5595703125],
+    "probeNegativeY": [0.5546875, 0.5546875, 0.5546875],
+    "probeNegativeZ": [0.19970703125, 0.19970703125, 0.19970703125],
+    "probeSamplePosition": [0.0, 0.0, 0.0],
+    "probeRuntimeSource": "reduced-csdk-asset-browser",
+    "probeEvidence": "confirmed-pipeline-runtime",
+    "probeSpatialEvidence": "calibrated-approximation",
+    "ambientFloor": 0.18,
+    "transmissiveStrength": 1.0,
+    "aoStrength": 0.55,
+    "runtimeGlobalsEvidence": "confirmed-pipeline-runtime",
+    "runtimeSource": "reduced-csdk-asset-browser",
+    "evidence": "calibrated-approximation"
+  },
+  "directSpecular": {
+    "enabled": false,
+    "steps": 3.0,
+    "stepSharpness": 0.55,
+    "tint": 0.35,
+    "roughnessBias": 0.18,
+    "reflectance": 0.025,
+    "runtimeSource": "reduced-csdk-asset-browser",
+    "enabledEvidence": "confirmed-pipeline-runtime",
+    "controlsEvidence": "calibrated-approximation",
+    "evidence": "calibrated-approximation"
+  },
+  "rim": {
+    "enabled": true,
+    "cutoff": 1.0,
+    "sharpness": 0.01,
+    "strength": 0.3,
+    "upRamp": [0.0, 1.0],
+    "runtimeSource": "reduced-csdk-asset-browser",
+    "evidence": "confirmed-pipeline-runtime"
+  },
+  "previewLighting": {
+    "keyDirection": [
+      0.494,
+      0.766,
+      -0.411
+    ],
+    "keyColor": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "keyIntensity": 1.6,
+    "fillDirection": [
+      -0.693,
+      0.071,
+      0.719
+    ],
+    "fillColor": [
+      1.0,
+      1.0,
+      1.0
+    ],
+    "fillIntensity": 0.0,
+    "environmentColor": [
+      0.827451,
+      0.886275,
+      0.972549
+    ],
+    "environmentDiffuse": 0.22,
+    "runtimeSource": "reduced-csdk-asset-browser",
+    "directLightEvidence": "confirmed-pipeline-runtime",
+    "evidence": "calibrated-approximation"
+  },
+  "referenceTint": [
+    0.321569,
+    0.388235,
+    0.176471
+  ],
+  "outline": {
+    "enabled": true,
+    "color": [
+      0.164706,
+      0.054902,
+      0.054902
+    ],
+    "additive": [
+      0.243137,
+      0.164706,
+      0.164706
+    ],
+    "mask": 0.819,
+    "vertexColorTint": 0.0,
+    "colorEvidence": "confirmed-static-retail",
+    "widthMillimeters": 1.0,
+    "widthStatus": "calibrated-approximation"
+  },
+  "painterApply": {
+    "outlineAllMeshes": true,
+    "heroTextureSets": [
+      "ivy_builder_arms",
+      "ivy_builder_body",
+      "ivy_builder_head"
+    ],
+    "retailPreview": {
+      "sourcePolicy": "project-0source-then-retail-vpk",
+      "vertexColorSource": "models/heroes_wip/ivy/ivy_ivy.dmx",
+      "materialBindings": [
+        {
+          "textureSet": "models_heroes_staging_tengu_tengu_v2_materials_ivy_bodyv3.vmat",
+          "material": "models/heroes_staging/tengu/tengu_v2/materials/ivy_bodyv3.vmat_c"
+        },
+        {
+          "textureSet": "models_heroes_staging_tengu_tengu_v2_materials_ivy_gearv3.vmat",
+          "material": "models/heroes_staging/tengu/tengu_v2/materials/ivy_gearv3.vmat_c"
+        },
+        {
+          "textureSet": "models_heroes_staging_tengu_tengu_v2_materials_ivy_wingsv3.vmat",
+          "material": "models/heroes_staging/tengu/tengu_v2/materials/ivy_wingsv3.vmat_c"
+        },
+        {
+          "textureSet": "materials_dev_vertcolor_pbr_basic.vmat",
+          "material": "materials/dev/vertcolor_pbr_basic.vmat_c"
+        }
+      ]
+    }
+  }
+}

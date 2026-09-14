@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "source": "Reduced_CSDK_12/content/citadel/toolscenelightrigs.vdata plus decoded background VMAP entities",
+  "presets": [
+    {
+      "name": "Default",
+      "backgroundMap": "maps/editor/toolscene_default.vmap",
+      "postprocess": "postprocessing/toolscene.vpost",
+      "exposure": { "enabled": false, "minEv": -2.0, "maxEv": 2.0 },
+      "lights": [
+        { "direction": [0.4944643, 0.7660444, -0.4107081], "color": [1.0, 1.0, 1.0], "intensity": 1.6, "castsShadows": true },
+        { "direction": [-0.6933344, 0.0712058, 0.7170894], "color": [1.0, 1.0, 1.0], "intensity": 0.55, "castsShadows": false }
+      ],
+      "environment": { "material": "materials/editor/sky_default_grey.vmat", "sourceImage": "materials/editor/sky_default_grey_exr_98c96aa.png", "rotationDegrees": 0.0, "brightnessScale": 0.22 },
+      "headlight": null,
+      "rim": { "enabled": true, "cutoff": 1.0, "sharpness": 0.01, "strength": 0.3, "upRamp": [0.0, 1.0], "depthOcclusion": true, "occlusionSampleDistance": 0.5 }
+    },
+    {
+      "name": "Old Default",
+      "backgroundMap": "maps/editor/toolscene_default.vmap",
+      "postprocess": "postprocessing/toolscene.vpost",
+      "exposure": { "enabled": true, "minEv": -6.0, "maxEv": 6.0 },
+      "lights": [],
+      "environment": { "material": "materials/editor/sky_default_grey.vmat", "sourceImage": "materials/editor/sky_default_grey_exr_98c96aa.png", "rotationDegrees": 0.0, "brightnessScale": 0.22 },
+      "headlight": null, "rim": null,
+      "unsupported": ["Rig sun omits color/brightness defaults", "Two relative point lights cannot be represented by the Painter surface-shader light interface"]
+    },
+    {
+      "name": "Headlight",
+      "backgroundMap": "maps/editor/toolscene_default.vmap",
+      "postprocess": "postprocessing/toolscene.vpost",
+      "exposure": { "enabled": true, "minEv": -6.0, "maxEv": 6.0 },
+      "lights": [],
+      "environment": { "material": "materials/editor/sky_default_grey.vmat", "sourceImage": "materials/editor/sky_default_grey_exr_98c96aa.png", "rotationDegrees": 0.0, "brightnessScale": 0.22 },
+      "headlight": { "direction": [-1.0, 0.0, 0.0], "color": null, "intensity": null, "cameraRelative": true, "castsShadows": true }, "rim": null,
+      "unsupported": ["Rig headlight omits color/brightness defaults"]
+    },
+    {
+      "name": "Dark", "backgroundMap": "maps/editor/toolscene_lighting_dark.vmap", "postprocess": "postprocessing/toolscene.vpost",
+      "exposure": { "enabled": true, "minEv": 1.0, "maxEv": 1.0 },
+      "lights": [{ "direction": [0.6756923, 0.7071069, -0.2084220], "color": [1.0, 1.0, 1.0], "intensity": 1.0, "castsShadows": true }],
+      "environment": { "material": "materials/editor/sky_default_grey.vmat", "sourceImage": "materials/editor/sky_default_grey_exr_98c96aa.png", "rotationDegrees": 0.0, "brightnessScale": 0.25 }, "headlight": null, "rim": null
+    },
+    {
+      "name": "Sunny", "backgroundMap": "maps/editor/toolscene_lighting_basic_sunny.vmap", "postprocess": "postprocessing/toolscene.vpost",
+      "exposure": { "enabled": true, "minEv": 0.5, "maxEv": 1.5 },
+      "lights": [{ "direction": [0.5960489, 0.8026312, -0.0225589], "color": [0.9960784, 0.9843137, 0.9960784], "intensity": 2.5, "castsShadows": true }],
+      "environment": { "material": "materials/skybox/light_test_sky_sunny_basic.vmat", "sourceImage": null, "rotationDegrees": 180.0, "brightnessScale": 1.0 }, "headlight": null, "rim": null
+    },
+    {
+      "name": "Overcast", "backgroundMap": "maps/editor/toolscene_lighting_basic_overcast.vmap", "postprocess": "postprocessing/toolscene.vpost",
+      "exposure": { "enabled": true, "minEv": 0.5, "maxEv": 1.5 },
+      "lights": [{ "direction": [0.1193213, 0.9734690, -0.1952446], "color": [0.9254902, 0.9490196, 0.9960784], "intensity": 0.5, "castsShadows": true }],
+      "environment": { "material": "materials/skybox/light_test_sky_overcast.vmat", "sourceImage": null, "rotationDegrees": 95.0, "brightnessScale": 1.0 }, "headlight": null, "rim": null
+    },
+    {
+      "name": "Purple Sunset", "sourceName": "Purple Sunset", "backgroundMap": "maps/editor/toolscene_lighting_basic_sunset.vmap", "postprocess": "postprocessing/toolscene.vpost",
+      "exposure": { "enabled": true, "minEv": 0.5, "maxEv": 1.5 },
+      "lights": [{ "direction": [0.8697307, 0.4341067, 0.2347763], "color": [0.9960784, 0.5529412, 0.3647059], "intensity": 1.5, "castsShadows": true }],
+      "environment": { "material": "materials/skybox/light_test_sky_sunset.vmat", "sourceImage": null, "rotationDegrees": 174.4963379, "brightnessScale": 1.0 }, "headlight": null, "rim": null
+    },
+    {
+      "name": "Field", "backgroundMap": "maps/editor/toolscene_lighting_basic_field.vmap", "postprocess": "postprocessing/toolscene.vpost",
+      "exposure": { "enabled": true, "minEv": 1.0, "maxEv": 1.0 },
+      "lights": [
+        { "direction": [0.5530823, 0.6646727, -0.5023048], "color": [0.9960784, 0.9019608, 0.7725490], "intensity": 2.0, "castsShadows": true },
+        { "direction": [-0.7341365, 0.1284793, 0.6667359], "color": [0.7803922, 0.9215686, 1.0], "intensity": 0.5, "castsShadows": false }
+      ],
+      "environment": { "material": "materials/skybox/light_test_farm_field.vmat", "sourceImage": null, "rotationDegrees": 0.0, "brightnessScale": 1.0 }, "headlight": null, "rim": null
+    },
+    {
+      "name": "Midtown", "backgroundMap": "maps/editor/toolscene_lighting_midtown.vmap", "postprocess": "postprocessing/toolscene_deadlock.vpost",
+      "exposure": { "enabled": true, "minEv": 0.0, "maxEv": 0.0 },
+      "lights": [{ "direction": [-0.9654863, 0.0838987, -0.2465708], "color": [0.9960784, 0.6, 0.3568627], "intensity": 2.5, "castsShadows": true }],
+      "environment": { "material": "materials/skybox/sky_dl_dusk03.vmat", "sourceImage": "materials/skybox/sky_dl_dusk03_exr_9dd50fb1.png", "rotationDegrees": 0.0, "brightnessScale": 0.5 }, "headlight": null, "rim": null
+    },
+    {
+      "name": "Interior", "backgroundMap": "maps/editor/toolscene_lighting_basic_interior.vmap", "postprocess": "postprocessing/toolscene.vpost",
+      "exposure": { "enabled": true, "minEv": 0.5, "maxEv": 1.5 },
+      "lights": [{ "direction": [-0.0027876, 0.9991439, 0.0412765], "color": [0.8745098, 0.9254902, 0.9960784], "intensity": 0.25, "castsShadows": true }],
+      "environment": { "material": "materials/skybox/light_test_interior_basic.vmat", "sourceImage": "materials/skybox/lightingtest_interior_basic.png", "rotationDegrees": 275.0, "brightnessScale": 1.0 }, "headlight": null, "rim": null
+    },
+    {
+      "name": "Interior Factory", "backgroundMap": "maps/editor/toolscene_lighting_basic_interior_factory.vmap", "postprocess": "postprocessing/toolscene.vpost",
+      "exposure": { "enabled": true, "minEv": 1.0, "maxEv": 1.5 },
+      "lights": [{ "direction": [0.6682515, 0.5648256, 0.4841611], "color": [1.0, 1.0, 1.0], "intensity": 0.5, "castsShadows": true }],
+      "environment": { "material": "materials/skybox/light_test_interior_basic_2.vmat", "sourceImage": null, "rotationDegrees": 275.0, "brightnessScale": 1.0 }, "headlight": null, "rim": null
+    },
+    {
+      "name": "Studio Scene", "backgroundMap": "maps/editor/toolscene_lighting_studio.vmap", "postprocess": "postprocessing/toolscene.vpost",
+      "exposure": { "enabled": true, "minEv": 1.0, "maxEv": 1.0 },
+      "lights": [
+        { "direction": [0.5530823, 0.6646727, -0.5023048], "color": [0.9960784, 0.9019608, 0.7725490], "intensity": 2.0, "castsShadows": true },
+        { "direction": [-0.7341365, 0.1284793, 0.6667359], "color": [0.7803922, 0.9215686, 1.0], "intensity": 0.5, "castsShadows": false }
+      ],
+      "environment": { "material": "materials/skybox/light_test_interior_studio_basic.vmat", "sourceImage": null, "rotationDegrees": 0.0, "brightnessScale": 1.0 }, "headlight": null, "rim": null
+    },
+    {
+      "name": "Particle Preview with Postproc", "sourceName": "Particle Preview with Postprocessing", "backgroundMap": "maps/editor/toolscene_default.vmap", "postprocess": "postprocessing/caldera.vpost",
+      "exposure": { "enabled": true, "minEv": -6.0, "maxEv": 6.0 },
+      "lights": [
+        { "direction": [0.4944643, 0.7660444, -0.4107081], "color": [1.0, 1.0, 1.0], "intensity": 1.6, "castsShadows": true },
+        { "direction": [-0.6933344, 0.0712058, 0.7170894], "color": [1.0, 1.0, 1.0], "intensity": 0.55, "castsShadows": false }
+      ],
+      "environment": { "material": "materials/editor/sky_default_grey.vmat", "sourceImage": "materials/editor/sky_default_grey_exr_98c96aa.png", "rotationDegrees": 0.0, "brightnessScale": 0.22 }, "headlight": null, "rim": null
+    },
+    {
+      "name": "Nuke Basic", "backgroundMap": "maps/editor/toolscene_lighting_de_nuke_day_basic.vmap", "postprocess": "postprocessing/toolscene_deadlock.vpost",
+      "exposure": { "enabled": true, "minEv": 1.0, "maxEv": 1.0 },
+      "lights": [
+        { "direction": [0.5650887, 0.7660444, -0.3063506], "color": [1.0, 0.9843137, 0.9058824], "intensity": 1.9, "castsShadows": true },
+        { "direction": [-0.6791246, 0.6264565, 0.3825467], "color": [0.7490196, 0.9098039, 1.0], "intensity": 0.8, "castsShadows": false }
+      ],
+      "environment": { "material": "materials/editor/toolscene_nuke_environment.vmat", "sourceImage": "materials/editor/toolscene_lighting_de_nuke_cubemap.png", "rotationDegrees": 0.0, "brightnessScale": 1.05 }, "headlight": null, "rim": null
+    },
+    {
+      "name": "Nuke Basic + Headlight", "inherits": "Nuke Basic",
+      "headlight": { "direction": [-1.0, 0.0, 0.0], "color": [0.9607843, 0.9803922, 1.0], "intensity": 0.75, "cameraRelative": true, "castsShadows": false }, "rim": null
+    },
+    {
+      "name": "Nuke Basic Mono", "backgroundMap": "maps/editor/toolscene_lighting_de_nuke_basic_mono.vmap", "postprocess": "postprocessing/toolscene_deadlock.vpost",
+      "exposure": { "enabled": true, "minEv": 1.0, "maxEv": 1.0 },
+      "lights": [
+        { "direction": [0.4944643, 0.7660444, -0.4107079], "color": [1.0, 1.0, 1.0], "intensity": 1.8, "castsShadows": true },
+        { "direction": [-0.6933344, 0.0712058, 0.7170894], "color": [1.0, 1.0, 1.0], "intensity": 0.55, "castsShadows": false }
+      ],
+      "environment": { "material": "materials/editor/toolscene_nuke_environment_2.vmat", "sourceImage": "materials/editor/toolscene_lighting_de_nuke_2_cubemap.png", "rotationDegrees": 0.0, "brightnessScale": 1.0 }, "headlight": null, "rim": null
+    },
+    {
+      "name": "Nuke Basic Mono + Headlight", "inherits": "Nuke Basic Mono",
+      "headlight": { "direction": [-1.0, 0.0, 0.0], "color": [0.9607843, 0.9803922, 1.0], "intensity": 0.75, "cameraRelative": true, "castsShadows": false }, "rim": null
+    },
+    {
+      "name": "Dust2 Basic", "backgroundMap": "maps/editor/toolscene_lighting_de_dust_day_basic.vmap", "postprocess": "postprocessing/toolscene_deadlock.vpost",
+      "exposure": { "enabled": true, "minEv": 1.0, "maxEv": 1.0 },
+      "lights": [
+        { "direction": [0.5530823, 0.6646727, -0.5023048], "color": [0.9960784, 0.9019608, 0.7725490], "intensity": 2.0, "castsShadows": true },
+        { "direction": [-0.7341365, 0.1284793, 0.6667359], "color": [0.7803922, 0.9215686, 1.0], "intensity": 0.5, "castsShadows": false }
+      ],
+      "environment": { "material": "materials/editor/toolscene_dust2_environment.vmat", "sourceImage": "materials/editor/toolscene_lighting_de_dust_cubemap.png", "rotationDegrees": 0.0, "brightnessScale": 1.0 }, "headlight": null, "rim": null
+    },
+    {
+      "name": "Dust2 Basic + Headlight", "inherits": "Dust2 Basic",
+      "headlight": { "direction": [-1.0, 0.0, 0.0], "color": [0.9607843, 0.9803922, 1.0], "intensity": 0.75, "cameraRelative": true, "castsShadows": false }, "rim": null
+    },
+    {
+      "name": "Haze V1", "backgroundMap": "maps/editor/toolscene_lighting_hazev1.vmap", "postprocess": "postprocessing/toolscene_deadlock.vpost",
+      "exposure": { "enabled": true, "minEv": 1.0, "maxEv": 1.0 },
+      "lights": [
+        { "direction": [0.4944643, 0.7660444, -0.4107081], "color": [1.0, 1.0, 1.0], "intensity": 1.6, "castsShadows": true },
+        { "direction": [-0.6933344, 0.0712058, 0.7170894], "color": [1.0, 1.0, 1.0], "intensity": 0.55, "castsShadows": false }
+      ],
+      "environment": { "material": "materials/skybox/hazev1_skybox.vmat", "sourceImage": null, "rotationDegrees": 0.0, "brightnessScale": 0.22 }, "headlight": null, "rim": null,
+      "unsupported": ["Available Haze source is a 4:3 cubemap layout, not a Painter lat-long environment"]
+    }
+  ],
+  "globalBlockers": [
+    "Only Default has runtime-confirmed rim constants; the other preset rim states remain unavailable",
+    "Painter surface shaders expose no scene depth for the captured rim depth-occlusion branch",
+    "Source maps contain probe bake volumes but no baked probe coefficients or cubemap textures",
+    "Painter Python/Shader APIs expose shadow-mask reads but no supported setter for shadow_mask_enable",
+    "toolscene/caldera/basepostprocess response curves are not recoverable from these static preset definitions"
+  ]
+}

@@ -1,5 +1,21 @@
 # Reference Identity
 
+The cross-family static/dynamic inventory is maintained in
+`docs/UBER_SHADER_PERMUTATION_MAP.md`. This document continues to own the
+selected Ivy combo-24 equations and buffer evidence.
+The final ordinary contribution order is maintained in
+`docs/OPAQUE_OUTPUT_GRAPH.md`.
+The optional status-material modifier is isolated in
+`docs/STATUS_PROXY_DELTA.md`.
+Alpha-test and sheen family changes are maintained in
+`docs/ALPHA_TEST_DELTA.md` and `docs/SHEEN_DELTA.md`.
+Basic translucency is isolated in `docs/TRANSLUCENT_DELTA.md`.
+Screen-space glass is isolated in `docs/GLASS_DELTA.md`.
+Advanced animated cutout is isolated in
+`docs/ADVANCED_TRANSLUCENCY_DELTA.md`.
+The alpha-tested channel layout and discard equation are isolated in
+`docs/ALPHA_TEST_DELTA.md`.
+
 This note records the first code-backed Deadlock material slice for issue #133.
 It is a recovery document, not a claim of a final Painter match.
 
@@ -67,7 +83,7 @@ their direct consumers.
 | `g_tAmbientOcclusion.R` | authored AO | NPR bounce weighting and final occlusion terms |
 | `g_tNprTransmissiveColor` | sRGB constant texture from `TextureNprTramsissiveColor1 = [0.321569, 0.388235, 0.176471]` | added only to the NPR bounce/indirect term |
 | `g_tTintMaskRimLightMask` | packed tint/rim texture | base/tint and optional rim paths |
-| material flags/values | `g_bNPRBounceDiffuse`, `g_bNPRDirectDiffuse`, `g_bNPRDirectSpecular`, `g_bNPRRimLighting`, sharpness, wrap, step, exposure, and rim controls | fields in `_Globals_`; their current engine-populated values were not present in the VMAT capture |
+| material flags/values | `g_bNPRBounceDiffuse`, `g_bNPRDirectDiffuse`, `g_bNPRDirectSpecular`, `g_bNPRRimLighting`, sharpness, step, exposure, and rim controls | fields in `_Globals_`; event 791 supplies the captured Default/Ivy values documented below |
 
 The generated code also consumes data not authored by this material:
 
@@ -127,15 +143,16 @@ p          = 1 / (1 - sharp)
 Q(x,sharp) = floor(x) + (f > 0.5 ? 1 - pow(0.5,1-p)*pow(wing,p)
                                      :     pow(0.5,1-p)*pow(wing,p))
 
-nRaw       = sat(0.5 + 2 * ((directWrap - 0.5) + NdotL - 0.5))
+lambert    = sat(dot(N, L))
+nRaw       = sat(0.5 + 2 * ((directWrap - 0.5) + lambert - 0.5))
 nNpr       = Q(nRaw, diffuseStepSharpness)
 directDiff = mix(ooDirectLightNormalization * nNpr,
-                 NdotL,
+                 lambert,
                  NPRDiffusePbrBlend)
 ```
 
 The direct branch uses `directDiff` only when both the per-view NPR gate and
-`g_bNPRDirectDiffuse` are true; otherwise it uses `NdotL`. The bounce branch
+`g_bNPRDirectDiffuse` are true; otherwise it uses saturated `NdotL`. The bounce branch
 has this confirmed structure:
 
 ```text
@@ -509,111 +526,213 @@ PS has only static-file verification; runtime identity, combo/layout, gate
 state, numeric controls, and two-draw stability evidence are unavailable. GLSL
 files remain unchanged.
 
-# Disposable Retail-Shader Overlay
+# Milestone B Static-Code Recovery — 2026-09-08
 
-Issue #145 rechecked Steam app `1422450` before launching. The manifest still
-reports buildid `24882156`. ValvePak read
-`shaders/vfx/pbr_vulkan_60_ps.vcs` from the installed retail
-`shaders_vulkan_dir.vpk` as 9,230,833 bytes with SHA-256
-`eceff13193baccd5310db90ac9b3dd36928d941753c98494e349fa9e29826930`.
-The same read against the copied overlay VPK returned the same length and hash.
+The current retail pixel module was read directly from the retail Vulkan VPK
+and static combo `24`, dynamic combo `0`, shader file `0` was decompiled in a
+local scratch directory. Its SHA-256 still matches the reference identity
+above. This advances the earlier gate: the direct-specular and non-depth rim
+operations below are now **confirmed by static retail evidence**. Their bound
+runtime values remain **blocked/unresolved**.
 
-The successful isolation attempt used a disposable physical host root under
-the Windows temporary directory. `bin_server` was copied into the overlay's
-`game/bin_tools` location so Windows reported the running executable inside the
-temporary root. Private `game/citadel`, `game/core`, `content/_toolsautosave`,
-and `content/citadel/addons/luaunlocker` directories held writable state. Large
-unchanged CSDK content directories were exposed through read-only junctions.
-The complete retail pair, `shaders_vulkan_dir.vpk` and
-`shaders_vulkan_000.vpk`, was copied into the private `game/citadel` directory.
-Both VPK files matched their retail SHA-256 values. Neither installed tree was
-modified.
-
-The first direct `bin_tools` host reached
-`CSchemaSystem::VerifySchemaBindingConsistency()` and aborted before renderer
-initialisation because its `animationsystem.dll` and `particles.dll` reported a
-`particleslib` schema member-count mismatch. `bin` has the same DLL hashes. A
-second junction-only host reached Vulkan but resolved its executable to the
-installed CSDK path, so it was rejected as identity evidence. The physical
-overlay removed that ambiguity.
-
-# RenderDoc Vulkan Layer Registration
-
-The official RenderDoc v1.46 x64 portable build was used. Its pre-change
-`renderdoccmd vulkanlayer --explain` state reported that the portable layer was
-not registered and required system registration. The layer was registered with
-the official `renderdoccmd vulkanlayer --register --system` mechanism after
-normal UAC elevation. A subsequent `--explain` reported that the RenderDoc
-Vulkan layer was correctly registered, and the two implicit-layer entries
-pointed to this portable build's 64-bit and 32-bit `renderdoc.json` files.
-
-# Runtime Shader Identity Proof
-
-The physical disposable host was launched through the official
-`renderdoccmd capture` path with `-vulkan`; no retail process was launched,
-attached, injected, hooked, or instrumented. RenderDoc's in-process overlay
-reported `Capturing Vulkan`. The crash dump independently records:
+The direct-specular branch is a stepped GGX-like response. In compact form:
 
 ```text
-Render system: Vulkan
-engine_rendersystem_used  -vulkan (from CL)
-engine_rendersystem_init  -vulkan
+r0       = roughness * (1 - roughnessBias)
+a2       = r0 * r0
+D        = a2*a2 / (NdotH*NdotH*(a2*a2 - 1) + 1)^2
+V        = 0.5 / (NdotL*(NdotV*(1-a2)+a2) +
+                  NdotV*(NdotL*(1-a2)+a2))
+rawSpec  = sat(D * V * NdotL)
+p        = 1 / (0.01 + roughness*(0.99-stepSharpness))
+stepped  = triangularQuantize(rawSpec*steps, p) / steps
+tintBase = mix(luminance(baseColor), baseColor, specularTint)
+tintNorm = tintBase * reflectance / luminance(tintBase)
+matTint  = mix(tintNorm, baseColor, metalness)
+directSpecular = stepped * (0.5 / (1-exp2(-3.32192993*r0*r0))) * matTint
 ```
 
-The complete shader search slot in private `game/citadel` contained the copied
-retail VPK pair whose entry hash is recorded above. During asynchronous pipeline
-creation the CSDK engine rejected shaders from that package, including:
+The event-791 runtime rim branch uses the camera-to-pixel direction,
+surface-up ramp, raw authored AO, `g_tTintMaskRimLightMask.G`, and lighting
+accumulated before rim:
 
 ```text
-CMaterial2::LoadShadersAndSetupModes(1618): Error creating shader pbr.vfx and cannot load error.vfx instead!
-CMaterial2::LoadShadersAndSetupModes(1614): Error creating shader pbr.vfx for material materials/models/particle/sphere_hotblue2.vmat!
-CMaterial2::LoadShadersAndSetupModes(1614): Error creating shader pbr.vfx for material materials/particle/model/white_trans.vmat!
+u = sat((cutoff - abs(dot(N, cameraToPixel)) + 0.1) * 5)
+p = 1 / (1 - sharpness)
+w = min(u, 1-u)
+q = exp2(p-1) * pow(w, p)
+viewRamp = (u > 0.5) ? 1-q : q
+upRamp = sat((Nup - upRampMin) / (upRampMax - upRampMin))
+rimFactor = viewRamp * upRamp * strength * authoredAO * tint_rim.g * depthOcclusion
+rimColor = (directDiffuseLighting + bounceLighting) * rimFactor
 ```
 
-The same failure repeated for `spritecard.vfx`, `projected_decals.vfx`, and
-tools shaders. The process then produced an access-violation minidump while its
-`Async Pipeline Compile/*` workers were active. RenderDoc saved no frame.
-Therefore no actual draw survived on which byte-identical PS selection, static
-combo 24, dynamic combo 0, or descriptor layout could be proven. This is the
-issue's explicit retail-shader/CSDK incompatibility stop condition.
+## Painter rim authoring
 
-# Captured NPR Runtime Values
+Character profiles now own the starting rim controls. Ivy stores the captured
+Reduced-CSDK values `enabled=true`, `cutoff=1`, `sharpness=0.01`,
+`strength=0.3`, and `upRamp=[0,1]`. **Preview as Deadlock** applies those values
+to a new shader instance. Existing values from the same character are retained
+on subsequent previews, so Shader Settings remains an editable override layer.
+**Reset to Character Preset** explicitly reapplies the profile values.
 
-No NPR constants were read. There was no eligible draw after runtime shader
-identity verification, and values from the ordinary CSDK shader payload are
-excluded by this task. `_Globals_`, `PerViewConstantBufferCitadel_t`, and
-`PerViewLightingConstantBufferGpu_t` remain unresolved runtime inputs.
+`Deadlimit Rim Mask` is Painter `User0`, stored as a linear `L8` paintable
+channel. The shader uses Painter's sparse-channel validity lane to resolve:
 
-# Stability Across Draws
+```text
+painted Deadlimit Rim Mask
+  -> retail g_tTintMaskRimLightMask.G when User0 is absent
+  -> 1 when neither authored nor retail data exists
+```
 
-No two-draw comparison exists because the retail shader package was rejected
-before an eligible draw. No value is classified as stable, frame/view/light
-dependent, or tool-overridden.
+Creating or painting User0 changes only the Painter document channel. Retail
+textures remain read-only. The Deadlimit panel can export every authored User0
+channel as an 8-bit grayscale `$textureSet_Deadlimit_Rim_Mask.png`; VMAT and
+package wiring remain outside this stage.
 
-# CSDK/Offline Provenance
+## Painter Artistic AO authoring
 
-The evidence above is limited to a disposable Reduced CSDK12 offline tools host
-attempting to use the exact current retail Vulkan package. It proves the Vulkan
-launch path and the incompatibility failure. It does not establish a retail
-runtime value or permutation/layout match.
+`Deadlimit Artistic AO` is Painter `User1`, stored as a linear paintable `L8`
+channel. It leaves the `User0` rim mask unchanged. The shader resolves the
+authored material AO producer in this order:
 
-# Vulkan Layer Cleanup
+```text
+painted Deadlimit Artistic AO
+  -> retail g_tAmbientOcclusion.R when User1 is absent
+  -> Painter AO when retail input is absent
+  -> 1 when none of those sources exists
+```
 
-Cleanup removed only the two temporary RenderDoc v1.46 implicit-layer values
-and preserved the four pre-existing 64-bit and four pre-existing 32-bit OBS,
-Epic, and Steam Vulkan-layer values. Portable v1.46
-`renderdoccmd vulkanlayer --help` exposes registration and explanation commands
-but no unregistration command, and the qrenderdoc source routes its hidden
-layer-update option to the same registration API. With explicit approval for
-this documented gap, an elevated cleanup script removed the exact 64-bit and
-32-bit RenderDoc JSON value names. Direct registry verification returned both
-RenderDoc values absent. The official `renderdoccmd vulkanlayer --explain`
-command then returned the original pre-task state: this build's RenderDoc layer
-is not registered and would require system registration before another Vulkan
-capture.
+The resolved value replaces only the authored material AO producer feeding the
+recovered Deadlock topology: NPR bounce weighting, NPR diffuse response, rim
+multiplication and specular occlusion. Direct diffuse and Base Color do not
+receive an AO multiply. Screen DfAO remains separate. The Painter PBR Baseline
+diagnostic keeps its pre-User1 AO source for a stable comparison.
 
-# First GLSL Slice Decision
+The Deadlimit panel creates User1 without recreating the project and exports it
+as an 8-bit grayscale `$textureSet_Deadlimit_Artistic_AO.png`. Reapplying the
+character preview preserves Painter channels and strokes.
 
-The first direct-diffuse slice remains **not implementation-ready**. Runtime
-retail PS identity, combo/layout, gate values, numeric controls, and stability
-evidence could not be obtained. GLSL files remain unchanged.
+Before final material modulation, retail applies this color-dependent response
+to bounce lighting only (`x = materialAO * screenDfAO`):
+
+```text
+nprResponse = (baseColor*2.0404 - 0.3324)*x^3
+            - (baseColor*4.7951 - 0.6417)*x^2
+            + (baseColor*2.7552 + 0.6903)*x
+bounceResponse = mix(1, nprResponse, diffusePbrBlend)
+```
+
+The Painter slice uses `screenDfAO = 1` because the matching engine buffer is
+unavailable. That substitution is a **calibrated approximation**; the
+polynomial and its placement are **confirmed by static retail evidence**.
+
+Painter uses Y as surface-up in this implementation and exposes a
+surface-to-camera vector, so the corresponding terms are `N.y` and the
+absolute normal/view dot. The final Deadlimit shaded path adds `rimColor`
+directly. It has no independent artistic rim color and does not scale from
+direct or environment specular.
+
+Painter's surface-shader API does not expose the scene depth sampled by the
+runtime occlusion branch. Deadlimit therefore evaluates the recovered
+non-depth equation with neutral `depthOcclusion=1`; this is the remaining rim
+approximation. The material mask, curve, AO, up-ramp, strength, and lighting
+source are runtime-backed.
+
+## Reduced CSDK runtime constants capture — 2026-09-09
+
+A RenderDoc D3D11 capture of the Reduced CSDK Asset Browser Ivy preview now
+supersedes the earlier statement that no CSDK runtime evidence existed. The
+capture contains the visible Ivy draw (event 791, 75,651 indices) and its
+pixel-stage global constant buffer. Matching the buffer packing against the
+decompiled Reduced CSDK `pbr_vulkan_60_ps.vcs` NPR global layout gives:
+
+| NPR global | Captured value | Classification |
+| --- | ---: | --- |
+| bounce enabled | `1` | confirmed by pipeline/runtime (Reduced CSDK) |
+| diffuse steps | `2` | confirmed by pipeline/runtime (Reduced CSDK) |
+| diffuse step sharpness | `0.9` | confirmed by pipeline/runtime (Reduced CSDK) |
+| diffuse range | `[-1, 1]` | confirmed by pipeline/runtime (Reduced CSDK) |
+| DfAO influence range | `[0.4, 1]` | confirmed by pipeline/runtime (Reduced CSDK) |
+| diffuse PBR blend | `0.25` | confirmed by pipeline/runtime (Reduced CSDK) |
+| NPR light weights | `[0.42, 0.42, 0.126]` | confirmed by pipeline/runtime (Reduced CSDK) |
+| direct diffuse enabled | `1` | confirmed by pipeline/runtime (Reduced CSDK) |
+| direct-light wrap | `0.8` | confirmed by pipeline/runtime (Reduced CSDK) |
+| inverse direct-light normalization | `0.625` | confirmed by pipeline/runtime (Reduced CSDK) |
+| exposure control enabled | `1` | confirmed by pipeline/runtime (Reduced CSDK) |
+| exposure targets | `[1, 0.5, 0.1]` | confirmed by pipeline/runtime (Reduced CSDK) |
+| exposure-control PBR blend | `0.5` | confirmed by pipeline/runtime (Reduced CSDK) |
+| direct specular enabled | `0` | confirmed by pipeline/runtime (Reduced CSDK) |
+| rim enabled in this preview | `1` | confirmed by ISA/cbuffer runtime trace (Reduced CSDK) |
+| rim cutoff | `1.0` | confirmed by ISA/cbuffer runtime trace (Reduced CSDK) |
+| rim sharpness | `0.01` | confirmed by ISA/cbuffer runtime trace (Reduced CSDK) |
+| rim strength | `0.3` | confirmed by ISA/cbuffer runtime trace (Reduced CSDK) |
+| rim up-ramp | `[0, 1]` | confirmed by ISA/cbuffer runtime trace (Reduced CSDK) |
+| rim depth occlusion enabled | `1` | confirmed by ISA/cbuffer runtime trace (Reduced CSDK) |
+| rim occlusion sample distance | `0.5` | confirmed by ISA/cbuffer runtime trace (Reduced CSDK) |
+
+These values are not current retail runtime values. The Reduced CSDK shader
+payload and current retail shader payload have different identities. Painter's
+neutral `screenDfAO = 1`, six-directional probe colors, direct-specular
+controls, rim depth occlusion, and preview light colors remain calibrated
+approximations or blocked where noted. The profile uses the captured diffuse
+and bounce constants while keeping that provenance boundary explicit.
+
+The direct-specular flag remains composition-critical. `g_bNPRDirectSpecularEnabled=0`
+selects the ordinary direct-specular path; it does not remove direct specular.
+That ordinary path is now traced separately and is retained in captured-mode
+Shaded. Runtime tracing of `cb0[11].x` corrects the earlier rim interpretation:
+the Default draw enables NPR rim. Its red outline remains a separate pass.
+
+The Painter bounce path now includes the recovered exposure-control topology.
+For each probe color it preserves linear-RGB chromaticity, fits luminance to
+the captured up/side/down target (`1.0`, `0.5`, `0.1` with fixed proof-scene
+tone-map scalar `1`), then blends the fitted and original radiance by the
+captured `0.5` control. The quantized bounce coordinate interpolates down to
+horizon to up and is mixed toward the ordinary probe by diffuse PBR blend
+`0.25`. The algorithm and scalar controls are confirmed by static/runtime
+evidence respectively. Painter still supplies one calibrated probe color in
+place of Source 2's six bound probe coefficients.
+
+## Default tool-preview rig boundary
+
+The installed retail client advanced to build `25173285` during this work. A
+fresh read of `shaders/vfx/pbr_vulkan_60_ps.vcs` returned the same
+`eceff131...6926930` SHA-256, static combo `24`, dynamic combo `0`, and shader
+file `0`; the NPR code recovery above therefore remains current.
+
+The Reduced CSDK `Default` tool-scene source used by the controlled engine
+reference contains two enabled white `light_environment` entities:
+
+| Role | Source angles | Brightness | Shadows |
+|---|---:|---:|---|
+| key | `49.999992 219.71344 0` | `1.6` | yes |
+| fill | `4.0832458 45.96491 -22.931953` | `0.55` | no |
+
+It also contains a cool sky color `211 226 248`, sky intensity `0.960784`,
+`env_sky` brightness `0.22`, and a fixed post-process exposure of `1`. These
+are **confirmed static CSDK/tool-preview evidence** and do not establish
+retail gameplay runtime values. The current retail `Default` light-rig entry
+points at `toolscene_lighting_studio_small_9.vmap`, whose map payload is not
+present in the inspected retail packages.
+
+The reproducible Painter profile preserves the CSDK key/fill brightness ratio
+as `1.0 : 0.34375`, converts their directions to Painter's Y-up preview space,
+uses `0.22` cool environment diffuse, and rotates both lights together from
+Painter `uniform_main_light`. Those converted directions and normalized
+intensities are **calibrated approximations**. Both lights use the same
+recovered direct-diffuse/direct-specular equations; Painter HDRI specular stays
+excluded from the Deadlimit shaded output.
+# Reduced CSDK probe transfer follow-up (2026-09-09)
+
+The six-direction bounce now uses capture-derived coefficients with per-axis
+exposure control, signed squared weights, camera-horizontal side sampling,
+and the corrected surface-to-camera sign in NPR direction construction.
+The origin sample is frozen over the model (calibrated spatial approximation);
+RGBE export precision limits apply. Captured exposure divisor cb1[18].x = 1.
+
+Environment specular remains Painter's BRDF integration substitute. Its old
+0.18 strength and +0.12 roughness adjustment are retired; neutral defaults
+1 and 0 pass through the substitute without these extra artistic corrections.
+These defaults are implementation identities, not extracted retail constants.
+Source 2's BRDF lookup and multiple-scattering branch remain unresolved here.
