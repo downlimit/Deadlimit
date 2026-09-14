@@ -17,7 +17,7 @@ internal static class ExtractedSourceAssetResolver
     internal const string SupportingVmdlMarker = "// DEADLIMIT_SUPPORTING_SOURCE_OVERLAY";
 
     private static readonly Regex DmxSourceReferenceRegex = new(
-        @"(?m)^\s*\"?(?:filename|source_filename)\"?\s*=\s*\"(?<path>[^\"\r\n]+\.dmx)\"",
+        "(?m)^\\s*\\\"?(?:filename|source_filename)\\\"?\\s*=\\s*\\\"(?<path>[^\\\"\\r\\n]+\\.dmx)\\\"",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     internal static string? TryResolveSourceRootForArtistPath(string artistPath)
