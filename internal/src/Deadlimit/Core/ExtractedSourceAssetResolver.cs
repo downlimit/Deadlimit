@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace Deadlimit.Core;
 
 internal sealed record ExtractedSourceAssetMatch(
@@ -13,6 +15,10 @@ internal sealed record ExtractedDmxTarget(
 internal static class ExtractedSourceAssetResolver
 {
     internal const string SupportingVmdlMarker = "// DEADLIMIT_SUPPORTING_SOURCE_OVERLAY";
+
+    private static readonly Regex DmxSourceReferenceRegex = new(
+        "(?m)^\\s*\\\"?(?:filename|source_filename)\\\"?\\s*=\\s*\\\"(?<path>[^\\\"\\r\\n]+\\.dmx)\\\"",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     internal static string? TryResolveSourceRootForArtistPath(string artistPath)
     {
@@ -112,7 +118,7 @@ internal static class ExtractedSourceAssetResolver
         if (owners.Count == 0)
         {
             throw new InvalidOperationException(
-                $"Extracted source '{sourceMatch.ResourcePath}' exists, but no extracted VMDL references it as a RenderMeshFile. " +
+                $"Extracted source '{sourceMatch.ResourcePath}' exists, but no extracted VMDL references it as a DMX source. " +
                 "Deadlimit will not stage an orphan DMX that cannot be compiled into a model.");
         }
 
@@ -130,10 +136,10 @@ internal static class ExtractedSourceAssetResolver
         foreach (var vmdlPath in Directory.EnumerateFiles(sourceRoot, "*.vmdl", SearchOption.AllDirectories)
                      .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
-            IReadOnlyList<RetailRenderMeshEntry> renderMeshes;
+            IReadOnlyList<string> dmxReferences;
             try
             {
-                renderMeshes = RetailVmdlInheritance.ReadRenderMeshes(vmdlPath);
+                dmxReferences = ReadDmxSourceReferences(vmdlPath);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException)
             {
@@ -142,9 +148,9 @@ internal static class ExtractedSourceAssetResolver
 
             var ownerResourcePath = NormalizeResourcePath(Path.GetRelativePath(sourceRoot, vmdlPath));
             var ownerDirectory = GetResourceDirectory(ownerResourcePath);
-            if (renderMeshes.Any(entry => RenderMeshPathMatches(
+            if (dmxReferences.Any(reference => SourcePathMatches(
                     ownerDirectory,
-                    entry.Filename,
+                    reference,
                     normalizedTarget)))
             {
                 owners.Add(Path.GetFullPath(vmdlPath));
@@ -218,6 +224,16 @@ internal static class ExtractedSourceAssetResolver
             .ToArray();
     }
 
+    private static IReadOnlyList<string> ReadDmxSourceReferences(string vmdlPath)
+    {
+        var text = File.ReadAllText(vmdlPath);
+        return DmxSourceReferenceRegex.Matches(text)
+            .Select(match => NormalizeResourcePath(match.Groups["path"].Value))
+            .Where(path => path.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     private static void MarkSupportingVmdl(string vmdlPath)
     {
         var text = File.ReadAllText(vmdlPath);
@@ -229,20 +245,20 @@ internal static class ExtractedSourceAssetResolver
         File.WriteAllText(vmdlPath, SupportingVmdlMarker + Environment.NewLine + text);
     }
 
-    private static bool RenderMeshPathMatches(
+    private static bool SourcePathMatches(
         string ownerDirectory,
-        string renderMeshPath,
+        string sourcePath,
         string targetResourcePath)
     {
-        var normalizedRenderMesh = NormalizeResourcePath(renderMeshPath);
-        if (string.Equals(normalizedRenderMesh, targetResourcePath, StringComparison.OrdinalIgnoreCase))
+        var normalizedSource = NormalizeResourcePath(sourcePath);
+        if (string.Equals(normalizedSource, targetResourcePath, StringComparison.OrdinalIgnoreCase))
         {
             return true;
         }
 
         var ownerRelative = ownerDirectory.Length == 0
-            ? normalizedRenderMesh
-            : NormalizeResourcePath(ownerDirectory + "/" + normalizedRenderMesh);
+            ? normalizedSource
+            : NormalizeResourcePath(ownerDirectory + "/" + normalizedSource);
         return string.Equals(ownerRelative, targetResourcePath, StringComparison.OrdinalIgnoreCase);
     }
 
