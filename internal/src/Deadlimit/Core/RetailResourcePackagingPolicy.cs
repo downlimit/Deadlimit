@@ -266,7 +266,8 @@ internal static class RetailResourcePackagingPolicy
         string resourcePath,
         Action<string>? diagnosticSink)
     {
-        if (resourcePath.EndsWith(".vtex_c", StringComparison.OrdinalIgnoreCase))
+        if (!resourcePath.EndsWith("_c", StringComparison.OrdinalIgnoreCase)
+            || resourcePath.EndsWith(".vtex_c", StringComparison.OrdinalIgnoreCase))
         {
             return Array.Empty<string>();
         }
@@ -284,6 +285,7 @@ internal static class RetailResourcePackagingPolicy
                 ?? Array.Empty<string>();
         }
         catch (Exception ex) when (ex is InvalidDataException
+                                   or EndOfStreamException
                                    or NotSupportedException
                                    or ValveResourceFormat.Utils.UnexpectedMagicException)
         {

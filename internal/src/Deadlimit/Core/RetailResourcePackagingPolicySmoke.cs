@@ -4,7 +4,9 @@ internal static class RetailResourcePackagingPolicySmoke
 {
     public static int Run()
     {
-        if (!UnsupportedHeaderIsNonFatal())
+        if (!UnsupportedHeaderIsNonFatal()
+            || !NonCompiledPayloadIsNotParsed()
+            || !TruncatedCompiledResourceIsNonFatal())
         {
             return 1;
         }
@@ -88,6 +90,53 @@ internal static class RetailResourcePackagingPolicySmoke
                    && diagnostics.Count == 1
                    && diagnostics[0].Contains(resourcePath, StringComparison.OrdinalIgnoreCase)
                    && diagnostics[0].Contains("UnexpectedMagicException", StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    private static bool NonCompiledPayloadIsNotParsed()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"deadlimit-packaging-{Guid.NewGuid():N}.bin");
+        const string resourcePath = "tools_asset_info.bin";
+        var diagnostics = new List<string>();
+
+        try
+        {
+            File.WriteAllBytes(path, [0x01]);
+            var references = RetailResourcePackagingPolicy.ReadExternalReferencesForSmoke(
+                path,
+                resourcePath,
+                diagnostics.Add);
+
+            return references.Count == 0 && diagnostics.Count == 0;
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    private static bool TruncatedCompiledResourceIsNonFatal()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"deadlimit-packaging-{Guid.NewGuid():N}.vmdl_c");
+        const string resourcePath = "models/truncated.vmdl_c";
+        var diagnostics = new List<string>();
+
+        try
+        {
+            File.WriteAllBytes(path, [0x40, 0x00, 0x00, 0x00]);
+            var references = RetailResourcePackagingPolicy.ReadExternalReferencesForSmoke(
+                path,
+                resourcePath,
+                diagnostics.Add);
+
+            return references.Count == 0
+                   && diagnostics.Count == 1
+                   && diagnostics[0].Contains(resourcePath, StringComparison.OrdinalIgnoreCase)
+                   && diagnostics[0].Contains("EndOfStreamException", StringComparison.Ordinal);
         }
         finally
         {
