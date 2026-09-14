@@ -15,6 +15,12 @@ internal static class CompiledModelAnimationBindingRepairSmoke
 
     public static int Run()
     {
+        var sourceResolutionResult = RunProjectDmxSourceResolutionSmoke();
+        if (sourceResolutionResult != 0)
+        {
+            return 100 + sourceResolutionResult;
+        }
+
         var retail = CreateCompiledModel(RetailGraph, RetailUiGraph, RetailSkeleton);
         var missing = CreateCompiledModel(null, null, null);
         var stale = CreateCompiledModel(
@@ -137,6 +143,97 @@ internal static class CompiledModelAnimationBindingRepairSmoke
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
                 // Temp cleanup is not part of the repair assertions.
+            }
+        }
+    }
+
+    private static int RunProjectDmxSourceResolutionSmoke()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"deadlimit-project-dmx-source-smoke-{Guid.NewGuid():N}");
+        try
+        {
+            var sourceRoot = Path.Combine(root, "0source");
+            var projectRoot = Path.Combine(root, "project");
+            var sourceFolder = Path.Combine(sourceRoot, "models", "particle");
+            Directory.CreateDirectory(sourceFolder);
+            Directory.CreateDirectory(projectRoot);
+
+            var meshResource = "models/particle/ability_mesh.dmx";
+            var animationResource = "models/particle/ability_animation.dmx";
+            var orphanResource = "models/particle/orphan.dmx";
+            File.WriteAllText(Path.Combine(sourceFolder, "ability_mesh.dmx"), "retail mesh");
+            File.WriteAllText(Path.Combine(sourceFolder, "ability_animation.dmx"), "retail animation");
+            File.WriteAllText(Path.Combine(sourceFolder, "orphan.dmx"), "orphan");
+
+            var ownerVmdl = Path.Combine(sourceFolder, "ability.vmdl");
+            File.WriteAllText(ownerVmdl, """
+RootNode
+{
+    children =
+    [
+        {
+            _class = "RenderMeshFile"
+            name = "ability_mesh"
+            filename = "ability_mesh.dmx"
+        },
+        {
+            _class = "AnimFile"
+            name = "ability_animation"
+            source_filename = "ability_animation.dmx"
+        }
+    ]
+}
+""");
+
+            var artistMesh = Path.Combine(projectRoot, "ability_mesh.dmx");
+            var artistAnimation = Path.Combine(projectRoot, "ability_animation.dmx");
+            var artistOrphan = Path.Combine(projectRoot, "orphan.dmx");
+            File.WriteAllText(artistMesh, "artist mesh");
+            File.WriteAllText(artistAnimation, "artist animation");
+            File.WriteAllText(artistOrphan, "artist orphan");
+
+            var meshTarget = ExtractedSourceAssetResolver.ResolveDmxTarget(artistMesh, sourceRoot);
+            if (meshTarget is null
+                || !string.Equals(meshTarget.ResourcePath, meshResource, StringComparison.OrdinalIgnoreCase)
+                || meshTarget.OwnerVmdlSourcePaths.Count != 1
+                || !string.Equals(Path.GetFullPath(meshTarget.OwnerVmdlSourcePaths[0]), Path.GetFullPath(ownerVmdl), StringComparison.OrdinalIgnoreCase))
+            {
+                return 1;
+            }
+
+            var animationTarget = ExtractedSourceAssetResolver.ResolveDmxTarget(artistAnimation, sourceRoot);
+            if (animationTarget is null
+                || !string.Equals(animationTarget.ResourcePath, animationResource, StringComparison.OrdinalIgnoreCase)
+                || animationTarget.OwnerVmdlSourcePaths.Count != 1
+                || !string.Equals(Path.GetFullPath(animationTarget.OwnerVmdlSourcePaths[0]), Path.GetFullPath(ownerVmdl), StringComparison.OrdinalIgnoreCase))
+            {
+                return 2;
+            }
+
+            try
+            {
+                _ = ExtractedSourceAssetResolver.ResolveDmxTarget(artistOrphan, sourceRoot);
+                return 3;
+            }
+            catch (InvalidOperationException)
+            {
+                // An extracted DMX still needs a real VMDL owner; only the supported source roles changed.
+            }
+
+            return 0;
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(root))
+                {
+                    Directory.Delete(root, recursive: true);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // Temp cleanup is not part of the source-resolution assertions.
             }
         }
     }
