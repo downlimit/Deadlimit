@@ -13,12 +13,6 @@ internal static class ArtistDmxTargetResolver
         string? extractedSourceRoot = null)
     {
         var renderMeshes = RetailVmdlInheritance.ReadRenderMeshes(preparedVmdlPath);
-        if (renderMeshes.Count == 0)
-        {
-            throw new InvalidOperationException(
-                "The prepared VMDL has no RenderMeshFile entries, so ONLINE PREPARATION cannot map artist DMX files safely.");
-        }
-
         var usedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var mappings = new List<ArtistDmxTargetMapping>();
 
@@ -50,14 +44,14 @@ internal static class ArtistDmxTargetResolver
                 {
                     var primary = ChoosePrimaryRenderMesh(renderMeshes, hero, artistFileName)
                         ?? throw new InvalidOperationException(
-                            $"Could not identify a unique primary prepared render mesh for '{artistFileName}'. " +
-                            "Use an original extracted source filename or rename the artist DMX to match the retail render-mesh source filename.");
+                            $"Could not identify a unique prepared DMX target for '{artistFileName}'. " +
+                            "Use an original extracted DMX source filename; render-mesh fallback is available only when a unique primary mesh can be identified.");
                     targetResourcePath = NormalizeResourcePath(primary.Filename);
                 }
                 else
                 {
                     throw new InvalidOperationException(
-                        $"Artist DMX '{artistFileName}' does not uniquely match the main prepared VMDL and has no unique extracted-source target. " +
+                        $"Artist DMX '{artistFileName}' does not uniquely match a prepared or extracted DMX source. " +
                         "Deadlimit will not guess which retail resource to replace.");
                 }
             }
@@ -65,7 +59,7 @@ internal static class ArtistDmxTargetResolver
             if (!usedTargets.Add(targetResourcePath))
             {
                 throw new InvalidOperationException(
-                    $"More than one artist DMX resolved to the same prepared render mesh: {targetResourcePath}");
+                    $"More than one artist DMX resolved to the same prepared DMX source: {targetResourcePath}");
             }
 
             mappings.Add(new ArtistDmxTargetMapping(
