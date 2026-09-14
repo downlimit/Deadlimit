@@ -1,0 +1,301 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deadlimit.local/schemas/deadlimit-shade-character-profile-v1.json",
+  "title": "Deadlimit Shade character profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "id",
+    "key",
+    "displayName",
+    "status",
+    "retailReference",
+    "directDiffuse",
+    "bounceLighting",
+    "directSpecular",
+    "rim",
+    "previewLighting",
+    "referenceTint",
+    "outline",
+    "painterApply"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "id": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "key": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "calibration",
+        "validated"
+      ]
+    },
+    "retailReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "appId",
+        "buildId",
+        "material",
+        "materialSha256",
+        "pixelShaderSha256"
+      ],
+      "properties": {
+        "appId": { "type": "integer" },
+        "buildId": { "type": "integer" },
+        "material": { "type": "string", "minLength": 1 },
+        "materialSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "pixelShaderSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "directDiffuse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "steps",
+        "stepSharpness",
+        "pbrBlend",
+        "wrap",
+        "normalization",
+        "runtimeSource",
+        "evidence"
+      ],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "steps": { "type": "number", "minimum": 1.0, "maximum": 16.0 },
+        "stepSharpness": { "type": "number", "minimum": 0.0, "maximum": 0.95 },
+        "pbrBlend": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "wrap": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "normalization": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
+        "runtimeSource": { "const": "reduced-csdk-asset-browser" },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "directSpecular": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "steps", "stepSharpness", "tint", "roughnessBias", "reflectance", "evidence"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "steps": { "type": "number", "minimum": 1.0, "maximum": 16.0 },
+        "stepSharpness": { "type": "number", "minimum": 0.0, "maximum": 0.99 },
+        "tint": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "roughnessBias": { "type": "number", "minimum": 0.0, "maximum": 0.95 },
+        "reflectance": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "runtimeSource": { "const": "reduced-csdk-asset-browser" },
+        "enabledEvidence": { "$ref": "#/$defs/evidence" },
+        "controlsEvidence": { "$ref": "#/$defs/evidence" },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "rim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "cutoff", "sharpness", "strength", "upRamp", "runtimeSource", "evidence"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "cutoff": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "sharpness": { "type": "number", "minimum": 0.0, "maximum": 0.99 },
+        "strength": { "type": "number", "minimum": 0.0, "maximum": 8.0 },
+        "upRamp": {
+          "type": "array",
+          "items": { "type": "number", "minimum": -1.0, "maximum": 1.0 },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "runtimeSource": { "const": "reduced-csdk-asset-browser" },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "bounceLighting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "diffuseRange", "dfaoInfluenceRange", "lightWeights", "exposureControlEnabled", "exposureTargets", "exposurePbrBlend", "probePositiveX", "probePositiveY", "probePositiveZ", "probeNegativeX", "probeNegativeY", "probeNegativeZ", "probeSamplePosition", "probeRuntimeSource", "probeEvidence", "probeSpatialEvidence", "ambientFloor", "transmissiveStrength", "aoStrength", "runtimeGlobalsEvidence", "runtimeSource", "evidence"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "diffuseRange": {
+          "type": "array",
+          "items": { "type": "number", "minimum": -4.0, "maximum": 4.0 },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "dfaoInfluenceRange": {
+          "type": "array",
+          "items": { "type": "number", "minimum": -4.0, "maximum": 4.0 },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "lightWeights": {
+          "type": "array",
+          "items": { "type": "number", "minimum": -4.0, "maximum": 4.0 },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "exposureControlEnabled": { "type": "boolean" },
+        "exposureTargets": {
+          "type": "array",
+          "items": { "type": "number", "minimum": 0.0, "maximum": 16.0 },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "exposurePbrBlend": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "probePositiveX": { "$ref": "#/$defs/color" },
+        "probePositiveY": { "$ref": "#/$defs/color" },
+        "probePositiveZ": { "$ref": "#/$defs/color" },
+        "probeNegativeX": { "$ref": "#/$defs/color" },
+        "probeNegativeY": { "$ref": "#/$defs/color" },
+        "probeNegativeZ": { "$ref": "#/$defs/color" },
+        "probeSamplePosition": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "probeRuntimeSource": { "const": "reduced-csdk-asset-browser" },
+        "probeEvidence": { "$ref": "#/$defs/evidence" },
+        "probeSpatialEvidence": { "$ref": "#/$defs/evidence" },
+        "ambientFloor": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "transmissiveStrength": { "type": "number", "minimum": 0.0, "maximum": 2.0 },
+        "aoStrength": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "runtimeGlobalsEvidence": { "$ref": "#/$defs/evidence" },
+        "runtimeSource": { "const": "reduced-csdk-asset-browser" },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "previewLighting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keyDirection", "keyColor", "keyIntensity", "fillDirection", "fillColor", "fillIntensity", "environmentColor", "environmentDiffuse", "runtimeSource", "directLightEvidence", "evidence"],
+      "properties": {
+        "keyDirection": { "$ref": "#/$defs/direction" },
+        "keyColor": { "$ref": "#/$defs/color" },
+        "keyIntensity": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
+        "fillDirection": { "$ref": "#/$defs/direction" },
+        "fillColor": { "$ref": "#/$defs/color" },
+        "fillIntensity": { "type": "number", "minimum": 0.0, "maximum": 4.0 },
+        "environmentColor": { "$ref": "#/$defs/color" },
+        "environmentDiffuse": { "type": "number", "minimum": 0.0, "maximum": 2.0 },
+        "runtimeSource": { "const": "reduced-csdk-asset-browser" },
+        "directLightEvidence": { "$ref": "#/$defs/evidence" },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "referenceTint": {
+      "$ref": "#/$defs/color"
+    },
+    "outline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "color",
+        "additive",
+        "mask",
+        "vertexColorTint",
+        "colorEvidence",
+        "widthMillimeters",
+        "widthStatus"
+      ],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "color": { "$ref": "#/$defs/color" },
+        "additive": { "$ref": "#/$defs/color" },
+        "mask": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "vertexColorTint": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "colorEvidence": { "$ref": "#/$defs/evidence" },
+        "widthMillimeters": { "type": "number", "exclusiveMinimum": 0.0, "maximum": 100.0 },
+        "widthStatus": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "painterApply": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outlineAllMeshes",
+        "heroTextureSets"
+      ],
+      "properties": {
+        "outlineAllMeshes": { "const": true },
+        "heroTextureSets": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "environmentPreview": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["material", "texture", "compiledSha256", "brightnessExposureBias", "evidence"],
+          "properties": {
+            "material": { "type": "string", "pattern": "^[^\\\\]+\\.vmat_c$" },
+            "texture": { "type": "string", "pattern": "^[^\\\\]+\\.vtex_c$" },
+            "compiledSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "brightnessExposureBias": { "type": "number" },
+            "evidence": { "$ref": "#/$defs/evidence" }
+          }
+        },
+        "retailPreview": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sourcePolicy", "materialBindings"],
+          "properties": {
+            "sourcePolicy": { "const": "project-0source-then-retail-vpk" },
+            "vertexColorSource": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[^\\\\]+\\.dmx$"
+            },
+            "materialBindings": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["textureSet", "material"],
+                "properties": {
+                  "textureSet": { "type": "string", "minLength": 1 },
+                  "material": { "type": "string", "pattern": "^[^\\\\]+\\.vmat_c$" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "evidence": {
+      "enum": [
+        "confirmed-pipeline-runtime",
+        "confirmed-static-retail",
+        "calibrated-approximation",
+        "blocked-unresolved"
+      ]
+    },
+    "direction": {
+      "type": "array",
+      "items": { "type": "number", "minimum": -1.0, "maximum": 1.0 },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "color": {
+      "type": "array",
+      "items": { "type": "number", "minimum": 0.0 },
+      "minItems": 3,
+      "maxItems": 3
+    }
+  }
+}
