@@ -399,7 +399,7 @@ The read-only 2026-09-06 inventory found these existing IvyBuilder OBJ files:
 All three lack `vn` records. They remain inadmissible inputs because their
 original per-corner render-normal directions cannot be preserved.
 
-The controlled replacement path used 3ds Max 2025.3 to import read-only
+The controlled replacement path used the Autodesk DCC 2025.3 to import read-only
 `IvyBuilder/4texture/texture_ivy_builder.fbx` and export only nodes matching
 `ivy_ivy*`. The OBJ exporter reported normals, texture coordinates and materials
 enabled. The disposable source contained 35,224 positions, 14,314 UVs, 96,252
