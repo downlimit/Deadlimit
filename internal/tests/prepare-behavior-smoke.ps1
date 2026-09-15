@@ -185,6 +185,45 @@ finally {
 $buildType = $assembly.GetType('Deadlimit.Core.BuildAndTestService', $true)
 $findUnsupportedParticles = $buildType.GetMethod('FindUnsupportedParticleSources', $nonPublicStatic)
 if ($null -eq $findUnsupportedParticles) { throw 'BuildAndTestService.FindUnsupportedParticleSources was not found.' }
+$resolveFullCompileTargets = $buildType.GetMethod('ResolveFullCompileTargets', $nonPublicStatic)
+if ($null -eq $resolveFullCompileTargets) { throw 'BuildAndTestService.ResolveFullCompileTargets was not found.' }
+$resolveProjectOwnedSources = $buildType.GetMethod('ResolveProjectOwnedSources', $nonPublicStatic)
+if ($null -eq $resolveProjectOwnedSources) { throw 'BuildAndTestService.ResolveProjectOwnedSources was not found.' }
+$compileSelectionRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-compile-selection-$([Guid]::NewGuid().ToString('N'))"
+try {
+    $contentRoot = Join-Path $compileSelectionRoot 'content'
+    $sourceRoot = Join-Path $compileSelectionRoot '0source'
+    [IO.Directory]::CreateDirectory((Join-Path $contentRoot 'particles')) | Out-Null
+    [IO.Directory]::CreateDirectory((Join-Path $sourceRoot 'particles')) | Out-Null
+    $retailCopy = Join-Path $contentRoot 'particles\retail-copy.vpcf'
+    $edited = Join-Path $contentRoot 'particles\edited.vpcf'
+    $newEffect = Join-Path $contentRoot 'particles\new-effect.vpcf'
+    [IO.File]::WriteAllText($retailCopy, 'retail')
+    [IO.File]::WriteAllText((Join-Path $sourceRoot 'particles\retail-copy.vpcf'), 'retail')
+    [IO.File]::WriteAllText($edited, 'edited')
+    [IO.File]::WriteAllText((Join-Path $sourceRoot 'particles\edited.vpcf'), 'retail')
+    [IO.File]::WriteAllText($newEffect, 'new')
+    $hashes = [Collections.Generic.Dictionary[string,string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($path in @($retailCopy, $edited, $newEffect)) {
+        $relative = [IO.Path]::GetRelativePath($contentRoot, $path).Replace('\', '/')
+        $hashes[$relative] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
+    }
+    $projectOwnedArgs = [object[]]@($hashes, [string]$sourceRoot)
+    $projectOwned = $resolveProjectOwnedSources.Invoke($null, $projectOwnedArgs)
+    $selectionArgs = [object[]]@(
+        [string]$contentRoot,
+        [string[]]@($retailCopy, $edited, $newEffect),
+        $projectOwned)
+    $selected = @($resolveFullCompileTargets.Invoke($null, $selectionArgs))
+    if ($selected.Count -ne 2 -or $selected -contains $retailCopy -or $selected -notcontains $edited -or $selected -notcontains $newEffect) {
+        throw 'Full-build compile selection did not reuse the retail-identical source baseline.'
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $compileSelectionRoot) {
+        Remove-Item -LiteralPath $compileSelectionRoot -Recurse -Force
+    }
+}
 $selectParticlesToSkip = $buildType.GetMethod('SelectParticleSourcesToSkip', $nonPublicStatic)
 if ($null -eq $selectParticlesToSkip) { throw 'BuildAndTestService.SelectParticleSourcesToSkip was not found.' }
 $particleSources = [string[]]@('C:\addon\supported.vpcf', 'C:\addon\failed-64.vpcf', 'C:\addon\failed-65.vpcf')
