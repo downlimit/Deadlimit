@@ -9,7 +9,13 @@ $isBridge = $type.GetMethod('IsTextureDependencyBridgeReference', $flags)
 $isMaterial = $type.GetMethod('IsMaterialReference', $flags)
 $isTexture = $type.GetMethod('IsTextureReference', $flags)
 $toCompiled = $type.GetMethod('ToCompiledResourcePath', $flags)
-if ($null -eq $isBridge -or $null -eq $isMaterial -or $null -eq $isTexture -or $null -eq $toCompiled) {
+$isAbilityResourceDirectory = $type.GetMethod('IsAbilityResourceDirectory', $flags)
+$isParticleSystem = $type.GetMethod('IsParticleSystemReference', $flags)
+$resolveAbilityNamespaces = $type.GetMethod('ResolveAbilityNamespaces', $flags)
+$isNamespaceOwned = $type.GetMethod('IsAbilityNamespaceOwnedResource', $flags)
+if ($null -eq $isBridge -or $null -eq $isMaterial -or $null -eq $isTexture -or $null -eq $toCompiled -or
+    $null -eq $isAbilityResourceDirectory -or $null -eq $isParticleSystem -or
+    $null -eq $resolveAbilityNamespaces -or $null -eq $isNamespaceOwned) {
     throw 'Hero extraction dependency helpers were not found.'
 }
 
@@ -34,6 +40,29 @@ if (-not [bool]$isMaterial.Invoke($null, @('models/heroes/ivy/body.vmat_c'))) {
 }
 if ([bool]$isMaterial.Invoke($null, @('models/heroes/ivy/body.vtex'))) {
     throw 'VTEX was incorrectly classified as a material dependency.'
+}
+if (-not [bool]$isAbilityResourceDirectory.Invoke($null, @('materials/particle/abilities/example_hero'))) {
+    throw 'Hero ability resource folder was not recognized for sibling extraction.'
+}
+if ([bool]$isAbilityResourceDirectory.Invoke($null, @('materials/default'))) {
+    throw 'Shared non-ability resource folder was incorrectly selected for sibling extraction.'
+}
+if (-not [bool]$isParticleSystem.Invoke($null, @('particles/abilities/example_hero/effect.vpcf_c'))) {
+    throw 'Compiled ability particle was not recognized for sibling extraction.'
+}
+$visualRoots = [string[]]@('particles/abilities/example_hero/ability_root.vpcf')
+$namespaceArgs = [object[]]::new(1)
+$namespaceArgs[0] = $visualRoots
+$namespaces = $resolveAbilityNamespaces.Invoke($null, $namespaceArgs)
+if (-not [bool]$isNamespaceOwned.Invoke($null, [object[]]@(
+    'materials/particle/cables/example_hero_tether.vmat_c',
+    $namespaces))) {
+    throw 'Cross-folder hero-owned ability material was not recognized from its resolved namespace.'
+}
+if ([bool]$isNamespaceOwned.Invoke($null, [object[]]@(
+    'materials/particle/cables/unrelated_tether.vmat_c',
+    $namespaces))) {
+    throw 'An unrelated cross-folder material was incorrectly claimed by the ability namespace.'
 }
 
 if (-not [bool]$isTexture.Invoke($null, @('models/heroes/ivy/body_color.vtex'))) {
@@ -80,6 +109,7 @@ if ($null -ne $settingsFormType.GetMethod('AddHeroTextureExtractionRow', $instan
 }
 
 $extraction = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/HeroExtractionService.cs' -Raw
+$abilityExtraction = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/HeroExtractionService.Abilities.cs' -Raw
 $requiredExtraction = @(
     'HeroExtractionOptions options',
     'options.ExtractTextures',
@@ -92,6 +122,17 @@ $requiredExtraction = @(
 foreach ($pattern in $requiredExtraction) {
     if (-not $extraction.Contains($pattern, [StringComparison]::Ordinal)) {
         throw "Per-run extraction wiring is missing: $pattern"
+    }
+}
+foreach ($pattern in @(
+    'ResolveResourcesInDirectories(',
+    'Ability resource folders: added',
+    'IsParticleSystemReference',
+    'ResolveAbilityNamespaces(selection.VisualResourcePaths)',
+    'IsAbilityNamespaceOwnedResource'
+)) {
+    if (-not $abilityExtraction.Contains($pattern, [StringComparison]::Ordinal)) {
+        throw "Ability material sibling extraction wiring is missing: $pattern"
     }
 }
 
