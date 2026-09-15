@@ -178,6 +178,11 @@ public sealed class BuildAndTestService
             log.AppendLine($"Prepare log: {prepare.LogPath}");
             log.AppendLine($"Prepared content root: {prepare.AddonContentRoot}");
 
+            var sourceRoot = SafePath.ResolveUnderRoot(
+                manifest.ProjectFolder,
+                manifest.SourceDumpFolderName,
+                "Project source-dump folder");
+
             cancellationToken.ThrowIfCancellationRequested();
             Report(progress, 33, LocalizedText.T("Comparing prepared content with the previous successful build...", "Сравнение подготовленного content с предыдущей успешной сборкой..."));
 
@@ -207,6 +212,11 @@ public sealed class BuildAndTestService
 
             var removed = previousHashes.Keys
                 .Where(path => !currentHashes.ContainsKey(path))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var projectOwnedSources = ResolveProjectOwnedSources(currentHashes, sourceRoot);
+            var projectChanged = changed
+                .Where(projectOwnedSources.Contains)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             var fullRebuild = previousState is null;
@@ -243,13 +253,17 @@ public sealed class BuildAndTestService
                 .ToArray();
 
             var compileTargets = fullRebuild
-                ? allDirectSources.ToHashSet(StringComparer.OrdinalIgnoreCase)
+                ? ResolveFullCompileTargets(
+                    prepare.AddonContentRoot,
+                    allDirectSources,
+                    projectOwnedSources)
                 : ResolveIncrementalCompileTargets(
                     prepare.AddonContentRoot,
                     addonGameRoot,
                     allDirectSources,
-                    changed,
-                    removed);
+                    projectChanged,
+                    removed,
+                    projectOwnedSources);
 
             var particlesToSkip = SelectParticleSourcesToSkip(
                 particleSources,
@@ -274,6 +288,8 @@ public sealed class BuildAndTestService
 
             log.AppendLine($"Prepared content files tracked: {currentHashes.Count}");
             log.AppendLine($"Changed/new source files: {changed.Count}");
+            log.AppendLine($"Project-owned changed/new source files: {projectChanged.Count}");
+            log.AppendLine($"Retail-identical changed/new source files reused: {changed.Count - projectChanged.Count}");
             log.AppendLine($"Removed source files: {removed.Count}");
             log.AppendLine($"Direct compile targets: {compileTargets.Count}");
             log.AppendLine($"Known stale compiled outputs removed: {removedCompiledOutputs}");
@@ -331,10 +347,6 @@ public sealed class BuildAndTestService
             Directory.CreateDirectory(retailAddonsRoot);
             var vpkPath = Path.Combine(retailAddonsRoot, $"pak{releaseSlot:D2}_dir.vpk");
 
-            var sourceRoot = SafePath.ResolveUnderRoot(
-                manifest.ProjectFolder,
-                manifest.SourceDumpFolderName,
-                "Project source-dump folder");
             var packagingPlan = RetailResourcePackagingPolicy.Resolve(
                 manifest,
                 _paths.RetailDeadlockRoot,
@@ -512,7 +524,8 @@ public sealed class BuildAndTestService
         string gameRoot,
         IReadOnlyList<string> allDirectSources,
         IReadOnlySet<string> changed,
-        IReadOnlySet<string> removed)
+        IReadOnlySet<string> removed,
+        IReadOnlySet<string> projectOwnedSources)
     {
         var targets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -567,11 +580,54 @@ public sealed class BuildAndTestService
                 "Expected compiled output");
             if (!File.Exists(expectedOutput))
             {
-                targets.Add(source);
+                if (projectOwnedSources.Contains(relative))
+                {
+                    targets.Add(source);
+                }
             }
         }
 
         return targets;
+    }
+
+    private static HashSet<string> ResolveFullCompileTargets(
+        string contentRoot,
+        IReadOnlyList<string> allDirectSources,
+        IReadOnlySet<string> projectOwnedSources) =>
+        allDirectSources
+            .Where(source =>
+            {
+                var relative = NormalizeRelativePath(Path.GetRelativePath(contentRoot, source));
+                return projectOwnedSources.Contains(relative);
+            })
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static HashSet<string> ResolveProjectOwnedSources(
+        IReadOnlyDictionary<string, string> currentHashes,
+        string sourceRoot)
+    {
+        var projectOwned = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (relativePath, currentHash) in currentHashes)
+        {
+            var extractedPath = SafePath.ResolveUnderRoot(
+                sourceRoot,
+                ToWindowsPath(relativePath),
+                "Extracted source baseline path");
+            if (!File.Exists(extractedPath))
+            {
+                projectOwned.Add(relativePath);
+                continue;
+            }
+
+            using var baselineStream = File.OpenRead(extractedPath);
+            var baselineHash = Convert.ToHexString(SHA256.HashData(baselineStream));
+            if (!string.Equals(currentHash, baselineHash, StringComparison.Ordinal))
+            {
+                projectOwned.Add(relativePath);
+            }
+        }
+
+        return projectOwned;
     }
 
     private static int RemoveKnownDeletedOutputs(
