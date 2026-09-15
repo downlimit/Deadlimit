@@ -62,10 +62,31 @@ public sealed class BuildAndTestService
         _paths = paths;
     }
 
-    public async Task<BuildAndTestResult> BuildAsync(
+    public Task<BuildAndTestResult> BuildAsync(
         ProjectManifest manifest,
         IProgress<BuildAndTestProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        BuildInternalAsync(
+            manifest,
+            progress,
+            cancellationToken,
+            skipParticleSources: false);
+
+    public Task<BuildAndTestResult> BuildWithoutParticlesAsync(
+        ProjectManifest manifest,
+        IProgress<BuildAndTestProgress>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        BuildInternalAsync(
+            manifest,
+            progress,
+            cancellationToken,
+            skipParticleSources: true);
+
+    private async Task<BuildAndTestResult> BuildInternalAsync(
+        ProjectManifest manifest,
+        IProgress<BuildAndTestProgress>? progress,
+        CancellationToken cancellationToken,
+        bool skipParticleSources)
     {
         ValidateEnvironment(manifest);
 
@@ -88,6 +109,7 @@ public sealed class BuildAndTestService
         log.AppendLine($"Addon: {addonName}");
         log.AppendLine($"Release slot: {releaseSlot:D2}");
         log.AppendLine($"Mode: {(canIncrement ? "incremental" : "first/clean build")}");
+        log.AppendLine($"VPCF mode: {(skipParticleSources ? "skip and reuse retail particle definitions" : "attempt compile")}");
         log.AppendLine();
 
         string? preservedGameBackup = null;
@@ -138,24 +160,18 @@ public sealed class BuildAndTestService
             Report(progress, 33, LocalizedText.T("Comparing prepared content with the previous successful build...", "Сравнение подготовленного content с предыдущей успешной сборкой..."));
 
             var currentHashes = HashContentTree(prepare.AddonContentRoot, cancellationToken);
-            var unsupportedParticles = FindUnsupportedParticleSources(
+            var newerParticleSources = FindUnsupportedParticleSources(
                 prepare.AddonContentRoot,
                 Csdk12MaximumParticleFormatVersion,
                 cancellationToken);
-            if (unsupportedParticles.Count > 0)
+            if (newerParticleSources.Count > 0)
             {
-                log.AppendLine($"Unsupported particle sources for Reduced CSDK 12: {unsupportedParticles.Count}");
-                foreach (var path in unsupportedParticles)
+                log.AppendLine(
+                    $"Particle sources newer than the known Reduced CSDK 12 vpcf{Csdk12MaximumParticleFormatVersion} baseline: {newerParticleSources.Count}");
+                foreach (var path in newerParticleSources)
                 {
-                    log.AppendLine($"  {Path.GetRelativePath(prepare.AddonContentRoot, path)}");
+                    log.AppendLine($"  attempt {Path.GetRelativePath(prepare.AddonContentRoot, path)}");
                 }
-
-                var examples = string.Join(", ", unsupportedParticles
-                    .Take(4)
-                    .Select(path => Path.GetFileName(path)));
-                throw new InvalidOperationException(LocalizedText.T(
-                    $"Reduced CSDK 12 supports particle sources through vpcf{Csdk12MaximumParticleFormatVersion}, but this project contains {unsupportedParticles.Count} newer particle file(s). If the skin changes ability models, keep 'Extract abilities' enabled and leave 'Copy ability FX to CSDK for editing' disabled. If ability models are not needed, extract without abilities. Ability FX editing requires a compatible newer CSDK. First files: {examples}",
-                    $"Reduced CSDK 12 поддерживает исходники particles до vpcf{Csdk12MaximumParticleFormatVersion}, а в этом проекте есть {unsupportedParticles.Count} более новых файлов. Если скин меняет модели способностей, оставьте «Извлекать способности» включённым и выключите «Копировать FX способностей в CSDK для редактирования». Если модели способностей не нужны, извлеките исходники без способностей. Для редактирования FX способностей нужен совместимый более новый CSDK. Первые файлы: {examples}"));
             }
 
             var previousHashes = previousState?.ContentHashes
@@ -200,6 +216,10 @@ public sealed class BuildAndTestService
                 .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
+            var particleSources = allDirectSources
+                .Where(IsParticleSource)
+                .ToArray();
+
             var compileTargets = fullRebuild
                 ? allDirectSources.ToHashSet(StringComparer.OrdinalIgnoreCase)
                 : ResolveIncrementalCompileTargets(
@@ -208,6 +228,22 @@ public sealed class BuildAndTestService
                     allDirectSources,
                     changed,
                     removed);
+
+            if (skipParticleSources)
+            {
+                foreach (var particleSource in particleSources)
+                {
+                    compileTargets.Remove(particleSource);
+                }
+
+                removedCompiledOutputs += RemoveParticleCompiledOutputs(
+                    prepare.AddonContentRoot,
+                    addonGameRoot,
+                    particleSources,
+                    log);
+                log.AppendLine(
+                    $"VPCF fallback active: skipped {particleSources.Length} particle source(s); original Deadlock VPCF resources will be reused.");
+            }
 
             log.AppendLine($"Prepared content files tracked: {currentHashes.Count}");
             log.AppendLine($"Changed/new source files: {changed.Count}");
@@ -283,9 +319,21 @@ public sealed class BuildAndTestService
                 progress,
                 cancellationToken);
 
+            var successfulHashes = skipParticleSources
+                ? currentHashes
+                    .Where(pair => !string.Equals(
+                        Path.GetExtension(pair.Key),
+                        ".vpcf",
+                        StringComparison.OrdinalIgnoreCase))
+                    .ToDictionary(
+                        pair => pair.Key,
+                        pair => pair.Value,
+                        StringComparer.OrdinalIgnoreCase)
+                : currentHashes;
+
             SaveState(statePath, new BuildTestState
             {
-                ContentHashes = currentHashes,
+                ContentHashes = successfulHashes,
             });
 
             Report(progress, 100, LocalizedText.T("Build & Test complete.", "Сборка для теста завершена."));
@@ -321,6 +369,11 @@ public sealed class BuildAndTestService
                 {
                     log.AppendLine($"WARNING: failed to restore preserved game output: {restoreEx}");
                 }
+            }
+
+            if (ex is ParticleCompilationException particleCompilationException)
+            {
+                particleCompilationException.LogPath = logPath;
             }
 
             log.AppendLine();
@@ -393,17 +446,24 @@ public sealed class BuildAndTestService
                      .OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var header = File.ReadLines(path).FirstOrDefault() ?? string.Empty;
-            var match = ParticleFormatRegex.Match(header);
-            if (match.Success
-                && int.TryParse(match.Groups["version"].Value, out var version)
-                && version > maximumSupportedVersion)
+            var version = ReadParticleFormatVersion(path);
+            if (version is not null && version > maximumSupportedVersion)
             {
                 unsupported.Add(path);
             }
         }
 
         return unsupported;
+    }
+
+    private static int? ReadParticleFormatVersion(string path)
+    {
+        var header = File.ReadLines(path).FirstOrDefault() ?? string.Empty;
+        var match = ParticleFormatRegex.Match(header);
+        return match.Success
+               && int.TryParse(match.Groups["version"].Value, out var version)
+            ? version
+            : null;
     }
 
     private static HashSet<string> ResolveIncrementalCompileTargets(
@@ -503,28 +563,75 @@ public sealed class BuildAndTestService
         return removedCount;
     }
 
+    private static int RemoveParticleCompiledOutputs(
+        string contentRoot,
+        string gameRoot,
+        IEnumerable<string> particleSources,
+        StringBuilder log)
+    {
+        var removedCount = 0;
+        foreach (var particleSource in particleSources)
+        {
+            var relative = NormalizeRelativePath(Path.GetRelativePath(contentRoot, particleSource));
+            var compiledRelative = GetCompiledRelativePath(relative);
+            if (compiledRelative is null)
+            {
+                continue;
+            }
+
+            var output = SafePath.ResolveUnderRoot(
+                gameRoot,
+                ToWindowsPath(compiledRelative),
+                "Particle output removed for VPCF fallback");
+            if (!File.Exists(output))
+            {
+                continue;
+            }
+
+            File.Delete(output);
+            removedCount++;
+            log.AppendLine($"Removed VPCF compiled output for fallback: {compiledRelative}");
+        }
+
+        return removedCount;
+    }
+
     private async Task CompileInBatchesAsync(
         IReadOnlyCollection<string> sources,
         StringBuilder log,
         IProgress<BuildAndTestProgress>? progress,
         CancellationToken cancellationToken)
     {
-        var ordered = sources
+        var nonParticleSources = sources
+            .Where(path => !IsParticleSource(path))
             .OrderBy(path => Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)
             .ThenBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        var particleSources = sources
+            .Where(IsParticleSource)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
-        var batchCount = (ordered.Length + CompileBatchSize - 1) / CompileBatchSize;
-        for (var offset = 0; offset < ordered.Length; offset += CompileBatchSize)
+        var batches = nonParticleSources
+            .Chunk(CompileBatchSize)
+            .Select(batch => new CompileBatch(batch, IsParticle: false))
+            .Concat(particleSources.Select(path => new CompileBatch([path], IsParticle: true)))
+            .ToArray();
+
+        for (var batchIndex = 0; batchIndex < batches.Length; batchIndex++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var batchIndex = offset / CompileBatchSize;
-            var batch = ordered.Skip(offset).Take(CompileBatchSize).ToArray();
-            var beforePercent = 40 + (int)Math.Floor(36.0 * batchIndex / Math.Max(1, batchCount));
-            Report(progress, beforePercent, LocalizedText.T($"Compiling Source 2 assets — batch {batchIndex + 1}/{batchCount}...", $"Компиляция ресурсов Source 2 — пакет {batchIndex + 1}/{batchCount}..."));
+            var batch = batches[batchIndex];
+            var beforePercent = 40 + (int)Math.Floor(36.0 * batchIndex / Math.Max(1, batches.Length));
+            var kind = batch.IsParticle ? "VPCF particle" : "Source 2 asset";
+            Report(progress, beforePercent, LocalizedText.T(
+                $"Compiling {kind} — batch {batchIndex + 1}/{batches.Length}...",
+                batch.IsParticle
+                    ? $"Компиляция VPCF — пакет {batchIndex + 1}/{batches.Length}..."
+                    : $"Компиляция ресурсов Source 2 — пакет {batchIndex + 1}/{batches.Length}..."));
 
-            var arguments = new List<string>(batch.Length * 2 + 1);
-            foreach (var source in batch)
+            var arguments = new List<string>(batch.Sources.Length * 2 + 1);
+            foreach (var source in batch.Sources)
             {
                 arguments.Add("-i");
                 arguments.Add(source);
@@ -537,15 +644,42 @@ public sealed class BuildAndTestService
                 Path.GetDirectoryName(_paths.ResourceCompilerPath)!,
                 cancellationToken);
 
-            AppendProcessLog(log, $"ResourceCompiler batch {batchIndex + 1}", result);
+            AppendProcessLog(
+                log,
+                batch.IsParticle
+                    ? $"ResourceCompiler VPCF {batchIndex + 1}"
+                    : $"ResourceCompiler batch {batchIndex + 1}",
+                result);
             if (!result.Success)
             {
+                if (batch.IsParticle)
+                {
+                    var versions = batch.Sources
+                        .Select(ReadParticleFormatVersion)
+                        .Where(version => version is not null)
+                        .Select(version => version!.Value)
+                        .Distinct()
+                        .Order()
+                        .ToArray();
+                    throw new ParticleCompilationException(
+                        $"ResourceCompiler failed while compiling VPCF particle source '{Path.GetFileName(batch.Sources[0])}' with exit code {result.ExitCode}.",
+                        result.ExitCode,
+                        batch.Sources,
+                        versions);
+                }
+
                 throw new InvalidOperationException(
                     $"ResourceCompiler failed with exit code {result.ExitCode}. See the Build & Test log.");
             }
 
-            var afterPercent = 40 + (int)Math.Ceiling(36.0 * (batchIndex + 1) / Math.Max(1, batchCount));
-            Report(progress, afterPercent, LocalizedText.T($"Compiled Source 2 assets — batch {batchIndex + 1}/{batchCount}.", $"Ресурсы Source 2 скомпилированы — пакет {batchIndex + 1}/{batchCount}."));
+            var afterPercent = 40 + (int)Math.Ceiling(36.0 * (batchIndex + 1) / Math.Max(1, batches.Length));
+            Report(progress, afterPercent, LocalizedText.T(
+                batch.IsParticle
+                    ? $"Compiled VPCF particle — batch {batchIndex + 1}/{batches.Length}."
+                    : $"Compiled Source 2 assets — batch {batchIndex + 1}/{batches.Length}.",
+                batch.IsParticle
+                    ? $"VPCF скомпилирован — пакет {batchIndex + 1}/{batches.Length}."
+                    : $"Ресурсы Source 2 скомпилированы — пакет {batchIndex + 1}/{batches.Length}."));
         }
     }
 
@@ -567,11 +701,23 @@ public sealed class BuildAndTestService
                 gameRoot,
                 ToWindowsPath(compiledRelative),
                 "Verified compiled output");
-            if (!File.Exists(output))
+            if (File.Exists(output))
             {
-                throw new InvalidOperationException(
-                    $"ResourceCompiler exited successfully, but expected output was not found: {output}");
+                continue;
             }
+
+            if (IsParticleSource(source))
+            {
+                var version = ReadParticleFormatVersion(source);
+                throw new ParticleCompilationException(
+                    $"ResourceCompiler exited successfully, but the expected VPCF output was not found: {output}",
+                    exitCode: 0,
+                    [source],
+                    version is null ? [] : [version.Value]);
+            }
+
+            throw new InvalidOperationException(
+                $"ResourceCompiler exited successfully, but expected output was not found: {output}");
         }
     }
 
@@ -1010,6 +1156,9 @@ public sealed class BuildAndTestService
     private static bool IsDirectCompileSource(string path) =>
         DirectCompileExtensions.Contains(Path.GetExtension(path));
 
+    private static bool IsParticleSource(string path) =>
+        string.Equals(Path.GetExtension(path), ".vpcf", StringComparison.OrdinalIgnoreCase);
+
     private static string? GetCompiledRelativePath(string sourceRelativePath)
     {
         var extension = Path.GetExtension(sourceRelativePath);
@@ -1178,6 +1327,8 @@ public sealed class BuildAndTestService
 
     private static string ToWindowsPath(string value) =>
         value.Replace('/', Path.DirectorySeparatorChar);
+
+    private sealed record CompileBatch(string[] Sources, bool IsParticle);
 
     private sealed class BuildTestState
     {

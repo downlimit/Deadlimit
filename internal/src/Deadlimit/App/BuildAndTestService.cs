@@ -28,4 +28,22 @@ internal sealed class BuildAndTestService
         return new Deadlimit.Core.BuildAndTestService(_paths)
             .BuildAsync(manifest, progress, cancellationToken);
     }
+
+    public Task<BuildAndTestResult> BuildWithoutParticlesAsync(
+        ProjectManifest manifest,
+        IProgress<BuildAndTestProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+
+        if (manifest.Mode == ProjectMode.ImportedVpk)
+        {
+            return Task.FromResult(
+                new ImportedVpkBuildAndTestService(_paths)
+                    .Build(manifest, progress, cancellationToken));
+        }
+
+        return new Deadlimit.Core.BuildAndTestService(_paths)
+            .BuildWithoutParticlesAsync(manifest, progress, cancellationToken);
+    }
 }
