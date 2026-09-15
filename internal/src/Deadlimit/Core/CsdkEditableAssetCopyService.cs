@@ -9,6 +9,10 @@ internal sealed record CsdkEditableAssetCopyResult(
     int OverwrittenCount,
     string? BackupFolder);
 
+internal sealed record MissingAbilityMaterialStageResult(
+    int MaterialCopiedCount,
+    int TextureCopiedCount);
+
 internal sealed class CsdkEditableAssetCopyService
 {
     private const string BackupFolderName = "fx_and_mat_bckps";
@@ -61,14 +65,13 @@ internal sealed class CsdkEditableAssetCopyService
         }
 
         var addon = new AddonIdentityService(_paths).ResolveAndClaim(manifest);
-        var backupParent = Path.Combine(
-            ProjectStore.GetMetadataFolder(manifest.ProjectFolder),
-            BackupFolderName);
+        var metadataFolder = ProjectStore.GetMetadataFolder(manifest.ProjectFolder);
+        var backupParent = Path.Combine(metadataFolder, BackupFolderName);
 
         progress?.Report(new HeroExtractionProgress(
             "Copying selected materials and extracted ability FX into the CSDK addon for editing..."));
 
-        return CopySelectedFiles(
+        var result = CopySelectedFiles(
             sourceRoot,
             addon.ContentRoot,
             backupParent,
@@ -76,6 +79,40 @@ internal sealed class CsdkEditableAssetCopyService
             copyAbilityFx,
             options.BackupCsdkOverwrites,
             cancellationToken);
+
+        if (!copyAbilityFx)
+        {
+            return result;
+        }
+
+        var scopeState = HeroExtractionScopePublisher.TryLoadState(
+            Path.Combine(metadataFolder, "source-extraction-state.json"));
+        if (scopeState is null
+            || !scopeState.Scopes.TryGetValue(
+                HeroExtractionScopePublisher.AbilitiesScope,
+                out var abilityScopeRelativePaths)
+            || abilityScopeRelativePaths.Count == 0)
+        {
+            return result;
+        }
+
+        var staged = StageMissingAbilityMaterialSources(
+            sourceRoot,
+            addon.ContentRoot,
+            abilityScopeRelativePaths,
+            cancellationToken);
+        if (staged.MaterialCopiedCount == 0 && staged.TextureCopiedCount == 0)
+        {
+            return result;
+        }
+
+        progress?.Report(new HeroExtractionProgress(
+            $"Staged missing ability material sources into CSDK: {staged.MaterialCopiedCount} VMAT, {staged.TextureCopiedCount} texture source(s). Existing CSDK files were preserved."));
+
+        return result with
+        {
+            MaterialCopiedCount = result.MaterialCopiedCount + staged.MaterialCopiedCount,
+        };
     }
 
     internal static CsdkEditableAssetCopyResult CopySelectedFiles(
@@ -245,6 +282,78 @@ internal sealed class CsdkEditableAssetCopyService
         }
     }
 
+    internal static MissingAbilityMaterialStageResult StageMissingAbilityMaterialSources(
+        string sourceRoot,
+        string addonContentRoot,
+        IReadOnlyCollection<string> abilityScopeRelativePaths,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceRoot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(addonContentRoot);
+        ArgumentNullException.ThrowIfNull(abilityScopeRelativePaths);
+
+        if (!Directory.Exists(sourceRoot))
+        {
+            throw new DirectoryNotFoundException(sourceRoot);
+        }
+
+        Directory.CreateDirectory(addonContentRoot);
+
+        var copiedMaterials = 0;
+        var copiedTextures = 0;
+        var processedTextures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var relativePathValue in abilityScopeRelativePaths
+                     .Where(path => !string.IsNullOrWhiteSpace(path))
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var relativePath = NormalizeRelativePath(relativePathValue);
+            if (!string.Equals(Path.GetExtension(relativePath), ".vmat", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var sourceMaterial = SafePath.ResolveUnderRoot(
+                sourceRoot,
+                relativePath.Replace('/', Path.DirectorySeparatorChar),
+                "Extracted ability material source");
+            if (!File.Exists(sourceMaterial))
+            {
+                continue;
+            }
+
+            var targetMaterial = SafePath.ResolveUnderRoot(
+                addonContentRoot,
+                relativePath.Replace('/', Path.DirectorySeparatorChar),
+                "CSDK ability material source");
+            if (CopyFileIfMissing(sourceMaterial, targetMaterial))
+            {
+                copiedMaterials++;
+            }
+
+            foreach (var dependency in EnumerateMaterialTextureDependencies(sourceMaterial, sourceRoot))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!processedTextures.Add(dependency.RelativePath))
+                {
+                    continue;
+                }
+
+                var targetTexture = SafePath.ResolveUnderRoot(
+                    addonContentRoot,
+                    dependency.RelativePath.Replace('/', Path.DirectorySeparatorChar),
+                    "CSDK ability material texture source");
+                if (CopyFileIfMissing(dependency.Path, targetTexture))
+                {
+                    copiedTextures++;
+                }
+            }
+        }
+
+        return new MissingAbilityMaterialStageResult(copiedMaterials, copiedTextures);
+    }
+
     private static IEnumerable<EditableSource> EnumerateMaterialTextureDependencies(
         string materialPath,
         string sourceRoot)
@@ -286,6 +395,35 @@ internal sealed class CsdkEditableAssetCopyService
                 resourcePath,
                 IsMaterial: false,
                 IsAbilityFx: false);
+        }
+    }
+
+    private static bool CopyFileIfMissing(string sourcePath, string targetPath)
+    {
+        if (File.Exists(targetPath))
+        {
+            return false;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(targetPath)!);
+        var tempTarget = targetPath + $".deadlimit-copy-{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.Copy(sourcePath, tempTarget, overwrite: true);
+            if (File.Exists(targetPath))
+            {
+                return false;
+            }
+
+            File.Move(tempTarget, targetPath);
+            return true;
+        }
+        finally
+        {
+            if (File.Exists(tempTarget))
+            {
+                File.Delete(tempTarget);
+            }
         }
     }
 

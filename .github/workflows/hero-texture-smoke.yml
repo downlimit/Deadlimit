@@ -33,6 +33,9 @@ jobs:
       - name: CSDK editing copy and backup smoke
         shell: pwsh
         run: internal/tests/csdk-editing-copy-smoke.ps1
+      - name: Ability material source staging smoke
+        shell: pwsh
+        run: internal/tests/ability-material-source-staging-smoke.ps1
       - name: Retail texture override resolution smoke
         shell: pwsh
         run: internal/tests/retail-texture-override-resolution-smoke.ps1
