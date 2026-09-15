@@ -27,8 +27,8 @@ if (-not $guidelines.Contains('must end with an ellipsis (`…`)')) {
 }
 
 $mainForm = Get-Content -LiteralPath $mainFormPath -Raw
-if (-not $mainForm.Contains('UiText.T("EXTRACT HERO SOURCE…", "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ…")')) {
-    throw 'EXTRACT HERO SOURCE must keep the dialog-action ellipsis in both locales.'
+if (-not $mainForm.Contains('UiText.T("EXTRACT SOURCE…", "ИЗВЛЕЧЬ ИСХОДНИКИ…")')) {
+    throw 'EXTRACT SOURCE must keep the established wording and dialog-action ellipsis in both locales.'
 }
 
 $feedback = Get-Content -LiteralPath $feedbackPath -Raw
