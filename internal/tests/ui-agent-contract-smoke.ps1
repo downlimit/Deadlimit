@@ -76,6 +76,8 @@ foreach ($required in @(
     'ProjectActionIconWidth = 34',
     'ProjectActionHeight = 24',
     'ProjectActionTextWidth = 148',
+    'var preferredWidth = extractButton.PreferredSize.Width;',
+    'extractButton.Width = Math.Max(ProjectActionTextWidth, preferredWidth);',
     'ProjectActionGap = 6',
     'actions.Controls.Add(openFolderButton)',
     'actions.Controls.Add(extractButton)')) {
