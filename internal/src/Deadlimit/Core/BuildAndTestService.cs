@@ -322,20 +322,18 @@ public sealed class BuildAndTestService
             }
 
             var compiledMainModel = GetCompiledMainModelPath(manifest, addonGameRoot);
-            var mainModelWasCompiled = compileTargets.Contains(prepare.SourceVmdlPath);
-            var ag2Applied = false;
-
-            if (mainModelWasCompiled)
-            {
-                Report(progress, 83, LocalizedText.T("Restoring AnimGraph2 / NmSkeleton on the compiled character model...", "Восстановление AnimGraph2 / NmSkeleton в скомпилированной модели персонажа..."));
-                ApplyAg2(manifest, compiledMainModel, log, cancellationToken);
-                ag2Applied = true;
-            }
-            else if (!File.Exists(compiledMainModel))
+            if (!File.Exists(compiledMainModel))
             {
                 throw new InvalidOperationException(
                     $"The compiled character model is missing after incremental compilation: {compiledMainModel}");
             }
+
+            // ResourceCompiler can rebuild the main VMDL transitively while compiling a
+            // material, particle, or another model. Always run the idempotent binding
+            // repair after compilation so a transitive rebuild cannot ship an A-pose model.
+            Report(progress, 83, LocalizedText.T("Verifying AnimGraph2 / NmSkeleton on the compiled character model...", "Проверка AnimGraph2 / NmSkeleton в скомпилированной модели персонажа..."));
+            ApplyAg2(manifest, compiledMainModel, log, cancellationToken);
+            var ag2Applied = true;
 
             manifest.CompiledVmdl = compiledMainModel;
             ProjectStore.Save(manifest);

@@ -76,6 +76,17 @@ $manifestSaveCount = ([regex]::Matches($buildServiceSource, 'ProjectStore\.Save\
 if ($manifestSaveCount -ne 1) {
     throw "BuildAndTestService must publish its manifest once after AG2 and compiled-model updates; found $manifestSaveCount saves."
 }
+if ($buildServiceSource.Contains('mainModelWasCompiled', [StringComparison]::Ordinal)) {
+    throw 'AnimGraph2 repair is still gated on the main VMDL being a direct compile target.'
+}
+foreach ($required in @(
+    'ResourceCompiler can rebuild the main VMDL transitively',
+    'Verifying AnimGraph2 / NmSkeleton on the compiled character model',
+    'ApplyAg2(manifest, compiledMainModel, log, cancellationToken);')) {
+    if (-not $buildServiceSource.Contains($required, [StringComparison]::Ordinal)) {
+        throw "Unconditional compiled-model animation repair contract is missing: $required"
+    }
+}
 
 # Portable releases are identified by package-owned release metadata. Their
 # unverified external tool installers must stay behind the service-layer guard.
