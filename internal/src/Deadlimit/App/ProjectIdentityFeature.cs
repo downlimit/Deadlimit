@@ -82,8 +82,10 @@ internal static class ProjectIdentityFeature
         openFolderButton.TabStop = false;
 
         extractButton.Text = UiText.T("EXTRACT SOURCE…", "ИЗВЛЕЧЬ ИСХОДНИКИ…");
+        extractButton.AutoSize = true;
+        var preferredWidth = extractButton.PreferredSize.Width;
         extractButton.AutoSize = false;
-        extractButton.Width = ProjectActionTextWidth;
+        extractButton.Width = Math.Max(ProjectActionTextWidth, preferredWidth);
         extractButton.Height = ProjectActionHeight;
         extractButton.Margin = new Padding(0, 4, 0, 4);
         extractButton.Anchor = AnchorStyles.Left;
