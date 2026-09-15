@@ -2,6 +2,7 @@ using System.Text;
 using SteamDatabase.ValvePak;
 using ValveResourceFormat;
 using ValveResourceFormat.IO;
+using ValveResourceFormat.ResourceTypes;
 
 namespace Deadlimit.Core;
 
@@ -153,6 +154,15 @@ public sealed partial class HeroExtractionService
                 .Where(path => !collected.ContainsKey(path))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+            foreach (var materialPath in ReadModelMaterialGroupReferences(location, cancellationToken))
+            {
+                var compiledMaterialPath = ToCompiledResourcePath(materialPath);
+                if (!collected.ContainsKey(compiledMaterialPath))
+                {
+                    dependencyPaths.Add(compiledMaterialPath);
+                }
+            }
+
             if (dependencyPaths.Count == 0)
             {
                 continue;
@@ -185,6 +195,63 @@ public sealed partial class HeroExtractionService
         progress?.Report(new HeroExtractionProgress(
             $"Ability visual dependencies: {locations.Length} resource(s)."));
         return locations;
+    }
+
+    private static IReadOnlyList<string> ReadModelMaterialGroupReferences(
+        ResourceLocation location,
+        CancellationToken cancellationToken)
+    {
+        if (!location.ResourcePath.EndsWith(".vmdl_c", StringComparison.OrdinalIgnoreCase))
+        {
+            return [];
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        using var package = new Package();
+        package.Read(location.VpkPath);
+        var packageEntries = package.Entries
+            ?? throw new InvalidDataException($"VPK entry table was not available: {location.VpkPath}");
+        var entry = packageEntries
+            .SelectMany(group => group.Value)
+            .FirstOrDefault(candidate => string.Equals(
+                NormalizeResourcePath(candidate.GetFullPath()),
+                location.ResourcePath,
+                StringComparison.OrdinalIgnoreCase));
+        if (entry is null)
+        {
+            throw new InvalidOperationException(
+                $"Indexed retail model resource was not found: {location.ResourcePath}");
+        }
+
+        package.ReadEntry(entry, out byte[] rawData);
+        using var stream = new MemoryStream(rawData, writable: false);
+        using var resource = new Resource { FileName = location.ResourcePath };
+        resource.Read(stream);
+        if (resource.DataBlock is not Model model)
+        {
+            return [];
+        }
+
+        try
+        {
+            return model.GetMaterialGroups()
+                .SelectMany(group => group.Materials ?? [])
+                .Where(path => !string.IsNullOrWhiteSpace(path))
+                .Select(NormalizeResourcePath)
+                .Where(path => path.EndsWith(".vmat", StringComparison.OrdinalIgnoreCase)
+                    || path.EndsWith(".vmat_c", StringComparison.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+        catch (NullReferenceException)
+        {
+            // VRF 20.0 exposes material groups through a deferred enumerable that assumes
+            // m_materialGroups exists. Models without that field simply have no extra
+            // material-group dependencies to add.
+            return [];
+        }
     }
 
     private static string ReadDecompiledResourceText(

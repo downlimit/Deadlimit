@@ -99,4 +99,21 @@ if (-not [bool]$visualDependency.Invoke($null, @('particles/test/one.vpcf', $fal
     throw 'Ability VPCF must remain included when only Extract abilities is on.'
 }
 
+$modelMaterialGroups = $serviceType.GetMethod('ReadModelMaterialGroupReferences', $parserFlags)
+if ($null -eq $modelMaterialGroups) {
+    throw 'Ability model material-group dependency reader was not found.'
+}
+
+$abilityExtractionSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/HeroExtractionService.Abilities.cs' -Raw
+foreach ($required in @(
+    'using ValveResourceFormat.ResourceTypes;',
+    'ReadModelMaterialGroupReferences(location, cancellationToken)',
+    'model.GetMaterialGroups()',
+    'dependencyPaths.Add(compiledMaterialPath);'
+)) {
+    if (-not $abilityExtractionSource.Contains($required, [StringComparison]::Ordinal)) {
+        throw "Ability model material-group extraction wiring is missing: $required"
+    }
+}
+
 Write-Host 'Hero ability extraction contract smoke passed.'
