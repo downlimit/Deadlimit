@@ -42,7 +42,9 @@ internal sealed class CsdkEditableAssetCopyService
         IProgress<HeroExtractionProgress>? progress,
         CancellationToken cancellationToken)
     {
-        if (!options.CopyMaterialsToCsdkForEditing && !options.CopyAbilityFxToCsdkForEditing)
+        var copyAbilityFx = options.ExtractAbilities
+            && options.Format == HeroExtractionFormat.Dmx;
+        if (!options.CopyMaterialsToCsdkForEditing && !copyAbilityFx)
         {
             return new CsdkEditableAssetCopyResult(0, 0, 0, null);
         }
@@ -64,14 +66,14 @@ internal sealed class CsdkEditableAssetCopyService
             BackupFolderName);
 
         progress?.Report(new HeroExtractionProgress(
-            "Copying selected materials and ability FX into the CSDK addon for editing..."));
+            "Copying selected materials and extracted ability FX into the CSDK addon for editing..."));
 
         return CopySelectedFiles(
             sourceRoot,
             addon.ContentRoot,
             backupParent,
             options.CopyMaterialsToCsdkForEditing,
-            options.CopyAbilityFxToCsdkForEditing,
+            copyAbilityFx,
             options.BackupCsdkOverwrites,
             cancellationToken);
     }

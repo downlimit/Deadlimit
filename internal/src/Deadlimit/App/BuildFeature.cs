@@ -480,11 +480,33 @@ internal static class BuildFeature
             }
 
             BuildAndTestResult result;
+            var particleFallbackUsed = false;
             try
             {
                 var progress = new Progress<BuildAndTestProgress>(animator.Update);
                 var service = new BuildAndTestService(paths);
-                result = await Task.Run(() => service.BuildAsync(manifest, progress));
+                try
+                {
+                    result = await Task.Run(() => service.BuildAsync(manifest, progress));
+                }
+                catch (ParticleCompilationException particleError)
+                {
+                    var choice = ShowParticleCompilationFallback(form, particleError);
+                    if (choice != DeadlimitDialogChoice.Continue)
+                    {
+                        RestoreForceBuildState(forceStatePath, forceStateBackupPath);
+                        return;
+                    }
+
+                    particleFallbackUsed = true;
+                    animator.Update(new BuildAndTestProgress(
+                        UiText.T(
+                            "Continuing build without VPCF particle definitions...",
+                            "Продолжение сборки без VPCF-эффектов..."),
+                        39));
+                    result = await Task.Run(() =>
+                        service.BuildWithoutParticlesAsync(manifest, progress));
+                }
             }
             catch
             {
@@ -519,6 +541,11 @@ internal static class BuildFeature
             var closedGameSummary = deadlockWasRunning
                 ? UiText.T("\nDeadlock was closed automatically to unlock the VPK.", "\nDeadlock был автоматически закрыт для разблокировки VPK.")
                 : string.Empty;
+            var particleFallbackSummary = particleFallbackUsed
+                ? UiText.T(
+                    "\nVPCF particle definitions: skipped after ResourceCompiler failure; original Deadlock VPCF resources are reused.",
+                    "\nVPCF-эффекты: пропущены после ошибки ResourceCompiler; используются оригинальные VPCF Deadlock.")
+                : string.Empty;
             var warningSummary = result.Warnings.Count == 0
                 ? string.Empty
                 : UiText.T(
@@ -540,6 +567,7 @@ internal static class BuildFeature
                 + modLoadingSummary
                 + legacySlotSummary
                 + closedGameSummary
+                + particleFallbackSummary
                 + warningSummary;
 
             using var dialog = new BuildTestSuccessDialog(result.VpkPath, summary);
@@ -560,6 +588,105 @@ internal static class BuildFeature
             form.Text = originalTitle;
             SetButtonsEnabled(actionButtons, true);
             SetBuildForTestRunning(form, false);
+        }
+    }
+
+    private static DeadlimitDialogChoice ShowParticleCompilationFallback(
+        MainForm form,
+        ParticleCompilationException error)
+    {
+        var failedFiles = error.SourcePaths
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var fileSummary = failedFiles.Length == 0
+            ? string.Empty
+            : string.Join(", ", failedFiles.Take(3));
+        var formatSummary = error.FormatVersions.Count == 0
+            ? string.Empty
+            : string.Join(", ", error.FormatVersions.Select(version => $"vpcf{version}"));
+
+        while (true)
+        {
+            var details = new List<string>();
+            if (fileSummary.Length > 0)
+            {
+                details.Add(UiText.T($"Failed VPCF: {fileSummary}", $"Не удалось собрать VPCF: {fileSummary}"));
+            }
+            if (formatSummary.Length > 0)
+            {
+                details.Add(UiText.T($"Format: {formatSummary}", $"Формат: {formatSummary}"));
+            }
+
+            var detailText = details.Count == 0
+                ? string.Empty
+                : "\n\n" + string.Join("\n", details);
+            var choice = MessageBox.ShowCustom(
+                form,
+                UiText.T(
+                    "The current ResourceCompiler could not compile one or more VPCF particle effects.\n\nYou can continue BUILD FOR TEST without compiling VPCF. Other project resources will still be built and packaged, while the game keeps using the original Deadlock VPCF definitions. Edited materials, textures and models referenced by those effects can still override the game resources." +
+                    detailText +
+                    "\n\nCONTINUE WITHOUT VPCF finishes the build. OPEN LOG shows the compiler output. CANCEL stops the build.",
+                    "Текущий ResourceCompiler не смог скомпилировать один или несколько VPCF-эффектов.\n\nМожно продолжить СОБРАТЬ ДЛЯ ТЕСТА без компиляции VPCF. Остальные ресурсы проекта будут собраны и упакованы, а игра продолжит использовать оригинальные VPCF Deadlock. Изменённые материалы, текстуры и модели, на которые ссылаются эти эффекты, всё равно смогут подменять игровые ресурсы." +
+                    detailText +
+                    "\n\nПРОДОЛЖИТЬ БЕЗ VPCF завершит сборку. ОТКРЫТЬ ЛОГ покажет вывод компилятора. ОТМЕНА остановит сборку."),
+                UiText.T("VPCF compilation failed", "Не удалось скомпилировать VPCF"),
+                new DeadlimitDialogButton(
+                    UiText.T("CANCEL", "ОТМЕНА"),
+                    DeadlimitDialogChoice.Cancel,
+                    IsCancel: true),
+                new DeadlimitDialogButton(
+                    UiText.T("OPEN LOG", "ОТКРЫТЬ ЛОГ"),
+                    DeadlimitDialogChoice.Retry),
+                new DeadlimitDialogButton(
+                    UiText.T("CONTINUE WITHOUT VPCF", "ПРОДОЛЖИТЬ БЕЗ VPCF"),
+                    DeadlimitDialogChoice.Continue,
+                    IsDefault: true));
+
+            if (choice != DeadlimitDialogChoice.Retry)
+            {
+                return choice;
+            }
+
+            OpenParticleCompilationLog(form, error.LogPath);
+        }
+    }
+
+    private static void OpenParticleCompilationLog(MainForm form, string? logPath)
+    {
+        if (string.IsNullOrWhiteSpace(logPath) || !File.Exists(logPath))
+        {
+            MessageBox.Show(
+                form,
+                UiText.T(
+                    "The Build & Test log is not available yet.",
+                    "Лог сборки пока недоступен."),
+                UiText.T("Log not found", "Лог не найден"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = logPath,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+            or System.ComponentModel.Win32Exception
+            or IOException
+            or UnauthorizedAccessException)
+        {
+            MessageBox.Show(
+                form,
+                ex.Message,
+                UiText.T("Could not open log", "Не удалось открыть лог"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
         }
     }
 

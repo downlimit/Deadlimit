@@ -158,8 +158,8 @@ internal static class HeroExtractionOptionsDialog
         var copyAbilityFxCheck = new CheckBox
         {
             Text = UiText.T(
-                "Copy ability FX to CSDK for editing",
-                "Копировать FX способностей в CSDK для редактирования"),
+                "Ability FX included with Extract abilities",
+                "FX способностей включаются вместе с «Извлекать способности»"),
             AutoSize = true,
             Enabled = false,
             Checked = false,
@@ -173,8 +173,8 @@ internal static class HeroExtractionOptionsDialog
             MaximumSize = new Size(760, 0),
             ForeColor = SystemColors.GrayText,
             Text = UiText.T(
-                "Disabled for Reduced CSDK 12: current Deadlock ability effects may use a newer VPCF format and make project builds fail. Models, materials and textures referenced by the retail effect can still be replaced; editing the particle graph requires a compatible newer CSDK.",
-                "Отключено для Reduced CSDK 12: актуальные эффекты Deadlock могут использовать более новую версию VPCF и ломать сборку проекта. Модели, материалы и текстуры, на которые ссылается retail-эффект, можно заменять; для редактирования самого графа частиц нужен совместимый более новый CSDK."),
+                "For DMX extraction, decompiled VPCF/VSNAP ability FX are staged into this project's CSDK addon so their dependency graph can be inspected and edited. Current Deadlock particles may use a newer VPCF format than Reduced CSDK 12 can compile. BUILD FOR TEST will try them; if particle compilation fails, Deadlimit can continue without modified VPCF while still building other edited dependencies.",
+                "Для DMX-извлечения декомпилированные VPCF/VSNAP эффектов способностей добавляются в CSDK-аддон проекта, чтобы можно было смотреть и редактировать их зависимости. В актуальном Deadlock встречаются VPCF новее возможностей Reduced CSDK 12. СОБРАТЬ ДЛЯ ТЕСТА сначала попробует их скомпилировать; если это не получится, Deadlimit сможет продолжить без изменённых VPCF, сохранив остальные изменённые зависимости."),
             Margin = new Padding(22, 0, 0, 16),
         };
 
@@ -228,7 +228,7 @@ internal static class HeroExtractionOptionsDialog
             }
 
             copyAbilityFxCheck.Enabled = false;
-            copyAbilityFxCheck.Checked = false;
+            copyAbilityFxCheck.Checked = extractAbilitiesCheck.Checked && !isGltf;
 
             formatNote.Text = isGltf
                 ? UiText.T(
@@ -293,7 +293,7 @@ internal static class HeroExtractionOptionsDialog
                 ExtractPortraitsAndUi: extractPortraitsAndUiCheck.Checked,
                 ExtractHero: extractHeroCheck.Checked,
                 CopyMaterialsToCsdkForEditing: copyMaterialsCheck.Checked,
-                CopyAbilityFxToCsdkForEditing: copyAbilityFxCheck.Checked,
+                CopyAbilityFxToCsdkForEditing: false,
                 BackupCsdkOverwrites: !removeBackupAfterSuccess,
                 Format: gltfFormatRadio.Checked
                     ? HeroExtractionFormat.Gltf

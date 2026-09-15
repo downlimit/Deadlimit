@@ -156,21 +156,36 @@ Layer0
         'Extract textures by dependencies',
         'Извлекать текстуры по зависимостям',
         'Copy materials to CSDK for editing',
-        'Copy ability FX to CSDK for editing',
+        'Ability FX included with Extract abilities',
+        'FX способностей включаются вместе с «Извлекать способности»',
         'DMX — CSDK build source',
         'glTF — DCC source in 0source\\glTFpipeline',
         'PREPARE accepts an edited DMX, FBX, glTF or GLB from the project root',
         'copyAbilityFxCheck.Enabled = false',
-        'Отключено для Reduced CSDK 12',
-        'для редактирования самого графа частиц нужен совместимый более новый CSDK',
+        'copyAbilityFxCheck.Checked = extractAbilitiesCheck.Checked && !isGltf',
+        'BUILD FOR TEST will try them',
+        'СОБРАТЬ ДЛЯ ТЕСТА сначала попробует их скомпилировать',
+        'CopyAbilityFxToCsdkForEditing: false',
         'BackupCsdkOverwrites: !removeBackupAfterSuccess'
     )) {
         if (-not $dialog.Contains($required, [StringComparison]::Ordinal)) {
             throw "Extraction dialog contract is missing: $required"
         }
     }
-    if ($dialog.Contains('copyAbilityFxCheck.Enabled = extractAbilitiesCheck.Checked', [StringComparison]::Ordinal)) {
-        throw 'The unsafe Reduced CSDK ability-FX editing checkbox can still be enabled.'
+    if ($dialog.Contains('CopyAbilityFxToCsdkForEditing: copyAbilityFxCheck.Checked', [StringComparison]::Ordinal)) {
+        throw 'The informational ability-FX indicator still feeds the legacy unsafe extraction option.'
+    }
+
+    $copyService = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/CsdkEditableAssetCopyService.cs' -Raw
+    foreach ($required in @(
+        'var copyAbilityFx = options.ExtractAbilities',
+        'options.Format == HeroExtractionFormat.Dmx',
+        'copyAbilityFx,',
+        '".vpcf"',
+        '".vsnap"')) {
+        if (-not $copyService.Contains($required, [StringComparison]::Ordinal)) {
+            throw "Automatic ability-FX CSDK staging contract is missing: $required"
+        }
     }
 
     $extraction = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/HeroExtractionService.cs' -Raw
@@ -180,8 +195,6 @@ Layer0
         'heroStagingFolder,',
         'includeTextures: true',
         'options.ExtractTextures || options.CopyMaterialsToCsdkForEditing',
-        'options.CopyAbilityFxToCsdkForEditing',
-        'is disabled for Reduced CSDK 12 because current Deadlock VPCF sources may use an incompatible newer format',
         'isGltf ? "gltf-source-extract-staging" : "source-extract-staging"',
         'isGltf ? "gltf-source-extraction-state.json" : "source-extraction-state.json"',
         'isGltf ? "glTFpipeline.previous" : "0source.previous"',
