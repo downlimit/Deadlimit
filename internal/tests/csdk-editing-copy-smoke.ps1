@@ -163,8 +163,10 @@ Layer0
         'PREPARE accepts an edited DMX, FBX, glTF or GLB from the project root',
         'copyAbilityFxCheck.Enabled = false',
         'copyAbilityFxCheck.Checked = extractAbilitiesCheck.Checked && !isGltf',
-        'BUILD FOR TEST will try them',
-        'СОБРАТЬ ДЛЯ ТЕСТА сначала попробует их скомпилировать',
+        'BUILD FOR TEST tries every changed effect',
+        'Deadlimit can skip only those VPCF files',
+        'СОБРАТЬ ДЛЯ ТЕСТА проверяет каждый изменённый эффект',
+        'Deadlimit может пропустить только эти VPCF',
         'CopyAbilityFxToCsdkForEditing: false',
         'BackupCsdkOverwrites: !removeBackupAfterSuccess'
     )) {

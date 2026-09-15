@@ -46,4 +46,24 @@ internal sealed class BuildAndTestService
         return new Deadlimit.Core.BuildAndTestService(_paths)
             .BuildWithoutParticlesAsync(manifest, progress, cancellationToken);
     }
+
+    public Task<BuildAndTestResult> BuildWithoutFailedParticlesAsync(
+        ProjectManifest manifest,
+        IReadOnlyCollection<string> failedParticleSources,
+        IProgress<BuildAndTestProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        ArgumentNullException.ThrowIfNull(failedParticleSources);
+
+        if (manifest.Mode == ProjectMode.ImportedVpk)
+        {
+            return Task.FromResult(
+                new ImportedVpkBuildAndTestService(_paths)
+                    .Build(manifest, progress, cancellationToken));
+        }
+
+        return new Deadlimit.Core.BuildAndTestService(_paths)
+            .BuildWithoutFailedParticlesAsync(manifest, failedParticleSources, progress, cancellationToken);
+    }
 }

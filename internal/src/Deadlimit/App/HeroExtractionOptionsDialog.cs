@@ -173,8 +173,8 @@ internal static class HeroExtractionOptionsDialog
             MaximumSize = new Size(760, 0),
             ForeColor = SystemColors.GrayText,
             Text = UiText.T(
-                "For DMX extraction, decompiled VPCF/VSNAP ability FX are staged into this project's CSDK addon so their dependency graph can be inspected and edited. Current Deadlock particles may use a newer VPCF format than Reduced CSDK 12 can compile. BUILD FOR TEST will try them; if particle compilation fails, Deadlimit can continue without modified VPCF while still building other edited dependencies.",
-                "Для DMX-извлечения декомпилированные VPCF/VSNAP эффектов способностей добавляются в CSDK-аддон проекта, чтобы можно было смотреть и редактировать их зависимости. В актуальном Deadlock встречаются VPCF новее возможностей Reduced CSDK 12. СОБРАТЬ ДЛЯ ТЕСТА сначала попробует их скомпилировать; если это не получится, Deadlimit сможет продолжить без изменённых VPCF, сохранив остальные изменённые зависимости."),
+                "For DMX extraction, decompiled VPCF/VSNAP ability FX are staged into this project's CSDK addon so their dependency graph can be inspected and edited. Current Deadlock particles may use a newer VPCF format than Reduced CSDK 12 can compile. BUILD FOR TEST tries every changed effect; if some fail, Deadlimit can skip only those VPCF files while packaging the effects that compiled successfully and all other edited dependencies.",
+                "Для DMX-извлечения декомпилированные VPCF/VSNAP эффектов способностей добавляются в CSDK-аддон проекта, чтобы можно было смотреть и редактировать их зависимости. В актуальном Deadlock встречаются VPCF новее возможностей Reduced CSDK 12. СОБРАТЬ ДЛЯ ТЕСТА проверяет каждый изменённый эффект; если часть из них не собирается, Deadlimit может пропустить только эти VPCF, сохранив в сборке успешно скомпилированные эффекты и остальные изменённые зависимости."),
             Margin = new Padding(22, 0, 0, 16),
         };
 
