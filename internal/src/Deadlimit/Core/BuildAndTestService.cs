@@ -70,7 +70,8 @@ public sealed class BuildAndTestService
             manifest,
             progress,
             cancellationToken,
-            skipParticleSources: false);
+            skippedParticleSources: null,
+            skipAllParticleSources: false);
 
     public Task<BuildAndTestResult> BuildWithoutParticlesAsync(
         ProjectManifest manifest,
@@ -80,13 +81,30 @@ public sealed class BuildAndTestService
             manifest,
             progress,
             cancellationToken,
-            skipParticleSources: true);
+            skippedParticleSources: null,
+            skipAllParticleSources: true);
+
+    public Task<BuildAndTestResult> BuildWithoutFailedParticlesAsync(
+        ProjectManifest manifest,
+        IReadOnlyCollection<string> failedParticleSources,
+        IProgress<BuildAndTestProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(failedParticleSources);
+        return BuildInternalAsync(
+            manifest,
+            progress,
+            cancellationToken,
+            failedParticleSources,
+            skipAllParticleSources: false);
+    }
 
     private async Task<BuildAndTestResult> BuildInternalAsync(
         ProjectManifest manifest,
         IProgress<BuildAndTestProgress>? progress,
         CancellationToken cancellationToken,
-        bool skipParticleSources)
+        IReadOnlyCollection<string>? skippedParticleSources,
+        bool skipAllParticleSources)
     {
         ValidateEnvironment(manifest);
 
@@ -109,7 +127,11 @@ public sealed class BuildAndTestService
         log.AppendLine($"Addon: {addonName}");
         log.AppendLine($"Release slot: {releaseSlot:D2}");
         log.AppendLine($"Mode: {(canIncrement ? "incremental" : "first/clean build")}");
-        log.AppendLine($"VPCF mode: {(skipParticleSources ? "skip and reuse retail particle definitions" : "attempt compile")}");
+        var requestedSkippedParticles = skippedParticleSources?
+            .Select(Path.GetFullPath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase)
+            ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        log.AppendLine($"VPCF mode: {(skipAllParticleSources ? "skip all and reuse retail particle definitions" : requestedSkippedParticles.Count > 0 ? $"skip {requestedSkippedParticles.Count} failed particle definition(s)" : "attempt compile")}");
         log.AppendLine();
 
         string? preservedGameBackup = null;
@@ -229,9 +251,14 @@ public sealed class BuildAndTestService
                     changed,
                     removed);
 
-            if (skipParticleSources)
+            var particlesToSkip = SelectParticleSourcesToSkip(
+                particleSources,
+                requestedSkippedParticles,
+                skipAllParticleSources);
+
+            if (particlesToSkip.Length > 0)
             {
-                foreach (var particleSource in particleSources)
+                foreach (var particleSource in particlesToSkip)
                 {
                     compileTargets.Remove(particleSource);
                 }
@@ -239,10 +266,10 @@ public sealed class BuildAndTestService
                 removedCompiledOutputs += RemoveParticleCompiledOutputs(
                     prepare.AddonContentRoot,
                     addonGameRoot,
-                    particleSources,
+                    particlesToSkip,
                     log);
                 log.AppendLine(
-                    $"VPCF fallback active: skipped {particleSources.Length} particle source(s); original Deadlock VPCF resources will be reused.");
+                    $"VPCF fallback active: skipped {particlesToSkip.Length} failed particle source(s); original Deadlock definitions will be reused for those paths.");
             }
 
             log.AppendLine($"Prepared content files tracked: {currentHashes.Count}");
@@ -254,9 +281,23 @@ public sealed class BuildAndTestService
             if (compileTargets.Count > 0)
             {
                 Report(progress, 40, LocalizedText.T($"Compiling {compileTargets.Count} changed asset(s)...", $"Компиляция изменённых ресурсов: {compileTargets.Count}..."));
-                await CompileInBatchesAsync(compileTargets, log, progress, cancellationToken);
+                var compilationFailures = await CompileInBatchesAsync(compileTargets, log, progress, cancellationToken);
                 Report(progress, 79, LocalizedText.T("Verifying compiled outputs...", "Проверка скомпилированных файлов..."));
-                VerifyCompiledOutputs(prepare.AddonContentRoot, addonGameRoot, compileTargets);
+                var processFailedSources = compilationFailures.SourcePaths
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var verificationFailures = VerifyCompiledOutputs(
+                    prepare.AddonContentRoot,
+                    addonGameRoot,
+                    compileTargets.Where(path => !processFailedSources.Contains(path)));
+                var particleFailures = MergeParticleFailures(compilationFailures, verificationFailures);
+                if (particleFailures.SourcePaths.Count > 0)
+                {
+                    throw new ParticleCompilationException(
+                        $"ResourceCompiler could not produce {particleFailures.SourcePaths.Count} VPCF particle source(s).",
+                        particleFailures.ExitCode,
+                        particleFailures.SourcePaths,
+                        particleFailures.FormatVersions);
+                }
             }
             else
             {
@@ -319,12 +360,12 @@ public sealed class BuildAndTestService
                 progress,
                 cancellationToken);
 
-            var successfulHashes = skipParticleSources
+            var skippedRelativePaths = particlesToSkip
+                .Select(path => NormalizeRelativePath(Path.GetRelativePath(prepare.AddonContentRoot, path)))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var successfulHashes = skippedRelativePaths.Count > 0
                 ? currentHashes
-                    .Where(pair => !string.Equals(
-                        Path.GetExtension(pair.Key),
-                        ".vpcf",
-                        StringComparison.OrdinalIgnoreCase))
+                    .Where(pair => !skippedRelativePaths.Contains(pair.Key))
                     .ToDictionary(
                         pair => pair.Key,
                         pair => pair.Value,
@@ -596,7 +637,17 @@ public sealed class BuildAndTestService
         return removedCount;
     }
 
-    private async Task CompileInBatchesAsync(
+    private static string[] SelectParticleSourcesToSkip(
+        IReadOnlyCollection<string> particleSources,
+        IReadOnlySet<string> requestedSkippedParticles,
+        bool skipAllParticleSources) =>
+        skipAllParticleSources
+            ? particleSources.ToArray()
+            : particleSources
+                .Where(requestedSkippedParticles.Contains)
+                .ToArray();
+
+    private async Task<ParticleCompilationFailures> CompileInBatchesAsync(
         IReadOnlyCollection<string> sources,
         StringBuilder log,
         IProgress<BuildAndTestProgress>? progress,
@@ -617,6 +668,9 @@ public sealed class BuildAndTestService
             .Select(batch => new CompileBatch(batch, IsParticle: false))
             .Concat(particleSources.Select(path => new CompileBatch([path], IsParticle: true)))
             .ToArray();
+        var failedParticleSources = new List<string>();
+        var failedParticleVersions = new HashSet<int>();
+        var firstParticleExitCode = 0;
 
         for (var batchIndex = 0; batchIndex < batches.Length; batchIndex++)
         {
@@ -661,11 +715,17 @@ public sealed class BuildAndTestService
                         .Distinct()
                         .Order()
                         .ToArray();
-                    throw new ParticleCompilationException(
-                        $"ResourceCompiler failed while compiling VPCF particle source '{Path.GetFileName(batch.Sources[0])}' with exit code {result.ExitCode}.",
-                        result.ExitCode,
-                        batch.Sources,
-                        versions);
+                    failedParticleSources.AddRange(batch.Sources);
+                    foreach (var version in versions)
+                    {
+                        failedParticleVersions.Add(version);
+                    }
+                    if (firstParticleExitCode == 0)
+                    {
+                        firstParticleExitCode = result.ExitCode;
+                    }
+                    log.AppendLine($"Continuing VPCF probe after failure so every incompatible particle can be reported: {batch.Sources[0]}");
+                    continue;
                 }
 
                 throw new InvalidOperationException(
@@ -681,13 +741,20 @@ public sealed class BuildAndTestService
                     ? $"VPCF скомпилирован — пакет {batchIndex + 1}/{batches.Length}."
                     : $"Ресурсы Source 2 скомпилированы — пакет {batchIndex + 1}/{batches.Length}."));
         }
+
+        return new ParticleCompilationFailures(
+            firstParticleExitCode,
+            failedParticleSources,
+            failedParticleVersions.Order().ToArray());
     }
 
-    private static void VerifyCompiledOutputs(
+    private static ParticleCompilationFailures VerifyCompiledOutputs(
         string contentRoot,
         string gameRoot,
         IEnumerable<string> compileTargets)
     {
+        var failedParticleSources = new List<string>();
+        var failedParticleVersions = new HashSet<int>();
         foreach (var source in compileTargets)
         {
             var relative = NormalizeRelativePath(Path.GetRelativePath(contentRoot, source));
@@ -709,17 +776,38 @@ public sealed class BuildAndTestService
             if (IsParticleSource(source))
             {
                 var version = ReadParticleFormatVersion(source);
-                throw new ParticleCompilationException(
-                    $"ResourceCompiler exited successfully, but the expected VPCF output was not found: {output}",
-                    exitCode: 0,
-                    [source],
-                    version is null ? [] : [version.Value]);
+                failedParticleSources.Add(source);
+                if (version is not null)
+                {
+                    failedParticleVersions.Add(version.Value);
+                }
+                continue;
             }
 
             throw new InvalidOperationException(
                 $"ResourceCompiler exited successfully, but expected output was not found: {output}");
         }
+
+        return new ParticleCompilationFailures(
+            ExitCode: 0,
+            failedParticleSources,
+            failedParticleVersions.Order().ToArray());
     }
+
+    private static ParticleCompilationFailures MergeParticleFailures(
+        ParticleCompilationFailures first,
+        ParticleCompilationFailures second) =>
+        new(
+            first.ExitCode != 0 ? first.ExitCode : second.ExitCode,
+            first.SourcePaths
+                .Concat(second.SourcePaths)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            first.FormatVersions
+                .Concat(second.FormatVersions)
+                .Distinct()
+                .Order()
+                .ToArray());
 
     private void ApplyAg2(
         ProjectManifest manifest,
@@ -1329,6 +1417,11 @@ public sealed class BuildAndTestService
         value.Replace('/', Path.DirectorySeparatorChar);
 
     private sealed record CompileBatch(string[] Sources, bool IsParticle);
+
+    private sealed record ParticleCompilationFailures(
+        int ExitCode,
+        IReadOnlyList<string> SourcePaths,
+        IReadOnlyList<int> FormatVersions);
 
     private sealed class BuildTestState
     {

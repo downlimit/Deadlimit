@@ -185,6 +185,22 @@ finally {
 $buildType = $assembly.GetType('Deadlimit.Core.BuildAndTestService', $true)
 $findUnsupportedParticles = $buildType.GetMethod('FindUnsupportedParticleSources', $nonPublicStatic)
 if ($null -eq $findUnsupportedParticles) { throw 'BuildAndTestService.FindUnsupportedParticleSources was not found.' }
+$selectParticlesToSkip = $buildType.GetMethod('SelectParticleSourcesToSkip', $nonPublicStatic)
+if ($null -eq $selectParticlesToSkip) { throw 'BuildAndTestService.SelectParticleSourcesToSkip was not found.' }
+$particleSources = [string[]]@('C:\addon\supported.vpcf', 'C:\addon\failed-64.vpcf', 'C:\addon\failed-65.vpcf')
+$requestedSkippedParticles = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$requestedSkippedParticles.Add('C:\addon\failed-64.vpcf') | Out-Null
+$requestedSkippedParticles.Add('C:\addon\failed-65.vpcf') | Out-Null
+$selectiveSkipArgs = [object[]]@($particleSources, $requestedSkippedParticles, $false)
+$selectiveSkipped = @($selectParticlesToSkip.Invoke($null, $selectiveSkipArgs))
+if ($selectiveSkipped.Count -ne 2 -or $selectiveSkipped -contains 'C:\addon\supported.vpcf') {
+    throw 'Selective VPCF fallback did not preserve a successfully compiled particle source.'
+}
+$skipAllArgs = [object[]]@($particleSources, $requestedSkippedParticles, $true)
+$allSkipped = @($selectParticlesToSkip.Invoke($null, $skipAllArgs))
+if ($allSkipped.Count -ne 3) {
+    throw 'Legacy all-VPCF fallback did not select every particle source.'
+}
 $particleRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-particle-format-$([Guid]::NewGuid().ToString('N'))"
 try {
     [IO.Directory]::CreateDirectory($particleRoot) | Out-Null
