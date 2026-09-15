@@ -24,7 +24,7 @@ public sealed class MainForm : Form
     private readonly Button _extractHeroButton = new()
     {
         Name = UiControlNames.ExtractHeroSourceButton,
-        Text = UiText.T("EXTRACT HERO SOURCE…", "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ…"),
+        Text = UiText.T("EXTRACT SOURCE…", "ИЗВЛЕЧЬ ИСХОДНИКИ…"),
         AutoSize = true,
     };
 
