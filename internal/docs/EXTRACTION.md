@@ -134,7 +134,7 @@ selected retail hero model
 → recursive Source 2 visual dependencies
 ```
 
-The current visual dependency scope includes particle systems, models, meshes, materials, snapshots/physics resources and animation-related resources used by those ability definitions.
+The current visual dependency scope includes particle systems, models, meshes, materials, snapshots/physics resources and animation-related resources used by those ability definitions. After the graph identifies an ability namespace or an ability-owned material/particle directory, extraction also includes matching cross-folder and sibling VMAT/VPCF resources. Retail effects can select those variants through runtime state without exposing a static external-reference edge. This rule is derived from the selected hero's VData and ability roots and contains no hero, effect or material-name allowlist.
 
 If `Extract abilities` is enabled while `Extract textures` is off, VTEX resources are excluded from both direct ability roots and recursive ability dependency traversal.
 

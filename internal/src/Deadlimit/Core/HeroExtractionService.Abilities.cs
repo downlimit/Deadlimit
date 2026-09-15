@@ -139,53 +139,138 @@ public sealed partial class HeroExtractionService
         var pending = new Queue<ResourceLocation>(resolved.Values);
         var collected = new Dictionary<string, ResourceLocation>(StringComparer.OrdinalIgnoreCase);
 
-        while (pending.Count > 0)
+        void DrainPendingDependencies()
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var location = pending.Dequeue();
-            if (!collected.TryAdd(location.ResourcePath, location))
+            while (pending.Count > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var location = pending.Dequeue();
+                if (!collected.TryAdd(location.ResourcePath, location))
+                {
+                    continue;
+                }
+
+                var dependencyPaths = ReadExternalReferences(location, cancellationToken)
+                    .Where(path => IsAbilityVisualDependency(path, includeTextures))
+                    .Select(ToCompiledResourcePath)
+                    .Where(path => !collected.ContainsKey(path))
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var materialPath in ReadModelMaterialGroupReferences(location, cancellationToken))
+                {
+                    var compiledMaterialPath = ToCompiledResourcePath(materialPath);
+                    if (!collected.ContainsKey(compiledMaterialPath))
+                    {
+                        dependencyPaths.Add(compiledMaterialPath);
+                    }
+                }
+
+                if (dependencyPaths.Count == 0)
+                {
+                    continue;
+                }
+
+                var dependencyLocations = ResolveResourceLocations(
+                    vpkPaths,
+                    dependencyPaths,
+                    progress,
+                    cancellationToken);
+                foreach (var missing in dependencyPaths.Where(path => !dependencyLocations.ContainsKey(path)))
+                {
+                    progress?.Report(new HeroExtractionProgress(
+                        $"Referenced ability dependency was not found: {missing}"));
+                }
+
+                foreach (var dependencyLocation in dependencyLocations.Values)
+                {
+                    if (!collected.ContainsKey(dependencyLocation.ResourcePath))
+                    {
+                        pending.Enqueue(dependencyLocation);
+                    }
+                }
+            }
+        }
+
+        DrainPendingDependencies();
+
+        var abilityNamespaces = ResolveAbilityNamespaces(selection.VisualResourcePaths);
+        var namespaceResources = ResolveResourcesMatching(
+            vpkPaths,
+            path => IsAbilityNamespaceOwnedResource(path, abilityNamespaces),
+            cancellationToken);
+        var namespaceResourceCount = 0;
+        foreach (var namespaceResource in namespaceResources.Values)
+        {
+            if (collected.ContainsKey(namespaceResource.ResourcePath))
             {
                 continue;
             }
 
-            var dependencyPaths = ReadExternalReferences(location, cancellationToken)
-                .Where(path => IsAbilityVisualDependency(path, includeTextures))
-                .Select(ToCompiledResourcePath)
-                .Where(path => !collected.ContainsKey(path))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var materialPath in ReadModelMaterialGroupReferences(location, cancellationToken))
+            if (IsParticleSystemReference(namespaceResource.ResourcePath))
             {
-                var compiledMaterialPath = ToCompiledResourcePath(materialPath);
-                if (!collected.ContainsKey(compiledMaterialPath))
-                {
-                    dependencyPaths.Add(compiledMaterialPath);
-                }
+                collected.Add(namespaceResource.ResourcePath, namespaceResource);
             }
-
-            if (dependencyPaths.Count == 0)
+            else
             {
-                continue;
+                pending.Enqueue(namespaceResource);
             }
+            namespaceResourceCount++;
+        }
+        if (pending.Count > 0)
+        {
+            progress?.Report(new HeroExtractionProgress(
+                $"Ability namespaces: added {namespaceResourceCount} hero-owned material/particle source(s)."));
+            DrainPendingDependencies();
+        }
 
-            var dependencyLocations = ResolveResourceLocations(
-                vpkPaths,
-                dependencyPaths,
-                progress,
-                cancellationToken);
-            foreach (var missing in dependencyPaths.Where(path => !dependencyLocations.ContainsKey(path)))
+        // Retail ability folders can contain alternate materials and particle graphs
+        // selected by runtime state. Those siblings have no edge from the static graph
+        // and would otherwise remain visible only through the read-only retail search
+        // path in CSDK.
+        var abilityMaterialDirectories = collected.Keys
+            .Where(IsMaterialReference)
+            .Select(GetResourceFolder)
+            .Where(IsAbilityResourceDirectory)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var siblingMaterials = ResolveResourcesInDirectories(
+            vpkPaths,
+            abilityMaterialDirectories,
+            IsMaterialReference,
+            cancellationToken);
+        var siblingCount = 0;
+        foreach (var siblingMaterial in siblingMaterials.Values)
+        {
+            if (!collected.ContainsKey(siblingMaterial.ResourcePath))
             {
-                progress?.Report(new HeroExtractionProgress(
-                    $"Referenced ability dependency was not found: {missing}"));
+                pending.Enqueue(siblingMaterial);
+                siblingCount++;
             }
+        }
 
-            foreach (var dependencyLocation in dependencyLocations.Values)
+        var abilityParticleDirectories = collected.Keys
+            .Where(IsParticleSystemReference)
+            .Select(GetResourceFolder)
+            .Where(IsAbilityResourceDirectory)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var siblingParticles = ResolveResourcesInDirectories(
+            vpkPaths,
+            abilityParticleDirectories,
+            IsParticleSystemReference,
+            cancellationToken);
+        foreach (var siblingParticle in siblingParticles.Values)
+        {
+            if (!collected.ContainsKey(siblingParticle.ResourcePath))
             {
-                if (!collected.ContainsKey(dependencyLocation.ResourcePath))
-                {
-                    pending.Enqueue(dependencyLocation);
-                }
+                collected.Add(siblingParticle.ResourcePath, siblingParticle);
+                siblingCount++;
             }
+        }
+
+        if (pending.Count > 0)
+        {
+            progress?.Report(new HeroExtractionProgress(
+                $"Ability resource folders: added {siblingCount} sibling material/particle source(s)."));
+            DrainPendingDependencies();
         }
 
         var locations = collected.Values
@@ -195,6 +280,126 @@ public sealed partial class HeroExtractionService
         progress?.Report(new HeroExtractionProgress(
             $"Ability visual dependencies: {locations.Length} resource(s)."));
         return locations;
+    }
+
+    private static IReadOnlyDictionary<string, ResourceLocation> ResolveResourcesInDirectories(
+        IReadOnlyList<string> vpkPaths,
+        IReadOnlySet<string> resourceDirectories,
+        Func<string, bool> predicate,
+        CancellationToken cancellationToken)
+    {
+        var resolved = new Dictionary<string, ResourceLocation>(StringComparer.OrdinalIgnoreCase);
+        if (resourceDirectories.Count == 0)
+        {
+            return resolved;
+        }
+
+        foreach (var vpkPath in vpkPaths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            using var package = new Package();
+            package.Read(vpkPath);
+            var packageEntries = package.Entries
+                ?? throw new InvalidDataException($"VPK entry table was not available: {vpkPath}");
+
+            foreach (var entry in packageEntries.SelectMany(group => group.Value))
+            {
+                var resourcePath = NormalizeResourcePath(entry.GetFullPath());
+                if (!predicate(resourcePath)
+                    || !resourceDirectories.Contains(GetResourceFolder(resourcePath)))
+                {
+                    continue;
+                }
+
+                resolved.TryAdd(resourcePath, new ResourceLocation(vpkPath, resourcePath));
+            }
+        }
+
+        return resolved;
+    }
+
+    private static IReadOnlyDictionary<string, ResourceLocation> ResolveResourcesMatching(
+        IReadOnlyList<string> vpkPaths,
+        Func<string, bool> predicate,
+        CancellationToken cancellationToken)
+    {
+        var resolved = new Dictionary<string, ResourceLocation>(StringComparer.OrdinalIgnoreCase);
+        foreach (var vpkPath in vpkPaths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            using var package = new Package();
+            package.Read(vpkPath);
+            var packageEntries = package.Entries
+                ?? throw new InvalidDataException($"VPK entry table was not available: {vpkPath}");
+
+            foreach (var entry in packageEntries.SelectMany(group => group.Value))
+            {
+                var resourcePath = NormalizeResourcePath(entry.GetFullPath());
+                if (predicate(resourcePath))
+                {
+                    resolved.TryAdd(resourcePath, new ResourceLocation(vpkPath, resourcePath));
+                }
+            }
+        }
+
+        return resolved;
+    }
+
+    private static IReadOnlySet<string> ResolveAbilityNamespaces(IEnumerable<string> visualResourcePaths)
+    {
+        var namespaces = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var visualResourcePath in visualResourcePaths)
+        {
+            var segments = NormalizeResourcePath(visualResourcePath)
+                .Split('/', StringSplitOptions.RemoveEmptyEntries);
+            for (var index = 0; index + 1 < segments.Length; index++)
+            {
+                if (string.Equals(segments[index], "abilities", StringComparison.OrdinalIgnoreCase))
+                {
+                    namespaces.Add(segments[index + 1]);
+                }
+            }
+        }
+        return namespaces;
+    }
+
+    private static bool IsAbilityNamespaceOwnedResource(
+        string resourcePath,
+        IReadOnlySet<string> abilityNamespaces)
+    {
+        if (abilityNamespaces.Count == 0
+            || (!IsMaterialReference(resourcePath) && !IsParticleSystemReference(resourcePath)))
+        {
+            return false;
+        }
+
+        var normalized = NormalizeResourcePath(resourcePath);
+        var sourcePath = normalized.EndsWith("_c", StringComparison.OrdinalIgnoreCase)
+            ? normalized[..^2]
+            : normalized;
+        var stem = Path.GetFileNameWithoutExtension(sourcePath);
+        var pathWithBoundaries = "/" + sourcePath.Trim('/') + "/";
+
+        return abilityNamespaces.Any(abilityNamespace =>
+            stem.StartsWith(abilityNamespace + "_", StringComparison.OrdinalIgnoreCase)
+            || pathWithBoundaries.Contains(
+                $"/abilities/{abilityNamespace}/",
+                StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsAbilityResourceDirectory(string resourceDirectory)
+    {
+        var normalized = NormalizeResourcePath(resourceDirectory).TrimEnd('/');
+        return normalized.Contains("/abilities/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsParticleSystemReference(string resourcePath)
+    {
+        var normalized = NormalizeResourcePath(resourcePath);
+        return normalized.EndsWith(".vpcf", StringComparison.OrdinalIgnoreCase)
+            || normalized.EndsWith(".vpcf_c", StringComparison.OrdinalIgnoreCase);
     }
 
     private static IReadOnlyList<string> ReadModelMaterialGroupReferences(
