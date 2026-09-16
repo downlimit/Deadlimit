@@ -343,6 +343,24 @@ internal static class HeroCatalogFeature
     private sealed class HeroComboBox : ComboBox
     {
         private const int WmMouseWheel = 0x020A;
+        private bool _fullRedrawPending;
+
+        public HeroComboBox()
+        {
+            SetStyle(ControlStyles.ResizeRedraw, true);
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            RequestFullRedraw();
+        }
+
+        protected override void OnEnabledChanged(EventArgs e)
+        {
+            base.OnEnabledChanged(e);
+            RequestFullRedraw();
+        }
 
         protected override void WndProc(ref Message m)
         {
@@ -352,6 +370,29 @@ internal static class HeroCatalogFeature
             }
 
             base.WndProc(ref m);
+        }
+
+        private void RequestFullRedraw()
+        {
+            // A flat native ComboBox can retain the old drop-down button pixels after
+            // TableLayoutPanel changes its width. Repaint once after layout settles so
+            // only the arrow at the final control width remains visible.
+            Invalidate();
+            if (!IsHandleCreated || _fullRedrawPending)
+            {
+                return;
+            }
+
+            _fullRedrawPending = true;
+            BeginInvoke((Action)(() =>
+            {
+                _fullRedrawPending = false;
+                if (!IsDisposed && IsHandleCreated)
+                {
+                    Invalidate();
+                    Update();
+                }
+            }));
         }
     }
 }
