@@ -88,6 +88,96 @@ foreach ($required in @(
     }
 }
 
+# BUILD FOR TEST must force selected resources and their raw dependencies past
+# ResourceCompiler's timestamp cache while retaining the previous output on failure.
+foreach ($required in @(
+    'CompileOutputInvalidation.Begin(',
+    'invalidatedOutputs.Commit();',
+    'invalidatedOutputs.Restore(log);',
+    'Restored previous compiled outputs after failed forced rebuild.')) {
+    if (-not $buildServiceSource.Contains($required, [StringComparison]::Ordinal)) {
+        throw "Compiled-output invalidation contract is missing: $required"
+    }
+}
+$buildServiceType = $assembly.GetType('Deadlimit.Core.BuildAndTestService', $true)
+$dependencyOutput = $buildServiceType.GetMethod('GetDependencyCompiledRelativePath', $nonPublicStatic)
+if ($null -eq $dependencyOutput) {
+    throw 'BuildAndTestService.GetDependencyCompiledRelativePath was not found.'
+}
+$dependencyCases = @{
+    'models/hero_body.dmx' = 'models/hero_body.vmesh_c'
+    'models/hero_body.fbx' = 'models/hero_body.vmesh_c'
+    'materials/hero_body_color.png' = 'materials/hero_body_color.vtex_c'
+    'materials/hero_body_normal.tga' = 'materials/hero_body_normal.vtex_c'
+}
+foreach ($entry in $dependencyCases.GetEnumerator()) {
+    $actual = [string]$dependencyOutput.Invoke($null, [object[]]@([string]$entry.Key))
+    if ($actual -ne $entry.Value) {
+        throw "Dependency output '$($entry.Key)' resolved to '$actual', expected '$($entry.Value)'."
+    }
+}
+if ($null -ne $dependencyOutput.Invoke($null, [object[]]@([string]'scripts/game.js'))) {
+    throw 'A non-model/non-texture source was assigned a dependency-only compiled output.'
+}
+$invalidationType = $buildServiceType.GetNestedType('CompileOutputInvalidation', [Reflection.BindingFlags]::NonPublic)
+$beginInvalidation = $invalidationType.GetMethod('Begin', $nonPublicStatic)
+$instanceFlags = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Instance
+$restoreInvalidation = $invalidationType.GetMethod('Restore', $instanceFlags)
+$commitInvalidation = $invalidationType.GetMethod('Commit', $instanceFlags)
+if ($null -eq $beginInvalidation -or $null -eq $restoreInvalidation -or $null -eq $commitInvalidation) {
+    throw 'CompileOutputInvalidation transaction methods were not found.'
+}
+$invalidationRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-output-invalidation-$([Guid]::NewGuid().ToString('N'))"
+$contentRoot = Join-Path $invalidationRoot 'content'
+$gameRoot = Join-Path $invalidationRoot 'game'
+$metadataRoot = Join-Path $invalidationRoot 'metadata'
+$modelSource = Join-Path $contentRoot 'models\hero.vmdl'
+$modelOutput = Join-Path $gameRoot 'models\hero.vmdl_c'
+$textureOutput = Join-Path $gameRoot 'materials\hero_color.vtex_c'
+try {
+    [IO.Directory]::CreateDirectory((Split-Path $modelSource)) | Out-Null
+    [IO.Directory]::CreateDirectory((Split-Path $modelOutput)) | Out-Null
+    [IO.Directory]::CreateDirectory((Split-Path $textureOutput)) | Out-Null
+    [IO.Directory]::CreateDirectory($metadataRoot) | Out-Null
+    [IO.File]::WriteAllText($modelSource, 'source')
+    [IO.File]::WriteAllText($modelOutput, 'old-model')
+    [IO.File]::WriteAllText($textureOutput, 'old-texture')
+    $logBuilder = [Text.StringBuilder]::new()
+    $beginArguments = [object[]]@(
+        [string]$contentRoot,
+        [string]$gameRoot,
+        [string]$metadataRoot,
+        [string[]]@($modelSource),
+        [string[]]@('materials/hero_color.png'),
+        $logBuilder)
+    $transaction = $beginInvalidation.Invoke($null, $beginArguments)
+    if ((Test-Path -LiteralPath $modelOutput) -or (Test-Path -LiteralPath $textureOutput)) {
+        throw 'Compile output invalidation left a selected stale output in place.'
+    }
+    $restoreInvalidation.Invoke($transaction, [object[]]@($logBuilder))
+    if ([IO.File]::ReadAllText($modelOutput) -ne 'old-model' -or
+        [IO.File]::ReadAllText($textureOutput) -ne 'old-texture') {
+        throw 'Compile output invalidation did not restore previous outputs after failure.'
+    }
+
+    $transaction = $beginInvalidation.Invoke($null, $beginArguments)
+    [IO.File]::WriteAllText($modelOutput, 'new-model')
+    [IO.File]::WriteAllText($textureOutput, 'new-texture')
+    $commitInvalidation.Invoke($transaction, @())
+    if ([IO.File]::ReadAllText($modelOutput) -ne 'new-model' -or
+        [IO.File]::ReadAllText($textureOutput) -ne 'new-texture') {
+        throw 'Compile output invalidation replaced successful rebuilt outputs with stale backups.'
+    }
+    if (@(Get-ChildItem -LiteralPath $metadataRoot -Directory -Filter 'compile-output-backup-*').Count -ne 0) {
+        throw 'Compile output invalidation left a transaction backup after success.'
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $invalidationRoot) {
+        Remove-Item -LiteralPath $invalidationRoot -Recurse -Force
+    }
+}
+
 # Portable releases are identified by package-owned release metadata. Their
 # unverified external tool installers must stay behind the service-layer guard.
 $releasePolicyType = $assembly.GetType('Deadlimit.Core.ReleaseChannelPolicy', $true)

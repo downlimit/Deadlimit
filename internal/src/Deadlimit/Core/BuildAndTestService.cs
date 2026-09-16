@@ -313,22 +313,39 @@ public sealed class BuildAndTestService
             if (compileTargets.Count > 0)
             {
                 Report(progress, 40, LocalizedText.T($"Compiling {compileTargets.Count} changed asset(s)...", $"Компиляция изменённых ресурсов: {compileTargets.Count}..."));
-                var compilationFailures = await CompileInBatchesAsync(compileTargets, log, progress, cancellationToken);
-                Report(progress, 79, LocalizedText.T("Verifying compiled outputs...", "Проверка скомпилированных файлов..."));
-                var processFailedSources = compilationFailures.SourcePaths
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-                var verificationFailures = VerifyCompiledOutputs(
+                using var invalidatedOutputs = CompileOutputInvalidation.Begin(
                     prepare.AddonContentRoot,
                     addonGameRoot,
-                    compileTargets.Where(path => !processFailedSources.Contains(path)));
-                var particleFailures = MergeParticleFailures(compilationFailures, verificationFailures);
-                if (particleFailures.SourcePaths.Count > 0)
+                    metadataFolder,
+                    compileTargets,
+                    projectChanged,
+                    log);
+                try
                 {
-                    throw new ParticleCompilationException(
-                        $"ResourceCompiler could not produce {particleFailures.SourcePaths.Count} VPCF particle source(s).",
-                        particleFailures.ExitCode,
-                        particleFailures.SourcePaths,
-                        particleFailures.FormatVersions);
+                    var compilationFailures = await CompileInBatchesAsync(compileTargets, log, progress, cancellationToken);
+                    Report(progress, 79, LocalizedText.T("Verifying compiled outputs...", "Проверка скомпилированных файлов..."));
+                    var processFailedSources = compilationFailures.SourcePaths
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    var verificationFailures = VerifyCompiledOutputs(
+                        prepare.AddonContentRoot,
+                        addonGameRoot,
+                        compileTargets.Where(path => !processFailedSources.Contains(path)));
+                    var particleFailures = MergeParticleFailures(compilationFailures, verificationFailures);
+                    if (particleFailures.SourcePaths.Count > 0)
+                    {
+                        throw new ParticleCompilationException(
+                            $"ResourceCompiler could not produce {particleFailures.SourcePaths.Count} VPCF particle source(s).",
+                            particleFailures.ExitCode,
+                            particleFailures.SourcePaths,
+                            particleFailures.FormatVersions);
+                    }
+
+                    invalidatedOutputs.Commit();
+                }
+                catch
+                {
+                    invalidatedOutputs.Restore(log);
+                    throw;
                 }
             }
             else
@@ -623,6 +640,20 @@ public sealed class BuildAndTestService
                && int.TryParse(match.Groups["version"].Value, out var version)
             ? version
             : null;
+    }
+
+    private static string? GetDependencyCompiledRelativePath(string sourceRelativePath)
+    {
+        var extension = Path.GetExtension(sourceRelativePath);
+        var compiledExtension = extension.ToLowerInvariant() switch
+        {
+            ".dmx" or ".fbx" => ".vmesh_c",
+            ".png" or ".tga" or ".jpg" or ".jpeg" or ".tif" or ".tiff" => ".vtex_c",
+            _ => null,
+        };
+        return compiledExtension is null
+            ? null
+            : NormalizeRelativePath(Path.ChangeExtension(sourceRelativePath, compiledExtension));
     }
 
     private static HashSet<string> ResolveIncrementalCompileTargets(
@@ -1691,6 +1722,159 @@ public sealed class BuildAndTestService
         public long Length { get; set; }
         public long LastWriteTimeUtcTicks { get; set; }
         public string Sha256 { get; set; } = string.Empty;
+    }
+
+    private sealed class CompileOutputInvalidation : IDisposable
+    {
+        private readonly string _gameRoot;
+        private readonly string _backupRoot;
+        private readonly IReadOnlyList<InvalidatedOutput> _outputs;
+        private bool _completed;
+
+        private CompileOutputInvalidation(
+            string gameRoot,
+            string backupRoot,
+            IReadOnlyList<InvalidatedOutput> outputs)
+        {
+            _gameRoot = gameRoot;
+            _backupRoot = backupRoot;
+            _outputs = outputs;
+        }
+
+        internal static CompileOutputInvalidation Begin(
+            string contentRoot,
+            string gameRoot,
+            string metadataFolder,
+            IReadOnlyCollection<string> compileTargets,
+            IReadOnlyCollection<string> changedRelativePaths,
+            StringBuilder log)
+        {
+            var relativeOutputs = compileTargets
+                .Select(path => NormalizeRelativePath(Path.GetRelativePath(contentRoot, path)))
+                .Select(GetCompiledRelativePath)
+                .Where(path => path is not null)
+                .Select(path => path!)
+                .Concat(changedRelativePaths
+                    .Select(GetDependencyCompiledRelativePath)
+                    .Where(path => path is not null)
+                    .Select(path => path!))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            var backupRoot = Path.Combine(
+                metadataFolder,
+                $"compile-output-backup-{Guid.NewGuid():N}");
+            var outputs = new List<InvalidatedOutput>(relativeOutputs.Length);
+            var transaction = new CompileOutputInvalidation(gameRoot, backupRoot, outputs);
+
+            try
+            {
+                foreach (var relative in relativeOutputs)
+                {
+                    var output = SafePath.ResolveUnderRoot(
+                        gameRoot,
+                        ToWindowsPath(relative),
+                        "Compiled output selected for rebuild");
+                    var existed = File.Exists(output);
+                    if (existed)
+                    {
+                        var backup = SafePath.ResolveUnderRoot(
+                            backupRoot,
+                            ToWindowsPath(relative),
+                            "Compiled output rebuild backup");
+                        Directory.CreateDirectory(Path.GetDirectoryName(backup)!);
+                        File.Copy(output, backup, overwrite: true);
+                        outputs.Add(new InvalidatedOutput(relative, Existed: true));
+                        File.Delete(output);
+                    }
+                    else
+                    {
+                        outputs.Add(new InvalidatedOutput(relative, Existed: false));
+                    }
+                }
+
+                log.AppendLine(
+                    $"Invalidated compiled outputs before forced rebuild: {outputs.Count(output => output.Existed)} existing, " +
+                    $"{outputs.Count(output => !output.Existed)} already missing.");
+                return transaction;
+            }
+            catch
+            {
+                transaction.Restore(log);
+                throw;
+            }
+        }
+
+        internal void Commit()
+        {
+            if (_completed)
+            {
+                return;
+            }
+
+            DeleteBackupDirectory();
+            _completed = true;
+        }
+
+        internal void Restore(StringBuilder? log)
+        {
+            if (_completed)
+            {
+                return;
+            }
+
+            foreach (var entry in _outputs.Reverse())
+            {
+                var output = SafePath.ResolveUnderRoot(
+                    _gameRoot,
+                    ToWindowsPath(entry.RelativePath),
+                    "Compiled output restored after failed rebuild");
+                if (File.Exists(output))
+                {
+                    File.Delete(output);
+                }
+
+                if (!entry.Existed)
+                {
+                    continue;
+                }
+
+                var backup = SafePath.ResolveUnderRoot(
+                    _backupRoot,
+                    ToWindowsPath(entry.RelativePath),
+                    "Compiled output rebuild backup restore");
+                Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+                File.Copy(backup, output, overwrite: true);
+            }
+
+            _completed = true;
+            DeleteBackupDirectory();
+            log?.AppendLine("Restored previous compiled outputs after failed forced rebuild.");
+        }
+
+        public void Dispose()
+        {
+            Restore(log: null);
+        }
+
+        private void DeleteBackupDirectory()
+        {
+            if (Directory.Exists(_backupRoot))
+            {
+                try
+                {
+                    Directory.Delete(_backupRoot, recursive: true);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Cleanup is best-effort. A stale private backup is safer than
+                    // turning a successful compile into a failed build.
+                }
+            }
+        }
+
+        private sealed record InvalidatedOutput(string RelativePath, bool Existed);
     }
 
     private sealed class InlineProgress<T> : IProgress<T>
