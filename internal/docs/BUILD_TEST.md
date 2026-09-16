@@ -198,9 +198,11 @@ Later runs:
 3. compile only changed direct Source 2 inputs;
 4. if a DMX or FBX render-mesh dependency changed, force the addon's VMDL source(s) into the compile set;
 5. if an image source changed, force the addon's VMAT source(s) into the compile set;
-6. if a known source was removed, delete its proven one-to-one compiled output before packing;
-7. if a removed source has no proven compiled-output mapping, fall back to a clean addon rebuild instead of risking stale runtime data;
-8. save the new hash snapshot only after compilation, required AG2 restoration and VPK packing all succeed.
+6. before ResourceCompiler runs, temporarily remove the selected direct outputs plus changed DMX/FBX `.vmesh_c` and image `.vtex_c` dependencies so restored output timestamps cannot make current artist data look up to date;
+7. keep private copies of those outputs until compilation is verified, restoring them if the forced rebuild fails;
+8. if a known source was removed, delete its proven one-to-one compiled output before packing;
+9. if a removed source has no proven compiled-output mapping, fall back to a clean addon rebuild instead of risking stale runtime data;
+10. save the new hash snapshot only after compilation, required AG2 restoration and VPK packing all succeed.
 
 This is deliberately fail-safe: incremental speed is used only where Deadlimit Manager can prove what should be retained or invalidated.
 
