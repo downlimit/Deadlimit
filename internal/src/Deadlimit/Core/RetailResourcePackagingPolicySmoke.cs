@@ -6,7 +6,8 @@ internal static class RetailResourcePackagingPolicySmoke
     {
         if (!UnsupportedHeaderIsNonFatal()
             || !NonCompiledPayloadIsNotParsed()
-            || !TruncatedCompiledResourceIsNonFatal())
+            || !TruncatedCompiledResourceIsNonFatal()
+            || !ChangedPreparedRetailTextureIsDetected())
         {
             return 1;
         }
@@ -64,6 +65,53 @@ internal static class RetailResourcePackagingPolicySmoke
         };
 
         return included.SetEquals(expected) ? 0 : 1;
+    }
+
+    private static bool ChangedPreparedRetailTextureIsDetected()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"deadlimit-packaging-texture-{Guid.NewGuid():N}");
+        var extractedRoot = Path.Combine(root, "0source");
+        var preparedRoot = Path.Combine(root, "content", "citadel_addons", "test");
+        const string resourcePath = "materials/blends/ground_plants_01_color.png";
+        var relativePath = resourcePath.Replace('/', Path.DirectorySeparatorChar);
+        var extractedPath = Path.Combine(extractedRoot, relativePath);
+        var preparedPath = Path.Combine(preparedRoot, relativePath);
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(extractedPath)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(preparedPath)!);
+            File.WriteAllBytes(extractedPath, [1, 2, 3, 4]);
+            File.WriteAllBytes(preparedPath, [1, 2, 3, 4]);
+
+            RetailTextureTarget[] targets =
+            [
+                new(
+                    resourcePath,
+                    "materials/particle/ground_nature_projected.vmat",
+                    HasExtractedSourceFile: true),
+            ];
+
+            var identical = RetailResourcePackagingPolicy.ResolvePreparedTextureOverridesForSmoke(
+                targets,
+                extractedRoot,
+                preparedRoot);
+            if (identical.Count != 0)
+            {
+                return false;
+            }
+
+            File.WriteAllBytes(preparedPath, [9, 8, 7, 6]);
+            var changed = RetailResourcePackagingPolicy.ResolvePreparedTextureOverridesForSmoke(
+                targets,
+                extractedRoot,
+                preparedRoot);
+            return changed.SetEquals([resourcePath]);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     private static bool UnsupportedHeaderIsNonFatal()

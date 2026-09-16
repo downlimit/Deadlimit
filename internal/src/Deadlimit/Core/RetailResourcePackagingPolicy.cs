@@ -45,6 +45,7 @@ internal static class RetailResourcePackagingPolicy
             addonFiles,
             compiledMainModel,
             cancellationToken,
+            diagnosticSink,
             out var forcedMaterialDependencyOwners);
 
         var included = ResolveClosure(
@@ -87,6 +88,16 @@ internal static class RetailResourcePackagingPolicy
         Action<string>? diagnosticSink = null) =>
         ReadExternalReferences(filePath, resourcePath, diagnosticSink);
 
+    internal static IReadOnlySet<string> ResolvePreparedTextureOverridesForSmoke(
+        IReadOnlyList<RetailTextureTarget> textureTargets,
+        string extractedSourceRoot,
+        string addonContentRoot) =>
+        ResolvePreparedTextureOverrides(
+            textureTargets,
+            extractedSourceRoot,
+            addonContentRoot,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
+
     private static HashSet<string> ResolveProjectRoots(
         ProjectManifest manifest,
         string extractedSourceRoot,
@@ -95,6 +106,7 @@ internal static class RetailResourcePackagingPolicy
         IReadOnlyDictionary<string, string> addonFiles,
         string compiledMainModel,
         CancellationToken cancellationToken,
+        Action<string>? diagnosticSink,
         out HashSet<string> forcedMaterialDependencyOwners)
     {
         var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -103,6 +115,18 @@ internal static class RetailResourcePackagingPolicy
         var textureOverridePaths = RetailTextureOverrideService.ResolveProjectRootOverrides(manifest, textureTargets)
             .Select(textureOverride => textureOverride.RetailTextureResourcePath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var preparedTextureOverridePaths = ResolvePreparedTextureOverrides(
+            textureTargets,
+            extractedSourceRoot,
+            addonContentRoot,
+            fileHashes);
+        textureOverridePaths.UnionWith(preparedTextureOverridePaths);
+        if (preparedTextureOverridePaths.Count > 0)
+        {
+            diagnosticSink?.Invoke(
+                $"Prepared retail texture overrides retained for VPK packaging: {preparedTextureOverridePaths.Count}");
+        }
+
         var textureOverrideMaterials = textureTargets
             .Where(target => textureOverridePaths.Contains(target.ResourcePath))
             .Select(target => target.ReferencingMaterialResourcePath)
@@ -158,6 +182,34 @@ internal static class RetailResourcePackagingPolicy
         }
 
         return roots;
+    }
+
+    private static HashSet<string> ResolvePreparedTextureOverrides(
+        IReadOnlyList<RetailTextureTarget> textureTargets,
+        string extractedSourceRoot,
+        string addonContentRoot,
+        IDictionary<string, string> fileHashes)
+    {
+        var overrides = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var target in textureTargets.Where(target => target.HasExtractedSourceFile))
+        {
+            var extractedPath = ExtractedSourceLayout.ResolveResource(
+                extractedSourceRoot,
+                target.ResourcePath);
+            var preparedPath = TryResolve(addonContentRoot, target.ResourcePath);
+            if (extractedPath is null
+                || preparedPath is null
+                || !File.Exists(extractedPath)
+                || !File.Exists(preparedPath)
+                || FilesEqual(extractedPath, preparedPath, fileHashes))
+            {
+                continue;
+            }
+
+            overrides.Add(target.ResourcePath);
+        }
+
+        return overrides;
     }
 
     private static HashSet<string> BuildRetailResourceIndex(
