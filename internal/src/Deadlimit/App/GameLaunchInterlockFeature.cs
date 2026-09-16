@@ -42,6 +42,7 @@ internal static class GameLaunchInterlockFeature
             BuildFeature.BuildForTestStateChanged += OnBuildForTestStateChanged;
             _form.Shown += OnFormShown;
             _form.FormClosed += OnFormClosed;
+            BindLaunchButton();
         }
 
         public void Dispose()
@@ -90,6 +91,7 @@ internal static class GameLaunchInterlockFeature
             _desiredLaunchEnabled = launchButton.Enabled;
             _buildRunning = BuildFeature.IsBuildForTestRunning(_form);
             launchButton.EnabledChanged += OnLaunchButtonEnabledChanged;
+            ProjectHeaderFeature.SetBuildForTestState(_form, _buildRunning);
             ApplyInterlock();
         }
 
@@ -102,6 +104,7 @@ internal static class GameLaunchInterlockFeature
 
             BindLaunchButton();
             _buildRunning = running;
+            ProjectHeaderFeature.SetBuildForTestState(_form, running);
             ApplyInterlock();
         }
 
@@ -156,7 +159,9 @@ internal static class GameLaunchInterlockFeature
             || string.Equals(button.Text, "✕  CLOSE", StringComparison.Ordinal)
             || string.Equals(button.Text, "✕  ЗАКРЫТЬ", StringComparison.Ordinal)
             || string.Equals(button.Text, "GAME IS LAUNCHING", StringComparison.Ordinal)
-            || string.Equals(button.Text, "ИГРА ЗАПУСКАЕТСЯ", StringComparison.Ordinal);
+            || string.Equals(button.Text, "ИГРА ЗАПУСКАЕТСЯ", StringComparison.Ordinal)
+            || string.Equals(button.Text, "BUILDING...", StringComparison.Ordinal)
+            || string.Equals(button.Text, "ИДЁТ СБОРКА", StringComparison.Ordinal);
 
         private static IEnumerable<T> FindDescendants<T>(Control root)
             where T : Control

@@ -46,12 +46,16 @@ Assert-Contains 'internal/src/Deadlimit/App/DeadlimitRelocationService.cs' 'Rewr
 Assert-Contains 'internal/src/Deadlimit/Deadlimit.csproj' '<Version>0.1.0-beta.2</Version>'
 Assert-NotContains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'UiText.T("UPDATE DEADLIMIT", "ОБНОВИТЬ DEADLIMIT")'
 
-# BUILD FOR TEST must temporarily cover and disable LAUNCH GAME with the active blue state.
-Assert-Contains 'internal/src/Deadlimit/App/BuildLaunchInterlockFeature.cs' '[ModuleInitializer]'
-Assert-Contains 'internal/src/Deadlimit/App/BuildLaunchInterlockFeature.cs' 'launchGameButton.Enabled = false;'
-Assert-Contains 'internal/src/Deadlimit/App/BuildLaunchInterlockFeature.cs' 'UiText.T("BUILDING...", "ИДЁТ СБОРКА")'
-Assert-Contains 'internal/src/Deadlimit/App/BuildLaunchInterlockFeature.cs' 'BuildGradientStart'
-Assert-Contains 'internal/src/Deadlimit/App/BuildLaunchInterlockFeature.cs' 'if (interlocked && buildButton.Enabled)'
+# BUILD FOR TEST must disable LAUNCH GAME and show the active blue BUILDING state.
+Assert-Contains 'internal/src/Deadlimit/App/GameLaunchInterlockFeature.cs' 'SetLaunchEnabled(_buildRunning ? false : _desiredLaunchEnabled);'
+Assert-Contains 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs' 'UiText.T("BUILDING...", "ИДЁТ СБОРКА")'
+Assert-Contains 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs' 'gameButtonUsesActivePalette = buildForTestRunning'
+Assert-Contains 'internal/src/Deadlimit/App/GameLaunchInterlockFeature.cs' 'ProjectHeaderFeature.SetBuildForTestState'
+
+# Long PREPARE and BUILD operations expose their own cancellation action.
+Assert-Contains 'internal/src/Deadlimit/App/BuildFeature.cs' 'UiText.T("CANCEL PREPARATION", "ОТМЕНИТЬ ПОДГОТОВКУ")'
+Assert-Contains 'internal/src/Deadlimit/App/BuildFeature.cs' 'UiText.T("CANCEL BUILD", "ОТМЕНИТЬ СБОРКУ")'
+Assert-Contains 'internal/src/Deadlimit/App/BuildFeature.cs' 'catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)'
 
 # Russian error dialogs must keep actionable context instead of collapsing to a title-only message.
 Assert-Contains 'internal/src/Deadlimit/App/MessageBox.cs' 'BuildVertexColorPrepareContext'

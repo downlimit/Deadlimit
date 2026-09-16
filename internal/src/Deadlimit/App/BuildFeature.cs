@@ -73,6 +73,8 @@ internal static class BuildFeature
         };
         var csdkStateProbeActive = false;
         var csdkIsRunning = false;
+        CancellationTokenSource? prepareCancellation = null;
+        CancellationTokenSource? buildCancellation = null;
 
         bool IsOnlineCsdkState() =>
             launchCsdkButton.Text.Contains("CSDK", StringComparison.OrdinalIgnoreCase)
@@ -161,9 +163,59 @@ internal static class BuildFeature
         }
 
         prepareButton.Click += async (_, _) =>
-            await RunPrepareAsync(form, actionButtons, buildProgressBar);
+        {
+            if (prepareCancellation is not null)
+            {
+                RequestCancellation(
+                    prepareButton,
+                    prepareCancellation,
+                    UiText.T("CANCELLING PREPARATION...", "ОТМЕНА ПОДГОТОВКИ..."));
+                return;
+            }
+
+            using var cancellation = new CancellationTokenSource();
+            prepareCancellation = cancellation;
+            try
+            {
+                await RunPrepareAsync(
+                    form,
+                    actionButtons,
+                    prepareButton,
+                    buildProgressBar,
+                    cancellation.Token);
+            }
+            finally
+            {
+                prepareCancellation = null;
+            }
+        };
         buildAndTestButton.Click += async (_, _) =>
-            await RunBuildAndTestAsync(form, actionButtons, buildProgressBar);
+        {
+            if (buildCancellation is not null)
+            {
+                RequestCancellation(
+                    buildAndTestButton,
+                    buildCancellation,
+                    UiText.T("CANCELLING BUILD...", "ОТМЕНА СБОРКИ..."));
+                return;
+            }
+
+            using var cancellation = new CancellationTokenSource();
+            buildCancellation = cancellation;
+            try
+            {
+                await RunBuildAndTestAsync(
+                    form,
+                    actionButtons,
+                    buildAndTestButton,
+                    buildProgressBar,
+                    cancellation.Token);
+            }
+            finally
+            {
+                buildCancellation = null;
+            }
+        };
         launchCsdkButton.Click += async (_, _) =>
         {
             var paths = new DeadlimitPaths();
@@ -222,6 +274,8 @@ internal static class BuildFeature
         form.Activated += (_, _) => _ = RefreshCsdkButtonStateAsync();
         form.FormClosed += (_, _) =>
         {
+            prepareCancellation?.Cancel();
+            buildCancellation?.Cancel();
             csdkStateTimer.Stop();
             csdkStateTimer.Dispose();
         };
@@ -235,7 +289,9 @@ internal static class BuildFeature
     private static async Task RunPrepareAsync(
         MainForm form,
         IReadOnlyList<Button> actionButtons,
-        ToolStripProgressBar? progressBar)
+        Button prepareButton,
+        ToolStripProgressBar? progressBar,
+        CancellationToken cancellationToken)
     {
         var regenerateCustomMaterials = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
         var backupCustomMaterials = true;
@@ -280,7 +336,10 @@ internal static class BuildFeature
             backupCustomMaterials = choice != DeadlimitDialogChoice.YesWithoutBackup;
         }
 
-        SetButtonsEnabled(actionButtons, false);
+        BeginCancelableOperation(
+            actionButtons,
+            prepareButton,
+            UiText.T("CANCEL PREPARATION", "ОТМЕНИТЬ ПОДГОТОВКУ"));
         var originalTitle = form.Text;
         using var animator = new BuildProgressAnimator(
             form,
@@ -300,8 +359,12 @@ internal static class BuildFeature
             var result = await service.PrepareAsync(
                 manifest,
                 progress,
+                cancellationToken,
                 regenerateCustomMaterials: regenerateCustomMaterials,
                 backupCustomMaterials: backupCustomMaterials);
+            MarkOperationCompleting(
+                prepareButton,
+                UiText.T("PREPARATION COMPLETE", "ПОДГОТОВКА ЗАВЕРШЕНА"));
             animator.Update(new BuildAndTestProgress(
                 UiText.T("Preparation for CSDK complete.", "Подготовка для CSDK готова."),
                 100));
@@ -365,6 +428,12 @@ internal static class BuildFeature
             using var dialog = BuildTestSuccessDialog.CreatePrepareSummary(message);
             dialog.ShowDialog(form);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            animator.Update(new BuildAndTestProgress(
+                UiText.T("Preparation cancelled.", "Подготовка отменена."),
+                0));
+        }
         catch (Exception ex) when (ex is IOException
             or UnauthorizedAccessException
             or InvalidOperationException)
@@ -379,14 +448,19 @@ internal static class BuildFeature
         finally
         {
             form.Text = originalTitle;
-            SetButtonsEnabled(actionButtons, true);
+            EndCancelableOperation(
+                actionButtons,
+                prepareButton,
+                UiText.T("PREPARE FOR CSDK", "ПОДГОТОВИТЬ ДЛЯ CSDK"));
         }
     }
 
     private static async Task RunBuildAndTestAsync(
         MainForm form,
         IReadOnlyList<Button> actionButtons,
-        ToolStripProgressBar? progressBar)
+        Button buildAndTestButton,
+        ToolStripProgressBar? progressBar,
+        CancellationToken cancellationToken)
     {
         var manifest = ProjectStore.TryLoadLastProject();
         if (manifest is null || !Directory.Exists(manifest.ProjectFolder))
@@ -430,7 +504,10 @@ internal static class BuildFeature
         SetBuildForTestRunning(form, true);
         try
         {
-            SetButtonsEnabled(actionButtons, false);
+            BeginCancelableOperation(
+                actionButtons,
+                buildAndTestButton,
+                UiText.T("CANCEL BUILD", "ОТМЕНИТЬ СБОРКУ"));
             animator.Start();
             var paths = new DeadlimitPaths();
 
@@ -440,7 +517,7 @@ internal static class BuildFeature
                     UiText.T("Closing Deadlock to unlock the current VPK...", "Закрытие Deadlock для разблокировки текущего VPK..."),
                     0));
 
-                var stopped = await DeadlockProcessService.CloseAsync();
+                var stopped = await DeadlockProcessService.CloseAsync(cancellationToken);
                 if (!stopped)
                 {
                     throw new InvalidOperationException(UiText.T(
@@ -452,14 +529,17 @@ internal static class BuildFeature
             animator.Update(new BuildAndTestProgress(
                 UiText.T("Checking Deadlock game-client mod loading...", "Проверка загрузки модов в игровом клиенте Deadlock..."),
                 1));
-            var modLoading = await Task.Run(() =>
-                new RetailModLoadingService(paths).EnsureEnabled(manifest));
+            var modLoading = await Task.Run(
+                () => new RetailModLoadingService(paths).EnsureEnabled(manifest),
+                cancellationToken);
 
             animator.Update(new BuildAndTestProgress(
                 UiText.T("Checking Deadlock game-client VPK release slot...", "Проверка слота VPK игрового клиента Deadlock..."),
                 1));
             var slotGuard = new VpkSlotOwnershipService(paths);
-            var slotCheck = await Task.Run(() => slotGuard.EnsureSlotAvailable(manifest));
+            var slotCheck = await Task.Run(
+                () => slotGuard.EnsureSlotAvailable(manifest),
+                cancellationToken);
 
             if (forceFullRebuild)
             {
@@ -487,7 +567,9 @@ internal static class BuildFeature
                 var service = new BuildAndTestService(paths);
                 try
                 {
-                    result = await Task.Run(() => service.BuildAsync(manifest, progress));
+                    result = await Task.Run(
+                        () => service.BuildAsync(manifest, progress, cancellationToken),
+                        cancellationToken);
                 }
                 catch (ParticleCompilationException particleError)
                 {
@@ -505,7 +587,12 @@ internal static class BuildFeature
                             $"Продолжение сборки без проблемных VPCF-эффектов: {skippedParticleSources.Count}..."),
                         39));
                     result = await Task.Run(() =>
-                        service.BuildWithoutFailedParticlesAsync(manifest, skippedParticleSources, progress));
+                        service.BuildWithoutFailedParticlesAsync(
+                            manifest,
+                            skippedParticleSources,
+                            progress,
+                            cancellationToken),
+                        cancellationToken);
                 }
             }
             catch
@@ -514,6 +601,9 @@ internal static class BuildFeature
                 throw;
             }
 
+            MarkOperationCompleting(
+                buildAndTestButton,
+                UiText.T("FINALIZING BUILD...", "ЗАВЕРШЕНИЕ СБОРКИ..."));
             if (forceStateBackupPath is not null && File.Exists(forceStateBackupPath))
             {
                 File.Delete(forceStateBackupPath);
@@ -573,6 +663,13 @@ internal static class BuildFeature
             using var dialog = new BuildTestSuccessDialog(result.VpkPath, summary);
             dialog.ShowDialog(form);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            RestoreForceBuildState(forceStatePath, forceStateBackupPath);
+            animator.Update(new BuildAndTestProgress(
+                UiText.T("Build cancelled.", "Сборка отменена."),
+                0));
+        }
         catch (Exception ex)
         {
             RestoreForceBuildState(forceStatePath, forceStateBackupPath);
@@ -586,7 +683,10 @@ internal static class BuildFeature
         finally
         {
             form.Text = originalTitle;
-            SetButtonsEnabled(actionButtons, true);
+            EndCancelableOperation(
+                actionButtons,
+                buildAndTestButton,
+                UiText.T("BUILD FOR TEST", "СОБРАТЬ ДЛЯ ТЕСТА"));
             SetBuildForTestRunning(form, false);
         }
     }
@@ -818,6 +918,46 @@ internal static class BuildFeature
         {
             button.Enabled = enabled;
         }
+    }
+
+    private static void BeginCancelableOperation(
+        IEnumerable<Button> actionButtons,
+        Button activeButton,
+        string cancelText)
+    {
+        SetButtonsEnabled(actionButtons, false);
+        activeButton.Text = cancelText;
+        activeButton.Enabled = true;
+    }
+
+    private static void EndCancelableOperation(
+        IEnumerable<Button> actionButtons,
+        Button activeButton,
+        string idleText)
+    {
+        activeButton.Text = idleText;
+        SetButtonsEnabled(actionButtons, true);
+    }
+
+    private static void RequestCancellation(
+        Button activeButton,
+        CancellationTokenSource cancellation,
+        string cancellingText)
+    {
+        if (cancellation.IsCancellationRequested)
+        {
+            return;
+        }
+
+        activeButton.Text = cancellingText;
+        activeButton.Enabled = false;
+        cancellation.Cancel();
+    }
+
+    private static void MarkOperationCompleting(Button activeButton, string completingText)
+    {
+        activeButton.Text = completingText;
+        activeButton.Enabled = false;
     }
 
     private static IEnumerable<T> FindDescendants<T>(Control root)

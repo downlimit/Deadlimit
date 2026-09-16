@@ -1615,7 +1615,37 @@ public sealed class BuildAndTestService
 
         var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException
+                                       or System.ComponentModel.Win32Exception
+                                       or NotSupportedException)
+            {
+                // The process may have exited between the cancellation signal and kill.
+            }
+
+            try
+            {
+                await process.WaitForExitAsync(CancellationToken.None);
+            }
+            catch (InvalidOperationException)
+            {
+                // The process already exited or never reached a waitable state.
+            }
+
+            throw;
+        }
 
         return new ProcessResult(
             process.ExitCode,
