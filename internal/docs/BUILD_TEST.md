@@ -28,6 +28,8 @@ BUILD & TEST
 → normal repeated in-game iteration after authoring is established
 ```
 
+While either operation is active, its own button remains available as `CANCEL PREPARATION` or `CANCEL BUILD`; the other authoring actions stay disabled. Cancellation is propagated into source preparation and external compilation. An active ResourceCompiler process tree is terminated before the previous verified compiled outputs are restored. During BUILD & TEST, `LAUNCH GAME` is disabled and uses the blue `BUILDING...` state until the build transaction ends.
+
 ### Retail mod-loading guard
 
 Current Deadlock mod installation guidance still requires this search path in retail `game/citadel/gameinfo.gi`:

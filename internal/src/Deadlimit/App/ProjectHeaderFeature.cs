@@ -26,6 +26,7 @@ internal static class ProjectHeaderFeature
     private static readonly Color GameActiveGradientStart = Color.FromArgb(0x39, 0x9A, 0xED);
     private static readonly Color GameActiveGradientEnd = Color.FromArgb(0x24, 0x5E, 0xCF);
     private static readonly Dictionary<MainForm, Action> HeaderRefreshers = [];
+    private static readonly Dictionary<MainForm, Action<bool>> BuildStateSetters = [];
 
     private static string? _cachedSteamExecutable;
 
@@ -127,6 +128,7 @@ internal static class ProjectHeaderFeature
         var gameIsRunning = false;
         var gameStateProbeActive = false;
         var gameButtonUsesActivePalette = false;
+        var buildForTestRunning = false;
         var gameStateTimer = new System.Windows.Forms.Timer();
 
         ToolTip toolTip = null!;
@@ -270,12 +272,14 @@ internal static class ProjectHeaderFeature
                 gameLaunchPendingUntilUtc = DateTime.MinValue;
             }
 
-            gameButtonUsesActivePalette = gameIsRunning || launchPending;
-            launchGameButton.Text = gameIsRunning
-                ? UiText.T("✕  CLOSE", "✕  ЗАКРЫТЬ")
-                : launchPending
-                    ? UiText.T("GAME IS LAUNCHING", "ИГРА ЗАПУСКАЕТСЯ")
-                    : UiText.T("▶  LAUNCH GAME", "▶  ЗАПУСК ИГРЫ");
+            gameButtonUsesActivePalette = buildForTestRunning || gameIsRunning || launchPending;
+            launchGameButton.Text = buildForTestRunning
+                ? UiText.T("BUILDING...", "ИДЁТ СБОРКА")
+                : gameIsRunning
+                    ? UiText.T("✕  CLOSE", "✕  ЗАКРЫТЬ")
+                    : launchPending
+                        ? UiText.T("GAME IS LAUNCHING", "ИГРА ЗАПУСКАЕТСЯ")
+                        : UiText.T("▶  LAUNCH GAME", "▶  ЗАПУСК ИГРЫ");
 
             gameStateTimer.Interval = gameIsRunning
                 ? 1000
@@ -285,7 +289,11 @@ internal static class ProjectHeaderFeature
 
             toolTip.SetToolTip(
                 launchGameButton,
-                gameIsRunning
+                buildForTestRunning
+                    ? UiText.T(
+                        "The mod is being built. Deadlock launch is available after the VPK deployment completes.",
+                        "Идёт сборка мода. Запуск Deadlock станет доступен после завершения установки VPK.")
+                    : gameIsRunning
                     ? UiText.T(
                         "Deadlock is running. Click to close the game.\n\nHold SHIFT while clicking to copy the camera-lock command instead.",
                         "Deadlock запущен. Нажмите, чтобы закрыть игру.\n\nУдерживайте SHIFT при клике, чтобы вместо этого скопировать команду блокировки камеры.")
@@ -335,6 +343,7 @@ internal static class ProjectHeaderFeature
         form.FormClosed += (_, _) =>
         {
             HeaderRefreshers.Remove(form);
+            BuildStateSetters.Remove(form);
             gameStateTimer.Stop();
             gameStateTimer.Dispose();
         };
@@ -401,6 +410,11 @@ internal static class ProjectHeaderFeature
         }
 
         HeaderRefreshers[form] = () => RefreshHeaderImage(force: true);
+        BuildStateSetters[form] = running =>
+        {
+            buildForTestRunning = running;
+            ApplyGameButtonState();
+        };
 
         void OpenHeaderImage()
         {
@@ -480,6 +494,14 @@ internal static class ProjectHeaderFeature
         if (HeaderRefreshers.TryGetValue(form, out var refresh))
         {
             refresh();
+        }
+    }
+
+    internal static void SetBuildForTestState(MainForm form, bool running)
+    {
+        if (BuildStateSetters.TryGetValue(form, out var setState))
+        {
+            setState(running);
         }
     }
 

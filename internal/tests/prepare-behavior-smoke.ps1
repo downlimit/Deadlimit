@@ -94,7 +94,8 @@ foreach ($required in @(
     'CompileOutputInvalidation.Begin(',
     'invalidatedOutputs.Commit();',
     'invalidatedOutputs.Restore(log);',
-    'Restored previous compiled outputs after failed forced rebuild.')) {
+    'Restored previous compiled outputs after failed forced rebuild.',
+    'process.Kill(entireProcessTree: true);')) {
     if (-not $buildServiceSource.Contains($required, [StringComparison]::Ordinal)) {
         throw "Compiled-output invalidation contract is missing: $required"
     }

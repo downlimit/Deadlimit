@@ -45,7 +45,12 @@ $requiredBuildInterlock = @(
     'internal static bool IsBuildForTestRunning(MainForm form)',
     'GameLaunchInterlockFeature.Attach(form);',
     'SetBuildForTestRunning(form, true);',
-    'SetBuildForTestRunning(form, false);'
+    'SetBuildForTestRunning(form, false);',
+    'UiText.T("CANCEL PREPARATION", "ОТМЕНИТЬ ПОДГОТОВКУ")',
+    'UiText.T("CANCEL BUILD", "ОТМЕНИТЬ СБОРКУ")',
+    'service.BuildAsync(manifest, progress, cancellationToken)',
+    'cancellationToken),',
+    'RequestCancellation('
 )
 foreach ($pattern in $requiredBuildInterlock) {
     if (-not $build.Contains($pattern)) {
@@ -62,11 +67,23 @@ $requiredInterlock = @(
     '_desiredLaunchEnabled = launchButton.Enabled;',
     'launchButton.EnabledChanged += OnLaunchButtonEnabledChanged;',
     '_desiredLaunchEnabled = _launchButton.Enabled;',
-    'SetLaunchEnabled(_buildRunning ? false : _desiredLaunchEnabled);'
+    'SetLaunchEnabled(_buildRunning ? false : _desiredLaunchEnabled);',
+    'ProjectHeaderFeature.SetBuildForTestState(_form, running);'
 )
 foreach ($pattern in $requiredInterlock) {
     if (-not $interlock.Contains($pattern)) {
         throw "Missing game launch/build interlock contract: $pattern"
+    }
+}
+
+$requiredBuildVisualState = @(
+    'gameButtonUsesActivePalette = buildForTestRunning',
+    'UiText.T("BUILDING...", "ИДЁТ СБОРКА")',
+    'internal static void SetBuildForTestState(MainForm form, bool running)'
+)
+foreach ($pattern in $requiredBuildVisualState) {
+    if (-not $header.Contains($pattern)) {
+        throw "Missing BUILD FOR TEST game-button visual contract: $pattern"
     }
 }
 
