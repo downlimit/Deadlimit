@@ -200,6 +200,10 @@ $resolveFullCompileTargets = $buildType.GetMethod('ResolveFullCompileTargets', $
 if ($null -eq $resolveFullCompileTargets) { throw 'BuildAndTestService.ResolveFullCompileTargets was not found.' }
 $resolveProjectOwnedSources = $buildType.GetMethod('ResolveProjectOwnedSources', $nonPublicStatic)
 if ($null -eq $resolveProjectOwnedSources) { throw 'BuildAndTestService.ResolveProjectOwnedSources was not found.' }
+$loadBaselineHashes = $buildType.GetMethod('LoadOrUpdateSourceBaselineHashes', $nonPublicStatic)
+if ($null -eq $loadBaselineHashes) { throw 'BuildAndTestService.LoadOrUpdateSourceBaselineHashes was not found.' }
+$hashContentTreeCached = $buildType.GetMethod('HashContentTreeCached', $nonPublicStatic)
+if ($null -eq $hashContentTreeCached) { throw 'BuildAndTestService.HashContentTreeCached was not found.' }
 $compileSelectionRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-compile-selection-$([Guid]::NewGuid().ToString('N'))"
 try {
     $contentRoot = Join-Path $compileSelectionRoot 'content'
@@ -214,12 +218,63 @@ try {
     [IO.File]::WriteAllText($edited, 'edited')
     [IO.File]::WriteAllText((Join-Path $sourceRoot 'particles\edited.vpcf'), 'retail')
     [IO.File]::WriteAllText($newEffect, 'new')
+    $contentCachePath = Join-Path $compileSelectionRoot 'prepared-content-hashes.json'
+    $contentCacheArgs = [object[]]@(
+        [string]$contentRoot,
+        [string]$contentCachePath,
+        [Threading.CancellationToken]::None)
+    $firstContentHash = $hashContentTreeCached.Invoke($null, $contentCacheArgs)
+    if ($firstContentHash.HashedCount -ne 3 -or $firstContentHash.ReusedCount -ne 0) {
+        throw 'First prepared-content hash pass did not hash every file.'
+    }
+    $secondContentHash = $hashContentTreeCached.Invoke($null, $contentCacheArgs)
+    if ($secondContentHash.HashedCount -ne 0 -or $secondContentHash.ReusedCount -ne 3) {
+        throw 'Unchanged prepared content did not reuse every cached SHA-256.'
+    }
+    $oldEditedHash = [string]$secondContentHash.Hashes['particles/edited.vpcf']
+    [IO.File]::WriteAllText($edited, 'EDITED')
+    [IO.File]::SetLastWriteTimeUtc($edited, [DateTime]::UtcNow.AddSeconds(2))
+    $changedContentHash = $hashContentTreeCached.Invoke($null, $contentCacheArgs)
+    if ($changedContentHash.HashedCount -ne 1 `
+        -or $changedContentHash.ReusedCount -ne 2 `
+        -or [string]$changedContentHash.Hashes['particles/edited.vpcf'] -eq $oldEditedHash) {
+        throw 'Prepared-content hash cache did not rehash the changed file only.'
+    }
+    [IO.File]::WriteAllText($edited, 'edited')
     $hashes = [Collections.Generic.Dictionary[string,string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($path in @($retailCopy, $edited, $newEffect)) {
         $relative = [IO.Path]::GetRelativePath($contentRoot, $path).Replace('\', '/')
         $hashes[$relative] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash
     }
-    $projectOwnedArgs = [object[]]@($hashes, [string]$sourceRoot)
+    $cachePath = Join-Path $compileSelectionRoot 'source-baseline-hashes.json'
+    $requiredPaths = [string[]]@($hashes.Keys)
+    $cacheArgs = [object[]]@(
+        [string]$sourceRoot,
+        $requiredPaths,
+        [string]'extraction-1',
+        [string]$cachePath,
+        [Text.StringBuilder]::new(),
+        [Threading.CancellationToken]::None)
+    $baselineHashes = $loadBaselineHashes.Invoke($null, $cacheArgs)
+    if (-not (Test-Path -LiteralPath $cachePath) -or $baselineHashes.Count -ne 2) {
+        throw 'Source baseline hash cache was not populated for extracted files.'
+    }
+    $retailRelative = [IO.Path]::GetRelativePath($contentRoot, $retailCopy).Replace('\', '/')
+    $cachedRetailHash = [string]$baselineHashes[$retailRelative]
+    [IO.File]::WriteAllText((Join-Path $sourceRoot 'particles\retail-copy.vpcf'), 'new extraction bytes')
+    $sameIdentityHashes = $loadBaselineHashes.Invoke($null, $cacheArgs)
+    if ([string]$sameIdentityHashes[$retailRelative] -ne $cachedRetailHash) {
+        throw 'A stable extraction identity unexpectedly rehashed the immutable 0source baseline.'
+    }
+    $cacheArgs[2] = [string]'extraction-2'
+    $newIdentityHashes = $loadBaselineHashes.Invoke($null, $cacheArgs)
+    if ([string]$newIdentityHashes[$retailRelative] -eq $cachedRetailHash) {
+        throw 'A changed extraction identity did not invalidate the 0source baseline cache.'
+    }
+    [IO.File]::WriteAllText((Join-Path $sourceRoot 'particles\retail-copy.vpcf'), 'retail')
+    $cacheArgs[2] = [string]'extraction-3'
+    $baselineHashes = $loadBaselineHashes.Invoke($null, $cacheArgs)
+    $projectOwnedArgs = [object[]]@($hashes, $baselineHashes)
     $projectOwned = $resolveProjectOwnedSources.Invoke($null, $projectOwnedArgs)
     $selectionArgs = [object[]]@(
         [string]$contentRoot,
