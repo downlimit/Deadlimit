@@ -186,21 +186,14 @@ public sealed class BuildAndTestService
             cancellationToken.ThrowIfCancellationRequested();
             Report(progress, 33, LocalizedText.T("Comparing prepared content with the previous successful build...", "Сравнение подготовленного content с предыдущей успешной сборкой..."));
 
-            var currentHashes = HashContentTree(prepare.AddonContentRoot, cancellationToken);
-            var newerParticleSources = FindUnsupportedParticleSources(
+            var contentHashCachePath = Path.Combine(metadataFolder, "prepared-content-hashes.json");
+            var currentHashResult = HashContentTreeCached(
                 prepare.AddonContentRoot,
-                Csdk12MaximumParticleFormatVersion,
+                contentHashCachePath,
                 cancellationToken);
-            if (newerParticleSources.Count > 0)
-            {
-                log.AppendLine(
-                    $"Particle sources newer than the known Reduced CSDK 12 vpcf{Csdk12MaximumParticleFormatVersion} baseline: {newerParticleSources.Count}");
-                foreach (var path in newerParticleSources)
-                {
-                    log.AppendLine($"  attempt {Path.GetRelativePath(prepare.AddonContentRoot, path)}");
-                }
-            }
-
+            var currentHashes = currentHashResult.Hashes;
+            log.AppendLine(
+                $"Prepared content hash cache: reused={currentHashResult.ReusedCount}, hashed={currentHashResult.HashedCount}.");
             var previousHashes = previousState?.ContentHashes
                 ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
@@ -214,7 +207,16 @@ public sealed class BuildAndTestService
                 .Where(path => !currentHashes.ContainsKey(path))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-            var projectOwnedSources = ResolveProjectOwnedSources(currentHashes, sourceRoot);
+            var baselineCachePath = Path.Combine(metadataFolder, "source-baseline-hashes.json");
+            var baselineIdentity = BuildSourceBaselineIdentity(manifest, sourceRoot);
+            var baselineHashes = LoadOrUpdateSourceBaselineHashes(
+                sourceRoot,
+                currentHashes.Keys,
+                baselineIdentity,
+                baselineCachePath,
+                log,
+                cancellationToken);
+            var projectOwnedSources = ResolveProjectOwnedSources(currentHashes, baselineHashes);
             var projectChanged = changed
                 .Where(projectOwnedSources.Contains)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -284,6 +286,20 @@ public sealed class BuildAndTestService
                     log);
                 log.AppendLine(
                     $"VPCF fallback active: skipped {particlesToSkip.Length} failed particle source(s); original Deadlock definitions will be reused for those paths.");
+            }
+
+            var newerParticleSources = FindUnsupportedParticleSourcesFromPaths(
+                compileTargets.Where(IsParticleSource),
+                Csdk12MaximumParticleFormatVersion,
+                cancellationToken);
+            if (newerParticleSources.Count > 0)
+            {
+                log.AppendLine(
+                    $"Selected particle sources newer than the known Reduced CSDK 12 vpcf{Csdk12MaximumParticleFormatVersion} baseline: {newerParticleSources.Count}");
+                foreach (var path in newerParticleSources)
+                {
+                    log.AppendLine($"  attempt {Path.GetRelativePath(prepare.AddonContentRoot, path)}");
+                }
             }
 
             log.AppendLine($"Prepared content files tracked: {currentHashes.Count}");
@@ -468,18 +484,100 @@ public sealed class BuildAndTestService
         return slot;
     }
 
-    private static Dictionary<string, string> HashContentTree(string root, CancellationToken cancellationToken)
+    private static ContentHashResult HashContentTreeCached(
+        string root,
+        string cachePath,
+        CancellationToken cancellationToken)
     {
+        var rootIdentity = Path.GetFullPath(root);
+        var loadedCache = TryLoadPreparedContentHashCache(cachePath, rootIdentity);
+        var cache = loadedCache
+            ?? new PreparedContentHashCache { RootIdentity = rootIdentity };
         var hashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var refreshedEntries = new Dictionary<string, PreparedContentHashEntry>(StringComparer.OrdinalIgnoreCase);
+        var reusedCount = 0;
+        var hashedCount = 0;
+
         foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
                      .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var relative = NormalizeRelativePath(Path.GetRelativePath(root, file));
-            using var stream = File.OpenRead(file);
-            hashes[relative] = Convert.ToHexString(SHA256.HashData(stream));
+            var info = new FileInfo(file);
+            string hash;
+            if (cache.Entries.TryGetValue(relative, out var cached)
+                && cached.Length == info.Length
+                && cached.LastWriteTimeUtcTicks == info.LastWriteTimeUtc.Ticks
+                && cached.Sha256.Length > 0)
+            {
+                hash = cached.Sha256;
+                reusedCount++;
+            }
+            else
+            {
+                using var stream = File.OpenRead(file);
+                hash = Convert.ToHexString(SHA256.HashData(stream));
+                hashedCount++;
+            }
+
+            hashes[relative] = hash;
+            refreshedEntries[relative] = new PreparedContentHashEntry
+            {
+                Length = info.Length,
+                LastWriteTimeUtcTicks = info.LastWriteTimeUtc.Ticks,
+                Sha256 = hash,
+            };
         }
-        return hashes;
+
+        if (loadedCache is null
+            || hashedCount > 0
+            || refreshedEntries.Count != cache.Entries.Count)
+        {
+            AtomicFile.WriteJson(
+                cachePath,
+                new PreparedContentHashCache
+                {
+                    RootIdentity = rootIdentity,
+                    Entries = refreshedEntries,
+                },
+                new JsonSerializerOptions { WriteIndented = false });
+        }
+        return new ContentHashResult(hashes, reusedCount, hashedCount);
+    }
+
+    private static PreparedContentHashCache? TryLoadPreparedContentHashCache(
+        string cachePath,
+        string expectedRootIdentity)
+    {
+        if (!File.Exists(cachePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var cache = JsonSerializer.Deserialize<PreparedContentHashCache>(File.ReadAllText(cachePath));
+            if (cache is null
+                || cache.SchemaVersion != 1
+                || !string.Equals(cache.RootIdentity, expectedRootIdentity, StringComparison.OrdinalIgnoreCase)
+                || cache.Entries is null)
+            {
+                return null;
+            }
+
+            cache.Entries = cache.Entries.ToDictionary(
+                pair => SafePath.NormalizeRelative(pair.Key, "Prepared content hash cache path"),
+                pair => pair.Value,
+                StringComparer.OrdinalIgnoreCase);
+            return cache;
+        }
+        catch (Exception ex) when (ex is JsonException
+                                   or IOException
+                                   or InvalidDataException
+                                   or ArgumentException)
+        {
+            return null;
+        }
     }
 
     internal static IReadOnlyList<string> FindUnsupportedParticleSources(
@@ -492,9 +590,19 @@ public sealed class BuildAndTestService
             return [];
         }
 
+        return FindUnsupportedParticleSourcesFromPaths(
+            Directory.EnumerateFiles(contentRoot, "*.vpcf", SearchOption.AllDirectories),
+            maximumSupportedVersion,
+            cancellationToken);
+    }
+
+    private static IReadOnlyList<string> FindUnsupportedParticleSourcesFromPaths(
+        IEnumerable<string> particleSources,
+        int maximumSupportedVersion,
+        CancellationToken cancellationToken)
+    {
         var unsupported = new List<string>();
-        foreach (var path in Directory.EnumerateFiles(contentRoot, "*.vpcf", SearchOption.AllDirectories)
-                     .OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
+        foreach (var path in particleSources.OrderBy(value => value, StringComparer.OrdinalIgnoreCase))
         {
             cancellationToken.ThrowIfCancellationRequested();
             var version = ReadParticleFormatVersion(path);
@@ -602,30 +710,106 @@ public sealed class BuildAndTestService
 
     private static HashSet<string> ResolveProjectOwnedSources(
         IReadOnlyDictionary<string, string> currentHashes,
-        string sourceRoot)
+        IReadOnlyDictionary<string, string> baselineHashes)
     {
         var projectOwned = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var (relativePath, currentHash) in currentHashes)
         {
-            var extractedPath = SafePath.ResolveUnderRoot(
-                sourceRoot,
-                ToWindowsPath(relativePath),
-                "Extracted source baseline path");
-            if (!File.Exists(extractedPath))
-            {
-                projectOwned.Add(relativePath);
-                continue;
-            }
-
-            using var baselineStream = File.OpenRead(extractedPath);
-            var baselineHash = Convert.ToHexString(SHA256.HashData(baselineStream));
-            if (!string.Equals(currentHash, baselineHash, StringComparison.Ordinal))
+            if (!baselineHashes.TryGetValue(relativePath, out var baselineHash)
+                || !string.Equals(currentHash, baselineHash, StringComparison.Ordinal))
             {
                 projectOwned.Add(relativePath);
             }
         }
 
         return projectOwned;
+    }
+
+    private static string BuildSourceBaselineIdentity(ProjectManifest manifest, string sourceRoot) =>
+        $"{Path.GetFullPath(sourceRoot)}|{manifest.LastSourceExtractionUtc?.UtcTicks ?? 0}|{manifest.ExtractedSourceFileCount ?? -1}";
+
+    private static Dictionary<string, string> LoadOrUpdateSourceBaselineHashes(
+        string sourceRoot,
+        IEnumerable<string> requiredRelativePaths,
+        string identity,
+        string cachePath,
+        StringBuilder log,
+        CancellationToken cancellationToken)
+    {
+        var cache = TryLoadSourceBaselineHashCache(cachePath, identity)
+            ?? new SourceBaselineHashCache { Identity = identity };
+        var cacheWasCurrent = cache.Hashes.Count > 0;
+        var addedCount = 0;
+
+        foreach (var relativePath in requiredRelativePaths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (cache.Hashes.ContainsKey(relativePath))
+            {
+                continue;
+            }
+
+            var extractedPath = SafePath.ResolveUnderRoot(
+                sourceRoot,
+                ToWindowsPath(relativePath),
+                "Extracted source baseline path");
+            if (!File.Exists(extractedPath))
+            {
+                continue;
+            }
+
+            using var stream = File.OpenRead(extractedPath);
+            cache.Hashes[relativePath] = Convert.ToHexString(SHA256.HashData(stream));
+            addedCount++;
+        }
+
+        if (addedCount > 0 || !cacheWasCurrent || !File.Exists(cachePath))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
+            AtomicFile.WriteJson(
+                cachePath,
+                cache,
+                new JsonSerializerOptions { WriteIndented = true });
+        }
+
+        log.AppendLine(
+            $"Source baseline hash cache: {(cacheWasCurrent ? "reused" : "created")}; cached={cache.Hashes.Count}, newly hashed={addedCount}.");
+        return cache.Hashes;
+    }
+
+    private static SourceBaselineHashCache? TryLoadSourceBaselineHashCache(
+        string cachePath,
+        string expectedIdentity)
+    {
+        if (!File.Exists(cachePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var cache = JsonSerializer.Deserialize<SourceBaselineHashCache>(File.ReadAllText(cachePath));
+            if (cache is null
+                || cache.SchemaVersion != 1
+                || !string.Equals(cache.Identity, expectedIdentity, StringComparison.Ordinal)
+                || cache.Hashes is null)
+            {
+                return null;
+            }
+
+            cache.Hashes = cache.Hashes.ToDictionary(
+                pair => SafePath.NormalizeRelative(pair.Key, "Source baseline cache path"),
+                pair => pair.Value,
+                StringComparer.OrdinalIgnoreCase);
+            return cache;
+        }
+        catch (Exception ex) when (ex is JsonException
+                                   or IOException
+                                   or InvalidDataException
+                                   or ArgumentException)
+        {
+            return null;
+        }
     }
 
     private static int RemoveKnownDeletedOutputs(
@@ -1477,10 +1661,36 @@ public sealed class BuildAndTestService
         IReadOnlyList<string> SourcePaths,
         IReadOnlyList<int> FormatVersions);
 
+    private sealed record ContentHashResult(
+        Dictionary<string, string> Hashes,
+        int ReusedCount,
+        int HashedCount);
+
     private sealed class BuildTestState
     {
         public int SchemaVersion { get; set; } = 1;
         public Dictionary<string, string> ContentHashes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed class SourceBaselineHashCache
+    {
+        public int SchemaVersion { get; set; } = 1;
+        public string Identity { get; set; } = string.Empty;
+        public Dictionary<string, string> Hashes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed class PreparedContentHashCache
+    {
+        public int SchemaVersion { get; set; } = 1;
+        public string RootIdentity { get; set; } = string.Empty;
+        public Dictionary<string, PreparedContentHashEntry> Entries { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private sealed class PreparedContentHashEntry
+    {
+        public long Length { get; set; }
+        public long LastWriteTimeUtcTicks { get; set; }
+        public string Sha256 { get; set; } = string.Empty;
     }
 
     private sealed class InlineProgress<T> : IProgress<T>
