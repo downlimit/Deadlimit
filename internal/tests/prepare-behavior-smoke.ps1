@@ -478,17 +478,74 @@ if (([regex]::Matches($patchedAgain, '"TextureRoughness"')).Count -ne 1) {
     throw 'Texture upsert created a duplicate standard slot.'
 }
 
-# Clean PREPARE keeps backup enabled by default but exposes an explicit no-backup choice.
+# Clean PREPARE exposes independent reset sections and explicit backup/no-backup actions.
 $prepareType = $assembly.GetType('Deadlimit.Core.PrepareAuthoringService', $true)
 $prepareMethod = $prepareType.GetMethods() | Where-Object { $_.Name -eq 'PrepareAsync' } | Select-Object -First 1
-$backupParameter = $prepareMethod.GetParameters() | Where-Object { $_.Name -eq 'backupCustomMaterials' }
-if ($null -eq $backupParameter) { throw 'PrepareAsync backupCustomMaterials parameter is missing.' }
-if (-not $backupParameter.HasDefaultValue -or $backupParameter.DefaultValue -ne $true) {
-    throw 'Clean PREPARE backup must remain enabled by default.'
+$optionsParameter = $prepareMethod.GetParameters() | Where-Object { $_.Name -eq 'options' }
+if ($null -eq $optionsParameter) { throw 'PrepareAsync options parameter is missing.' }
+if (-not $optionsParameter.HasDefaultValue -or $null -ne $optionsParameter.DefaultValue) {
+    throw 'Normal PREPARE must default to preserve-artist-work options.'
 }
 $buildSource = Get-Content -LiteralPath 'internal/src/Deadlimit/App/BuildFeature.cs' -Raw
-foreach ($required in @('YES, NO BACKUP', 'ДА, БЕЗ БЭКАПА', 'DeadlimitDialogChoice.YesWithoutBackup', 'backupCustomMaterials: backupCustomMaterials')) {
+foreach ($required in @('CleanPrepareDialog.Choose(form)', 'options: options')) {
     if (-not $buildSource.Contains($required)) { throw "Clean PREPARE UI contract missing: $required" }
+}
+$dialogSource = Get-Content -LiteralPath 'internal/src/Deadlimit/App/CleanPrepareDialog.cs' -Raw
+foreach ($required in @(
+    'BACK UP & REPREPARE',
+    'REPREPARE WITHOUT BACKUP',
+    'Materials',
+    'Physics',
+    'Effects',
+    'new PrepareAuthoringOptions(sections, createBackup)')) {
+    if (-not $dialogSource.Contains($required)) { throw "Clean PREPARE selection dialog contract missing: $required" }
+}
+
+# ModelDoc physics nodes survive normal retail refreshes and can be replaced as a unit.
+$inheritanceType = $assembly.GetType('Deadlimit.Core.RetailVmdlInheritance', $true)
+$capturePhysics = $inheritanceType.GetMethod('CaptureAuthoringPhysics')
+$restorePhysics = $inheritanceType.GetMethod('RestoreAuthoringPhysics')
+$containsRootNode = $inheritanceType.GetMethod('ContainsRootNode')
+$physicsTemp = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-physics-$([Guid]::NewGuid().ToString('N')).vmdl"
+try {
+    $artistVmdl = @'
+rootNode =
+{
+    children =
+    [
+        { _class = "JiggleBoneList" name = "artist ears" },
+        { _class = "PhysicsJointList" name = "artist joints" },
+        { _class = "PhysicsShapeList" name = "artist bodies" },
+        { _class = "RenderMeshList" name = "artist mesh" },
+    ]
+}
+'@
+    [IO.File]::WriteAllText($physicsTemp, $artistVmdl)
+    $snapshot = $capturePhysics.Invoke($null, [object[]]@([string]$physicsTemp))
+    if ($snapshot.Nodes.Count -ne 3) { throw "Expected three artist physics nodes; found $($snapshot.Nodes.Count)." }
+
+    $retailVmdl = @'
+rootNode =
+{
+    children =
+    [
+        { _class = "PhysicsShapeList" name = "retail bodies" },
+        { _class = "RenderMeshList" name = "retail mesh" },
+    ]
+}
+'@
+    [IO.File]::WriteAllText($physicsTemp, $retailVmdl)
+    $restorePhysics.Invoke($null, [object[]]@([string]$physicsTemp, $snapshot))
+    $restoredPhysics = [IO.File]::ReadAllText($physicsTemp)
+    foreach ($required in @('artist ears', 'artist joints', 'artist bodies', 'retail mesh')) {
+        if (-not $restoredPhysics.Contains($required)) { throw "Normal PREPARE physics preservation lost: $required" }
+    }
+    if (-not [bool]$containsRootNode.Invoke($null, [object[]]@([string]$physicsTemp, [string]'PhysicsJointList'))) {
+        throw 'Restored VMDL is missing PhysicsJointList.'
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $physicsTemp) { Remove-Item -LiteralPath $physicsTemp -Force }
 }
 
 # ONLINE CSDK must recover structural root changes without requiring another click.

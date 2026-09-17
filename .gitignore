@@ -21,3 +21,13 @@
 TestResults/
 artifacts/
 *.log
+
+# Local Codex worktrees and task sandboxes.
+/.worktrees/
+/.codex-task*-worktree/
+
+# Local experiments, backups, captures, and generated Python caches.
+/work/
+/DeadlimitShade/.scratch/
+**/__pycache__/
+*.pyc

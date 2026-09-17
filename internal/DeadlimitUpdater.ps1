@@ -13,10 +13,9 @@ function Wait-ForAnyKey {
     }
 
     Write-Host ""
-    Write-Host "Press any key to close . . ."
-
     try {
         if (-not [Console]::IsInputRedirected) {
+            Write-Host "Press any key to close . . ."
             [void][Console]::ReadKey($true)
             return
         }
@@ -25,7 +24,16 @@ function Wait-ForAnyKey {
         # Fall back to line input when no interactive console is available.
     }
 
-    [void](Read-Host "Press Enter to close")
+    # Some CMD/PowerShell hosts report redirected input even though the user
+    # still has a visible terminal. Use CMD's native pause prompt in that case;
+    # Read-Host renders only a trailing ':' in those hosts.
+    if (-not [string]::IsNullOrWhiteSpace($env:ComSpec)) {
+        & $env:ComSpec /d /c 'echo Press any key to close . . . & pause >nul'
+        return
+    }
+
+    Write-Host "Press any key to close . . ."
+    [void](Read-Host)
 }
 
 try {
