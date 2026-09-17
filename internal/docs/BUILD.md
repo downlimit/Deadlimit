@@ -2,6 +2,22 @@
 
 This file records concrete local build results. Hero-specific observations remain scoped to the tested project until separately validated.
 
+## 2026-09-17 — compiled FE physics inheritance
+
+VRF decompilation does not reconstruct Ivy's retail finite-element authoring graph. Recompiling the prepared VMDL therefore produced a PHYS block containing only artist-authored jiggle bones and dropped the retail vine/tail simulation.
+
+`BUILD FOR TEST` now restores the retail `m_pFeModel` after ResourceCompiler and AG2 repair, then merges independent artist jiggle nodes into the retail graph. The PHYS block is replaced in place at compiled-resource level; all other compiled blocks remain byte-identical. Unsupported custom FE node types fail the build explicitly instead of silently discarding physics.
+
+Validated against IvyBuilder:
+
+```text
+Retail FE nodes: 27
+Artist jiggle nodes: 3
+Merged FE nodes: 30
+Non-PHYS compiled blocks changed: 0
+Repeated merge: byte-stable
+```
+
 ## 2026-08-22 — first successful headless compile experiment
 
 ### Confirmed by our pipeline
