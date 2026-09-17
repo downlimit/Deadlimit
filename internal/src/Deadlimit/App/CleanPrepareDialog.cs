@@ -17,7 +17,8 @@ internal sealed class CleanPrepareDialog : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MinimizeBox = false;
         MaximizeBox = false;
-        ShowInTaskbar = false;
+        ShowInTaskbar = true;
+        ShowIcon = false;
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size(680, 390);
 
@@ -80,6 +81,7 @@ internal sealed class CleanPrepareDialog : Form
         Controls.Add(options);
         Controls.Add(buttons);
         Controls.Add(intro);
+        UiTheme.ApplyCustomPalette(this, ProjectStore.GetToolPathSettings().UiTheme);
         UpdateActions();
     }
 
@@ -101,13 +103,8 @@ internal sealed class CleanPrepareDialog : Form
         Padding = new Padding(8, 4, 4, 4),
     };
 
-    private static Button CreateActionButton(string text) => new()
-    {
-        AutoSize = true,
-        MinimumSize = new Size(118, 34),
-        Text = text,
-        Margin = new Padding(6, 0, 0, 0),
-    };
+    private static Button CreateActionButton(string text) =>
+        DialogUiFactory.CreateActionButton(text);
 
     private void UpdateActions()
     {
