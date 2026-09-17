@@ -130,6 +130,12 @@ internal static class Program
                 return 40 + bindingRepairResult;
             }
 
+            var physicsInheritanceResult = CompiledModelPhysicsInheritanceSmoke.Run();
+            if (physicsInheritanceResult != 0)
+            {
+                return 70 + physicsInheritanceResult;
+            }
+
             var repackResult = ImportedVpkRepackSmoke.Run();
             if (repackResult != 0)
             {

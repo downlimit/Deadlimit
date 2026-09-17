@@ -368,6 +368,14 @@ public sealed class BuildAndTestService
             ApplyAg2(manifest, compiledMainModel, log, cancellationToken);
             var ag2Applied = true;
 
+            cancellationToken.ThrowIfCancellationRequested();
+            Report(progress, 86, LocalizedText.T("Restoring retail secondary-motion physics...", "Восстановление исходной физики вторичного движения..."));
+            var inheritedPhysics = CompiledModelPhysicsInheritance.Apply(manifest, compiledMainModel);
+            log.AppendLine(
+                $"Retail FE physics restored: {inheritedPhysics.RetailNodeCount} retail node(s), " +
+                $"{inheritedPhysics.CustomJiggleCount} custom jiggle node(s), " +
+                $"{inheritedPhysics.MergedNodeCount} total.");
+
             manifest.CompiledVmdl = compiledMainModel;
             ProjectStore.Save(manifest);
 
