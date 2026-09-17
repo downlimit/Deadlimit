@@ -13,12 +13,12 @@ internal static class TooltipCopyPolicyFixups
         // Handle those normalized variants here so the artist-facing copy remains stable.
         if (text.StartsWith("Prepare the selected project's working files for Reduced CSDK", StringComparison.Ordinal))
         {
-            return "**PREPARE FOR CSDK** copies the current project files into CSDK and updates the matching textures.\n\nUse it before working with the model or materials in CSDK. A normal run keeps your manual material edits.\n\nHold **SHIFT** to rebuild Deadlimit-created materials from scratch. You can choose whether to make a backup first.";
+            return "**PREPARE FOR CSDK** refreshes the project's CSDK working files.\n\nA normal run keeps artist edits to materials, physics and effects.\n\nHold **SHIFT** to select individual sections for a clean retail restore, then choose whether to create a backup.";
         }
 
         if (text.StartsWith("Подготовить рабочие файлы выбранного проекта для Reduced CSDK", StringComparison.Ordinal))
         {
-            return "**ПОДГОТОВИТЬ ДЛЯ CSDK** переносит текущие файлы проекта в CSDK и обновляет соответствующие текстуры.\n\nИспользуйте перед работой с моделью или материалами в CSDK. При обычном запуске ваши ручные правки материалов сохраняются.\n\nУдерживайте **SHIFT**, чтобы заново создать материалы, сделанные Deadlimit. Перед этим можно выбрать, делать ли резервную копию.";
+            return "**ПОДГОТОВИТЬ ДЛЯ CSDK** обновляет рабочие файлы проекта в CSDK.\n\nОбычный запуск сохраняет авторские правки материалов, физики и эффектов.\n\nУдерживайте **SHIFT**, чтобы выбрать отдельные разделы для чистого восстановления из retail, а затем решить, создавать ли бэкап.";
         }
 
         if (text.StartsWith("Launch the configured Reduced CSDK environment.", StringComparison.Ordinal))

@@ -52,8 +52,8 @@ internal static class BuildFeature
         toolTip.SetToolTip(
             prepareButton,
             UiText.T(
-                "Prepare the selected project's working files for Reduced CSDK12 / ModelDoc / Material Editor.\n\nA normal click preserves manual VMAT tuning while synchronizing matching project textures. Hold SHIFT to regenerate Deadlimit Manager custom materials; the confirmation dialog lets you choose whether to create a backup first.",
-                "Подготовить рабочие файлы выбранного проекта для Reduced CSDK12 / ModelDoc / Material Editor.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует совпавшие текстуры проекта. Удерживайте SHIFT, чтобы пересоздать custom-материалы Deadlimit Manager; в окне подтверждения можно выбрать, создавать ли резервную копию."));
+                "Prepare the selected project's working files for Reduced CSDK12 / ModelDoc / Material Editor.\n\nA normal click preserves artist edits. Hold SHIFT to choose which materials, physics or effects should be restored from retail source.",
+                "Подготовить рабочие файлы выбранного проекта для Reduced CSDK12 / ModelDoc / Material Editor.\n\nОбычный клик сохраняет правки автора. Удерживайте SHIFT, чтобы выбрать материалы, физику или эффекты для восстановления из retail-исходника."));
         toolTip.SetToolTip(
             buildAndTestButton,
             UiText.T(
@@ -293,8 +293,7 @@ internal static class BuildFeature
         ToolStripProgressBar? progressBar,
         CancellationToken cancellationToken)
     {
-        var regenerateCustomMaterials = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
-        var backupCustomMaterials = true;
+        var cleanPrepare = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
         var manifest = ProjectStore.TryLoadLastProject();
         if (manifest is null || !Directory.Exists(manifest.ProjectFolder))
         {
@@ -309,31 +308,15 @@ internal static class BuildFeature
             return;
         }
 
-        if (regenerateCustomMaterials)
+        var options = PrepareAuthoringOptions.PreserveArtistWork;
+        if (cleanPrepare)
         {
-            var choice = MessageBox.ShowCustom(
-                form,
-                UiText.T(
-                    "SHIFT+PREPARE will regenerate every custom VMAT currently referenced by this project. Manual Material Editor tuning in those VMAT files will be replaced by the current Deadlimit Manager templates and project textures.\n\nYES creates a backup first. YES, NO BACKUP regenerates immediately without creating a backup.\n\nContinue?",
-                    "SHIFT+ПОДГОТОВИТЬ пересоздаст все custom-VMAT, на которые сейчас ссылается проект. Ручные настройки этих VMAT из Material Editor будут заменены текущими шаблонами Deadlimit Manager и текстурами проекта.\n\nДА сначала создаст резервную копию. ДА, БЕЗ БЭКАПА пересоздаст материалы сразу, без резервной копии.\n\nПродолжить?"),
-                UiText.T("Clean material preparation", "Чистая подготовка материалов"),
-                new DeadlimitDialogButton(
-                    UiText.T("YES", "ДА"),
-                    DeadlimitDialogChoice.Yes,
-                    IsDefault: true),
-                new DeadlimitDialogButton(
-                    UiText.T("YES, NO BACKUP", "ДА, БЕЗ БЭКАПА"),
-                    DeadlimitDialogChoice.YesWithoutBackup),
-                new DeadlimitDialogButton(
-                    UiText.T("NO", "НЕТ"),
-                    DeadlimitDialogChoice.No,
-                    IsCancel: true));
-            if (choice is not DeadlimitDialogChoice.Yes and not DeadlimitDialogChoice.YesWithoutBackup)
+            var selected = CleanPrepareDialog.Choose(form);
+            if (selected is null)
             {
                 return;
             }
-
-            backupCustomMaterials = choice != DeadlimitDialogChoice.YesWithoutBackup;
+            options = selected;
         }
 
         BeginCancelableOperation(
@@ -360,8 +343,7 @@ internal static class BuildFeature
                 manifest,
                 progress,
                 cancellationToken,
-                regenerateCustomMaterials: regenerateCustomMaterials,
-                backupCustomMaterials: backupCustomMaterials);
+                options: options);
             MarkOperationCompleting(
                 prepareButton,
                 UiText.T("PREPARATION COMPLETE", "ПОДГОТОВКА ЗАВЕРШЕНА"));

@@ -65,19 +65,22 @@ public sealed class PrepareAuthoringService
         ProjectManifest manifest,
         IProgress<PrepareAuthoringProgress>? progress = null,
         CancellationToken cancellationToken = default,
-        bool regenerateCustomMaterials = false,
-        bool backupCustomMaterials = true) =>
+        PrepareAuthoringOptions? options = null) =>
         Task.Run(
-            () => Prepare(manifest, progress, cancellationToken, regenerateCustomMaterials, backupCustomMaterials),
+            () => Prepare(
+                manifest,
+                progress,
+                cancellationToken,
+                options ?? PrepareAuthoringOptions.PreserveArtistWork),
             cancellationToken);
 
     private PrepareAuthoringResult Prepare(
         ProjectManifest manifest,
         IProgress<PrepareAuthoringProgress>? progress,
         CancellationToken cancellationToken,
-        bool regenerateCustomMaterials,
-        bool backupCustomMaterials)
+        PrepareAuthoringOptions options)
     {
+        var regenerateCustomMaterials = options.Resets(PrepareResetSections.Materials);
         ValidateEnvironment(manifest);
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -125,11 +128,8 @@ public sealed class PrepareAuthoringService
         log.AppendLine($"CSDK content root: {addonContentRoot}");
         log.AppendLine($"CSDK game output root: {addonGameRoot}");
         log.AppendLine($"Project-root model sources: DMX={rootDmxFiles.Length}, FBX={rootFbxFiles.Length}, glTF/GLB={rootGltfFiles.Length}");
-        log.AppendLine($"Custom material mode: {(regenerateCustomMaterials ? "clean regeneration" : "preserve artist edits and synchronize project textures")}");
-        if (regenerateCustomMaterials)
-        {
-            log.AppendLine($"Clean material backup: {(backupCustomMaterials ? "enabled" : "skipped by explicit user choice")}");
-        }
+        log.AppendLine($"Reset sections: {options.ResetSections}");
+        log.AppendLine($"Selected-section backup: {(options.CreateBackup && options.ResetSections != PrepareResetSections.None ? "enabled" : "disabled")}");
         log.AppendLine();
 
         try
@@ -179,10 +179,42 @@ public sealed class PrepareAuthoringService
             progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Refreshing retail authoring template in CSDK content...", "Обновление retail-шаблона модели в CSDK content...")));
             Directory.CreateDirectory(addonContentRoot);
 
-            var sourceCopy = RetailVmdlInheritance.CopyRetailModelSourceTree(manifest, addonContentRoot);
+            if (options.CreateBackup && options.ResetSections != PrepareResetSections.None)
+            {
+                BackupSelectedSections(
+                    manifest,
+                    addonContentRoot,
+                    addonName,
+                    options.ResetSections,
+                    log,
+                    cancellationToken);
+            }
+            else if (options.ResetSections != PrepareResetSections.None)
+            {
+                log.AppendLine("Selected-section backup skipped by explicit user choice.");
+            }
+
+            var sourceCopy = RetailVmdlInheritance.CopyRetailModelSourceTree(
+                manifest,
+                addonContentRoot,
+                preserveExistingPhysics: !options.Resets(PrepareResetSections.Physics),
+                preserveExistingEffects: !options.Resets(PrepareResetSections.Effects));
             log.AppendLine($"Retail source template: {sourceCopy.SourceVmdlPath}");
             log.AppendLine($"Retail source files copied: {sourceCopy.FilesCopied}");
             log.AppendLine($"Destination VMDL: {sourceCopy.DestinationVmdlPath}");
+
+            var retailPhysics = RetailPhysicsAuthoringService.EnsureRetailJoints(
+                manifest,
+                sourceCopy.DestinationVmdlPath,
+                replaceExisting: options.Resets(PrepareResetSections.Physics));
+            log.AppendLine(retailPhysics.Added
+                ? $"Retail ragdoll joints initialized: {retailPhysics.JointCount}"
+                : "Existing authoring ragdoll joints preserved.");
+
+            if (options.Resets(PrepareResetSections.Effects))
+            {
+                ResetExistingParticleEffects(manifest, addonContentRoot, log, cancellationToken);
+            }
 
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Overlaying project-root model sources on matching retail render meshes...", "Подготовка моделей из корня проекта для соответствующих retail render mesh...")));
@@ -326,20 +358,6 @@ public sealed class PrepareAuthoringService
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Preparing addon-owned custom materials...", "Подготовка custom-материалов аддона...")));
 
-            if (regenerateCustomMaterials && backupCustomMaterials)
-            {
-                BackupCustomMaterialsForCleanPrepare(
-                    manifest,
-                    addonContentRoot,
-                    addonName,
-                    log,
-                    cancellationToken);
-            }
-            else if (regenerateCustomMaterials)
-            {
-                log.AppendLine("Clean material backup skipped by explicit user choice.");
-            }
-
             ProjectTextureBindingService.MarkLegacyManagedMaterialsForMigration(
                 addonContentRoot,
                 addonName,
@@ -470,46 +488,127 @@ public sealed class PrepareAuthoringService
         }
     }
 
-    private static void BackupCustomMaterialsForCleanPrepare(
+    private static void BackupSelectedSections(
         ProjectManifest manifest,
         string addonContentRoot,
         string addonName,
+        PrepareResetSections sections,
         StringBuilder log,
         CancellationToken cancellationToken)
     {
-        var materialFolder = Path.Combine(addonContentRoot, "materials", addonName);
-        if (!Directory.Exists(materialFolder))
-        {
-            log.AppendLine("Clean material prepare: no existing custom VMAT files required backup.");
-            return;
-        }
-
-        var sourceFiles = Directory.EnumerateFiles(materialFolder, "*.vmat", SearchOption.TopDirectoryOnly)
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        if (sourceFiles.Length == 0)
-        {
-            log.AppendLine("Clean material prepare: no existing custom VMAT files required backup.");
-            return;
-        }
-
-        var backupFolder = Path.Combine(
+        var backupRoot = Path.Combine(
             ProjectStore.GetMetadataFolder(manifest.ProjectFolder),
             "backups",
-            "materials",
+            "reprepare",
             DateTime.Now.ToString("yyyyMMdd-HHmmssfff"));
-        Directory.CreateDirectory(backupFolder);
+        var copied = 0;
 
-        foreach (var sourcePath in sourceFiles)
+        if (sections.HasFlag(PrepareResetSections.Materials))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            File.Copy(
-                sourcePath,
-                Path.Combine(backupFolder, Path.GetFileName(sourcePath)),
-                overwrite: false);
+            copied += BackupFiles(
+                Path.Combine(addonContentRoot, "materials", addonName),
+                "*.vmat",
+                SearchOption.TopDirectoryOnly,
+                Path.Combine(backupRoot, "materials"),
+                cancellationToken);
         }
 
-        log.AppendLine($"Clean material prepare backup: {sourceFiles.Length} VMAT file(s) -> {backupFolder}");
+        if (sections.HasFlag(PrepareResetSections.Physics))
+        {
+            var currentVmdl = ResolvePreparedMainVmdl(manifest, addonContentRoot);
+            if (File.Exists(currentVmdl))
+            {
+                Directory.CreateDirectory(Path.Combine(backupRoot, "physics"));
+                File.Copy(currentVmdl, Path.Combine(backupRoot, "physics", Path.GetFileName(currentVmdl)), overwrite: false);
+                copied++;
+            }
+        }
+
+        if (sections.HasFlag(PrepareResetSections.Effects))
+        {
+            copied += BackupFiles(
+                addonContentRoot,
+                "*.vpcf",
+                SearchOption.AllDirectories,
+                Path.Combine(backupRoot, "effects"),
+                cancellationToken);
+        }
+
+        log.AppendLine(copied == 0
+            ? "Selected-section backup: no existing files required backup."
+            : $"Selected-section backup: {copied} file(s) -> {backupRoot}");
+    }
+
+    private static int BackupFiles(
+        string sourceRoot,
+        string searchPattern,
+        SearchOption searchOption,
+        string destinationRoot,
+        CancellationToken cancellationToken)
+    {
+        if (!Directory.Exists(sourceRoot))
+        {
+            return 0;
+        }
+
+        var files = Directory.EnumerateFiles(sourceRoot, searchPattern, searchOption).ToArray();
+        foreach (var sourcePath in files)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var destination = SafePath.ResolveUnderRoot(
+                destinationRoot,
+                Path.GetRelativePath(sourceRoot, sourcePath),
+                "Prepare backup destination");
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(sourcePath, destination, overwrite: false);
+        }
+        return files.Length;
+    }
+
+    private static void ResetExistingParticleEffects(
+        ProjectManifest manifest,
+        string addonContentRoot,
+        StringBuilder log,
+        CancellationToken cancellationToken)
+    {
+        var retailSourceRoot = SafePath.ResolveUnderRoot(
+            manifest.ProjectFolder,
+            manifest.SourceDumpFolderName,
+            "Project source-dump folder");
+        var restored = 0;
+        var missing = 0;
+
+        foreach (var destination in Directory.EnumerateFiles(addonContentRoot, "*.vpcf", SearchOption.AllDirectories))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var relative = Path.GetRelativePath(addonContentRoot, destination);
+            var source = SafePath.ResolveUnderRoot(retailSourceRoot, relative, "Retail particle-effect source");
+            if (!File.Exists(source))
+            {
+                missing++;
+                continue;
+            }
+            File.Copy(source, destination, overwrite: true);
+            restored++;
+        }
+
+        log.AppendLine($"Retail particle effects restored: {restored}; no retail counterpart: {missing}.");
+    }
+
+    private static string ResolvePreparedMainVmdl(ProjectManifest manifest, string addonContentRoot)
+    {
+        if (string.IsNullOrWhiteSpace(manifest.RetailMainModel))
+        {
+            throw new InvalidOperationException("Retail main model is unknown.");
+        }
+
+        var sourceResource = manifest.RetailMainModel.EndsWith("_c", StringComparison.OrdinalIgnoreCase)
+            ? manifest.RetailMainModel[..^2]
+            : manifest.RetailMainModel;
+        return SafePath.ResolveUnderRoot(
+            addonContentRoot,
+            sourceResource.Replace('/', Path.DirectorySeparatorChar),
+            "Prepared main VMDL");
     }
 
     private static int FinalizeManagedCustomMaterials(

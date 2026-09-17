@@ -30,6 +30,13 @@ public sealed record RetailVmdlPatchResult(
     int AddedMaterialRemapCount,
     int RenderMeshCount);
 
+public sealed record AuthoringPhysicsNode(string ClassName, string Text);
+
+public sealed record AuthoringPhysicsSnapshot(IReadOnlyList<AuthoringPhysicsNode> Nodes)
+{
+    public bool HasNodes => Nodes.Count > 0;
+}
+
 public static class RetailVmdlInheritance
 {
     // Current Reduced CSDK12 cannot instantiate these source ModelDoc classes.
@@ -91,7 +98,9 @@ public static class RetailVmdlInheritance
 
     public static RetailModelSourceCopyResult CopyRetailModelSourceTree(
         ProjectManifest manifest,
-        string addonContentRoot)
+        string addonContentRoot,
+        bool preserveExistingPhysics = true,
+        bool preserveExistingEffects = true)
     {
         var sourceVmdl = FindRetailVmdl(manifest)
             ?? throw new InvalidOperationException(
@@ -115,6 +124,11 @@ public static class RetailVmdlInheritance
 
         Directory.CreateDirectory(destinationFolder);
 
+        var destinationVmdl = Path.Combine(destinationFolder, Path.GetFileName(sourceVmdl));
+        var existingPhysics = preserveExistingPhysics && File.Exists(destinationVmdl)
+            ? CaptureAuthoringPhysics(destinationVmdl)
+            : new AuthoringPhysicsSnapshot(Array.Empty<AuthoringPhysicsNode>());
+
         var copied = 0;
         foreach (var sourceFile in Directory.EnumerateFiles(sourceFolder, "*", SearchOption.AllDirectories))
         {
@@ -123,6 +137,12 @@ public static class RetailVmdlInheritance
                 destinationFolder,
                 relative,
                 "Retail source-tree destination");
+            if (preserveExistingEffects
+                && string.Equals(Path.GetExtension(destination), ".vpcf", StringComparison.OrdinalIgnoreCase)
+                && File.Exists(destination))
+            {
+                continue;
+            }
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             File.Copy(sourceFile, destination, overwrite: true);
             copied++;
@@ -145,12 +165,15 @@ public static class RetailVmdlInheritance
         copied += RetailTextureOverrideService.StageProjectRootOverrides(
             addonContentRoot,
             textureOverrides);
-
-        var destinationVmdl = Path.Combine(destinationFolder, Path.GetFileName(sourceVmdl));
         if (!File.Exists(destinationVmdl))
         {
             throw new InvalidOperationException(
                 $"Retail source copy completed, but the destination VMDL was not found: {destinationVmdl}");
+        }
+
+        if (existingPhysics.HasNodes)
+        {
+            RestoreAuthoringPhysics(destinationVmdl, existingPhysics);
         }
 
         return new RetailModelSourceCopyResult(
@@ -187,6 +210,100 @@ public static class RetailVmdlInheritance
             copied++;
         }
         return copied;
+    }
+
+    public static AuthoringPhysicsSnapshot CaptureAuthoringPhysics(string vmdlPath)
+    {
+        var text = File.ReadAllText(vmdlPath);
+        var root = LocateRootChildren(text);
+        var nodes = root.Nodes
+            .Where(node => IsArtistPhysicsClass(node.ClassName))
+            .Select(node => new AuthoringPhysicsNode(node.ClassName, node.Text))
+            .ToArray();
+        return new AuthoringPhysicsSnapshot(nodes);
+    }
+
+    public static void RestoreAuthoringPhysics(
+        string vmdlPath,
+        AuthoringPhysicsSnapshot snapshot)
+    {
+        if (!snapshot.HasNodes)
+        {
+            return;
+        }
+
+        var text = File.ReadAllText(vmdlPath);
+        var root = LocateRootChildren(text);
+        var replacements = snapshot.Nodes
+            .GroupBy(node => node.ClassName, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => new Queue<AuthoringPhysicsNode>(group), StringComparer.Ordinal);
+        var merged = new List<RetailVmdlNode>();
+
+        foreach (var node in root.Nodes)
+        {
+            if (!IsArtistPhysicsClass(node.ClassName))
+            {
+                merged.Add(node);
+                continue;
+            }
+
+            if (replacements.TryGetValue(node.ClassName, out var candidates) && candidates.Count > 0)
+            {
+                var replacement = candidates.Dequeue();
+                merged.Add(new RetailVmdlNode(replacement.ClassName, replacement.Text));
+            }
+            else
+            {
+                merged.Add(node);
+            }
+        }
+
+        foreach (var remaining in replacements.Values.SelectMany(queue => queue))
+        {
+            merged.Add(new RetailVmdlNode(remaining.ClassName, remaining.Text));
+        }
+
+        WriteRootChildren(vmdlPath, text, root, merged);
+    }
+
+    public static void UpsertRootNode(string vmdlPath, string className, string nodeText)
+    {
+        var text = File.ReadAllText(vmdlPath);
+        var root = LocateRootChildren(text);
+        var nodes = root.Nodes
+            .Where(node => !string.Equals(node.ClassName, className, StringComparison.Ordinal))
+            .ToList();
+
+        var physicsShapeIndex = nodes.FindIndex(node =>
+            string.Equals(node.ClassName, "PhysicsShapeList", StringComparison.Ordinal));
+        var insertIndex = physicsShapeIndex >= 0 ? physicsShapeIndex : nodes.Count;
+        nodes.Insert(insertIndex, new RetailVmdlNode(className, nodeText));
+        WriteRootChildren(vmdlPath, text, root, nodes);
+    }
+
+    public static bool ContainsRootNode(string vmdlPath, string className)
+    {
+        var text = File.ReadAllText(vmdlPath);
+        return LocateRootChildren(text).Nodes.Any(node =>
+            string.Equals(node.ClassName, className, StringComparison.Ordinal));
+    }
+
+    private static bool IsArtistPhysicsClass(string className) =>
+        className.Contains("Physics", StringComparison.OrdinalIgnoreCase)
+        || className.Contains("Jiggle", StringComparison.OrdinalIgnoreCase)
+        || className.Contains("Softbody", StringComparison.OrdinalIgnoreCase)
+        || className.Contains("Cloth", StringComparison.OrdinalIgnoreCase);
+
+    private static void WriteRootChildren(
+        string vmdlPath,
+        string originalText,
+        RootChildrenLocation root,
+        IReadOnlyList<RetailVmdlNode> nodes)
+    {
+        File.WriteAllText(
+            vmdlPath,
+            ReplaceRootChildren(originalText, root, nodes),
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
     }
 
     private static int CopyExternalRetailTextureDependencies(

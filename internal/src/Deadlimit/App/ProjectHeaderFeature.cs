@@ -246,8 +246,8 @@ internal static class ProjectHeaderFeature
         toolTip.SetToolTip(
             prepareOverlay,
             UiText.T(
-                "Prepare the selected project's working files for Reduced CSDK12.\n\nA normal click preserves manual VMAT tuning and synchronizes matching project textures. Hold SHIFT to regenerate custom materials; the confirmation dialog lets you choose whether to create a backup first.",
-                "Подготовить рабочие файлы выбранного проекта для Reduced CSDK12.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует совпавшие текстуры проекта. Удерживайте SHIFT, чтобы пересоздать custom-материалы; в окне подтверждения можно выбрать, создавать ли резервную копию."));
+                "Prepare the selected project's working files for Reduced CSDK12.\n\nA normal click preserves artist edits. Hold SHIFT to choose which materials, physics or effects should be restored from retail source.",
+                "Подготовить рабочие файлы выбранного проекта для Reduced CSDK12.\n\nОбычный клик сохраняет правки автора. Удерживайте SHIFT, чтобы выбрать материалы, физику или эффекты для восстановления из retail-исходника."));
         toolTip.SetToolTip(
             buildOverlay,
             UiText.T(
