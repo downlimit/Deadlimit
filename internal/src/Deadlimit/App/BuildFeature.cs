@@ -323,11 +323,9 @@ internal static class BuildFeature
             actionButtons,
             prepareButton,
             UiText.T("CANCEL PREPARATION", "ОТМЕНИТЬ ПОДГОТОВКУ"));
-        var originalTitle = form.Text;
         using var animator = new BuildProgressAnimator(
             form,
             progressBar,
-            originalTitle,
             UiText.T("Starting preparation for CSDK...", "Запуск подготовки для CSDK..."));
 
         try
@@ -429,7 +427,6 @@ internal static class BuildFeature
         }
         finally
         {
-            form.Text = originalTitle;
             EndCancelableOperation(
                 actionButtons,
                 prepareButton,
@@ -477,8 +474,7 @@ internal static class BuildFeature
         }
 
         var forceFullRebuild = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
-        var originalTitle = form.Text;
-        using var animator = new BuildProgressAnimator(form, progressBar, originalTitle);
+        using var animator = new BuildProgressAnimator(form, progressBar);
 
         string? forceStatePath = null;
         string? forceStateBackupPath = null;
@@ -664,7 +660,6 @@ internal static class BuildFeature
         }
         finally
         {
-            form.Text = originalTitle;
             EndCancelableOperation(
                 actionButtons,
                 buildAndTestButton,
@@ -961,38 +956,23 @@ internal static class BuildFeature
 
     private sealed class BuildProgressAnimator : IDisposable
     {
-        private static readonly string[] SpinnerFrames = ["|", "/", "—", "\\"];
-
-        private readonly Form _form;
+        private readonly ToolStripStatusLabel? _statusLabel;
         private readonly ToolStripProgressBar? _progressBar;
-        private readonly string _baseTitle;
-        private readonly System.Windows.Forms.Timer _timer;
 
-        private int _percent;
-        private int _frameIndex;
         private string _message;
         private bool _disposed;
 
         public BuildProgressAnimator(
             Form form,
             ToolStripProgressBar? progressBar,
-            string baseTitle,
             string? initialMessage = null)
         {
-            _form = form;
+            _statusLabel = BuildFeature.FindDescendants<StatusStrip>(form)
+                .SelectMany(strip => strip.Items.OfType<ToolStripStatusLabel>())
+                .FirstOrDefault(item => !item.Spring);
             _progressBar = progressBar;
-            _baseTitle = baseTitle;
             _message = initialMessage
                 ?? UiText.T("Starting build for test...", "Запуск сборки для теста...");
-            _timer = new System.Windows.Forms.Timer
-            {
-                Interval = 120,
-            };
-            _timer.Tick += (_, _) =>
-            {
-                _frameIndex = (_frameIndex + 1) % SpinnerFrames.Length;
-                Render();
-            };
         }
 
         public void Start()
@@ -1003,7 +983,6 @@ internal static class BuildFeature
                 _progressBar.Visible = true;
             }
 
-            _timer.Start();
             Render();
         }
 
@@ -1014,12 +993,11 @@ internal static class BuildFeature
                 return;
             }
 
-            _percent = Math.Clamp(update.Percent, 0, 100);
             _message = update.Message;
 
             if (_progressBar is not null)
             {
-                _progressBar.Value = _percent;
+                _progressBar.Value = Math.Clamp(update.Percent, 0, 100);
             }
 
             Render();
@@ -1027,13 +1005,12 @@ internal static class BuildFeature
 
         private void Render()
         {
-            if (_disposed || _form.IsDisposed)
+            if (_disposed || _statusLabel is null)
             {
                 return;
             }
 
-            var spinner = _percent >= 100 ? "✓" : SpinnerFrames[_frameIndex];
-            _form.Text = $"{_baseTitle} — [{_percent}% {spinner}] - {_message}";
+            _statusLabel.Text = UiText.NormalizeProductNames(_message);
         }
 
         public void Dispose()
@@ -1044,8 +1021,6 @@ internal static class BuildFeature
             }
 
             _disposed = true;
-            _timer.Stop();
-            _timer.Dispose();
 
             if (_progressBar is not null)
             {

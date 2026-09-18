@@ -11,6 +11,9 @@ $saveStatePath = Join-Path $appDir 'ProjectSaveStateFeature.cs'
 $headerPath = Join-Path $appDir 'ProjectHeaderFeature.cs'
 $steamStatusPath = Join-Path $appDir 'SteamStatusFeature.cs'
 $externalChangePath = Join-Path $appDir 'ProjectExternalChangeFeature.cs'
+$buildFeaturePath = Join-Path $appDir 'BuildFeature.cs'
+$onlinePreparationPath = Join-Path $appDir 'OnlinePreparationFeature.cs'
+$windowProgressPath = Join-Path $appDir 'WindowProgressFeature.cs'
 
 $appFiles = Get-ChildItem -LiteralPath $appDir -Filter '*.cs' -File
 foreach ($file in $appFiles) {
@@ -71,6 +74,30 @@ if ($rendering.Contains('Control.FromHandle(wParam) is Form form', [StringCompar
 $mainForm = Get-Content -LiteralPath $mainFormPath -Raw
 if ($mainForm.Contains('Activated +=', [StringComparison]::Ordinal)) {
     throw 'MainForm must not scan or rebuild project state from Activated.'
+}
+
+$buildFeature = Get-Content -LiteralPath $buildFeaturePath -Raw
+if ($buildFeature -match '(?m)\bform\.Text\s*=') {
+    throw 'Build progress must not write runtime state into the Manager window title.'
+}
+if ($buildFeature.Contains('SpinnerFrames', [StringComparison]::Ordinal)) {
+    throw 'Legacy title-bar build spinner must not return.'
+}
+if (-not $buildFeature.Contains('BuildFeature.FindDescendants<StatusStrip>(form)', [StringComparison]::Ordinal)) {
+    throw 'Build progress must report through the bottom status area.'
+}
+
+$onlinePreparation = Get-Content -LiteralPath $onlinePreparationPath -Raw
+if ($onlinePreparation -match '(?m)\b(?:form|_form)\.Text\s*=') {
+    throw 'Online preparation progress must not write runtime state into the Manager window title.'
+}
+if (-not $onlinePreparation.Contains('WindowProgressFeature.ReportStatus', [StringComparison]::Ordinal)) {
+    throw 'Online preparation progress must report through the bottom status area.'
+}
+
+$windowProgress = Get-Content -LiteralPath $windowProgressPath -Raw
+if (-not $windowProgress.Contains('public static void ReportStatus', [StringComparison]::Ordinal)) {
+    throw 'Shared bottom status reporter is missing.'
 }
 
 $saveState = Get-Content -LiteralPath $saveStatePath -Raw
