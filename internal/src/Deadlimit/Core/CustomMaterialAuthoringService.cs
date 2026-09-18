@@ -18,7 +18,7 @@ public sealed record CustomMaterialAuthoringResult(
 public sealed class CustomMaterialAuthoringService
 {
     private const string GeneratedMarker = "// DEADLIMIT_GENERATED_CUSTOM_VMAT_V4";
-    private const string ManagedComment = "// Deadlimit manages Texture* source assignments in this generated VMAT from project-root textures on every PREPARE. Non-texture Material Editor edits remain authoritative.";
+    private const string ManagedComment = "// Deadlimit created this VMAT. Ordinary PREPARE preserves it byte-for-byte; Shift+PREPARE with Materials checked may regenerate it.";
     private const string VertexColorGeneratedMarker = "// DEADLIMIT_VERTEXCOLOR_VMAT_V1";
     private const string VertexColorManagedComment = "// Deadlimit vertex-color material: mesh vertex color drives base color; project color textures are intentionally ignored.";
     private const string VertexColorTemplateMaterial = "materials/dev/vertcolor_pbr_basic.vmat";
@@ -66,6 +66,11 @@ public sealed class CustomMaterialAuthoringService
             "occlusion_map", "occlusionmask", "occlusion_mask", "ao", "aomap", "ao_map",
             "aomask", "ao_mask"
         ]),
+        new("TextureRimLightMask", NeutralWhite,
+        [
+            "rimlightmask", "rim_light_mask", "rimlight", "rim_light",
+            "rimmask", "rim_mask"
+        ]),
         new("TextureMetalness", NeutralBlack,
         [
             "metalness", "metalnessmap", "metalness_map", "metalnessmask", "metalness_mask",
@@ -75,7 +80,7 @@ public sealed class CustomMaterialAuthoringService
     ];
 
     private static readonly Regex TextureAssignmentRegex = new(
-        "^(?<prefix>[ \\t]*(?:\\\"(?<quotedKey>Texture[A-Za-z0-9_]+)\\\"|(?<bareKey>Texture[A-Za-z0-9_]+))[ \\t]*(?:=[ \\t]*)?(?:resource[ \\t]*:[ \\t]*)?\\\")(?<value>[^\\\"\\r\\n]+)(?<suffix>\\\"[^\\r\\n]*)$",
+        "^(?<prefix>[ \\t]*(?:\\\"(?<quotedKey>Texture[A-Za-z0-9_]+)\\\"|(?<bareKey>Texture[A-Za-z0-9_]+))[ \\t]*(?:=[ \\t]*)?(?:resource[ \\t]*:[ \\t]*)?\\\")(?<value>[^\\\"\\r\\n]+)(?<suffix>\\\"[^\\r\\n]*\\r?)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
 
     private static readonly Regex GeneratedMarkerRegex = new(
@@ -158,7 +163,12 @@ public sealed class CustomMaterialAuthoringService
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        SyncTextureSourceFolder(rootPngFiles, textureFolder, cancellationToken, log);
+        SyncTextureSourceFolder(
+            rootPngFiles,
+            textureFolder,
+            removeStaleTextures: regenerateExistingMaterials,
+            cancellationToken,
+            log);
 
         var textureCandidates = rootPngFiles
             .Select(path => ParseTextureCandidate(path, materialResourceFolder))
@@ -169,7 +179,7 @@ public sealed class CustomMaterialAuthoringService
         log.AppendLine($"Custom materials detected: {customReferences.Length}");
         log.AppendLine($"Custom texture sources synchronized from project root: {rootPngFiles.Length}");
         log.AppendLine($"Custom texture source folder: {textureFolder}");
-        log.AppendLine("Custom texture naming: standard PBR slots accept broad common aliases (for example BaseColor/BaseColour/Albedo/Diffuse/Color, Normal/NormalMap/NRM, Roughness/Rough/RGH, AO/AmbientOcclusion/Occlusion, Metalness/Metallic/Metal plus Map/Mask variants such as MetalnessMask). Separators _, -, space, and . are accepted. Packed ORM/RMA/MRA names are intentionally not auto-bound because channel layout is ambiguous. Specialty Texture* fields may also bind by matching the material prefix plus the Texture parameter semantic name.");
+        log.AppendLine("Custom texture naming: standard PBR slots accept broad common aliases (for example BaseColor/BaseColour/Albedo/Diffuse/Color, Normal/NormalMap/NRM, Roughness/Rough/RGH, AO/AmbientOcclusion/Occlusion, RimMask/RimLightMask, Metalness/Metallic/Metal plus Map/Mask variants such as MetalnessMask). Separators _, -, space, and . are accepted. Packed ORM/RMA/MRA names are intentionally not auto-bound because channel layout is ambiguous. Specialty Texture* fields may also bind by matching the material prefix plus the Texture parameter semantic name.");
         log.AppendLine("Vertex-color naming: any custom material whose name contains 'vertexcolor' (prefix, suffix, or middle; case-insensitive) is prepared from the retail vertcolor_pbr_basic material and does not consume project color textures.");
         log.AppendLine("Metal naming: any custom material whose name contains 'metal' (prefix, suffix, or middle; case-insensitive) receives the metal preset: Metalness 0.8 and Roughness 128/255. The modifier is independent from vertexcolor and may be combined with it.");
 
@@ -207,6 +217,7 @@ public sealed class CustomMaterialAuthoringService
                 customReferences.Length,
                 textureCandidates,
                 log), StringComparer.OrdinalIgnoreCase);
+            ApplyRimLightMaskFallback(standardBindings, log, customReference);
             if (vertexColorMode)
             {
                 // Base color remains vertex-driven. Other matching project textures stay usable.
@@ -219,7 +230,12 @@ public sealed class CustomMaterialAuthoringService
                 log.AppendLine($"Clean material prepare removed existing VMAT before template regeneration: {targetResource}");
             }
 
-            if (File.Exists(targetPath))
+            if (!regenerateExistingMaterials && File.Exists(targetPath))
+            {
+                preserved++;
+                log.AppendLine($"Existing custom VMAT preserved byte-for-byte during ordinary PREPARE: {customReference} -> {targetResource}");
+            }
+            else if (File.Exists(targetPath))
             {
                 var existing = File.ReadAllText(targetPath);
                 if (vertexColorMode && (IsVertexColorManagedVmat(existing) || IsDeadlimitManagedVmat(existing)))
@@ -347,11 +363,11 @@ public sealed class CustomMaterialAuthoringService
 
         log.AppendLine($"Custom textures auto-bound in current PREPARE: {autoBoundTextures}");
         log.AppendLine($"Existing Deadlimit-managed VMAT files updated in current PREPARE: {managedUpdates}");
-        log.AppendLine("Custom VMAT ownership policy: files carrying a DEADLIMIT_GENERATED_CUSTOM_VMAT marker remain managed by Deadlimit; PREPARE may update their Texture* source assignments, required texture-enable combo state, and explicit material-name modifiers such as metal. Other non-texture Material Editor edits are preserved.");
-        log.AppendLine("Custom VMAT ownership policy: files carrying a DEADLIMIT_VERTEXCOLOR_VMAT marker are managed for vertex-color behavior plus explicit material-name modifiers such as metal; project color-texture auto-binding intentionally skips them.");
+        log.AppendLine("Custom VMAT ownership policy: ordinary PREPARE preserves every existing addon-owned VMAT byte-for-byte. Texture assignments, shader parameters, combo state, rim-light masks, vertex-color behavior and material-name modifiers may change only during Shift+PREPARE with Materials checked.");
+        log.AppendLine("Custom VMAT ownership policy: files carrying a DEADLIMIT_VERTEXCOLOR_VMAT marker remain identifiable as vertex-color materials; ordinary PREPARE does not rewrite them.");
         log.AppendLine("Custom VMAT ownership policy: generated markers and the project .deadlimit ownership registry identify texture-managed VMAT files even after Material Editor replaces the first-line marker.");
         log.AppendLine("Custom VMAT scaffold policy: inherit the current hero character material so shader, outline/NPR colors, strengths, thicknesses and other non-texture tuning survive, but never inherit unresolved hero texture-source paths.");
-        log.AppendLine("Custom texture policy: the project-root PNG/TGA/JPG/TIFF set is authoritative for Deadlimit-managed texture slots on every PREPARE. Adding a matching texture binds it; removing it reverts the managed slot to its safe default/fallback. Derived texture copies absent from the project root are removed from the addon texture-source folder.");
+        log.AppendLine("Custom texture policy: ordinary PREPARE copies the project-root PNG/TGA/JPG/TIFF set into the addon texture-source folder without changing existing VMAT assignments. Shift+PREPARE with Materials checked may rebuild managed assignments and remove stale derived texture copies.");
 
         return new CustomMaterialAuthoringResult(
             remaps,
@@ -366,6 +382,7 @@ public sealed class CustomMaterialAuthoringService
     private static void SyncTextureSourceFolder(
         IReadOnlyList<string> rootPngFiles,
         string textureFolder,
+        bool removeStaleTextures,
         CancellationToken cancellationToken,
         StringBuilder log)
     {
@@ -376,17 +393,20 @@ public sealed class CustomMaterialAuthoringService
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var removed = 0;
-        foreach (var derivedPng in Directory.EnumerateFiles(textureFolder, "*", SearchOption.TopDirectoryOnly)
-                     .Where(path => TextureSourceExtensions.Contains(Path.GetExtension(path))))
+        if (removeStaleTextures)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (sourceNames.Contains(Path.GetFileName(derivedPng)))
+            foreach (var derivedPng in Directory.EnumerateFiles(textureFolder, "*", SearchOption.TopDirectoryOnly)
+                         .Where(path => TextureSourceExtensions.Contains(Path.GetExtension(path))))
             {
-                continue;
-            }
+                cancellationToken.ThrowIfCancellationRequested();
+                if (sourceNames.Contains(Path.GetFileName(derivedPng)))
+                {
+                    continue;
+                }
 
-            File.Delete(derivedPng);
-            removed++;
+                File.Delete(derivedPng);
+                removed++;
+            }
         }
 
         foreach (var sourcePng in rootPngFiles)
@@ -396,6 +416,29 @@ public sealed class CustomMaterialAuthoringService
         }
 
         log.AppendLine($"Derived custom texture files removed because their project-root source disappeared: {removed}");
+    }
+
+    private static void ApplyRimLightMaskFallback(
+        IDictionary<string, string?> bindings,
+        StringBuilder log,
+        string customReference)
+    {
+        if (bindings.TryGetValue("TextureRimLightMask", out var rimMask)
+            && !string.IsNullOrWhiteSpace(rimMask))
+        {
+            return;
+        }
+
+        if (bindings.TryGetValue("TextureAmbientOcclusion", out var ambientOcclusion)
+            && !string.IsNullOrWhiteSpace(ambientOcclusion))
+        {
+            bindings["TextureRimLightMask"] = ambientOcclusion;
+            log.AppendLine($"Custom rim-light mask fallback for {customReference}: using matching ambient-occlusion texture.");
+            return;
+        }
+
+        bindings["TextureRimLightMask"] = null;
+        log.AppendLine($"Custom rim-light mask fallback for {customReference}: using white because no rim-mask or ambient-occlusion texture matched.");
     }
 
     private (string Text, string VpkPath) DecompileRetailMaterialTemplate(
@@ -1100,6 +1143,7 @@ public sealed class CustomMaterialAuthoringService
             "normal" => NeutralNormal,
             "roughness" => NeutralRoughness,
             "ao" => NeutralWhite,
+            "rimmask" => NeutralWhite,
             "metalness" => NeutralBlack,
             _ => NeutralBlack,
         };
@@ -1113,6 +1157,7 @@ public sealed class CustomMaterialAuthoringService
             "normal" => NeutralNormal,
             "roughness" => NeutralRoughness,
             "ao" => NeutralWhite,
+            "rimmask" => NeutralWhite,
             "metalness" => NeutralBlack,
             _ => NeutralBlack,
         };
@@ -1163,6 +1208,11 @@ public sealed class CustomMaterialAuthoringService
         if (semantic.Contains("metal", StringComparison.Ordinal))
         {
             return "metalness";
+        }
+        if (semantic.Contains("rim", StringComparison.Ordinal)
+            && semantic.Contains("mask", StringComparison.Ordinal))
+        {
+            return "rimmask";
         }
 
         return semantic;

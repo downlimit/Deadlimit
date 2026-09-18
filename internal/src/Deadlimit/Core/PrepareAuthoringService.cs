@@ -208,8 +208,13 @@ public sealed class PrepareAuthoringService
                 sourceCopy.DestinationVmdlPath,
                 replaceExisting: options.Resets(PrepareResetSections.Physics));
             log.AppendLine(retailPhysics.Added
-                ? $"Retail ragdoll joints initialized: {retailPhysics.JointCount}"
-                : "Existing authoring ragdoll joints preserved.");
+                ? $"Retail physics initialized: {retailPhysics.JointCount} ragdoll joints, " +
+                  $"{retailPhysics.ClothChainCount} cloth chains"
+                : "Existing authoring physics preserved.");
+            foreach (var warning in retailPhysics.Warnings)
+            {
+                log.AppendLine($"Retail physics warning: {warning}.");
+            }
 
             if (options.Resets(PrepareResetSections.Effects))
             {
@@ -358,13 +363,18 @@ public sealed class PrepareAuthoringService
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Preparing addon-owned custom materials...", "Подготовка custom-материалов аддона...")));
 
-            ProjectTextureBindingService.MarkLegacyManagedMaterialsForMigration(
-                addonContentRoot,
-                addonName,
-                log,
-                cancellationToken);
+            if (regenerateCustomMaterials)
+            {
+                ProjectTextureBindingService.MarkLegacyManagedMaterialsForMigration(
+                    addonContentRoot,
+                    addonName,
+                    log,
+                    cancellationToken);
+            }
 
-            var previousOwnership = ManagedCustomMaterialRegistryStore.Load(manifest);
+            var previousOwnership = regenerateCustomMaterials
+                ? ManagedCustomMaterialRegistryStore.Load(manifest)
+                : ManagedCustomMaterialRegistryStore.LoadPreservingMaterials(manifest);
             var knownMaterialTargets = ManagedCustomMaterialRegistryStore.BuildTargetMap(previousOwnership);
 
             var customMaterials = new CustomMaterialAuthoringService(_paths).Prepare(
@@ -391,13 +401,16 @@ public sealed class PrepareAuthoringService
                 customMaterials,
                 knownOwnership,
                 log,
-                cancellationToken);
+                cancellationToken,
+                mutateExistingMaterials: regenerateCustomMaterials);
 
-            var finalTextureRepairs = FinalizeManagedCustomMaterials(
-                customMaterials,
-                addonContentRoot,
-                log,
-                cancellationToken);
+            var finalTextureRepairs = regenerateCustomMaterials
+                ? FinalizeManagedCustomMaterials(
+                    customMaterials,
+                    addonContentRoot,
+                    log,
+                    cancellationToken)
+                : 0;
             log.AppendLine($"Managed custom VMAT final missing-source repairs: {finalTextureRepairs}");
 
             var exactCustomMaterialRemaps = ResolveExactCustomMaterialRemaps(
@@ -441,7 +454,7 @@ public sealed class PrepareAuthoringService
             log.AppendLine("Material policy: DMX material-reference count is diagnostic only; VMDL remaps are a separate concept.");
             log.AppendLine("Material policy: preserve retail reuse, generate narrow compatibility repairs, and route unresolved Wall Worm custom slots to addon-owned VMAT files.");
             log.AppendLine("Material policy: direct materials/<name>.vmat references from Wall Worm are paired with an extensionless authoring alias, so spaces and the explicit .vmat suffix survive into the final VMDL remap.");
-            log.AppendLine("Material policy: copy retail/template material parameters only when a custom VMAT is first created; later PREPARE runs preserve manual VMAT edits and synchronize only matching project-root texture sources.");
+            log.AppendLine("Material policy: ordinary PREPARE leaves every existing addon-owned VMAT byte-for-byte unchanged and only synchronizes project texture source files. Shift+PREPARE may regenerate or migrate VMAT files only when Materials is explicitly checked.");
             log.AppendLine("Render-mesh policy: preserve retail RenderMeshList/bodygroups/LODs; overlay root DMX directly, reference root FBX directly, and adapt root glTF/GLB through its extracted DMX companion.");
             log.AppendLine("glTF policy: preserve primitive/material separation, COLOR_0 and skin streams; retain the retail skeleton and animation bindings for CSDK compilation.");
             log.AppendLine("Vertex Color policy: *_vertexcolor.fbx stays beside the artist DMX as persistent source data; repeated PREPARE, BUILD FOR TEST and ONLINE activation may reuse it safely.");
@@ -449,7 +462,14 @@ public sealed class PrepareAuthoringService
             manifest.SourceVmdl = sourceCopy.DestinationVmdlPath;
             manifest.CompiledVmdl = null;
             ProjectStore.Save(manifest);
-            ManagedCustomMaterialRegistryStore.Save(manifest, knownOwnership);
+            if (regenerateCustomMaterials)
+            {
+                ManagedCustomMaterialRegistryStore.Save(manifest, knownOwnership);
+            }
+            else
+            {
+                ManagedCustomMaterialRegistryStore.SavePreservingMaterials(manifest, knownOwnership);
+            }
 
             log.AppendLine();
             log.AppendLine("RESULT: AUTHORING CONTENT PREPARED; ADDON GAME OUTPUT CLEAN");

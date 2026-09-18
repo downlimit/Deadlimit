@@ -35,8 +35,7 @@ internal sealed class CleanPrepareDialog : Form
 
         _materials = CreateOption(
             UiText.T("Materials", "Материалы"),
-            UiText.T("Regenerate Deadlimit-managed custom VMAT files.", "Пересоздать custom-VMAT, которыми управляет Deadlimit."),
-            isChecked: true);
+            UiText.T("Regenerate Deadlimit-managed custom VMAT files.", "Пересоздать custom-VMAT, которыми управляет Deadlimit."));
         _physics = CreateOption(
             UiText.T("Physics", "Физика"),
             UiText.T("Restore retail collision bodies and ragdoll joints. Custom jiggle and physics edits will be replaced.", "Восстановить retail-тела коллизии и ragdoll-joints. Пользовательские jiggle- и physics-правки будут заменены."));

@@ -445,9 +445,29 @@ $cases = [ordered]@{
     'ivy_builder_body_color.png' = 'color'
     'ivy_builder_body_normal.png' = 'normal'
     'ivy_builder_body_roughness.png' = 'roughness'
+    'ivy_builder_body_rimmask.png' = 'rimmask'
+    'ivy_builder_body_RimLightMask.png' = 'rimmask'
     'ivy_builder_body_metalnessmask.png' = 'metalness'
     'ivy_builder_body.MetallicMap.png' = 'metalness'
     'ivy_builder_body-NRM.png' = 'normal'
+}
+
+# Rim-light mask creation/regeneration follows rimmask -> AO -> white.
+$applyRimFallback = $bindingType.GetMethod('ApplyRimLightMaskFallback', $nonPublicStatic)
+$textureFallback = $bindingType.GetMethod('GetTextureFallback', $nonPublicStatic)
+if ($null -eq $applyRimFallback -or $null -eq $textureFallback) {
+    throw 'Rim-light mask fallback helpers were not found.'
+}
+$rimBindings = [Collections.Generic.Dictionary[string,string]]::new([StringComparer]::OrdinalIgnoreCase)
+$rimBindings['ao'] = 'materials/ivybuilder/textures/ivy_builder_body_ambientocclusion.png'
+$rimLog = [Text.StringBuilder]::new()
+$applyRimFallback.Invoke($null, @($rimBindings, $rimLog, 'materials/ivybuilder/ivy_builder_body.vmat'))
+if ($rimBindings['rimmask'] -ne $rimBindings['ao']) {
+    throw 'Missing rim-light mask did not fall back to the matching AO texture.'
+}
+$whiteRim = [string]$textureFallback.Invoke($null, @('TextureRimLightMask1', $false))
+if ($whiteRim -ne '[1.000000 1.000000 1.000000 0.000000]') {
+    throw "Rim-light mask neutral fallback is '$whiteRim', expected white."
 }
 foreach ($entry in $cases.GetEnumerator()) {
     $candidate = $parse.Invoke($null, @("C:\temp\$($entry.Key)", 'materials/ivybuilder'))
@@ -478,6 +498,26 @@ if (([regex]::Matches($patchedAgain, '"TextureRoughness"')).Count -ne 1) {
     throw 'Texture upsert created a duplicate standard slot.'
 }
 
+# Material Editor writes CRLF VMATs. PREPARE must recognize those Texture* lines
+# and collapse equivalent legacy insertions instead of appending them every run.
+$readAssignments = $bindingType.GetMethod('ReadAssignments', $nonPublicStatic)
+$deduplicateAssignments = $bindingType.GetMethod('RemoveRedundantBoundTextureAssignments', $nonPublicStatic)
+if ($null -eq $readAssignments -or $null -eq $deduplicateAssignments) {
+    throw 'Project texture CRLF/deduplication helpers were not found.'
+}
+$aoTexture = 'materials/ivybuilder/textures/ivy_builder_body_ambientocclusion.png'
+$crlfVmat = "Layer0`r`n{`r`n`tTextureAmbientOcclusion1 `"$aoTexture`"`r`n    `"TextureAmbientOcclusion`"`t`"$aoTexture`"`r`n    `"TextureAmbientOcclusion`"`t`"$aoTexture`"`r`n}`r`n"
+if (@($readAssignments.Invoke($null, @($crlfVmat))).Count -ne 3) {
+    throw 'Project texture parser did not recognize CRLF Texture* assignments.'
+}
+$aoBindings = [Collections.Generic.Dictionary[string,string]]::new([StringComparer]::OrdinalIgnoreCase)
+$aoBindings['ao'] = $aoTexture
+$deduplicatedVmat = [string]$deduplicateAssignments.Invoke($null, @($crlfVmat, $aoBindings))
+if (([regex]::Matches($deduplicatedVmat, 'TextureAmbientOcclusion')).Count -ne 1 `
+    -or -not $deduplicatedVmat.Contains('TextureAmbientOcclusion1', [StringComparison]::Ordinal)) {
+    throw 'Equivalent CRLF ambient-occlusion assignments were not collapsed to the preferred slot.'
+}
+
 # Clean PREPARE exposes independent reset sections and explicit backup/no-backup actions.
 $prepareType = $assembly.GetType('Deadlimit.Core.PrepareAuthoringService', $true)
 $prepareMethod = $prepareType.GetMethods() | Where-Object { $_.Name -eq 'PrepareAsync' } | Select-Object -First 1
@@ -500,8 +540,87 @@ foreach ($required in @(
     'new PrepareAuthoringOptions(sections, createBackup)')) {
     if (-not $dialogSource.Contains($required)) { throw "Clean PREPARE selection dialog contract missing: $required" }
 }
+if ($dialogSource.Contains('isChecked: true')) {
+    throw 'Clean PREPARE sections must all start unchecked.'
+}
+
+# Ordinary PREPARE must not rewrite or migrate an existing author VMAT.
+$prepareSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/PrepareAuthoringService.cs' -Raw
+foreach ($required in @(
+    'LoadPreservingMaterials(manifest)',
+    'SavePreservingMaterials(manifest, knownOwnership)',
+    'mutateExistingMaterials: regenerateCustomMaterials',
+    'var finalTextureRepairs = regenerateCustomMaterials')) {
+    if (-not $prepareSource.Contains($required)) {
+        throw "Ordinary PREPARE byte-preservation contract is missing: $required"
+    }
+}
+$customMaterialSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/CustomMaterialAuthoringService.cs' -Raw
+foreach ($required in @(
+    'Existing custom VMAT preserved byte-for-byte during ordinary PREPARE',
+    'removeStaleTextures: regenerateExistingMaterials',
+    'new("TextureRimLightMask", NeutralWhite')) {
+    if (-not $customMaterialSource.Contains($required)) {
+        throw "Custom material preservation/rim-mask contract is missing: $required"
+    }
+}
 
 # ModelDoc physics nodes survive normal retail refreshes and can be replaced as a unit.
+$retailPhysicsSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/RetailPhysicsAuthoringService.cs' -Raw
+foreach ($required in @(
+    'm_pFeModel',
+    'CreateSoftbody(cloth.Chains)',
+    'PhysicsJointRevolute',
+    'enable_limit',
+    'RecoverCubicControl',
+    'RecoverGoalDamping',
+    'allow_rotation',
+    'stretch_spring',
+    'child_sibling_spring',
+    'bend_spring',
+    'torsion_spring',
+    'explicit_length',
+    'animated_length',
+    'suspender',
+    'antishrink',
+    'vertex_map',
+    'stiff_hinge',
+    'stiff_hinge_angle',
+    'motion_bias',
+    'collision_layer_0',
+    'collision_layer_1',
+    'collision_layer_2',
+    'collision_layer_3',
+    'extrude_sides',
+    'extrude_twist',
+    'extrude_forward_axis',
+    'stray_radius',
+    'stray_radius_stretchiness',
+    'end_effector',
+    'm_TreeCollisionMasks',
+    'lock_translation',
+    'world_collision',
+    'twist_relax',
+    'extra_iterations')) {
+    if (-not $retailPhysicsSource.Contains($required)) {
+        throw "Retail physics reconstruction contract missing: $required"
+    }
+}
+foreach ($required in @(
+    'RetailClothReadResult.Empty',
+    'FindLossyClothFeatures')) {
+    if (-not $retailPhysicsSource.Contains($required)) {
+        throw "Retail physics safety contract missing: $required"
+    }
+}
+$prepareSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/PrepareAuthoringService.cs' -Raw
+if (-not $prepareSource.Contains('Retail physics warning:')) {
+    throw 'Retail physics warnings are not surfaced by clean prepare.'
+}
+if ($retailPhysicsSource.Contains('name = "Retail ragdoll joints"')) {
+    throw 'Physics joints must be direct PhysicsJointList children; a Folder causes ResourceCompiler to drop them.'
+}
+
 $inheritanceType = $assembly.GetType('Deadlimit.Core.RetailVmdlInheritance', $true)
 $capturePhysics = $inheritanceType.GetMethod('CaptureAuthoringPhysics')
 $restorePhysics = $inheritanceType.GetMethod('RestoreAuthoringPhysics')
@@ -514,6 +633,7 @@ rootNode =
     children =
     [
         { _class = "JiggleBoneList" name = "artist ears" },
+        { _class = "Softbody" name = "artist cloth" },
         { _class = "PhysicsJointList" name = "artist joints" },
         { _class = "PhysicsShapeList" name = "artist bodies" },
         { _class = "RenderMeshList" name = "artist mesh" },
@@ -522,7 +642,7 @@ rootNode =
 '@
     [IO.File]::WriteAllText($physicsTemp, $artistVmdl)
     $snapshot = $capturePhysics.Invoke($null, [object[]]@([string]$physicsTemp))
-    if ($snapshot.Nodes.Count -ne 3) { throw "Expected three artist physics nodes; found $($snapshot.Nodes.Count)." }
+    if ($snapshot.Nodes.Count -ne 4) { throw "Expected four artist physics nodes; found $($snapshot.Nodes.Count)." }
 
     $retailVmdl = @'
 rootNode =
@@ -537,7 +657,7 @@ rootNode =
     [IO.File]::WriteAllText($physicsTemp, $retailVmdl)
     $restorePhysics.Invoke($null, [object[]]@([string]$physicsTemp, $snapshot))
     $restoredPhysics = [IO.File]::ReadAllText($physicsTemp)
-    foreach ($required in @('artist ears', 'artist joints', 'artist bodies', 'retail mesh')) {
+    foreach ($required in @('artist ears', 'artist cloth', 'artist joints', 'artist bodies', 'retail mesh')) {
         if (-not $restoredPhysics.Contains($required)) { throw "Normal PREPARE physics preservation lost: $required" }
     }
     if (-not [bool]$containsRootNode.Invoke($null, [object[]]@([string]$physicsTemp, [string]'PhysicsJointList'))) {

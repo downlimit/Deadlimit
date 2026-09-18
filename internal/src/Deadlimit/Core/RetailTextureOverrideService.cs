@@ -10,7 +10,8 @@ public sealed record RetailTextureTarget(
 public sealed record RetailTextureOverride(
     string ArtistSourcePath,
     string RetailTextureResourcePath,
-    string StagedSourceResourcePath);
+    string StagedSourceResourcePath,
+    string ReferencingMaterialResourcePath = "");
 
 public static class RetailTextureOverrideService
 {
@@ -27,6 +28,10 @@ public static class RetailTextureOverrideService
     private static readonly Regex VmatTextureSourceRegex = new(
         "^[ \\t]*\\\"?(?:Texture|g_t)[A-Za-z0-9_]*\\\"?[ \\t]*(?:=[ \\t]*)?(?:resource[ \\t]*:[ \\t]*)?\\\"(?<path>[^\\\"\\r\\n]+)\\\"",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
+
+    private static readonly Regex CompiledTexturesBlockRegex = new(
+        "(?ms)^[ \\t]*\\\"Compiled Textures\\\"[ \\t]*\\r?\\n[ \\t]*\\{.*?^[ \\t]*\\}[ \\t]*\\r?\\n?",
+        RegexOptions.Compiled);
 
     public static IReadOnlyList<RetailTextureTarget> BuildTargetIndex(string extractedSourceRoot)
     {
@@ -171,7 +176,8 @@ public static class RetailTextureOverrideService
             overrides.Add(new RetailTextureOverride(
                 artistSource,
                 target.ResourcePath,
-                stagedResourcePath));
+                stagedResourcePath,
+                target.ReferencingMaterialResourcePath));
         }
 
         return overrides;
@@ -191,6 +197,34 @@ public static class RetailTextureOverrideService
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             File.Copy(replacement.ArtistSourcePath, destination, overwrite: true);
             staged++;
+        }
+
+        // Decompiled retail VMATs carry a cached "Compiled Textures" block whose
+        // g_t* entries still name the stock VTEX resources. Leaving that block in
+        // place can make ResourceCompiler keep using the retail texture even when
+        // the matching Texture* authoring PNG was replaced at its original path.
+        // Remove it only from materials that reference an explicit root override;
+        // ResourceCompiler then regenerates the block from the staged Texture* inputs.
+        foreach (var materialResourcePath in overrides
+                     .Select(replacement => replacement.ReferencingMaterialResourcePath)
+                     .Where(path => !string.IsNullOrWhiteSpace(path))
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var materialPath = SafePath.ResolveUnderRoot(
+                addonContentRoot,
+                materialResourcePath.Replace('/', Path.DirectorySeparatorChar),
+                "Retail texture override material destination");
+            if (!File.Exists(materialPath))
+            {
+                continue;
+            }
+
+            var text = File.ReadAllText(materialPath);
+            var sanitized = CompiledTexturesBlockRegex.Replace(text, string.Empty);
+            if (!string.Equals(text, sanitized, StringComparison.Ordinal))
+            {
+                File.WriteAllText(materialPath, sanitized);
+            }
         }
 
         return staged;
