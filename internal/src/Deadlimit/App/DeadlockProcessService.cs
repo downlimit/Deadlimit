@@ -11,9 +11,24 @@ internal static class DeadlockProcessService
             var processes = System.Diagnostics.Process.GetProcessesByName(processName);
             try
             {
-                if (processes.Any(process => !process.HasExited))
+                foreach (var process in processes)
                 {
-                    return true;
+                    try
+                    {
+                        if (!process.HasExited)
+                        {
+                            return true;
+                        }
+                    }
+                    catch (InvalidOperationException)
+                    {
+                    }
+                    catch (System.ComponentModel.Win32Exception)
+                    {
+                        // A crash-reporting process clone can deny SYNCHRONIZE access.
+                        // Its presence still means the Deadlock process family has not stopped.
+                        return true;
+                    }
                 }
             }
             finally
@@ -49,6 +64,11 @@ internal static class DeadlockProcessService
                 }
                 catch (InvalidOperationException)
                 {
+                }
+                catch (System.ComponentModel.Win32Exception)
+                {
+                    // Continue with the other processes. Closing or killing the accessible
+                    // parent with its process tree can also remove this inaccessible clone.
                 }
             }
 

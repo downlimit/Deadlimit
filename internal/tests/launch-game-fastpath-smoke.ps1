@@ -114,6 +114,18 @@ foreach ($pattern in $requiredProcessService) {
     }
 }
 
+$accessDeniedCatch = 'catch (System.ComponentModel.Win32Exception)'
+$accessDeniedCatchCount = ([regex]::Matches(
+    $processService,
+    [regex]::Escape($accessDeniedCatch))).Count
+if ($accessDeniedCatchCount -lt 3) {
+    throw 'Deadlock process probing, graceful close, and forced close must tolerate inaccessible crash-reporting process clones.'
+}
+if (-not $processService.Contains('return true;') -or
+    -not $processService.Contains('process.Kill(entireProcessTree: true);')) {
+    throw 'Inaccessible Deadlock process clones must remain running-state evidence while accessible parents are force-closed by process tree.'
+}
+
 $resolutionIndex = $header.IndexOf('var resolved = FindSteamExecutableFromRegistry()', [StringComparison]::Ordinal)
 $registryIndex = $header.IndexOf('FindSteamExecutableFromRegistry()', $resolutionIndex, [StringComparison]::Ordinal)
 $knownIndex = $header.IndexOf('FindSteamExecutableFromKnownLocations()', $resolutionIndex, [StringComparison]::Ordinal)
