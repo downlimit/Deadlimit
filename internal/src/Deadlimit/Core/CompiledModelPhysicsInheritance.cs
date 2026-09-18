@@ -12,7 +12,9 @@ namespace Deadlimit.Core;
 internal sealed record CompiledPhysicsInheritanceResult(
     int RetailNodeCount,
     int CustomJiggleCount,
-    int MergedNodeCount);
+    int MergedNodeCount,
+    int RetailRigidBodyCount,
+    bool PreservedAuthoredCloth);
 
 internal static class CompiledModelPhysicsInheritance
 {
@@ -50,6 +52,28 @@ internal static class CompiledModelPhysicsInheritance
         "m_SkelParents",
     ];
 
+    // ClothChain authoring compiles into general FE constraints rather than
+    // m_JiggleBones. Those constraints form one interdependent FE graph and
+    // cannot be safely spliced into the retail graph node-by-node.
+    private static readonly string[] AuthoredClothTopologyFields =
+    [
+        "m_AxialEdges",
+        "m_GoalDampedSpringIntegrators",
+        "m_HingeLimits",
+        "m_KelagerBends",
+        "m_Quads",
+        "m_Rods",
+        "m_Ropes",
+        "m_SimdQuads",
+        "m_SimdRods",
+        "m_SimdRodsAnim",
+        "m_SimdSpringIntegrator",
+        "m_SimdTris",
+        "m_SpringIntegrator",
+        "m_Tris",
+        "m_Twists",
+    ];
+
     public static CompiledPhysicsInheritanceResult Apply(
         ProjectManifest manifest,
         string compiledModelPath)
@@ -81,8 +105,12 @@ internal static class CompiledModelPhysicsInheritance
         var compiledPhysics = GetPhysics(compiledResource, "Compiled");
         var retailFe = GetFeModel(retailPhysics, "Retail");
         var compiledFe = GetFeModel(compiledPhysics, "Compiled");
-        var merge = Merge(retailFe, compiledFe);
+        var preserveAuthoredCloth = HasAuthoredClothTopology(compiledFe);
+        var merge = preserveAuthoredCloth
+            ? PreserveCompiledFe(compiledFe)
+            : Merge(retailFe, compiledFe);
 
+        RestoreRetailRigidBodies(retailPhysics, compiledPhysics);
         compiledPhysics.Data[FeModelField] = merge.Model;
         using var physicsOutput = new MemoryStream();
         compiledPhysics.Serialize(physicsOutput);
@@ -94,13 +122,63 @@ internal static class CompiledModelPhysicsInheritance
         Verify(repairedBytes, resourcePath, merge);
         WriteAtomically(compiledModelPath, repairedBytes);
         return new CompiledPhysicsInheritanceResult(
-            merge.RetailNodeCount,
+            GetInt32(retailFe, "m_nNodeCount"),
             merge.CustomNames.Count,
-            merge.MergedNodeCount);
+            merge.MergedNodeCount,
+            GetArray(retailPhysics.Data, "m_parts").Count,
+            preserveAuthoredCloth);
     }
 
     internal static KVObject MergeFeModelsForSmoke(KVObject retail, KVObject compiled) =>
         Merge(retail, compiled).Model;
+
+    internal static bool HasAuthoredClothTopologyForSmoke(KVObject compiled) =>
+        HasAuthoredClothTopology(compiled);
+
+    internal static KVObject SelectFeModelForSmoke(KVObject retail, KVObject compiled) =>
+        (HasAuthoredClothTopology(compiled)
+            ? PreserveCompiledFe(compiled)
+            : Merge(retail, compiled)).Model;
+
+    internal static KVObject RestoreRetailRigidBodiesForSmoke(
+        KVObject retailPhysics,
+        KVObject compiledPhysics)
+    {
+        RestoreRetailRigidBodies(retailPhysics, compiledPhysics);
+        return compiledPhysics;
+    }
+
+    private static FeMergeResult PreserveCompiledFe(KVObject compiled)
+    {
+        var nodeCount = GetInt32(compiled, "m_nNodeCount");
+        return new FeMergeResult(
+            Clone(compiled),
+            0,
+            nodeCount,
+            ReadNames(compiled));
+    }
+
+    private static bool HasAuthoredClothTopology(KVObject compiled) =>
+        AuthoredClothTopologyFields.Any(field =>
+            compiled.TryGetValue(field, out var value)
+            && value.IsArray
+            && value.Count > 0);
+
+    private static void RestoreRetailRigidBodies(
+        PhysAggregateData retail,
+        PhysAggregateData compiled) =>
+        RestoreRetailRigidBodies(retail.Data, compiled.Data);
+
+    private static void RestoreRetailRigidBodies(KVObject retail, KVObject compiled)
+    {
+        foreach (var item in retail)
+        {
+            if (!string.Equals(item.Key, FeModelField, StringComparison.Ordinal))
+            {
+                compiled[item.Key] = Clone(item.Value);
+            }
+        }
+    }
 
     private static FeMergeResult Merge(KVObject retail, KVObject compiled)
     {

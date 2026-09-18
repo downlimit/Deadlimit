@@ -35,6 +35,41 @@ internal static class CompiledModelPhysicsInheritanceSmoke
             return 3;
         }
 
+        var authoredCloth = CreateCustomFe();
+        authoredCloth["m_Rods"] = KVObject.Array([KVObject.Collection()]);
+        if (!CompiledModelPhysicsInheritance.HasAuthoredClothTopologyForSmoke(authoredCloth)
+            || CompiledModelPhysicsInheritance.HasAuthoredClothTopologyForSmoke(CreateCustomFe()))
+        {
+            return 4;
+        }
+        var preservedCloth = CompiledModelPhysicsInheritance.SelectFeModelForSmoke(
+            CreateRetailFe(),
+            authoredCloth);
+        if (preservedCloth["m_nNodeCount"].ToInt32(CultureInfo.InvariantCulture) != 1
+            || (string)preservedCloth["m_CtrlName"][0] != "custom_ear"
+            || preservedCloth["m_Rods"].Count != 1)
+        {
+            return 5;
+        }
+
+        var retailPhysics = KVObject.Collection();
+        retailPhysics["m_parts"] = Array("retail_body");
+        retailPhysics["m_joints"] = Array("retail_joint");
+        retailPhysics["m_pFeModel"] = new KVObject("retail_fe");
+        var compiledPhysics = KVObject.Collection();
+        compiledPhysics["m_parts"] = Array("compiled_body");
+        compiledPhysics["m_joints"] = Array("compiled_joint");
+        compiledPhysics["m_pFeModel"] = new KVObject("authored_cloth_fe");
+        var restoredPhysics = CompiledModelPhysicsInheritance.RestoreRetailRigidBodiesForSmoke(
+            retailPhysics,
+            compiledPhysics);
+        if ((string)restoredPhysics["m_parts"][0] != "retail_body"
+            || (string)restoredPhysics["m_joints"][0] != "retail_joint"
+            || (string)restoredPhysics["m_pFeModel"] != "authored_cloth_fe")
+        {
+            return 6;
+        }
+
         var resource = CreateCompiledResource();
         var replacement = Encoding.ASCII.GetBytes("replacement-physics-block-that-is-longer");
         var rewritten = CompiledResourceBlockRewriter.Replace(resource, "PHYS", replacement);
@@ -42,7 +77,7 @@ internal static class CompiledModelPhysicsInheritanceSmoke
             || !ReadBlock(rewritten, "PHYS").SequenceEqual(replacement)
             || !ReadBlock(rewritten, "DATA").SequenceEqual(Encoding.ASCII.GetBytes("unchanged-data")))
         {
-            return 4;
+            return 7;
         }
         return 0;
     }
