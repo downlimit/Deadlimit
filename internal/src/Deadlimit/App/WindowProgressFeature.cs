@@ -8,10 +8,6 @@ internal static class WindowProgressFeature
 
     public static void Attach(MainForm form)
     {
-        var statusLabel = FindDescendants<StatusStrip>(form)
-            .SelectMany(strip => strip.Items.OfType<ToolStripStatusLabel>())
-            .FirstOrDefault(item => !item.Spring);
-
         form.Text = AppTitle;
         form.TextChanged += (_, _) =>
         {
@@ -21,15 +17,33 @@ internal static class WindowProgressFeature
                 return;
             }
 
-            if (statusLabel is not null && TryExtractProgressMessage(title, out var message))
+            if (TryExtractProgressMessage(title, out var message))
             {
-                statusLabel.Text = message;
+                ReportStatus(form, message);
             }
 
             // Runtime progress belongs in the bottom status area. Keep the native window
             // caption stable so the taskbar/title bar always identifies only the app.
             form.Text = AppTitle;
         };
+    }
+
+    public static void ReportStatus(MainForm form, string message)
+    {
+        if (form.IsDisposed)
+        {
+            return;
+        }
+
+        var statusLabel = FindDescendants<StatusStrip>(form)
+            .SelectMany(strip => strip.Items.OfType<ToolStripStatusLabel>())
+            .FirstOrDefault(item => !item.Spring);
+        if (statusLabel is null)
+        {
+            return;
+        }
+
+        statusLabel.Text = UiText.NormalizeProductNames(message);
     }
 
     private static bool TryExtractProgressMessage(string title, out string message)

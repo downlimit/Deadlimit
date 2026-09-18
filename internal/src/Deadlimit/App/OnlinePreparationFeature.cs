@@ -152,7 +152,6 @@ internal static class OnlinePreparationFeature
         }
 
         _toggleBusy = true;
-        var originalTitle = _form.Text;
         var buttons = FindActionButtons().ToArray();
         var enabledStates = buttons.ToDictionary(button => button, button => button.Enabled);
         var shouldLaunchCsdk = false;
@@ -168,7 +167,7 @@ internal static class OnlinePreparationFeature
             {
                 if (_form is not null && !_form.IsDisposed)
                 {
-                    _form.Text = $"{UiText.T("Deadlimit Manager — ONLINE PREPARATION", "Deadlimit Manager — ОНЛАЙН-ПОДГОТОВКА")} — {update.Message}";
+                    WindowProgressFeature.ReportStatus(_form, update.Message);
                 }
             });
 
@@ -207,11 +206,6 @@ internal static class OnlinePreparationFeature
         }
         finally
         {
-            if (_form is not null && !_form.IsDisposed)
-            {
-                _form.Text = originalTitle;
-            }
-
             foreach (var pair in enabledStates)
             {
                 if (!pair.Key.IsDisposed)
@@ -406,7 +400,6 @@ internal static class OnlinePreparationFeature
         _autoPrepareBusy = true;
         _toggleBusy = true;
         var form = _form;
-        var originalTitle = form.Text;
         var buttons = FindActionButtons().ToArray();
         var enabledStates = buttons.ToDictionary(button => button, button => button.Enabled);
 
@@ -435,7 +428,7 @@ internal static class OnlinePreparationFeature
                 {
                     if (!form.IsDisposed && ReferenceEquals(_session, activeSession))
                     {
-                        form.Text = $"{UiText.T("Deadlimit Manager — ONLINE PREPARATION", "Deadlimit Manager — ОНЛАЙН-ПОДГОТОВКА")} — {update.Message}";
+                        WindowProgressFeature.ReportStatus(form, update.Message);
                     }
                 });
 
@@ -483,11 +476,6 @@ internal static class OnlinePreparationFeature
         }
         finally
         {
-            if (!form.IsDisposed)
-            {
-                form.Text = originalTitle;
-            }
-
             foreach (var pair in enabledStates)
             {
                 if (!pair.Key.IsDisposed)
