@@ -162,19 +162,29 @@ public sealed class PrepareAuthoringService
             log.AppendLine();
 
             cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Cleaning stale compiled output for this addon...", "Очистка устаревшего compiled output этого аддона...")));
+            var cleanGameOutput = options.ResetSections != PrepareResetSections.None;
+            progress?.Report(new PrepareAuthoringProgress(cleanGameOutput
+                ? LocalizedText.T("Cleaning compiled output for the selected reset...", "Очистка compiled output для выбранного сброса...")
+                : LocalizedText.T("Preserving compiled output for incremental builds...", "Сохранение compiled output для инкрементальных сборок...")));
 
             var gameOutputCleaned = false;
-            if (Directory.Exists(addonGameRoot))
+            if (cleanGameOutput && Directory.Exists(addonGameRoot))
             {
                 Directory.Delete(addonGameRoot, recursive: true);
                 gameOutputCleaned = true;
             }
 
-            log.AppendLine(gameOutputCleaned
-                ? $"Removed stale addon runtime output: {addonGameRoot}"
-                : $"No stale addon runtime output existed: {addonGameRoot}");
-            log.AppendLine("Deadlimit does not compile content during PREPARE FOR CSDK; CSDK12 rebuilds game output from content when launched/compiled.");
+            if (cleanGameOutput)
+            {
+                log.AppendLine(gameOutputCleaned
+                    ? $"Removed addon runtime output for explicit reset: {addonGameRoot}"
+                    : $"No addon runtime output existed for explicit reset: {addonGameRoot}");
+            }
+            else
+            {
+                log.AppendLine($"Ordinary PREPARE preserved addon runtime output for incremental BUILD & TEST: {addonGameRoot}");
+            }
+            log.AppendLine("Deadlimit does not compile content during PREPARE FOR CSDK; CSDK12 rebuilds changed game output from content when launched or compiled.");
 
             progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Refreshing retail authoring template in CSDK content...", "Обновление retail-шаблона модели в CSDK content...")));
             Directory.CreateDirectory(addonContentRoot);
@@ -472,10 +482,12 @@ public sealed class PrepareAuthoringService
             }
 
             log.AppendLine();
-            log.AppendLine("RESULT: AUTHORING CONTENT PREPARED; ADDON GAME OUTPUT CLEAN");
+            log.AppendLine(gameOutputCleaned
+                ? "RESULT: AUTHORING CONTENT PREPARED; ADDON GAME OUTPUT CLEANED FOR EXPLICIT RESET"
+                : "RESULT: AUTHORING CONTENT PREPARED; ADDON GAME OUTPUT PRESERVED");
             File.WriteAllText(logPath, log.ToString());
 
-            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Authoring content prepared. Launch CSDK to rebuild clean game output.", "Authoring content подготовлен. Запустите CSDK для чистой пересборки game output.")));
+            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Authoring content prepared. Compiled output was preserved for incremental rebuilds.", "Файлы проекта подготовлены. Compiled output сохранён для инкрементальной пересборки.")));
 
             return new PrepareAuthoringResult(
                 addonName,

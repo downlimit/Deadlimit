@@ -351,7 +351,7 @@ internal static class BuildFeature
 
             var gameState = result.GameOutputCleaned
                 ? UiText.T("Existing compiled output for this addon was removed.", "Старый compiled output этого аддона удалён.")
-                : UiText.T("No previous compiled output for this addon existed.", "Предыдущего compiled output для этого аддона не было.");
+                : UiText.T("Existing compiled output was preserved for incremental builds.", "Существующий compiled output сохранён для инкрементальных сборок.");
 
             var customMaterialSummary = result.CustomMaterialCount == 0
                 ? UiText.T("Custom materials detected: 0\n", "Новых custom-материалов: 0\n")

@@ -381,6 +381,90 @@ finally {
         Remove-Item -LiteralPath $compileSelectionRoot -Recurse -Force
     }
 }
+
+# Incremental dependency invalidation must select only actual VMAT/VMDL consumers,
+# while a successful VPCF with an existing compiled output remains cached.
+$resolveIncrementalCompileTargets = $buildType.GetMethod('ResolveIncrementalCompileTargets', $nonPublicStatic)
+if ($null -eq $resolveIncrementalCompileTargets) {
+    throw 'BuildAndTestService.ResolveIncrementalCompileTargets was not found.'
+}
+$dependencyRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-dependency-selection-$([Guid]::NewGuid().ToString('N'))"
+try {
+    $contentRoot = Join-Path $dependencyRoot 'content'
+    $gameRoot = Join-Path $dependencyRoot 'game'
+    foreach ($folder in @(
+        (Join-Path $contentRoot 'materials\a'),
+        (Join-Path $contentRoot 'materials\b'),
+        (Join-Path $contentRoot 'models\a'),
+        (Join-Path $contentRoot 'models\b'),
+        (Join-Path $contentRoot 'particles'),
+        (Join-Path $gameRoot 'materials\a'),
+        (Join-Path $gameRoot 'materials\b'),
+        (Join-Path $gameRoot 'models\a'),
+        (Join-Path $gameRoot 'models\b'),
+        (Join-Path $gameRoot 'particles'))) {
+        [IO.Directory]::CreateDirectory($folder) | Out-Null
+    }
+
+    $vmatA = Join-Path $contentRoot 'materials\a\a.vmat'
+    $vmatB = Join-Path $contentRoot 'materials\b\b.vmat'
+    $vmdlA = Join-Path $contentRoot 'models\a\a.vmdl'
+    $vmdlB = Join-Path $contentRoot 'models\b\b.vmdl'
+    $particle = Join-Path $contentRoot 'particles\cached.vpcf'
+    [IO.File]::WriteAllText($vmatA, 'TextureColor "materials/a/a.png"')
+    [IO.File]::WriteAllText($vmatB, 'TextureColor "materials/b/b.png"')
+    [IO.File]::WriteAllText($vmdlA, 'RenderMeshFile "models/a/a.dmx"')
+    [IO.File]::WriteAllText($vmdlB, 'RenderMeshFile "models/b/b.dmx"')
+    [IO.File]::WriteAllText($particle, '<!-- kv3 encoding:text format:vpcf63:version{x} -->')
+
+    foreach ($relativeOutput in @(
+        'materials\a\a.vmat_c',
+        'materials\b\b.vmat_c',
+        'models\a\a.vmdl_c',
+        'models\b\b.vmdl_c',
+        'particles\cached.vpcf_c')) {
+        [IO.File]::WriteAllText((Join-Path $gameRoot $relativeOutput), 'compiled')
+    }
+
+    $directSources = [string[]]@($vmatA, $vmatB, $vmdlA, $vmdlB, $particle)
+    $changedDependencies = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $changedDependencies.Add('materials/a/a.png') | Out-Null
+    $changedDependencies.Add('models/a/a.dmx') | Out-Null
+    $removedDependencies = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $ownedSources = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($relative in @('materials/a/a.vmat','materials/b/b.vmat','models/a/a.vmdl','models/b/b.vmdl','particles/cached.vpcf')) {
+        $ownedSources.Add($relative) | Out-Null
+    }
+
+    $incrementalArgs = [object[]]@(
+        [string]$contentRoot,
+        [string]$gameRoot,
+        $directSources,
+        $changedDependencies,
+        $removedDependencies,
+        $ownedSources)
+    $incrementalTargets = @($resolveIncrementalCompileTargets.Invoke($null, $incrementalArgs))
+    if ($incrementalTargets.Count -ne 2 `
+        -or $incrementalTargets -notcontains $vmatA `
+        -or $incrementalTargets -notcontains $vmdlA `
+        -or $incrementalTargets -contains $vmatB `
+        -or $incrementalTargets -contains $vmdlB `
+        -or $incrementalTargets -contains $particle) {
+        throw 'Incremental dependency selection broadened beyond actual consumers or rebuilt a cached VPCF.'
+    }
+
+    Remove-Item -LiteralPath (Join-Path $gameRoot 'particles\cached.vpcf_c') -Force
+    $targetsWithMissingParticle = @($resolveIncrementalCompileTargets.Invoke($null, $incrementalArgs))
+    if ($targetsWithMissingParticle -notcontains $particle) {
+        throw 'A project-owned VPCF with a genuinely missing compiled output was not selected.'
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $dependencyRoot) {
+        Remove-Item -LiteralPath $dependencyRoot -Recurse -Force
+    }
+}
+
 $selectParticlesToSkip = $buildType.GetMethod('SelectParticleSourcesToSkip', $nonPublicStatic)
 if ($null -eq $selectParticlesToSkip) { throw 'BuildAndTestService.SelectParticleSourcesToSkip was not found.' }
 $particleSources = [string[]]@('C:\addon\supported.vpcf', 'C:\addon\failed-64.vpcf', 'C:\addon\failed-65.vpcf')
@@ -550,9 +634,21 @@ foreach ($required in @(
     'LoadPreservingMaterials(manifest)',
     'SavePreservingMaterials(manifest, knownOwnership)',
     'mutateExistingMaterials: regenerateCustomMaterials',
-    'var finalTextureRepairs = regenerateCustomMaterials')) {
+    'var finalTextureRepairs = regenerateCustomMaterials',
+    'var cleanGameOutput = options.ResetSections != PrepareResetSections.None',
+    'Ordinary PREPARE preserved addon runtime output for incremental BUILD & TEST')) {
     if (-not $prepareSource.Contains($required)) {
         throw "Ordinary PREPARE byte-preservation contract is missing: $required"
+    }
+}
+$buildPipelineSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/BuildAndTestService.cs' -Raw
+foreach ($required in @(
+    'FindDirectDependents(',
+    '.Chunk(CompileBatchSize)',
+    'ProbeParticleBatchFailuresAsync(',
+    'TIMING {stage}: {elapsed.TotalSeconds:F3}s')) {
+    if (-not $buildPipelineSource.Contains($required)) {
+        throw "Incremental build performance contract is missing: $required"
     }
 }
 $customMaterialSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/CustomMaterialAuthoringService.cs' -Raw
