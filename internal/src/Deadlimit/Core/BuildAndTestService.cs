@@ -369,12 +369,17 @@ public sealed class BuildAndTestService
             var ag2Applied = true;
 
             cancellationToken.ThrowIfCancellationRequested();
-            Report(progress, 86, LocalizedText.T("Restoring retail secondary-motion physics...", "Восстановление исходной физики вторичного движения..."));
+            Report(progress, 86, LocalizedText.T(
+                "Finalizing retail rigid bodies and authored secondary motion...",
+                "Финализация retail rigidbody и авторской вторичной физики..."));
             var inheritedPhysics = CompiledModelPhysicsInheritance.Apply(manifest, compiledMainModel);
             log.AppendLine(
-                $"Retail FE physics restored: {inheritedPhysics.RetailNodeCount} retail node(s), " +
-                $"{inheritedPhysics.CustomJiggleCount} custom jiggle node(s), " +
-                $"{inheritedPhysics.MergedNodeCount} total.");
+                $"Retail rigid-body physics restored: {inheritedPhysics.RetailRigidBodyCount} body part(s). " +
+                (inheritedPhysics.PreservedAuthoredCloth
+                    ? $"Authored cloth FE preserved: {inheritedPhysics.MergedNodeCount} node(s); retail secondary-motion FE was not applied."
+                    : $"Retail secondary-motion FE restored: {inheritedPhysics.RetailNodeCount} retail node(s), " +
+                      $"{inheritedPhysics.CustomJiggleCount} custom jiggle node(s), " +
+                      $"{inheritedPhysics.MergedNodeCount} total."));
 
             manifest.CompiledVmdl = compiledMainModel;
             ProjectStore.Save(manifest);
