@@ -225,6 +225,9 @@ public sealed class PrepareAuthoringService
             {
                 log.AppendLine($"Retail physics warning: {warning}.");
             }
+            var repairedClothChains = RetailPhysicsAuthoringService.RepairInvalidClothParentAnchors(
+                sourceCopy.DestinationVmdlPath);
+            log.AppendLine($"Invalid ClothChain parent anchors repaired: {repairedClothChains}");
 
             if (options.Resets(PrepareResetSections.Effects))
             {

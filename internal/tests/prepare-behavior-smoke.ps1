@@ -687,6 +687,8 @@ foreach ($required in @(
     'collision_layer_1',
     'collision_layer_2',
     'collision_layer_3',
+    'RepairMissingParentAnchors',
+    'CreateFixedClothAnchor',
     'extrude_sides',
     'extrude_twist',
     'extrude_forward_axis',
@@ -701,6 +703,67 @@ foreach ($required in @(
     if (-not $retailPhysicsSource.Contains($required)) {
         throw "Retail physics reconstruction contract missing: $required"
     }
+}
+$retailPhysicsType = $assembly.GetType('Deadlimit.Core.RetailPhysicsAuthoringService', $true)
+$findMissingParents = $retailPhysicsType.GetMethod('FindMissingParentJointNames', $nonPublicStatic)
+if ($null -eq $findMissingParents) {
+    throw 'Retail cloth missing-parent validation helper was not found.'
+}
+[string[]]$clothNames = @('segment_a_0_R', 'segment_a_end_R', 'segment_b_0_R', 'segment_b_end_R', 'wing_2_R', 'wing_end_R')
+[string[]]$clothParents = @($null, 'segment_a_0_R', 'wing_1_R', 'segment_b_0_R', 'wing_1_R', 'wing_2_R')
+$missingParents = @($findMissingParents.Invoke($null, [object[]]@($clothNames, $clothParents)))
+if ($missingParents.Count -ne 1 -or $missingParents[0] -ne 'wing_1_R') {
+    throw "Retail cloth parent validation did not isolate wing_1_R: $($missingParents -join ', ')"
+}
+$repairInvalidClothParents = $retailPhysicsType.GetMethod('RepairInvalidClothParentAnchors')
+if ($null -eq $repairInvalidClothParents) {
+    throw 'Retail cloth parent repair entry point was not found.'
+}
+$clothRepairTemp = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-cloth-parent-$([Guid]::NewGuid().ToString('N')).vmdl"
+try {
+    $invalidCloth = @'
+rootNode =
+{
+    children =
+    [
+        {
+            _class = "Softbody"
+            children =
+            [
+                {
+                    _class = "ClothChain"
+                    root_bone = "segment_a_0_R"
+                    chain =
+                    {
+                        joints =
+                        [
+                            { joint_name = "segment_a_0_R" simulate = false },
+                            { joint_name = "wing_2_R" joint_parent = "wing_1_R" simulate = false },
+                            { joint_name = "wing_end_R" joint_parent = "wing_2_R" },
+                        ]
+                    }
+                },
+            ]
+        },
+    ]
+}
+'@
+    [IO.File]::WriteAllText($clothRepairTemp, $invalidCloth)
+    $repairCount = [int]$repairInvalidClothParents.Invoke($null, [object[]]@([string]$clothRepairTemp))
+    $repairedCloth = [IO.File]::ReadAllText($clothRepairTemp)
+    if ($repairCount -ne 1 `
+        -or $repairedCloth -notmatch 'root_bone\s*=\s*"wing_1_R"' `
+        -or ([regex]::Matches($repairedCloth, 'joint_name\s*=\s*"wing_1_R"')).Count -ne 1) {
+        throw "Invalid ClothChain parent was not repaired with one fixed wing_1_R anchor.`n$repairedCloth"
+    }
+    $stableCloth = $repairedCloth
+    if ([int]$repairInvalidClothParents.Invoke($null, [object[]]@([string]$clothRepairTemp)) -ne 0 `
+        -or [IO.File]::ReadAllText($clothRepairTemp) -ne $stableCloth) {
+        throw 'ClothChain parent repair was not idempotent.'
+    }
+}
+finally {
+    Remove-Item -LiteralPath $clothRepairTemp -Force -ErrorAction SilentlyContinue
 }
 foreach ($required in @(
     'RetailClothReadResult.Empty',

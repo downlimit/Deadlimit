@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Numerics;
 using System.Text;
+using System.Text.RegularExpressions;
 using SteamDatabase.ValvePak;
 using ValveKeyValue;
 using ValveResourceFormat;
@@ -18,6 +19,21 @@ public static class RetailPhysicsAuthoringService
 {
     private const string PhysicsJointListClass = "PhysicsJointList";
     private const string SoftbodyClass = "Softbody";
+    private static readonly Regex ClothChainClassRegex = new(
+        "_class\\s*=\\s*\"ClothChain\"",
+        RegexOptions.Compiled);
+    private static readonly Regex ClothJointNameRegex = new(
+        "\\bjoint_name\\s*=\\s*\"(?<name>[^\"]+)\"",
+        RegexOptions.Compiled);
+    private static readonly Regex ClothJointParentRegex = new(
+        "\\bjoint_parent\\s*=\\s*\"(?<name>[^\"]+)\"",
+        RegexOptions.Compiled);
+    private static readonly Regex ClothRootBoneRegex = new(
+        "\\broot_bone\\s*=\\s*\"(?<name>[^\"]+)\"",
+        RegexOptions.Compiled);
+    private static readonly Regex ClothJointsArrayRegex = new(
+        "(?m)^(?<indent>[ \\t]*)joints\\s*=\\s*\\[",
+        RegexOptions.Compiled);
 
     public static RetailPhysicsInitializationResult EnsureRetailJoints(
         ProjectManifest manifest,
@@ -102,6 +118,150 @@ public static class RetailPhysicsAuthoringService
             addSoftbody ? cloth.Chains.Count : 0,
             true,
             cloth.Warnings);
+    }
+
+    public static int RepairInvalidClothParentAnchors(string vmdlPath)
+    {
+        var original = File.ReadAllText(vmdlPath);
+        var repairs = new List<(int Start, int Length, string Text)>();
+
+        foreach (Match classMatch in ClothChainClassRegex.Matches(original))
+        {
+            var blockStart = original.LastIndexOf('{', classMatch.Index);
+            if (blockStart < 0)
+            {
+                continue;
+            }
+
+            var blockEnd = FindMatchingBrace(original, blockStart);
+            if (blockEnd < 0)
+            {
+                continue;
+            }
+
+            var block = original[blockStart..(blockEnd + 1)];
+            if (ClothChainClassRegex.Matches(block).Count != 1)
+            {
+                // Parent ClothChain containers are repaired through their leaf children.
+                continue;
+            }
+
+            var nodeNames = ClothJointNameRegex.Matches(block)
+                .Select(match => match.Groups["name"].Value)
+                .ToArray();
+            var parentNames = ClothJointParentRegex.Matches(block)
+                .Select(match => (string?)match.Groups["name"].Value)
+                .ToArray();
+            var missingParents = FindMissingParentJointNames(nodeNames, parentNames);
+            if (missingParents.Length == 0)
+            {
+                continue;
+            }
+
+            var repaired = InsertFixedAnchorsIntoClothChain(block, missingParents);
+            if (!string.Equals(block, repaired, StringComparison.Ordinal))
+            {
+                repairs.Add((blockStart, block.Length, repaired));
+            }
+        }
+
+        if (repairs.Count == 0)
+        {
+            return 0;
+        }
+
+        var patched = new StringBuilder(original);
+        foreach (var repair in repairs.OrderByDescending(item => item.Start))
+        {
+            patched.Remove(repair.Start, repair.Length);
+            patched.Insert(repair.Start, repair.Text);
+        }
+        File.WriteAllText(vmdlPath, patched.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        return repairs.Count;
+    }
+
+    private static string InsertFixedAnchorsIntoClothChain(
+        string block,
+        IReadOnlyList<string> missingParents)
+    {
+        var jointsMatch = ClothJointsArrayRegex.Match(block);
+        if (!jointsMatch.Success)
+        {
+            return block;
+        }
+
+        var newline = block.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        var insertAt = block.IndexOf('\n', jointsMatch.Index + jointsMatch.Length);
+        insertAt = insertAt >= 0 ? insertAt + 1 : jointsMatch.Index + jointsMatch.Length;
+        var entryIndent = jointsMatch.Groups["indent"].Value + "\t";
+        var propertyIndent = entryIndent + "\t";
+        var anchors = new StringBuilder();
+        foreach (var parent in missingParents)
+        {
+            anchors.Append(entryIndent).Append('{').Append(newline);
+            anchors.Append(propertyIndent).Append("joint_name = \"").Append(EscapeKv3(parent)).Append('"').Append(newline);
+            anchors.Append(propertyIndent).Append("simulate = false").Append(newline);
+            anchors.Append(propertyIndent).Append("allow_rotation = true").Append(newline);
+            anchors.Append(entryIndent).Append("},").Append(newline);
+        }
+
+        var repaired = block.Insert(insertAt, anchors.ToString());
+        if (missingParents.Count == 1)
+        {
+            repaired = ClothRootBoneRegex.Replace(
+                repaired,
+                match =>
+                {
+                    var nameStart = match.Groups["name"].Index - match.Index;
+                    var nameEnd = nameStart + match.Groups["name"].Length;
+                    return match.Value[..nameStart]
+                           + EscapeKv3(missingParents[0])
+                           + match.Value[nameEnd..];
+                },
+                1);
+        }
+        return repaired;
+    }
+
+    private static int FindMatchingBrace(string text, int openingBrace)
+    {
+        var depth = 0;
+        var inString = false;
+        var escaped = false;
+        for (var index = openingBrace; index < text.Length; index++)
+        {
+            var current = text[index];
+            if (inString)
+            {
+                if (escaped)
+                {
+                    escaped = false;
+                }
+                else if (current == '\\')
+                {
+                    escaped = true;
+                }
+                else if (current == '"')
+                {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (current == '"')
+            {
+                inString = true;
+            }
+            else if (current == '{')
+            {
+                depth++;
+            }
+            else if (current == '}' && --depth == 0)
+            {
+                return index;
+            }
+        }
+        return -1;
     }
 
     private static RetailClothReadResult ReadClothChains(KVObject feModel)
@@ -381,11 +541,95 @@ public static class RetailPhysicsAuthoringService
                         extrusionAxis);
                 })
                 .ToArray();
-            chains.Add(new RetailClothChain(ctrlNames[root], nodes));
+            var chain = RepairMissingParentAnchors(
+                new RetailClothChain(ctrlNames[root], nodes),
+                out var addedAnchors);
+            if (addedAnchors.Count > 0)
+            {
+                warnings.Add(
+                    $"cloth chain '{ctrlNames[root]}' referenced parent joint(s) outside its recovered node set; " +
+                    $"added fixed anchor(s): {string.Join(", ", addedAnchors)}");
+            }
+            chains.Add(chain);
         }
 
         return new RetailClothReadResult(chains, warnings);
     }
+
+    private static RetailClothChain RepairMissingParentAnchors(
+        RetailClothChain chain,
+        out IReadOnlyList<string> addedAnchors)
+    {
+        var missingParents = FindMissingParentJointNames(
+            chain.Nodes.Select(node => node.Name).ToArray(),
+            chain.Nodes.Select(node => node.Parent).ToArray());
+        addedAnchors = missingParents;
+        if (missingParents.Length == 0)
+        {
+            return chain;
+        }
+
+        var anchors = missingParents
+            .Select(CreateFixedClothAnchor)
+            .ToArray();
+        var rootBone = missingParents.Length == 1
+            ? missingParents[0]
+            : chain.RootBone;
+        return new RetailClothChain(rootBone, anchors.Concat(chain.Nodes).ToArray());
+    }
+
+    private static string[] FindMissingParentJointNames(
+        IReadOnlyCollection<string> nodeNames,
+        IReadOnlyCollection<string?> parentNames)
+    {
+        var names = nodeNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return parentNames
+            .Where(parent => !string.IsNullOrWhiteSpace(parent) && !names.Contains(parent!))
+            .Select(parent => parent!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(parent => parent, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static RetailClothNode CreateFixedClothAnchor(string name) => new(
+        name,
+        Parent: null,
+        Simulate: false,
+        AllowRotation: true,
+        StretchSpring: null,
+        ChildSiblingSpring: null,
+        BendSpring: null,
+        TorsionSpring: null,
+        ExplicitLength: null,
+        AnimatedLength: false,
+        Mass: null,
+        CollisionRadius: null,
+        Friction: null,
+        GoalStrength: null,
+        GoalDamping: null,
+        Drag: null,
+        GravityZ: null,
+        StrayRadius: null,
+        StrayRadiusStretchiness: null,
+        SuspenderSpring: null,
+        AntishrinkStrength: null,
+        VertexMap: null,
+        EndEffector: null,
+        StiffHinge: null,
+        StiffHingeAngle: null,
+        MotionBias: null,
+        CollisionLayer0: true,
+        CollisionLayer1: true,
+        CollisionLayer2: true,
+        CollisionLayer3: true,
+        LockTranslation: false,
+        WorldCollision: false,
+        HasTwistConstraint: false,
+        ExtraIterations: 0,
+        ExtrudeSides: 0,
+        ExtrudeRadius: null,
+        ExtrudeTwist: null,
+        ExtrudeForwardAxis: null);
 
     private static RetailRod? ReadRod(KVObject value)
     {
