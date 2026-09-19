@@ -26,5 +26,16 @@ $packagingSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/RetailR
 if (-not $packagingSource.Contains('textureOverridePaths.Contains(sourceRelativePath)', [StringComparison]::Ordinal)) {
     throw 'Project-root texture overrides are not forced into the authored packaging roots.'
 }
+if ($packagingSource.Contains('Where(path => !path.EndsWith("_c"', [StringComparison]::Ordinal)) {
+    throw 'Opaque CSDK outputs are still treated as implicit authored packaging roots.'
+}
+foreach ($required in @(
+    'global editor/cache artifacts',
+    'Opaque files are therefore never',
+    'hero-select VPK explicitly')) {
+    if (-not $packagingSource.Contains($required, [StringComparison]::Ordinal)) {
+        throw "Opaque-payload packaging policy is missing: $required"
+    }
+}
 
 Write-Host 'Retail resource dependency-closure packaging smoke passed.'

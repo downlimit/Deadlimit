@@ -182,10 +182,10 @@ internal static class RetailResourcePackagingPolicy
             }
         }
 
-        foreach (var path in addonFiles.Keys.Where(path => !path.EndsWith("_c", StringComparison.OrdinalIgnoreCase)))
-        {
-            roots.Add(path);
-        }
+        // ResourceCompiler also writes global editor/cache artifacts into the addon game
+        // root (_vrad3, tools_*.bin, cache_*.soc). Opaque files are therefore never
+        // implicit authored roots. Callers add deliberate payloads such as the freshly
+        // built hero-select VPK explicitly after this dependency plan is resolved.
 
         return roots;
     }
