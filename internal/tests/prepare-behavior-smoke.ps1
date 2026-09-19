@@ -87,6 +87,18 @@ foreach ($required in @(
         throw "Unconditional compiled-model animation repair contract is missing: $required"
     }
 }
+foreach ($required in @(
+    'slotOwnership.EnsureSlotAvailable(manifest);',
+    'slotOwnership.RecordSuccessfulDeployment(manifest, vpkPath);',
+    'VPK slot ownership updated by the deployment transaction.')) {
+    if (-not $buildServiceSource.Contains($required, [StringComparison]::Ordinal)) {
+        throw "Core VPK ownership transaction contract is missing: $required"
+    }
+}
+$buildFeatureSource = Get-Content -LiteralPath 'internal/src/Deadlimit/App/BuildFeature.cs' -Raw
+if (-not $buildFeatureSource.Contains('if (manifest.Mode == ProjectMode.ImportedVpk)', [StringComparison]::Ordinal)) {
+    throw 'BuildFeature does not leave authoring VPK ownership to the core deployment transaction.'
+}
 
 # BUILD FOR TEST must force selected resources and their raw dependencies past
 # ResourceCompiler's timestamp cache while retaining the previous output on failure.
