@@ -691,6 +691,7 @@ foreach ($required in @(
     'BuildHeroSelectScenePackagesAsync(',
     'Hero-select authoring models rebuilt:',
     'CreateHeroSelectPackage(',
+    'Hero-select nested payload restricted to scene resources:',
     'OverlayPackageEntries(',
     '"-world"',
     '"-phys"',
@@ -699,6 +700,13 @@ foreach ($required in @(
     'TIMING {stage}: {elapsed.TotalSeconds:F3}s')) {
     if (-not $buildPipelineSource.Contains($required)) {
         throw "Incremental build performance contract is missing: $required"
+    }
+}
+foreach ($forbidden in @(
+    'foreach (var relativePath in includedCompiledResources.OrderBy(',
+    'IReadOnlySet<string> includedCompiledResources')) {
+    if ($buildPipelineSource.Contains($forbidden, [StringComparison]::Ordinal)) {
+        throw "Hero-select packaging still copies outer mod resources into the nested scene VPK: $forbidden"
     }
 }
 $customMaterialSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/CustomMaterialAuthoringService.cs' -Raw
