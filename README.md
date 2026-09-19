@@ -61,6 +61,9 @@ license and terms.
    glTF/GLB model files and matching texture sources. Use one model format for
    each retail render-mesh target.
 5. Run **PREPARE FOR CSDK** once, then launch CSDK for ModelDoc and material work.
+   Hold `SHIFT` while clicking **PREPARE FOR CSDK** to open optional preparation
+   tasks, including creation of an editable hero-select VMAP from the selected
+   hero's CSDK prefab. Existing VMAP edits are preserved.
 6. Use **BUILD & TEST** to prepare current inputs, compile changed resources,
    restore required model data, package a VPK, and deploy it to the configured
    local Deadlock addons slot. Launch the game separately.

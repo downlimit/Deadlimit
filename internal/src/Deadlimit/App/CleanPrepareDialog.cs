@@ -7,12 +7,13 @@ internal sealed class CleanPrepareDialog : Form
     private readonly CheckBox _materials;
     private readonly CheckBox _physics;
     private readonly CheckBox _effects;
+    private readonly CheckBox _heroSelectScene;
     private readonly Button _backupButton;
     private readonly Button _withoutBackupButton;
 
     private CleanPrepareDialog()
     {
-        Text = UiText.T("Choose what to reprepare", "Что переподготовить начисто");
+        Text = UiText.T("Preparation options", "Параметры подготовки");
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MinimizeBox = false;
@@ -20,7 +21,7 @@ internal sealed class CleanPrepareDialog : Form
         ShowInTaskbar = true;
         ShowIcon = false;
         AutoScaleMode = AutoScaleMode.Dpi;
-        ClientSize = new Size(680, 390);
+        ClientSize = new Size(680, 470);
 
         var intro = new Label
         {
@@ -29,8 +30,8 @@ internal sealed class CleanPrepareDialog : Form
             Height = 78,
             Padding = new Padding(16, 14, 16, 4),
             Text = UiText.T(
-                "Selected sections will be restored from the extracted retail source. Unselected materials, physics and effects keep their current artist edits.",
-                "Выбранные разделы будут восстановлены из извлечённого retail-исходника. Текущие правки материалов, физики и эффектов в невыбранных разделах сохранятся."),
+                "Choose clean reset sections and optional project setup tasks. Unselected materials, physics and effects keep their current artist edits.",
+                "Выберите разделы для чистого восстановления и дополнительные задачи подготовки проекта. Правки материалов, физики и эффектов в невыбранных разделах сохранятся."),
         };
 
         _materials = CreateOption(
@@ -42,6 +43,11 @@ internal sealed class CleanPrepareDialog : Form
         _effects = CreateOption(
             UiText.T("Effects", "Эффекты"),
             UiText.T("Restore existing particle-effect VPCF files from the extracted retail source.", "Восстановить существующие VPCF-файлы эффектов из извлечённого retail-исходника."));
+        _heroSelectScene = CreateOption(
+            UiText.T("Hero select scene", "Сцена выбора героя"),
+            UiText.T(
+                "Create an editable VMAP from the selected hero's CSDK prefab. An existing VMAP is preserved.",
+                "Создать редактируемый VMAP из CSDK-префаба выбранного героя. Существующий VMAP сохранится."));
 
         var options = new FlowLayoutPanel
         {
@@ -53,6 +59,7 @@ internal sealed class CleanPrepareDialog : Form
         options.Controls.Add(_materials);
         options.Controls.Add(_physics);
         options.Controls.Add(_effects);
+        options.Controls.Add(_heroSelectScene);
 
         _backupButton = CreateActionButton(UiText.T("BACK UP & REPREPARE", "СДЕЛАТЬ БЭКАП И ПЕРЕПОДГОТОВИТЬ"));
         _withoutBackupButton = CreateActionButton(UiText.T("REPREPARE WITHOUT BACKUP", "ПЕРЕПОДГОТОВИТЬ БЕЗ БЭКАПА"));
@@ -65,6 +72,7 @@ internal sealed class CleanPrepareDialog : Form
         _materials.CheckedChanged += (_, _) => UpdateActions();
         _physics.CheckedChanged += (_, _) => UpdateActions();
         _effects.CheckedChanged += (_, _) => UpdateActions();
+        _heroSelectScene.CheckedChanged += (_, _) => UpdateActions();
 
         var buttons = new FlowLayoutPanel
         {
@@ -107,9 +115,14 @@ internal sealed class CleanPrepareDialog : Form
 
     private void UpdateActions()
     {
-        var hasSelection = _materials.Checked || _physics.Checked || _effects.Checked;
+        var hasResetSelection = _materials.Checked || _physics.Checked || _effects.Checked;
+        var hasSelection = hasResetSelection || _heroSelectScene.Checked;
+        _backupButton.Text = hasResetSelection
+            ? UiText.T("BACK UP & REPREPARE", "СДЕЛАТЬ БЭКАП И ПЕРЕПОДГОТОВИТЬ")
+            : UiText.T("PREPARE", "ПОДГОТОВИТЬ");
         _backupButton.Enabled = hasSelection;
-        _withoutBackupButton.Enabled = hasSelection;
+        _withoutBackupButton.Visible = hasResetSelection;
+        _withoutBackupButton.Enabled = hasResetSelection;
     }
 
     private void Finish(bool createBackup)
@@ -128,7 +141,10 @@ internal sealed class CleanPrepareDialog : Form
             sections |= PrepareResetSections.Effects;
         }
 
-        Selection = new PrepareAuthoringOptions(sections, createBackup);
+        Selection = new PrepareAuthoringOptions(
+            sections,
+            createBackup,
+            PrepareHeroSelectScene: _heroSelectScene.Checked);
         DialogResult = DialogResult.OK;
         Close();
     }

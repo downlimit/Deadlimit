@@ -25,6 +25,7 @@ public sealed record PrepareAuthoringResult(
     string CustomMaterialContentFolder,
     int RetailSourceFilesCopied,
     bool GameOutputCleaned,
+    HeroSelectScenePreparationResult? HeroSelectScene,
     string LogPath);
 
 public sealed class PrepareAuthoringService
@@ -129,6 +130,7 @@ public sealed class PrepareAuthoringService
         log.AppendLine($"CSDK game output root: {addonGameRoot}");
         log.AppendLine($"Project-root model sources: DMX={rootDmxFiles.Length}, FBX={rootFbxFiles.Length}, glTF/GLB={rootGltfFiles.Length}");
         log.AppendLine($"Reset sections: {options.ResetSections}");
+        log.AppendLine($"Prepare hero-select scene: {options.PrepareHeroSelectScene}");
         log.AppendLine($"Selected-section backup: {(options.CreateBackup && options.ResetSections != PrepareResetSections.None ? "enabled" : "disabled")}");
         log.AppendLine();
 
@@ -202,6 +204,27 @@ public sealed class PrepareAuthoringService
             else if (options.ResetSections != PrepareResetSections.None)
             {
                 log.AppendLine("Selected-section backup skipped by explicit user choice.");
+            }
+
+            HeroSelectScenePreparationResult? heroSelectScene = null;
+            if (options.PrepareHeroSelectScene)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                progress?.Report(new PrepareAuthoringProgress(LocalizedText.T(
+                    "Preparing an editable hero-select scene...",
+                    "Подготовка редактируемой сцены выбора героя...")));
+                heroSelectScene = new HeroSelectScenePreparationService(_paths).Prepare(
+                    manifest,
+                    addonContentRoot,
+                    cancellationToken);
+                log.AppendLine($"Hero-select prefab: {heroSelectScene.HeroPrefabId}");
+                log.AppendLine($"Hero-select source VPK: {heroSelectScene.SourceVpkPath}");
+                log.AppendLine(
+                    $"Hero-select VMAP: created={heroSelectScene.CreatedCount}; preserved={heroSelectScene.PreservedCount}");
+                foreach (var scenePath in heroSelectScene.ScenePaths)
+                {
+                    log.AppendLine($"Hero-select scene: {scenePath}");
+                }
             }
 
             var sourceCopy = RetailVmdlInheritance.CopyRetailModelSourceTree(
@@ -512,6 +535,7 @@ public sealed class PrepareAuthoringService
                 customMaterials.MaterialContentFolder,
                 sourceCopy.FilesCopied,
                 gameOutputCleaned,
+                heroSelectScene,
                 logPath);
         }
         catch (Exception ex)

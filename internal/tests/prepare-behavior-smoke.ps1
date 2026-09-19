@@ -621,7 +621,9 @@ foreach ($required in @(
     'Materials',
     'Physics',
     'Effects',
-    'new PrepareAuthoringOptions(sections, createBackup)')) {
+    'Hero select scene',
+    'Сцена выбора героя',
+    'PrepareHeroSelectScene: _heroSelectScene.Checked')) {
     if (-not $dialogSource.Contains($required)) { throw "Clean PREPARE selection dialog contract missing: $required" }
 }
 if ($dialogSource.Contains('isChecked: true')) {
@@ -636,9 +638,22 @@ foreach ($required in @(
     'mutateExistingMaterials: regenerateCustomMaterials',
     'var finalTextureRepairs = regenerateCustomMaterials',
     'var cleanGameOutput = options.ResetSections != PrepareResetSections.None',
+    'if (options.PrepareHeroSelectScene)',
+    'new HeroSelectScenePreparationService(_paths).Prepare(',
     'Ordinary PREPARE preserved addon runtime output for incremental BUILD & TEST')) {
     if (-not $prepareSource.Contains($required)) {
         throw "Ordinary PREPARE byte-preservation contract is missing: $required"
+    }
+}
+$heroSelectSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/HeroSelectScenePreparationService.cs' -Raw
+foreach ($required in @(
+    'citadel/maps/ui/hero_prefabs',
+    '.EndsWith(".vmap_c"',
+    'FileExtract.Extract(resource, fileLoader, null)',
+    'if (File.Exists(outputPath))',
+    'File.Move(temporaryPath, outputPath, overwrite: false)')) {
+    if (-not $heroSelectSource.Contains($required)) {
+        throw "Hero-select scene preparation contract is missing: $required"
     }
 }
 $buildPipelineSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/BuildAndTestService.cs' -Raw

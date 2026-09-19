@@ -52,8 +52,8 @@ internal static class BuildFeature
         toolTip.SetToolTip(
             prepareButton,
             UiText.T(
-                "Prepare the selected project's working files for Reduced CSDK12 / ModelDoc / Material Editor.\n\nA normal click preserves artist edits. Hold SHIFT to choose which materials, physics or effects should be restored from retail source.",
-                "Подготовить рабочие файлы выбранного проекта для Reduced CSDK12 / ModelDoc / Material Editor.\n\nОбычный клик сохраняет правки автора. Удерживайте SHIFT, чтобы выбрать материалы, физику или эффекты для восстановления из retail-исходника."));
+                "Prepare the selected project's working files for Reduced CSDK12 / ModelDoc / Material Editor.\n\nA normal click preserves artist edits. Hold SHIFT to choose reset sections or create an editable hero-select VMAP.",
+                "Подготовить рабочие файлы выбранного проекта для Reduced CSDK12 / ModelDoc / Material Editor.\n\nОбычный клик сохраняет правки автора. Удерживайте SHIFT, чтобы выбрать разделы для восстановления или создать редактируемый VMAP сцены выбора героя."));
         toolTip.SetToolTip(
             buildAndTestButton,
             UiText.T(
@@ -367,6 +367,18 @@ internal static class BuildFeature
                     $"Обновлено PNG-текстур: {result.TextureSourceCount}\n" +
                     $"Папка custom-материалов:\n{result.CustomMaterialContentFolder}\n");
 
+            var heroSelectSceneSummary = result.HeroSelectScene is null
+                ? string.Empty
+                : UiText.T(
+                    $"Hero-select prefab: {result.HeroSelectScene.HeroPrefabId}\n" +
+                    $"Hero-select VMAP created: {result.HeroSelectScene.CreatedCount}\n" +
+                    $"Hero-select VMAP preserved: {result.HeroSelectScene.PreservedCount}\n" +
+                    $"Hero-select scene:\n{string.Join("\n", result.HeroSelectScene.ScenePaths)}\n\n",
+                    $"Префаб сцены выбора героя: {result.HeroSelectScene.HeroPrefabId}\n" +
+                    $"Создано VMAP сцены выбора: {result.HeroSelectScene.CreatedCount}\n" +
+                    $"Сохранено существующих VMAP: {result.HeroSelectScene.PreservedCount}\n" +
+                    $"Сцена выбора героя:\n{string.Join("\n", result.HeroSelectScene.ScenePaths)}\n\n");
+
             var message = UiText.T(
                 $"Project working files prepared.\n\n" +
                 $"Addon: {result.AddonName}\n" +
@@ -380,6 +392,7 @@ internal static class BuildFeature
                 $"VMDL remaps added: {result.AddedMaterialRemapCount}\n" +
                 $"Total VMDL remaps: {result.ExistingMaterialRemapCount + result.AddedMaterialRemapCount}\n" +
                 customMaterialSummary +
+                heroSelectSceneSummary +
                 $"Game-client source files copied: {result.RetailSourceFilesCopied}\n\n" +
                 $"CSDK content:\n{result.AddonContentRoot}\n\n" +
                 $"Model source:\n{result.SourceVmdlPath}\n\n" +
@@ -398,6 +411,7 @@ internal static class BuildFeature
                 $"VMDL remaps добавлено: {result.AddedMaterialRemapCount}\n" +
                 $"Всего VMDL remaps: {result.ExistingMaterialRemapCount + result.AddedMaterialRemapCount}\n" +
                 customMaterialSummary +
+                heroSelectSceneSummary +
                 $"Файлов из игрового клиента Deadlock скопировано: {result.RetailSourceFilesCopied}\n\n" +
                 $"CSDK content:\n{result.AddonContentRoot}\n\n" +
                 $"Исходник модели:\n{result.SourceVmdlPath}\n\n" +
