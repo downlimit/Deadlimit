@@ -196,6 +196,7 @@ public static class RetailTextureOverrideService
                 "Retail texture override destination");
             Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             File.Copy(replacement.ArtistSourcePath, destination, overwrite: true);
+            StagePanoramaTextureDescriptor(destination, replacement.StagedSourceResourcePath);
             staged++;
         }
 
@@ -228,6 +229,68 @@ public static class RetailTextureOverrideService
         }
 
         return staged;
+    }
+
+    private static void StagePanoramaTextureDescriptor(
+        string stagedImagePath,
+        string stagedResourcePath)
+    {
+        var normalizedResourcePath = NormalizeResourcePath(stagedResourcePath);
+        if (!normalizedResourcePath.StartsWith("panorama/images/", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var descriptorPath = Path.ChangeExtension(stagedImagePath, ".vtex");
+        var descriptor = $$"""
+            <!-- dmx encoding keyvalues2_noids 1 format vtex 1 -->
+            "CDmeVtex"
+            {
+                "m_inputTextureArray" "element_array"
+                [
+                    "CDmeInputTexture"
+                    {
+                        "m_name" "string" "InputTexture0"
+                        "m_fileName" "string" "{{normalizedResourcePath}}"
+                        "m_colorSpace" "string" "srgb"
+                        "m_typeString" "string" "2D"
+                        "m_imageProcessorArray" "element_array"
+                        [
+                            "CDmeImageProcessor"
+                            {
+                                "m_algorithm" "string" "None"
+                                "m_stringArg" "string" ""
+                                "m_vFloat4Arg" "vector4" "0 0 0 0"
+                            }
+                        ]
+                    }
+                ]
+                "m_outputTypeString" "string" "2D"
+                "m_outputFormat" "string" "RGBA8888"
+                "m_outputClearColor" "vector4" "0 0 0 0"
+                "m_nOutputMinDimension" "int" "0"
+                "m_nOutputMaxDimension" "int" "0"
+                "m_textureOutputChannelArray" "element_array"
+                [
+                    "CDmeTextureOutputChannel"
+                    {
+                        "m_inputTextureArray" "string_array" [ "InputTexture0" ]
+                        "m_srcChannels" "string" "rgba"
+                        "m_dstChannels" "string" "rgba"
+                        "m_mipAlgorithm" "CDmeImageProcessor"
+                        {
+                            "m_algorithm" "string" "None"
+                            "m_stringArg" "string" ""
+                            "m_vFloat4Arg" "vector4" "0 0 0 0"
+                        }
+                        "m_outputColorSpace" "string" "srgb"
+                    }
+                ]
+                "m_vClamp" "vector3" "0 0 0"
+                "m_bNoLod" "bool" "1"
+            }
+            """;
+        AtomicFile.WriteAllText(descriptorPath, descriptor);
     }
 
     public static string ResolveOnlineTextureTarget(
