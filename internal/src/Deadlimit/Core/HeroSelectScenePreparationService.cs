@@ -9,7 +9,10 @@ public sealed record HeroSelectScenePreparationResult(
     string SourceVpkPath,
     IReadOnlyList<string> ScenePaths,
     int CreatedCount,
-    int PreservedCount);
+    int PreservedCount,
+    IReadOnlyList<string> RuntimeResourcePaths,
+    int RuntimeCreatedCount,
+    int RuntimePreservedCount);
 
 public sealed class HeroSelectScenePreparationService
 {
@@ -26,6 +29,7 @@ public sealed class HeroSelectScenePreparationService
     public HeroSelectScenePreparationResult Prepare(
         ProjectManifest manifest,
         string addonContentRoot,
+        string addonGameRoot,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -41,11 +45,15 @@ public sealed class HeroSelectScenePreparationService
             ?? throw new InvalidDataException($"Hero-select VPK contains no entries: {sourceVpkPath}");
         using var fileLoader = new GameFileLoader(package, package.FileName);
 
-        var mapEntries = packageEntries
+        var packageFiles = packageEntries
             .SelectMany(group => group.Value)
             .Select(entry => (Entry: entry, Path: NormalizeResourcePath(entry.GetFullPath())))
-            .Where(item => item.Path.EndsWith(".vmap_c", StringComparison.OrdinalIgnoreCase))
+            .Where(item => item.Path.Length > 0)
             .OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var mapEntries = packageFiles
+            .Where(item => item.Path.EndsWith(".vmap_c", StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
         if (mapEntries.Length == 0)
@@ -108,12 +116,43 @@ public sealed class HeroSelectScenePreparationService
             }
         }
 
+        var runtimeCreated = 0;
+        var runtimePreserved = 0;
+        var runtimeResourcePaths = new List<string>(packageFiles.Length);
+        foreach (var (entry, resourcePath) in packageFiles)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var outputPath = SafePath.ResolveUnderRoot(
+                addonGameRoot,
+                resourcePath.Replace('/', Path.DirectorySeparatorChar),
+                "Prepared hero-select runtime resource");
+            runtimeResourcePaths.Add(outputPath);
+            if (File.Exists(outputPath))
+            {
+                runtimePreserved++;
+                continue;
+            }
+
+            package.ReadEntry(entry, out byte[] rawData);
+            if (WriteNewFileAtomically(outputPath, rawData))
+            {
+                runtimeCreated++;
+            }
+            else
+            {
+                runtimePreserved++;
+            }
+        }
+
         return new HeroSelectScenePreparationResult(
             heroPrefabId,
             sourceVpkPath,
             scenePaths,
             created,
-            preserved);
+            preserved,
+            runtimeResourcePaths,
+            runtimeCreated,
+            runtimePreserved);
     }
 
     private static (string HeroPrefabId, string VpkPath) ResolveHeroPrefabVpk(

@@ -657,6 +657,9 @@ foreach ($required in @(
     'citadel/maps/ui/hero_prefabs',
     '.EndsWith(".vmap_c"',
     'FileExtract.Extract(resource, fileLoader, null)',
+    'Prepared hero-select runtime resource',
+    'package.ReadEntry(entry, out byte[] rawData)',
+    'RuntimeCreatedCount',
     'if (File.Exists(outputPath))',
     'File.Move(temporaryPath, outputPath, overwrite: false)')) {
     if (-not $heroSelectSource.Contains($required)) {

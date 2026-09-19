@@ -216,11 +216,14 @@ public sealed class PrepareAuthoringService
                 heroSelectScene = new HeroSelectScenePreparationService(_paths).Prepare(
                     manifest,
                     addonContentRoot,
+                    addonGameRoot,
                     cancellationToken);
                 log.AppendLine($"Hero-select prefab: {heroSelectScene.HeroPrefabId}");
                 log.AppendLine($"Hero-select source VPK: {heroSelectScene.SourceVpkPath}");
                 log.AppendLine(
                     $"Hero-select VMAP: created={heroSelectScene.CreatedCount}; preserved={heroSelectScene.PreservedCount}");
+                log.AppendLine(
+                    $"Hero-select runtime resources: created={heroSelectScene.RuntimeCreatedCount}; preserved={heroSelectScene.RuntimePreservedCount}");
                 foreach (var scenePath in heroSelectScene.ScenePaths)
                 {
                     log.AppendLine($"Hero-select scene: {scenePath}");
