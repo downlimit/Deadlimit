@@ -422,6 +422,16 @@ public sealed class BuildAndTestService
             {
                 packagingExclusions.Remove(packagePath);
             }
+            var looseHeroSelectResources = Directory.EnumerateFiles(
+                    addonGameRoot,
+                    "*",
+                    SearchOption.AllDirectories)
+                .Select(path => NormalizeRelativePath(Path.GetRelativePath(addonGameRoot, path)))
+                .Where(path => IsLooseHeroSelectResource(path, heroSelectPackages))
+                .ToArray();
+            packagingExclusions.UnionWith(looseHeroSelectResources);
+            log.AppendLine(
+                $"Loose hero-select resources omitted from outer VPK: {looseHeroSelectResources.Length}");
             log.AppendLine($"Authored hero-select packages built: {heroSelectPackages.Count}");
 
             PackVpk(
@@ -815,6 +825,30 @@ public sealed class BuildAndTestService
         }
 
         return projectOwned;
+    }
+
+    private static bool IsLooseHeroSelectResource(
+        string relativePath,
+        IReadOnlyCollection<string> heroSelectPackages)
+    {
+        var normalizedPath = NormalizeRelativePath(relativePath);
+        foreach (var packagePath in heroSelectPackages)
+        {
+            var normalizedPackagePath = NormalizeRelativePath(packagePath);
+            if (!normalizedPackagePath.EndsWith(".vpk", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var sceneStem = normalizedPackagePath[..^".vpk".Length];
+            if (string.Equals(normalizedPath, sceneStem + ".vmap_c", StringComparison.OrdinalIgnoreCase)
+                || normalizedPath.StartsWith(sceneStem + "/", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static HashSet<string> ResolveExplicitProjectRootTextureOverrides(

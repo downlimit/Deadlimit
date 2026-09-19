@@ -101,6 +101,31 @@ foreach ($required in @(
     }
 }
 $buildServiceType = $assembly.GetType('Deadlimit.Core.BuildAndTestService', $true)
+$isLooseHeroSelectResource = $buildServiceType.GetMethod('IsLooseHeroSelectResource', $nonPublicStatic)
+if ($null -eq $isLooseHeroSelectResource) {
+    throw 'BuildAndTestService.IsLooseHeroSelectResource was not found.'
+}
+$heroSelectPackages = [string[]]@('maps/ui/hero_prefabs/tengu.vpk')
+foreach ($looseSceneResource in @(
+    'maps/ui/hero_prefabs/tengu.vmap_c',
+    'maps/ui/hero_prefabs/tengu/worldnodes/n0.vwnod_c',
+    'maps/ui/hero_prefabs/tengu/entities/unnamed_9.vmdl_c')) {
+    if (-not [bool]$isLooseHeroSelectResource.Invoke(
+        $null,
+        [object[]]@([string]$looseSceneResource, $heroSelectPackages))) {
+        throw "Loose hero-select resource was not excluded from the outer VPK: $looseSceneResource"
+    }
+}
+foreach ($retainedResource in @(
+    'maps/ui/hero_prefabs/tengu.vpk',
+    'models/heroes_wip/ivy/ivy.vmdl_c',
+    'maps/ui/hero_prefabs/another/world.vwrld_c')) {
+    if ([bool]$isLooseHeroSelectResource.Invoke(
+        $null,
+        [object[]]@([string]$retainedResource, $heroSelectPackages))) {
+        throw "Unrelated authored resource was treated as a loose hero-select duplicate: $retainedResource"
+    }
+}
 $dependencyOutput = $buildServiceType.GetMethod('GetDependencyCompiledRelativePath', $nonPublicStatic)
 if ($null -eq $dependencyOutput) {
     throw 'BuildAndTestService.GetDependencyCompiledRelativePath was not found.'
