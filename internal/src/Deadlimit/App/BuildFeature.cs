@@ -611,7 +611,10 @@ internal static class BuildFeature
                 forceStateBackupPath = null;
             }
 
-            await Task.Run(() => slotGuard.RecordSuccessfulDeployment(manifest, result.VpkPath));
+            if (manifest.Mode == ProjectMode.ImportedVpk)
+            {
+                await Task.Run(() => slotGuard.RecordSuccessfulDeployment(manifest, result.VpkPath));
+            }
             animator.Update(new BuildAndTestProgress(
                 UiText.T("Build for test complete.", "Сборка для теста готова."),
                 100));

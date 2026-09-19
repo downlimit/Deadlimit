@@ -107,6 +107,8 @@ public sealed class BuildAndTestService
         bool skipAllParticleSources)
     {
         ValidateEnvironment(manifest);
+        var slotOwnership = new VpkSlotOwnershipService(_paths);
+        slotOwnership.EnsureSlotAvailable(manifest);
 
         var releaseSlot = ParseReleaseSlot(manifest.ReleaseTarget);
         var addonIdentity = new AddonIdentityService(_paths).ResolveAndClaim(manifest);
@@ -441,6 +443,8 @@ public sealed class BuildAndTestService
                 log,
                 progress,
                 cancellationToken);
+            slotOwnership.RecordSuccessfulDeployment(manifest, vpkPath);
+            log.AppendLine("VPK slot ownership updated by the deployment transaction.");
             AppendStageTiming(log, "Retail reuse analysis and VPK packaging", stageTimer.Elapsed);
 
             var skippedRelativePaths = particlesToSkip
