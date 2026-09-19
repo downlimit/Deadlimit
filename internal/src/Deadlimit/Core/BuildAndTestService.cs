@@ -374,7 +374,7 @@ public sealed class BuildAndTestService
             AppendStageTiming(log, "Compiled model finalization", stageTimer.Elapsed);
 
             cancellationToken.ThrowIfCancellationRequested();
-            Report(progress, 90, LocalizedText.T("Packing VPK directly into retail Deadlock addons...", "Упаковка VPK непосредственно в retail addons Deadlock..."));
+            Report(progress, 88, LocalizedText.T("Preparing retail Deadlock package...", "Подготовка пакета для retail Deadlock..."));
 
             var retailAddonsRoot = Path.Combine(_paths.RetailDeadlockRoot, "game", "citadel", "addons");
             Directory.CreateDirectory(retailAddonsRoot);
@@ -398,10 +398,27 @@ public sealed class BuildAndTestService
                 log.AppendLine($"  reuse {reusableResource}");
             }
 
+            Report(progress, 89, LocalizedText.T(
+                "Building authored hero-select scene packages...",
+                "Сборка авторских пакетов сцены выбора героя..."));
+            var heroSelectPackages = await BuildHeroSelectScenePackagesAsync(
+                prepare.AddonContentRoot,
+                addonGameRoot,
+                packagingPlan.IncludedRelativePaths,
+                log,
+                cancellationToken);
+            var packagingExclusions = packagingPlan.ExcludedRelativePaths
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var packagePath in heroSelectPackages)
+            {
+                packagingExclusions.Remove(packagePath);
+            }
+            log.AppendLine($"Authored hero-select packages built: {heroSelectPackages.Count}");
+
             PackVpk(
                 addonGameRoot,
                 vpkPath,
-                packagingPlan.ExcludedRelativePaths,
+                packagingExclusions,
                 log,
                 progress,
                 cancellationToken);
@@ -1299,6 +1316,206 @@ public sealed class BuildAndTestService
                     log.AppendLine($"Could not remove temporary VPK staging file '{temporaryFile}': {ex.Message}");
                 }
             }
+        }
+    }
+
+    private async Task<IReadOnlyList<string>> BuildHeroSelectScenePackagesAsync(
+        string addonContentRoot,
+        string addonGameRoot,
+        IReadOnlySet<string> includedCompiledResources,
+        StringBuilder log,
+        CancellationToken cancellationToken)
+    {
+        var sceneFolder = Path.Combine(addonContentRoot, "maps", "ui", "hero_prefabs");
+        if (!Directory.Exists(sceneFolder))
+        {
+            return Array.Empty<string>();
+        }
+
+        var scenes = Directory.EnumerateFiles(sceneFolder, "*.vmap", SearchOption.TopDirectoryOnly)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (scenes.Length == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        var builtPackages = new List<string>(scenes.Length);
+        foreach (var scenePath in scenes)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var sceneId = Path.GetFileNameWithoutExtension(scenePath);
+            var originalPackagePath = Path.Combine(
+                _paths.CsdkGameRoot,
+                "citadel",
+                "maps",
+                "ui",
+                "hero_prefabs",
+                sceneId + ".vpk");
+            if (!File.Exists(originalPackagePath))
+            {
+                throw new FileNotFoundException(
+                    $"Original hero-select package was not found for authored scene '{sceneId}'.",
+                    originalPackagePath);
+            }
+
+            var temporaryOutputRoot = Path.Combine(
+                Path.GetTempPath(),
+                $"deadlimit-hero-select-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(temporaryOutputRoot);
+            try
+            {
+                var compileResult = await RunProcessAsync(
+                    _paths.ResourceCompilerPath,
+                    [
+                        "-threads", Math.Max(1, Environment.ProcessorCount - 1).ToString(),
+                        "-fshallow",
+                        "-maxtextureres", "256",
+                        "-dxlevel", "110",
+                        "-quiet",
+                        "-unbufferedio",
+                        "-i", scenePath,
+                        "-noassert",
+                        "-world",
+                        "-phys",
+                        "-vis",
+                        "-retail",
+                        "-breakpad",
+                        "-nop4",
+                        "-outroot", temporaryOutputRoot,
+                    ],
+                    Path.GetDirectoryName(_paths.ResourceCompilerPath)!,
+                    cancellationToken);
+                AppendProcessLog(log, $"Hero-select map compile: {sceneId}", compileResult);
+                if (!compileResult.Success)
+                {
+                    throw new InvalidOperationException(
+                        $"Hero-select map compilation failed for '{sceneId}' with exit code {compileResult.ExitCode}. See the Build & Test log.");
+                }
+
+                var compiledMapPackages = Directory.EnumerateFiles(
+                        temporaryOutputRoot,
+                        sceneId + ".vpk",
+                        SearchOption.AllDirectories)
+                    .ToArray();
+                if (compiledMapPackages.Length != 1)
+                {
+                    throw new InvalidOperationException(
+                        $"Hero-select map compiler produced {compiledMapPackages.Length} matching VPK files for '{sceneId}'; expected exactly one.");
+                }
+
+                var targetRelativePath = NormalizeRelativePath(
+                    Path.Combine("maps", "ui", "hero_prefabs", sceneId + ".vpk"));
+                var targetPath = SafePath.ResolveUnderRoot(
+                    addonGameRoot,
+                    ToWindowsPath(targetRelativePath),
+                    "Authored hero-select VPK");
+                CreateHeroSelectPackage(
+                    originalPackagePath,
+                    compiledMapPackages[0],
+                    addonGameRoot,
+                    includedCompiledResources,
+                    targetRelativePath,
+                    targetPath,
+                    log,
+                    cancellationToken);
+                builtPackages.Add(targetRelativePath);
+            }
+            finally
+            {
+                if (Directory.Exists(temporaryOutputRoot))
+                {
+                    Directory.Delete(temporaryOutputRoot, recursive: true);
+                }
+            }
+        }
+
+        return builtPackages;
+    }
+
+    private static void CreateHeroSelectPackage(
+        string originalPackagePath,
+        string compiledMapPackagePath,
+        string addonGameRoot,
+        IReadOnlySet<string> includedCompiledResources,
+        string targetRelativePath,
+        string targetPath,
+        StringBuilder log,
+        CancellationToken cancellationToken)
+    {
+        var entries = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+        OverlayPackageEntries(originalPackagePath, entries, cancellationToken);
+
+        foreach (var relativePath in includedCompiledResources.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (string.Equals(relativePath, targetRelativePath, StringComparison.OrdinalIgnoreCase)
+                || relativePath.EndsWith(".vpk", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var sourcePath = SafePath.ResolveUnderRoot(
+                addonGameRoot,
+                ToWindowsPath(relativePath),
+                "Hero-select compiled dependency");
+            if (File.Exists(sourcePath))
+            {
+                entries[relativePath] = File.ReadAllBytes(sourcePath);
+            }
+        }
+
+        // The freshly compiled map must win over both the original package and
+        // loose prepared runtime files, which can still contain the retail VMAP.
+        OverlayPackageEntries(compiledMapPackagePath, entries, cancellationToken);
+
+        var targetFolder = Path.GetDirectoryName(targetPath)
+            ?? throw new InvalidOperationException($"Hero-select VPK has no parent folder: {targetPath}");
+        Directory.CreateDirectory(targetFolder);
+        var temporaryPath = Path.Combine(
+            targetFolder,
+            $".{Path.GetFileName(targetPath)}.{Guid.NewGuid():N}.tmp.vpk");
+        try
+        {
+            using (var outputPackage = new Package { Version = 2 })
+            {
+                foreach (var (relativePath, data) in entries.OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    outputPackage.AddFile(relativePath, data);
+                }
+                outputPackage.Write(temporaryPath);
+            }
+
+            VerifyVpk(temporaryPath);
+            File.Move(temporaryPath, targetPath, overwrite: true);
+            log.AppendLine(
+                $"Hero-select VPK built: {targetRelativePath} | entries={entries.Count} | output={targetPath}");
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                File.Delete(temporaryPath);
+            }
+        }
+    }
+
+    private static void OverlayPackageEntries(
+        string packagePath,
+        IDictionary<string, byte[]> destination,
+        CancellationToken cancellationToken)
+    {
+        using var package = new Package();
+        package.Read(packagePath);
+        var packageEntries = package.Entries
+            ?? throw new InvalidDataException($"VPK contains no entries: {packagePath}");
+        foreach (var entry in packageEntries.SelectMany(group => group.Value))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var relativePath = NormalizeRelativePath(entry.GetFullPath());
+            package.ReadEntry(entry, out byte[] data);
+            destination[relativePath] = data;
         }
     }
 
