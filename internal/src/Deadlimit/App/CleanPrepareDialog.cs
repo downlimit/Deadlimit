@@ -115,14 +115,9 @@ internal sealed class CleanPrepareDialog : Form
 
     private void UpdateActions()
     {
-        var hasResetSelection = _materials.Checked || _physics.Checked || _effects.Checked;
-        var hasSelection = hasResetSelection || _heroSelectScene.Checked;
-        _backupButton.Text = hasResetSelection
-            ? UiText.T("BACK UP & REPREPARE", "СДЕЛАТЬ БЭКАП И ПЕРЕПОДГОТОВИТЬ")
-            : UiText.T("PREPARE", "ПОДГОТОВИТЬ");
+        var hasSelection = _materials.Checked || _physics.Checked || _effects.Checked || _heroSelectScene.Checked;
         _backupButton.Enabled = hasSelection;
-        _withoutBackupButton.Visible = hasResetSelection;
-        _withoutBackupButton.Enabled = hasResetSelection;
+        _withoutBackupButton.Enabled = hasSelection;
     }
 
     private void Finish(bool createBackup)
