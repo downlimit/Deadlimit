@@ -629,6 +629,13 @@ foreach ($required in @(
 if ($dialogSource.Contains('isChecked: true')) {
     throw 'Clean PREPARE sections must all start unchecked.'
 }
+foreach ($forbidden in @(
+    '_withoutBackupButton.Visible',
+    '_backupButton.Text =')) {
+    if ($dialogSource.Contains($forbidden)) {
+        throw "Clean PREPARE bottom actions must stay constant: $forbidden"
+    }
+}
 
 # Ordinary PREPARE must not rewrite or migrate an existing author VMAT.
 $prepareSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/PrepareAuthoringService.cs' -Raw
