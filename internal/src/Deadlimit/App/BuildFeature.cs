@@ -373,12 +373,16 @@ internal static class BuildFeature
                     $"Hero-select prefab: {result.HeroSelectScene.HeroPrefabId}\n" +
                     $"Hero-select VMAP created: {result.HeroSelectScene.CreatedCount}\n" +
                     $"Hero-select VMAP preserved: {result.HeroSelectScene.PreservedCount}\n" +
+                    $"Hero-select authoring resources created: {result.HeroSelectScene.AuthoringResourceCreatedCount}\n" +
+                    $"Hero-select authoring resources preserved: {result.HeroSelectScene.AuthoringResourcePreservedCount}\n" +
                     $"Hero-select runtime resources created: {result.HeroSelectScene.RuntimeCreatedCount}\n" +
                     $"Hero-select runtime resources preserved: {result.HeroSelectScene.RuntimePreservedCount}\n" +
                     $"Hero-select scene:\n{string.Join("\n", result.HeroSelectScene.ScenePaths)}\n\n",
                     $"Префаб сцены выбора героя: {result.HeroSelectScene.HeroPrefabId}\n" +
                     $"Создано VMAP сцены выбора: {result.HeroSelectScene.CreatedCount}\n" +
                     $"Сохранено существующих VMAP: {result.HeroSelectScene.PreservedCount}\n" +
+                    $"Создано authoring-ресурсов сцены: {result.HeroSelectScene.AuthoringResourceCreatedCount}\n" +
+                    $"Сохранено существующих authoring-ресурсов: {result.HeroSelectScene.AuthoringResourcePreservedCount}\n" +
                     $"Создано runtime-ресурсов сцены: {result.HeroSelectScene.RuntimeCreatedCount}\n" +
                     $"Сохранено существующих runtime-ресурсов: {result.HeroSelectScene.RuntimePreservedCount}\n" +
                     $"Сцена выбора героя:\n{string.Join("\n", result.HeroSelectScene.ScenePaths)}\n\n");
