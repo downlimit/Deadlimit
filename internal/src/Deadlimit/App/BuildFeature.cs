@@ -989,20 +989,18 @@ internal static class BuildFeature
 
     private sealed class BuildProgressAnimator : IDisposable
     {
-        private readonly ToolStripStatusLabel? _statusLabel;
+        private readonly MainForm _form;
         private readonly ToolStripProgressBar? _progressBar;
 
         private string _message;
         private bool _disposed;
 
         public BuildProgressAnimator(
-            Form form,
+            MainForm form,
             ToolStripProgressBar? progressBar,
             string? initialMessage = null)
         {
-            _statusLabel = BuildFeature.FindDescendants<StatusStrip>(form)
-                .SelectMany(strip => strip.Items.OfType<ToolStripStatusLabel>())
-                .FirstOrDefault(item => !item.Spring);
+            _form = form;
             _progressBar = progressBar;
             _message = initialMessage
                 ?? UiText.T("Starting build for test...", "Запуск сборки для теста...");
@@ -1038,12 +1036,12 @@ internal static class BuildFeature
 
         private void Render()
         {
-            if (_disposed || _statusLabel is null)
+            if (_disposed)
             {
                 return;
             }
 
-            _statusLabel.Text = UiText.NormalizeProductNames(_message);
+            WindowProgressFeature.ReportStatus(_form, _message);
         }
 
         public void Dispose()

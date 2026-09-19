@@ -83,7 +83,7 @@ if ($buildFeature -match '(?m)\bform\.Text\s*=') {
 if ($buildFeature.Contains('SpinnerFrames', [StringComparison]::Ordinal)) {
     throw 'Legacy title-bar build spinner must not return.'
 }
-if (-not $buildFeature.Contains('BuildFeature.FindDescendants<StatusStrip>(form)', [StringComparison]::Ordinal)) {
+if (-not $buildFeature.Contains('WindowProgressFeature.ReportStatus(_form, _message)', [StringComparison]::Ordinal)) {
     throw 'Build progress must report through the bottom status area.'
 }
 
@@ -98,6 +98,23 @@ if (-not $onlinePreparation.Contains('WindowProgressFeature.ReportStatus', [Stri
 $windowProgress = Get-Content -LiteralPath $windowProgressPath -Raw
 if (-not $windowProgress.Contains('public static void ReportStatus', [StringComparison]::Ordinal)) {
     throw 'Shared bottom status reporter is missing.'
+}
+if (-not $windowProgress.Contains('StatusLabels[form] = statusLabel;', [StringComparison]::Ordinal) -or
+    -not $windowProgress.Contains('StatusLabels.GetValueOrDefault(form)', [StringComparison]::Ordinal)) {
+    throw 'Bottom status reporter must retain the source label after SteamStatusFeature detaches its StatusStrip.'
+}
+if (-not $windowProgress.Contains('RunDetachedStatusSmoke()', [StringComparison]::Ordinal)) {
+    throw 'Detached bottom-status runtime regression smoke is missing.'
+}
+
+if (-not $mainForm.Contains('workspace.Margin.Bottom + assetsGroup.Margin.Bottom', [StringComparison]::Ordinal)) {
+    throw 'Library and project-files frames must share the same lower edge.'
+}
+if (-not $mainForm.Contains('RunFrameAlignmentSmoke()', [StringComparison]::Ordinal)) {
+    throw 'Main-frame alignment runtime regression smoke is missing.'
+}
+if (-not $mainForm.Contains('form.ClientSize.Width - GetRightRelativeToForm(projectFiles)', [StringComparison]::Ordinal)) {
+    throw 'Main-frame outer edge symmetry regression smoke is missing.'
 }
 
 $saveState = Get-Content -LiteralPath $saveStatePath -Raw
