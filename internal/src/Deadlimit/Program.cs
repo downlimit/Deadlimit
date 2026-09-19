@@ -153,6 +153,18 @@ internal static class Program
             {
                 return 20 + settingsLayoutResult;
             }
+
+            var mainFrameLayoutResult = MainForm.RunFrameAlignmentSmoke();
+            if (mainFrameLayoutResult != 0)
+            {
+                return 80 + mainFrameLayoutResult;
+            }
+
+            var detachedStatusResult = WindowProgressFeature.RunDetachedStatusSmoke();
+            if (detachedStatusResult != 0)
+            {
+                return 90 + detachedStatusResult;
+            }
         }
 
         var settings = ProjectStore.GetToolPathSettings();

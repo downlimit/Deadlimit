@@ -48,6 +48,37 @@ public sealed class MainForm : Form
         };
     }
 
+    internal static int RunFrameAlignmentSmoke()
+    {
+        using var form = new MainForm
+        {
+            Size = new Size(972, 672),
+        };
+        form.CreateControl();
+        PerformLayoutRecursively(form);
+
+        var groups = FindControls<GroupBox>(form).ToArray();
+        var library = groups.FirstOrDefault(group =>
+            string.Equals(group.Text, "Projects", StringComparison.Ordinal)
+            || string.Equals(group.Text, "Проекты", StringComparison.Ordinal));
+        var projectFiles = groups.FirstOrDefault(group =>
+            string.Equals(group.Text, "Detected in project root", StringComparison.Ordinal)
+            || string.Equals(group.Text, "Найдено в корне проекта", StringComparison.Ordinal));
+        if (library is null || projectFiles is null)
+        {
+            return 1;
+        }
+
+        if (GetBottomRelativeToForm(library) != GetBottomRelativeToForm(projectFiles))
+        {
+            return 2;
+        }
+
+        var leftInset = GetLeftRelativeToForm(library);
+        var rightInset = form.ClientSize.Width - GetRightRelativeToForm(projectFiles);
+        return leftInset == rightInset ? 0 : 3;
+    }
+
     private void BuildUi()
     {
         var root = new TableLayoutPanel
@@ -85,6 +116,7 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 3,
+            Margin = new Padding(3, 3, 0, 3),
         };
         workspace.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         workspace.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -161,7 +193,16 @@ public sealed class MainForm : Form
             Text = UiText.T("Detected in project root", "Найдено в корне проекта"),
             Dock = DockStyle.Fill,
             Padding = new Padding(12),
+            Margin = new Padding(3, 3, 0, 3),
         };
+
+        // The project-files frame is nested inside workspace, so its lower edge includes
+        // both margins. Match that accumulated inset on the adjacent Library frame.
+        libraryGroup.Margin = new Padding(
+            libraryGroup.Margin.Left,
+            libraryGroup.Margin.Top,
+            libraryGroup.Margin.Right,
+            workspace.Margin.Bottom + assetsGroup.Margin.Bottom);
 
         var assetsLayout = new TableLayoutPanel
         {
@@ -219,6 +260,64 @@ public sealed class MainForm : Form
         control.Margin = new Padding(0, 4, 8, 4);
         grid.Controls.Add(caption, 0, row);
         grid.Controls.Add(control, 1, row);
+    }
+
+    private static void PerformLayoutRecursively(Control root)
+    {
+        root.PerformLayout();
+        foreach (Control child in root.Controls)
+        {
+            PerformLayoutRecursively(child);
+        }
+    }
+
+    private static int GetBottomRelativeToForm(Control control)
+    {
+        var bottom = control.Bottom;
+        for (var parent = control.Parent; parent is not null and not Form; parent = parent.Parent)
+        {
+            bottom += parent.Top;
+        }
+
+        return bottom;
+    }
+
+    private static int GetLeftRelativeToForm(Control control)
+    {
+        var left = control.Left;
+        for (var parent = control.Parent; parent is not null and not Form; parent = parent.Parent)
+        {
+            left += parent.Left;
+        }
+
+        return left;
+    }
+
+    private static int GetRightRelativeToForm(Control control)
+    {
+        var right = control.Right;
+        for (var parent = control.Parent; parent is not null and not Form; parent = parent.Parent)
+        {
+            right += parent.Left;
+        }
+
+        return right;
+    }
+
+    private static IEnumerable<T> FindControls<T>(Control root) where T : Control
+    {
+        foreach (Control child in root.Controls)
+        {
+            if (child is T match)
+            {
+                yield return match;
+            }
+
+            foreach (var nested in FindControls<T>(child))
+            {
+                yield return nested;
+            }
+        }
     }
 
     private void InitializeProjectLibrary()

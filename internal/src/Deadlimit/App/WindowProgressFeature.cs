@@ -5,9 +5,19 @@ internal static class WindowProgressFeature
     private const string AppTitle = UiText.ProductName;
     private const string ProgressTitlePrefix = AppTitle + " — ";
     private const string LegacyProgressTitlePrefix = "Deadlimit Manager — ";
+    private static readonly Dictionary<MainForm, ToolStripStatusLabel> StatusLabels = [];
 
     public static void Attach(MainForm form)
     {
+        var statusLabel = FindDescendants<StatusStrip>(form)
+            .SelectMany(strip => strip.Items.OfType<ToolStripStatusLabel>())
+            .FirstOrDefault(item => !item.Spring);
+        if (statusLabel is not null)
+        {
+            StatusLabels[form] = statusLabel;
+            form.FormClosed += (_, _) => StatusLabels.Remove(form);
+        }
+
         form.Text = AppTitle;
         form.TextChanged += (_, _) =>
         {
@@ -35,15 +45,38 @@ internal static class WindowProgressFeature
             return;
         }
 
-        var statusLabel = FindDescendants<StatusStrip>(form)
-            .SelectMany(strip => strip.Items.OfType<ToolStripStatusLabel>())
-            .FirstOrDefault(item => !item.Spring);
+        var statusLabel = StatusLabels.GetValueOrDefault(form)
+            ?? FindDescendants<StatusStrip>(form)
+                .SelectMany(strip => strip.Items.OfType<ToolStripStatusLabel>())
+                .FirstOrDefault(item => !item.Spring);
         if (statusLabel is null)
         {
             return;
         }
 
         statusLabel.Text = UiText.NormalizeProductNames(message);
+    }
+
+    internal static int RunDetachedStatusSmoke()
+    {
+        using var form = new MainForm();
+        var statusStrip = FindDescendants<StatusStrip>(form).FirstOrDefault();
+        var statusLabel = statusStrip?.Items
+            .OfType<ToolStripStatusLabel>()
+            .FirstOrDefault(item => !item.Spring);
+        if (statusStrip?.Parent is null || statusLabel is null)
+        {
+            return 1;
+        }
+
+        Attach(form);
+        statusStrip.Parent.Controls.Remove(statusStrip);
+
+        const string marker = "Detailed build progress";
+        ReportStatus(form, marker);
+        return string.Equals(statusLabel.Text, marker, StringComparison.Ordinal)
+            ? 0
+            : 2;
     }
 
     private static bool TryExtractProgressMessage(string title, out string message)
