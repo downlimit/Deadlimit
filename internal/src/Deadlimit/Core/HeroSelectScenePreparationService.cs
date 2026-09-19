@@ -10,6 +10,9 @@ public sealed record HeroSelectScenePreparationResult(
     IReadOnlyList<string> ScenePaths,
     int CreatedCount,
     int PreservedCount,
+    IReadOnlyList<string> AuthoringResourcePaths,
+    int AuthoringResourceCreatedCount,
+    int AuthoringResourcePreservedCount,
     IReadOnlyList<string> RuntimeResourcePaths,
     int RuntimeCreatedCount,
     int RuntimePreservedCount);
@@ -116,6 +119,45 @@ public sealed class HeroSelectScenePreparationService
             }
         }
 
+        // Hammer can display compiled resources from the addon game folder, but
+        // ResourceCompiler needs editable model sources while rebuilding a VMAP.
+        // World-node prop models are stored inside the prefab VPK, so publish
+        // their decompiled VMDL and embedded mesh sidecars into addon content.
+        var authoringResourcePaths = new List<string>();
+        var authoringResourceCreated = 0;
+        var authoringResourcePreserved = 0;
+        var sceneResourcePrefix = $"{HeroPrefabContentFolder}/{heroPrefabId}/";
+        var authoringModelEntries = packageFiles
+            .Where(item => item.Path.StartsWith(sceneResourcePrefix, StringComparison.OrdinalIgnoreCase))
+            .Where(item => item.Path.EndsWith(".vmdl_c", StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        foreach (var (entry, resourcePath) in authoringModelEntries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            package.ReadEntry(entry, out byte[] rawData);
+
+            using var stream = new MemoryStream(rawData, writable: false);
+            using var resource = new Resource { FileName = resourcePath };
+            resource.Read(stream);
+
+            var outputExtension = FileExtract.GetExtension(resource) ?? entry.TypeName[..^2];
+            var relativeOutputPath = Path.ChangeExtension(resourcePath, outputExtension);
+            var outputPath = SafePath.ResolveUnderRoot(
+                addonContentRoot,
+                relativeOutputPath.Replace('/', Path.DirectorySeparatorChar),
+                "Prepared hero-select authoring resource");
+
+            using var contentFile = FileExtract.Extract(resource, fileLoader, null);
+            PublishContentFilePreserving(
+                addonContentRoot,
+                outputPath,
+                contentFile,
+                authoringResourcePaths,
+                ref authoringResourceCreated,
+                ref authoringResourcePreserved);
+        }
+
         var runtimeCreated = 0;
         var runtimePreserved = 0;
         var runtimeResourcePaths = new List<string>(packageFiles.Length);
@@ -150,6 +192,9 @@ public sealed class HeroSelectScenePreparationService
             scenePaths,
             created,
             preserved,
+            authoringResourcePaths,
+            authoringResourceCreated,
+            authoringResourcePreserved,
             runtimeResourcePaths,
             runtimeCreated,
             runtimePreserved);
@@ -281,6 +326,84 @@ public sealed class HeroSelectScenePreparationService
 
     private static string NormalizeResourcePath(string path) =>
         path.Replace('\\', '/').TrimStart('/');
+
+    private static void PublishContentFilePreserving(
+        string outputRoot,
+        string outputPath,
+        ContentFile contentFile,
+        List<string> publishedPaths,
+        ref int created,
+        ref int preserved)
+    {
+        if (contentFile.Data is not null)
+        {
+            PublishContentBytesPreserving(outputPath, contentFile.Data, publishedPaths, ref created, ref preserved);
+        }
+
+        foreach (var additionalFile in contentFile.AdditionalFiles)
+        {
+            var additionalFileName = NormalizeResourcePath(additionalFile.FileName);
+            var preserveTextureResourceDirectory = additionalFile is TextureContentFile
+                && additionalFileName.Contains('/');
+            var additionalPath = additionalFile.KeepFullPath || preserveTextureResourceDirectory
+                ? SafePath.ResolveUnderRoot(
+                    outputRoot,
+                    additionalFileName.Replace('/', Path.DirectorySeparatorChar),
+                    "Additional prepared hero-select authoring resource")
+                : Path.Combine(Path.GetDirectoryName(outputPath)!, Path.GetFileName(additionalFileName));
+
+            PublishContentFilePreserving(
+                outputRoot,
+                additionalPath,
+                additionalFile,
+                publishedPaths,
+                ref created,
+                ref preserved);
+        }
+
+        foreach (var subFile in contentFile.SubFiles)
+        {
+            var data = subFile.Extract?.Invoke();
+            if (data is null)
+            {
+                continue;
+            }
+
+            var parent = SafePath.EnsureUnderRoot(
+                outputRoot,
+                Path.GetDirectoryName(outputPath)!,
+                "Prepared hero-select subfile parent");
+            var subFilePath = SafePath.ResolveUnderRoot(
+                parent,
+                Path.GetFileName(subFile.FileName),
+                "Prepared hero-select subfile");
+            PublishContentBytesPreserving(subFilePath, data, publishedPaths, ref created, ref preserved);
+        }
+    }
+
+    private static void PublishContentBytesPreserving(
+        string outputPath,
+        ReadOnlyMemory<byte> data,
+        List<string> publishedPaths,
+        ref int created,
+        ref int preserved)
+    {
+        publishedPaths.Add(outputPath);
+        if (File.Exists(outputPath))
+        {
+            preserved++;
+            return;
+        }
+
+        if (WriteNewFileAtomically(outputPath, data.ToArray()))
+        {
+            created++;
+        }
+        else
+        {
+            preserved++;
+        }
+    }
 
     private static bool WriteNewFileAtomically(string outputPath, byte[] data)
     {

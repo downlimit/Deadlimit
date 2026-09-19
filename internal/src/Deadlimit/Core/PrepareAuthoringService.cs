@@ -223,6 +223,8 @@ public sealed class PrepareAuthoringService
                 log.AppendLine(
                     $"Hero-select VMAP: created={heroSelectScene.CreatedCount}; preserved={heroSelectScene.PreservedCount}");
                 log.AppendLine(
+                    $"Hero-select authoring resources: created={heroSelectScene.AuthoringResourceCreatedCount}; preserved={heroSelectScene.AuthoringResourcePreservedCount}");
+                log.AppendLine(
                     $"Hero-select runtime resources: created={heroSelectScene.RuntimeCreatedCount}; preserved={heroSelectScene.RuntimePreservedCount}");
                 foreach (var scenePath in heroSelectScene.ScenePaths)
                 {

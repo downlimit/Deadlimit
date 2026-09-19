@@ -404,6 +404,7 @@ public sealed class BuildAndTestService
             var heroSelectPackages = await BuildHeroSelectScenePackagesAsync(
                 prepare.AddonContentRoot,
                 addonGameRoot,
+                metadataFolder,
                 packagingPlan.IncludedRelativePaths,
                 log,
                 cancellationToken);
@@ -1322,6 +1323,7 @@ public sealed class BuildAndTestService
     private async Task<IReadOnlyList<string>> BuildHeroSelectScenePackagesAsync(
         string addonContentRoot,
         string addonGameRoot,
+        string metadataFolder,
         IReadOnlySet<string> includedCompiledResources,
         StringBuilder log,
         CancellationToken cancellationToken)
@@ -1357,6 +1359,48 @@ public sealed class BuildAndTestService
                 throw new FileNotFoundException(
                     $"Original hero-select package was not found for authored scene '{sceneId}'.",
                     originalPackagePath);
+            }
+
+            var sceneAuthoringFolder = Path.Combine(sceneFolder, sceneId);
+            var sceneAuthoringModels = Directory.Exists(sceneAuthoringFolder)
+                ? Directory.EnumerateFiles(sceneAuthoringFolder, "*.vmdl", SearchOption.AllDirectories)
+                    .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                    .ToArray()
+                : Array.Empty<string>();
+            if (sceneAuthoringModels.Length > 0)
+            {
+                using var invalidatedSceneModels = CompileOutputInvalidation.Begin(
+                    addonContentRoot,
+                    addonGameRoot,
+                    metadataFolder,
+                    sceneAuthoringModels,
+                    Array.Empty<string>(),
+                    log);
+                try
+                {
+                    await CompileInBatchesAsync(
+                        sceneAuthoringModels,
+                        log,
+                        progress: null,
+                        cancellationToken);
+                    var missingSceneModels = VerifyCompiledOutputs(
+                        addonContentRoot,
+                        addonGameRoot,
+                        sceneAuthoringModels);
+                    if (missingSceneModels.SourcePaths.Count > 0)
+                    {
+                        throw new InvalidOperationException(
+                            $"ResourceCompiler did not produce {missingSceneModels.SourcePaths.Count} hero-select scene model(s) for '{sceneId}'.");
+                    }
+
+                    invalidatedSceneModels.Commit();
+                    log.AppendLine($"Hero-select authoring models rebuilt: {sceneAuthoringModels.Length}");
+                }
+                catch
+                {
+                    invalidatedSceneModels.Restore(log);
+                    throw;
+                }
             }
 
             var temporaryOutputRoot = Path.Combine(
