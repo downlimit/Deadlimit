@@ -405,7 +405,6 @@ public sealed class BuildAndTestService
                 prepare.AddonContentRoot,
                 addonGameRoot,
                 metadataFolder,
-                packagingPlan.IncludedRelativePaths,
                 log,
                 cancellationToken);
             var packagingExclusions = packagingPlan.ExcludedRelativePaths
@@ -1324,7 +1323,6 @@ public sealed class BuildAndTestService
         string addonContentRoot,
         string addonGameRoot,
         string metadataFolder,
-        IReadOnlySet<string> includedCompiledResources,
         StringBuilder log,
         CancellationToken cancellationToken)
     {
@@ -1457,8 +1455,6 @@ public sealed class BuildAndTestService
                 CreateHeroSelectPackage(
                     originalPackagePath,
                     compiledMapPackages[0],
-                    addonGameRoot,
-                    includedCompiledResources,
                     targetRelativePath,
                     targetPath,
                     log,
@@ -1480,8 +1476,6 @@ public sealed class BuildAndTestService
     private static void CreateHeroSelectPackage(
         string originalPackagePath,
         string compiledMapPackagePath,
-        string addonGameRoot,
-        IReadOnlySet<string> includedCompiledResources,
         string targetRelativePath,
         string targetPath,
         StringBuilder log,
@@ -1490,28 +1484,12 @@ public sealed class BuildAndTestService
         var entries = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
         OverlayPackageEntries(originalPackagePath, entries, cancellationToken);
 
-        foreach (var relativePath in includedCompiledResources.OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (string.Equals(relativePath, targetRelativePath, StringComparison.OrdinalIgnoreCase)
-                || relativePath.EndsWith(".vpk", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            var sourcePath = SafePath.ResolveUnderRoot(
-                addonGameRoot,
-                ToWindowsPath(relativePath),
-                "Hero-select compiled dependency");
-            if (File.Exists(sourcePath))
-            {
-                entries[relativePath] = File.ReadAllBytes(sourcePath);
-            }
-        }
-
-        // The freshly compiled map must win over both the original package and
-        // loose prepared runtime files, which can still contain the retail VMAP.
+        // Project-owned models, materials, textures, and effects remain at the
+        // top level of the outer mod VPK. The nested hero-select VPK carries
+        // only the original scene support files plus the freshly compiled map,
+        // avoiding a second copy of the whole authored mod payload.
         OverlayPackageEntries(compiledMapPackagePath, entries, cancellationToken);
+        log.AppendLine($"Hero-select nested payload restricted to scene resources: {entries.Count} entries.");
 
         var targetFolder = Path.GetDirectoryName(targetPath)
             ?? throw new InvalidOperationException($"Hero-select VPK has no parent folder: {targetPath}");
