@@ -671,6 +671,13 @@ foreach ($required in @(
     'FindDirectDependents(',
     '.Chunk(CompileBatchSize)',
     'ProbeParticleBatchFailuresAsync(',
+    'BuildHeroSelectScenePackagesAsync(',
+    'CreateHeroSelectPackage(',
+    'OverlayPackageEntries(',
+    '"-world"',
+    '"-phys"',
+    '"-vis"',
+    'Authored hero-select packages built:',
     'TIMING {stage}: {elapsed.TotalSeconds:F3}s')) {
     if (-not $buildPipelineSource.Contains($required)) {
         throw "Incremental build performance contract is missing: $required"
