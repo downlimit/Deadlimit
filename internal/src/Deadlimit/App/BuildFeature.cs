@@ -496,6 +496,7 @@ internal static class BuildFeature
         }
 
         var forceFullRebuild = (Control.ModifierKeys & Keys.Shift) == Keys.Shift;
+        var buildAttemptStartedUtc = DateTimeOffset.UtcNow;
         using var animator = new BuildProgressAnimator(form, progressBar);
 
         string? forceStatePath = null;
@@ -673,9 +674,16 @@ internal static class BuildFeature
         catch (Exception ex)
         {
             RestoreForceBuildState(forceStatePath, forceStateBackupPath);
+            var failureLogPath = BuildFailureLogService.EnsureCurrentFailureLog(
+                manifest,
+                buildAttemptStartedUtc,
+                ex);
+            var failureLogSummary = string.IsNullOrWhiteSpace(failureLogPath)
+                ? string.Empty
+                : UiText.T($"\n\nLog: {failureLogPath}", $"\n\nЛог: {failureLogPath}");
             MessageBox.Show(
                 form,
-                ex.Message,
+                ex.Message + failureLogSummary,
                 UiText.T("Build for test failed", "Ошибка сборки для теста"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);

@@ -21,6 +21,12 @@ internal static class ErrorLogShortcutFeature
             return;
         }
 
+        var logsFolder = Path.Combine(ProjectStore.GetMetadataFolder(projectFolder), "logs");
+        if (!HasLogFiles(logsFolder))
+        {
+            return;
+        }
+
         var buttonRow = FindDescendants<FlowLayoutPanel>(dialog)
             .FirstOrDefault(panel => panel.Controls.OfType<Button>().Any(button =>
                 string.Equals(button.Text, "OK", StringComparison.OrdinalIgnoreCase)));
@@ -56,6 +62,22 @@ internal static class ErrorLogShortcutFeature
                 "Открыть **папку логов** текущего проекта.\n\nЕсли вы будете сообщать об этой ошибке, последний лог поможет понять, что произошло."));
         dialog.FormClosed += (_, _) => toolTip.Dispose();
         PreparedDialogs.Add(dialog, new object());
+    }
+
+    private static bool HasLogFiles(string logsFolder)
+    {
+        try
+        {
+            return Directory.Exists(logsFolder)
+                && Directory.EnumerateFiles(logsFolder, "*.log", SearchOption.TopDirectoryOnly).Any();
+        }
+        catch (Exception ex) when (ex is IOException
+            or UnauthorizedAccessException
+            or ArgumentException
+            or NotSupportedException)
+        {
+            return false;
+        }
     }
 
     private static bool IsSupportedErrorDialog(Form dialog)

@@ -611,6 +611,20 @@ if (-not $optionsParameter.HasDefaultValue -or $null -ne $optionsParameter.Defau
     throw 'Normal PREPARE must default to preserve-artist-work options.'
 }
 $buildSource = Get-Content -LiteralPath 'internal/src/Deadlimit/App/BuildFeature.cs' -Raw
+foreach ($required in @(
+    'BuildFailureLogService.EnsureCurrentFailureLog(',
+    'buildAttemptStartedUtc',
+    'failureLogSummary')) {
+    if (-not $buildSource.Contains($required)) {
+        throw "Early BUILD & TEST failure logging contract is missing: $required"
+    }
+}
+$errorLogShortcutSource = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ErrorLogShortcutFeature.cs' -Raw
+foreach ($required in @('HasLogFiles(logsFolder)', 'Directory.EnumerateFiles(logsFolder, "*.log"')) {
+    if (-not $errorLogShortcutSource.Contains($required)) {
+        throw "Error dialogs can still offer OPEN LOGS when the project has no log files: $required"
+    }
+}
 foreach ($required in @('CleanPrepareDialog.Choose(form)', 'options: options')) {
     if (-not $buildSource.Contains($required)) { throw "Clean PREPARE UI contract missing: $required" }
 }
