@@ -195,6 +195,15 @@ public sealed class BuildAndTestService
                 log,
                 cancellationToken);
             var projectOwnedSources = ResolveProjectOwnedSources(currentHashes, baselineHashes);
+            var explicitProjectRootOverrides = ResolveExplicitProjectRootTextureOverrides(
+                manifest,
+                sourceRoot);
+            projectOwnedSources.UnionWith(explicitProjectRootOverrides);
+            if (explicitProjectRootOverrides.Count > 0)
+            {
+                log.AppendLine(
+                    $"Explicit project-root texture overrides forced into authored compilation: {explicitProjectRootOverrides.Count}");
+            }
             var projectChanged = changed
                 .Where(projectOwnedSources.Contains)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -807,6 +816,15 @@ public sealed class BuildAndTestService
 
         return projectOwned;
     }
+
+    private static HashSet<string> ResolveExplicitProjectRootTextureOverrides(
+        ProjectManifest manifest,
+        string extractedSourceRoot) =>
+        RetailTextureOverrideService.ResolveProjectRootOverrides(
+                manifest,
+                RetailTextureOverrideService.BuildTargetIndex(extractedSourceRoot))
+            .Select(textureOverride => NormalizeRelativePath(textureOverride.StagedSourceResourcePath))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     private static string BuildSourceBaselineIdentity(ProjectManifest manifest, string sourceRoot) =>
         $"{Path.GetFullPath(sourceRoot)}|{manifest.LastSourceExtractionUtc?.UtcTicks ?? 0}|{manifest.ExtractedSourceFileCount ?? -1}";

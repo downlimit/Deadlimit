@@ -15,11 +15,16 @@ $buildSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/BuildAndTes
 foreach ($required in @(
     'RetailResourcePackagingPolicy.Resolve(',
     'packagingPlan.ExcludedRelativePaths',
-    'Retail/redundant compiled outputs omitted from VPK'
+    'Retail/redundant compiled outputs omitted from VPK',
+    'Explicit project-root texture overrides forced into authored compilation'
 )) {
     if (-not $buildSource.Contains($required, [StringComparison]::Ordinal)) {
         throw "Build & Test retail resource reuse wiring is missing: $required"
     }
+}
+$packagingSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/RetailResourcePackagingPolicy.cs' -Raw
+if (-not $packagingSource.Contains('textureOverridePaths.Contains(sourceRelativePath)', [StringComparison]::Ordinal)) {
+    throw 'Project-root texture overrides are not forced into the authored packaging roots.'
 }
 
 Write-Host 'Retail resource dependency-closure packaging smoke passed.'

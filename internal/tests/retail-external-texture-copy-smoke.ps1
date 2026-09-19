@@ -189,10 +189,26 @@ try {
     $manifest.ProjectFolder = $projectRoot
     $manifest.SourceDumpFolderName = '0source'
     $manifest.LastSourceExtractionIncludedTextures = $false
-    $overrides = @($resolveOverrides.Invoke($null, [object[]]@($manifest, $targets)))
+    $resolvedOverrides = $resolveOverrides.Invoke($null, [object[]]@($manifest, $targets))
+    $overrides = @($resolvedOverrides)
     $uiOverride = $overrides | Where-Object { $_.ArtistSourcePath -eq $artistUi }
     if ($null -eq $uiOverride -or $uiOverride.RetailTextureResourcePath -ne 'panorama/images/heroes/ivy_mm.png') {
         throw 'Direct extracted minimap/portrait UI image did not resolve to its retail resource path.'
+    }
+    $stageOverrides = $textureType.GetMethod('StageProjectRootOverrides', [Reflection.BindingFlags]::Public -bor [Reflection.BindingFlags]::Static)
+    [void]$stageOverrides.Invoke($null, [object[]]@([string]$addonRoot, $resolvedOverrides))
+    $uiDescriptor = Join-Path $addonRoot 'panorama\images\heroes\ivy_mm.vtex'
+    if (-not (Test-Path -LiteralPath $uiDescriptor)) {
+        throw 'Panorama project-root override did not receive a compile-ready VTEX descriptor.'
+    }
+    $uiDescriptorText = Get-Content -LiteralPath $uiDescriptor -Raw
+    foreach ($required in @(
+        '"m_fileName" "string" "panorama/images/heroes/ivy_mm.png"',
+        '"m_outputFormat" "string" "RGBA8888"',
+        '"m_bNoLod" "bool" "1"')) {
+        if (-not $uiDescriptorText.Contains($required, [StringComparison]::Ordinal)) {
+            throw "Panorama VTEX descriptor is missing: $required"
+        }
     }
 
     # Duplicate extracted basenames stay fail-closed rather than becoming a filename heuristic.

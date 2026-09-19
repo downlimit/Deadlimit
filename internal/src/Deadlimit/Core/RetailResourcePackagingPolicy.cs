@@ -15,6 +15,7 @@ internal static class RetailResourcePackagingPolicy
     private static readonly HashSet<string> DirectCompileExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".vmdl", ".vmat", ".vtex", ".vpcf", ".vsndevts", ".wav", ".xml", ".css", ".js", ".vsvg",
+        ".png", ".tga", ".jpg", ".jpeg", ".tif", ".tiff",
     };
 
     internal static RetailResourcePackagingPlan Resolve(
@@ -158,7 +159,12 @@ internal static class RetailResourcePackagingPolicy
                 || !File.Exists(extractedPath)
                 || !FilesEqual(extractedPath, sourcePath, fileHashes);
 
-            projectOwned = projectOwned || textureOverrideMaterials.Contains(sourceRelativePath);
+            // An exact project-root replacement is explicit authored content even when an
+            // identical copy has appeared in 0source. The extraction baseline must never
+            // demote an artist-provided override back to a reusable retail resource.
+            projectOwned = projectOwned
+                || textureOverridePaths.Contains(sourceRelativePath)
+                || textureOverrideMaterials.Contains(sourceRelativePath);
 
             if (projectOwned)
             {
