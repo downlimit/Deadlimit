@@ -319,7 +319,7 @@ internal static class OnlinePreparationFeature
             var text = System.Text.Encoding.UTF8.GetString(bytes);
             var hash = Convert.ToHexString(SHA256.HashData(bytes));
             var succeeded = text.Contains(
-                "RESULT: AUTHORING CONTENT PREPARED; ADDON GAME OUTPUT CLEAN",
+                "RESULT: AUTHORING CONTENT PREPARED;",
                 StringComparison.Ordinal);
             return new PrepareLogSnapshot(
                 latest.FullName + "|" + hash,

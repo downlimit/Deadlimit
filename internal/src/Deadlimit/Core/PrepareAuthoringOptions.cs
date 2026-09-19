@@ -11,7 +11,8 @@ public enum PrepareResetSections
 
 public sealed record PrepareAuthoringOptions(
     PrepareResetSections ResetSections = PrepareResetSections.None,
-    bool CreateBackup = true)
+    bool CreateBackup = true,
+    bool PrepareHeroSelectScene = false)
 {
     public static PrepareAuthoringOptions PreserveArtistWork { get; } = new();
 

@@ -15,7 +15,7 @@ internal static class ProjectTextureBindingService
     private const string PendingManagedMarker = "// DEADLIMIT_MANAGED_CUSTOM_VMAT_V5_PENDING";
     private const string ManagedMarker = "// DEADLIMIT_MANAGED_CUSTOM_VMAT_V5";
     private const string VertexColorGeneratedPrefix = "// DEADLIMIT_VERTEXCOLOR_VMAT_V";
-    private const string ManagedComment = "// Deadlimit inherited this material once. Later PREPARE runs only synchronize matching project-root textures; manual material parameters remain authoritative.";
+    private const string ManagedComment = "// Deadlimit inherited this material once. Ordinary PREPARE preserves it byte-for-byte; Shift+PREPARE with Materials checked may regenerate it.";
 
     private const string NeutralColor = "[0.500000 0.500000 0.500000 0.000000]";
     private const string NeutralWhite = "[1.000000 1.000000 1.000000 0.000000]";
@@ -59,6 +59,11 @@ internal static class ProjectTextureBindingService
             "occlusion_map", "occlusionmask", "occlusion_mask", "ao", "aomap", "ao_map",
             "aomask", "ao_mask"
         ]),
+        new("rimmask",
+        [
+            "rimlightmask", "rim_light_mask", "rimlight", "rim_light",
+            "rimmask", "rim_mask"
+        ]),
         new("metalness",
         [
             "metalness", "metalnessmap", "metalness_map", "metalnessmask", "metalness_mask",
@@ -68,7 +73,7 @@ internal static class ProjectTextureBindingService
     ];
 
     private static readonly Regex TextureAssignmentRegex = new(
-        "^(?<prefix>[ \\t]*(?:\\\"(?<quotedKey>Texture[A-Za-z0-9_]+)\\\"|(?<bareKey>Texture[A-Za-z0-9_]+))[ \\t]*(?:=[ \\t]*)?(?:resource[ \\t]*:[ \\t]*)?\\\")(?<value>[^\\\"\\r\\n]+)(?<suffix>\\\"[^\\r\\n]*)$",
+        "^(?<prefix>[ \\t]*(?:\\\"(?<quotedKey>Texture[A-Za-z0-9_]+)\\\"|(?<bareKey>Texture[A-Za-z0-9_]+))[ \\t]*(?:=[ \\t]*)?(?:resource[ \\t]*:[ \\t]*)?\\\")(?<value>[^\\\"\\r\\n]+)(?<suffix>\\\"[^\\r\\n]*\\r?)$",
         RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.Multiline);
 
     private static readonly Regex StringParameterRegex = new(
@@ -121,7 +126,8 @@ internal static class ProjectTextureBindingService
         CustomMaterialAuthoringResult customMaterials,
         IReadOnlyList<ManagedCustomMaterialOwnership> knownOwnership,
         StringBuilder log,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool mutateExistingMaterials)
     {
         var materialResourceFolder = $"materials/{addonName}";
         var materialFolder = Path.Combine(addonContentRoot, "materials", addonName);
@@ -137,12 +143,14 @@ internal static class ProjectTextureBindingService
                 "Managed custom VMAT target"))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var removedStaleMaterials = RemoveStaleManagedMaterials(
-            materialFolder,
-            desiredMaterialPaths,
-            knownOwnership,
-            log,
-            cancellationToken);
+        var removedStaleMaterials = mutateExistingMaterials
+            ? RemoveStaleManagedMaterials(
+                materialFolder,
+                desiredMaterialPaths,
+                knownOwnership,
+                log,
+                cancellationToken)
+            : 0;
 
         var projectTextures = Directory.EnumerateFiles(manifest.ProjectFolder, "*", SearchOption.TopDirectoryOnly)
             .Where(path => TextureSourceExtensions.Contains(Path.GetExtension(path)))
@@ -156,24 +164,37 @@ internal static class ProjectTextureBindingService
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var removedDerivedTextures = 0;
-        foreach (var derivedTexture in Directory.EnumerateFiles(textureFolder, "*", SearchOption.TopDirectoryOnly)
-                     .Where(path => TextureSourceExtensions.Contains(Path.GetExtension(path))))
+        if (mutateExistingMaterials)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (projectTextureNames.Contains(Path.GetFileName(derivedTexture)))
+            foreach (var derivedTexture in Directory.EnumerateFiles(textureFolder, "*", SearchOption.TopDirectoryOnly)
+                         .Where(path => TextureSourceExtensions.Contains(Path.GetExtension(path))))
             {
-                continue;
-            }
+                cancellationToken.ThrowIfCancellationRequested();
+                if (projectTextureNames.Contains(Path.GetFileName(derivedTexture)))
+                {
+                    continue;
+                }
 
-            File.Delete(derivedTexture);
-            removedDerivedTextures++;
-            log.AppendLine($"Removed derived project texture because its source disappeared: {Path.GetFileName(derivedTexture)}");
+                File.Delete(derivedTexture);
+                removedDerivedTextures++;
+                log.AppendLine($"Removed derived project texture because its source disappeared: {Path.GetFileName(derivedTexture)}");
+            }
         }
 
         foreach (var source in projectTextures)
         {
             cancellationToken.ThrowIfCancellationRequested();
             File.Copy(source, Path.Combine(textureFolder, Path.GetFileName(source)), overwrite: true);
+        }
+
+        if (!mutateExistingMaterials)
+        {
+            log.AppendLine("Ordinary PREPARE material policy: existing custom VMAT files were left byte-for-byte unchanged; only project texture source files were synchronized.");
+            return new ProjectTextureBindingResult(
+                customMaterials.Remaps.Count,
+                0,
+                0,
+                0);
         }
 
         var candidates = projectTextures
@@ -231,6 +252,7 @@ internal static class ProjectTextureBindingService
                 remap.From,
                 candidates,
                 log), StringComparer.OrdinalIgnoreCase);
+            ApplyRimLightMaskFallback(bindings, log, targetResource);
             if (vertexColorMode)
             {
                 bindings.Remove("color");
@@ -278,6 +300,7 @@ internal static class ProjectTextureBindingService
             {
                 text = UpsertTextureAssignment(text, insertion.Key, insertion.Value);
             }
+            text = RemoveRedundantBoundTextureAssignments(text, bindings);
 
             text = ReconcileUnboundStandardTextureValues(
                 text,
@@ -407,6 +430,38 @@ internal static class ProjectTextureBindingService
 
             return match.Groups["prefix"].Value + replacement + match.Groups["suffix"].Value;
         });
+    }
+
+    private static string RemoveRedundantBoundTextureAssignments(
+        string text,
+        IReadOnlyDictionary<string, string> bindings)
+    {
+        var assignments = ReadAssignments(text);
+        var removals = new HashSet<int>();
+        foreach (var binding in bindings)
+        {
+            var matching = assignments
+                .Where(assignment => SemanticsCompatible(assignment.Semantic, binding.Key))
+                .Where(assignment => string.Equals(
+                    NormalizeResourcePath(assignment.Value),
+                    NormalizeResourcePath(binding.Value),
+                    StringComparison.OrdinalIgnoreCase))
+                .OrderBy(assignment => SlotRank(assignment.Key))
+                .ThenBy(assignment => assignment.Index)
+                .ToArray();
+            foreach (var duplicate in matching.Skip(1))
+            {
+                removals.Add(duplicate.Index);
+            }
+        }
+
+        if (removals.Count == 0)
+        {
+            return text;
+        }
+
+        return TextureAssignmentRegex.Replace(text, match =>
+            removals.Contains(match.Index) ? string.Empty : match.Value);
     }
 
     private static string ReconcileUnboundStandardTextureValues(
@@ -725,6 +780,11 @@ internal static class ProjectTextureBindingService
         {
             return "ao";
         }
+        if (semantic.Contains("rim", StringComparison.Ordinal)
+            && semantic.Contains("mask", StringComparison.Ordinal))
+        {
+            return "rimmask";
+        }
 
         return semantic;
     }
@@ -754,6 +814,7 @@ internal static class ProjectTextureBindingService
             "normal" => vertexColorMode ? "TextureNormal1" : "TextureNormal",
             "roughness" => vertexColorMode ? "TextureRoughness1" : "TextureRoughness",
             "ao" => vertexColorMode ? "TextureAmbientOcclusion1" : "TextureAmbientOcclusion",
+            "rimmask" => "TextureRimLightMask1",
             "metalness" => vertexColorMode ? "TextureMetalness1" : "TextureMetalness",
             _ => null,
         };
@@ -815,6 +876,26 @@ internal static class ProjectTextureBindingService
             updated = UpsertStringParameter(updated, "F_SPECULAR", "1");
         }
         return updated;
+    }
+
+    private static void ApplyRimLightMaskFallback(
+        IDictionary<string, string> bindings,
+        StringBuilder log,
+        string targetResource)
+    {
+        if (bindings.ContainsKey("rimmask"))
+        {
+            return;
+        }
+
+        if (bindings.TryGetValue("ao", out var ambientOcclusion))
+        {
+            bindings["rimmask"] = ambientOcclusion;
+            log.AppendLine($"Custom rim-light mask fallback {targetResource}: using matching ambient-occlusion texture.");
+            return;
+        }
+
+        log.AppendLine($"Custom rim-light mask fallback {targetResource}: no rim-mask or ambient-occlusion texture matched; the slot remains white.");
     }
 
     private static bool HasStringParameter(string text, string key) =>
@@ -936,6 +1017,7 @@ internal static class ProjectTextureBindingService
             "normal" => NeutralNormal,
             "roughness" => NeutralRoughness,
             "ao" => NeutralWhite,
+            "rimmask" => NeutralWhite,
             "metalness" => NeutralBlack,
             _ => NeutralBlack,
         };

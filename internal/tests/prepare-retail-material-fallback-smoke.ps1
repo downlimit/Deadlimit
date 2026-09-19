@@ -73,6 +73,9 @@ Layer0
     if (-not $preparedVmat.Contains('"TextureColor" "models/heroes_staging/tengu/tengu_v2/materials/ivy_wingsv3_color.png"', [StringComparison]::Ordinal)) {
         throw 'PREPARE changed an editable Ivy/Tengu VMAT away from its authoring PNG source.'
     }
+    if ($preparedVmat.Contains('"Compiled Textures"', [StringComparison]::Ordinal)) {
+        throw 'Retail texture override left the stock Compiled Textures cache in the prepared VMAT.'
+    }
 
     $preparedColor = Join-Path $addonRoot $colorRelative
     if (-not (Test-Path -LiteralPath $preparedColor)) {

@@ -25,6 +25,7 @@ public sealed record PrepareAuthoringResult(
     string CustomMaterialContentFolder,
     int RetailSourceFilesCopied,
     bool GameOutputCleaned,
+    HeroSelectScenePreparationResult? HeroSelectScene,
     string LogPath);
 
 public sealed class PrepareAuthoringService
@@ -129,6 +130,7 @@ public sealed class PrepareAuthoringService
         log.AppendLine($"CSDK game output root: {addonGameRoot}");
         log.AppendLine($"Project-root model sources: DMX={rootDmxFiles.Length}, FBX={rootFbxFiles.Length}, glTF/GLB={rootGltfFiles.Length}");
         log.AppendLine($"Reset sections: {options.ResetSections}");
+        log.AppendLine($"Prepare hero-select scene: {options.PrepareHeroSelectScene}");
         log.AppendLine($"Selected-section backup: {(options.CreateBackup && options.ResetSections != PrepareResetSections.None ? "enabled" : "disabled")}");
         log.AppendLine();
 
@@ -162,19 +164,29 @@ public sealed class PrepareAuthoringService
             log.AppendLine();
 
             cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Cleaning stale compiled output for this addon...", "Очистка устаревшего compiled output этого аддона...")));
+            var cleanGameOutput = options.ResetSections != PrepareResetSections.None;
+            progress?.Report(new PrepareAuthoringProgress(cleanGameOutput
+                ? LocalizedText.T("Cleaning compiled output for the selected reset...", "Очистка compiled output для выбранного сброса...")
+                : LocalizedText.T("Preserving compiled output for incremental builds...", "Сохранение compiled output для инкрементальных сборок...")));
 
             var gameOutputCleaned = false;
-            if (Directory.Exists(addonGameRoot))
+            if (cleanGameOutput && Directory.Exists(addonGameRoot))
             {
                 Directory.Delete(addonGameRoot, recursive: true);
                 gameOutputCleaned = true;
             }
 
-            log.AppendLine(gameOutputCleaned
-                ? $"Removed stale addon runtime output: {addonGameRoot}"
-                : $"No stale addon runtime output existed: {addonGameRoot}");
-            log.AppendLine("Deadlimit does not compile content during PREPARE FOR CSDK; CSDK12 rebuilds game output from content when launched/compiled.");
+            if (cleanGameOutput)
+            {
+                log.AppendLine(gameOutputCleaned
+                    ? $"Removed addon runtime output for explicit reset: {addonGameRoot}"
+                    : $"No addon runtime output existed for explicit reset: {addonGameRoot}");
+            }
+            else
+            {
+                log.AppendLine($"Ordinary PREPARE preserved addon runtime output for incremental BUILD & TEST: {addonGameRoot}");
+            }
+            log.AppendLine("Deadlimit does not compile content during PREPARE FOR CSDK; CSDK12 rebuilds changed game output from content when launched or compiled.");
 
             progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Refreshing retail authoring template in CSDK content...", "Обновление retail-шаблона модели в CSDK content...")));
             Directory.CreateDirectory(addonContentRoot);
@@ -194,6 +206,27 @@ public sealed class PrepareAuthoringService
                 log.AppendLine("Selected-section backup skipped by explicit user choice.");
             }
 
+            HeroSelectScenePreparationResult? heroSelectScene = null;
+            if (options.PrepareHeroSelectScene)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                progress?.Report(new PrepareAuthoringProgress(LocalizedText.T(
+                    "Preparing an editable hero-select scene...",
+                    "Подготовка редактируемой сцены выбора героя...")));
+                heroSelectScene = new HeroSelectScenePreparationService(_paths).Prepare(
+                    manifest,
+                    addonContentRoot,
+                    cancellationToken);
+                log.AppendLine($"Hero-select prefab: {heroSelectScene.HeroPrefabId}");
+                log.AppendLine($"Hero-select source VPK: {heroSelectScene.SourceVpkPath}");
+                log.AppendLine(
+                    $"Hero-select VMAP: created={heroSelectScene.CreatedCount}; preserved={heroSelectScene.PreservedCount}");
+                foreach (var scenePath in heroSelectScene.ScenePaths)
+                {
+                    log.AppendLine($"Hero-select scene: {scenePath}");
+                }
+            }
+
             var sourceCopy = RetailVmdlInheritance.CopyRetailModelSourceTree(
                 manifest,
                 addonContentRoot,
@@ -208,8 +241,16 @@ public sealed class PrepareAuthoringService
                 sourceCopy.DestinationVmdlPath,
                 replaceExisting: options.Resets(PrepareResetSections.Physics));
             log.AppendLine(retailPhysics.Added
-                ? $"Retail ragdoll joints initialized: {retailPhysics.JointCount}"
-                : "Existing authoring ragdoll joints preserved.");
+                ? $"Retail physics initialized: {retailPhysics.JointCount} ragdoll joints, " +
+                  $"{retailPhysics.ClothChainCount} cloth chains"
+                : "Existing authoring physics preserved.");
+            foreach (var warning in retailPhysics.Warnings)
+            {
+                log.AppendLine($"Retail physics warning: {warning}.");
+            }
+            var repairedClothChains = RetailPhysicsAuthoringService.RepairInvalidClothParentAnchors(
+                sourceCopy.DestinationVmdlPath);
+            log.AppendLine($"Invalid ClothChain parent anchors repaired: {repairedClothChains}");
 
             if (options.Resets(PrepareResetSections.Effects))
             {
@@ -358,13 +399,18 @@ public sealed class PrepareAuthoringService
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Preparing addon-owned custom materials...", "Подготовка custom-материалов аддона...")));
 
-            ProjectTextureBindingService.MarkLegacyManagedMaterialsForMigration(
-                addonContentRoot,
-                addonName,
-                log,
-                cancellationToken);
+            if (regenerateCustomMaterials)
+            {
+                ProjectTextureBindingService.MarkLegacyManagedMaterialsForMigration(
+                    addonContentRoot,
+                    addonName,
+                    log,
+                    cancellationToken);
+            }
 
-            var previousOwnership = ManagedCustomMaterialRegistryStore.Load(manifest);
+            var previousOwnership = regenerateCustomMaterials
+                ? ManagedCustomMaterialRegistryStore.Load(manifest)
+                : ManagedCustomMaterialRegistryStore.LoadPreservingMaterials(manifest);
             var knownMaterialTargets = ManagedCustomMaterialRegistryStore.BuildTargetMap(previousOwnership);
 
             var customMaterials = new CustomMaterialAuthoringService(_paths).Prepare(
@@ -391,13 +437,16 @@ public sealed class PrepareAuthoringService
                 customMaterials,
                 knownOwnership,
                 log,
-                cancellationToken);
+                cancellationToken,
+                mutateExistingMaterials: regenerateCustomMaterials);
 
-            var finalTextureRepairs = FinalizeManagedCustomMaterials(
-                customMaterials,
-                addonContentRoot,
-                log,
-                cancellationToken);
+            var finalTextureRepairs = regenerateCustomMaterials
+                ? FinalizeManagedCustomMaterials(
+                    customMaterials,
+                    addonContentRoot,
+                    log,
+                    cancellationToken)
+                : 0;
             log.AppendLine($"Managed custom VMAT final missing-source repairs: {finalTextureRepairs}");
 
             var exactCustomMaterialRemaps = ResolveExactCustomMaterialRemaps(
@@ -441,7 +490,7 @@ public sealed class PrepareAuthoringService
             log.AppendLine("Material policy: DMX material-reference count is diagnostic only; VMDL remaps are a separate concept.");
             log.AppendLine("Material policy: preserve retail reuse, generate narrow compatibility repairs, and route unresolved Wall Worm custom slots to addon-owned VMAT files.");
             log.AppendLine("Material policy: direct materials/<name>.vmat references from Wall Worm are paired with an extensionless authoring alias, so spaces and the explicit .vmat suffix survive into the final VMDL remap.");
-            log.AppendLine("Material policy: copy retail/template material parameters only when a custom VMAT is first created; later PREPARE runs preserve manual VMAT edits and synchronize only matching project-root texture sources.");
+            log.AppendLine("Material policy: ordinary PREPARE leaves every existing addon-owned VMAT byte-for-byte unchanged and only synchronizes project texture source files. Shift+PREPARE may regenerate or migrate VMAT files only when Materials is explicitly checked.");
             log.AppendLine("Render-mesh policy: preserve retail RenderMeshList/bodygroups/LODs; overlay root DMX directly, reference root FBX directly, and adapt root glTF/GLB through its extracted DMX companion.");
             log.AppendLine("glTF policy: preserve primitive/material separation, COLOR_0 and skin streams; retain the retail skeleton and animation bindings for CSDK compilation.");
             log.AppendLine("Vertex Color policy: *_vertexcolor.fbx stays beside the artist DMX as persistent source data; repeated PREPARE, BUILD FOR TEST and ONLINE activation may reuse it safely.");
@@ -449,13 +498,22 @@ public sealed class PrepareAuthoringService
             manifest.SourceVmdl = sourceCopy.DestinationVmdlPath;
             manifest.CompiledVmdl = null;
             ProjectStore.Save(manifest);
-            ManagedCustomMaterialRegistryStore.Save(manifest, knownOwnership);
+            if (regenerateCustomMaterials)
+            {
+                ManagedCustomMaterialRegistryStore.Save(manifest, knownOwnership);
+            }
+            else
+            {
+                ManagedCustomMaterialRegistryStore.SavePreservingMaterials(manifest, knownOwnership);
+            }
 
             log.AppendLine();
-            log.AppendLine("RESULT: AUTHORING CONTENT PREPARED; ADDON GAME OUTPUT CLEAN");
+            log.AppendLine(gameOutputCleaned
+                ? "RESULT: AUTHORING CONTENT PREPARED; ADDON GAME OUTPUT CLEANED FOR EXPLICIT RESET"
+                : "RESULT: AUTHORING CONTENT PREPARED; ADDON GAME OUTPUT PRESERVED");
             File.WriteAllText(logPath, log.ToString());
 
-            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Authoring content prepared. Launch CSDK to rebuild clean game output.", "Authoring content подготовлен. Запустите CSDK для чистой пересборки game output.")));
+            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Authoring content prepared. Compiled output was preserved for incremental rebuilds.", "Файлы проекта подготовлены. Compiled output сохранён для инкрементальной пересборки.")));
 
             return new PrepareAuthoringResult(
                 addonName,
@@ -477,6 +535,7 @@ public sealed class PrepareAuthoringService
                 customMaterials.MaterialContentFolder,
                 sourceCopy.FilesCopied,
                 gameOutputCleaned,
+                heroSelectScene,
                 logPath);
         }
         catch (Exception ex)

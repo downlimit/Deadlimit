@@ -26,7 +26,15 @@ internal static class ManagedCustomMaterialRegistryStore
         PropertyNameCaseInsensitive = true,
     };
 
-    public static ManagedCustomMaterialRegistry Load(ProjectManifest manifest)
+    public static ManagedCustomMaterialRegistry Load(ProjectManifest manifest) =>
+        LoadCore(manifest, applyMaterialMigrations: true);
+
+    public static ManagedCustomMaterialRegistry LoadPreservingMaterials(ProjectManifest manifest) =>
+        LoadCore(manifest, applyMaterialMigrations: false);
+
+    private static ManagedCustomMaterialRegistry LoadCore(
+        ProjectManifest manifest,
+        bool applyMaterialMigrations)
     {
         var path = GetPath(manifest);
         if (!File.Exists(path))
@@ -40,7 +48,11 @@ internal static class ManagedCustomMaterialRegistryStore
                                File.ReadAllText(path),
                                JsonOptions)
                            ?? new ManagedCustomMaterialRegistry();
-            PromoteRegistryOwnedVertexColorMarkers(manifest, registry);
+            if (applyMaterialMigrations)
+            {
+                PromoteRegistryOwnedVertexColorMarkers(manifest, registry);
+            }
+
             return registry;
         }
         catch (JsonException)
@@ -105,14 +117,27 @@ internal static class ManagedCustomMaterialRegistryStore
 
     public static void Save(
         ProjectManifest manifest,
-        IReadOnlyList<ManagedCustomMaterialOwnership> materials)
+        IReadOnlyList<ManagedCustomMaterialOwnership> materials) =>
+        SaveCore(manifest, materials, applyMaterialMigrations: true);
+
+    public static void SavePreservingMaterials(
+        ProjectManifest manifest,
+        IReadOnlyList<ManagedCustomMaterialOwnership> materials) =>
+        SaveCore(manifest, materials, applyMaterialMigrations: false);
+
+    private static void SaveCore(
+        ProjectManifest manifest,
+        IReadOnlyList<ManagedCustomMaterialOwnership> materials,
+        bool applyMaterialMigrations)
     {
         var metadataFolder = ProjectStore.GetMetadataFolder(manifest.ProjectFolder);
         Directory.CreateDirectory(metadataFolder);
 
         var registry = new ManagedCustomMaterialRegistry
         {
-            Materials = ApplyPendingNameModifierMigrations(manifest, materials).ToList(),
+            Materials = (applyMaterialMigrations
+                ? ApplyPendingNameModifierMigrations(manifest, materials)
+                : materials).ToList(),
         };
 
         AtomicFile.WriteJson(GetPath(manifest), registry, JsonOptions);

@@ -134,45 +134,22 @@ public sealed class BuildAndTestService
         log.AppendLine($"VPCF mode: {(skipAllParticleSources ? "skip all and reuse retail particle definitions" : requestedSkippedParticles.Count > 0 ? $"skip {requestedSkippedParticles.Count} failed particle definition(s)" : "attempt compile")}");
         log.AppendLine();
 
-        string? preservedGameBackup = null;
+        var totalTimer = Stopwatch.StartNew();
+        var stageTimer = Stopwatch.StartNew();
 
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
             Report(progress, 2, LocalizedText.T("Starting Build & Test...", "Запуск сборки для теста..."));
 
-            if (canIncrement && Directory.Exists(addonGameRoot))
-            {
-                preservedGameBackup = addonGameRoot + $".deadlimit-backup-{Guid.NewGuid():N}";
-                Report(progress, 4, LocalizedText.T("Preserving previous compiled output for incremental prepare...", "Сохранение предыдущего compiled output для инкрементальной подготовки..."));
-                Directory.Move(addonGameRoot, preservedGameBackup);
-                log.AppendLine($"Preserved previous game output: {preservedGameBackup}");
-            }
-
             Report(progress, 6, LocalizedText.T("Preparing current DMX, materials and textures...", "Подготовка текущих DMX, материалов и текстур..."));
             var prepareProgress = new InlineProgress<PrepareAuthoringProgress>(update =>
                 Report(progress, MapPrepareProgress(update.Message), update.Message));
 
-            PrepareAuthoringResult prepare;
-            try
-            {
-                prepare = await new PrepareAuthoringService(_paths)
-                    .PrepareAsync(manifest, prepareProgress, cancellationToken);
-            }
-            finally
-            {
-                if (preservedGameBackup is not null && Directory.Exists(preservedGameBackup))
-                {
-                    if (Directory.Exists(addonGameRoot))
-                    {
-                        Directory.Delete(addonGameRoot, recursive: true);
-                    }
-
-                    Directory.Move(preservedGameBackup, addonGameRoot);
-                    log.AppendLine("Restored preserved game output after authoring prepare.");
-                    preservedGameBackup = null;
-                }
-            }
+            stageTimer.Restart();
+            var prepare = await new PrepareAuthoringService(_paths)
+                .PrepareAsync(manifest, prepareProgress, cancellationToken);
+            AppendStageTiming(log, "Authoring PREPARE", stageTimer.Elapsed);
 
             Report(progress, 30, LocalizedText.T("Authoring content synchronized.", "Authoring content синхронизирован."));
             log.AppendLine($"Prepare log: {prepare.LogPath}");
@@ -185,6 +162,7 @@ public sealed class BuildAndTestService
 
             cancellationToken.ThrowIfCancellationRequested();
             Report(progress, 33, LocalizedText.T("Comparing prepared content with the previous successful build...", "Сравнение подготовленного content с предыдущей успешной сборкой..."));
+            stageTimer.Restart();
 
             var contentHashCachePath = Path.Combine(metadataFolder, "prepared-content-hashes.json");
             var currentHashResult = HashContentTreeCached(
@@ -308,8 +286,16 @@ public sealed class BuildAndTestService
             log.AppendLine($"Retail-identical changed/new source files reused: {changed.Count - projectChanged.Count}");
             log.AppendLine($"Removed source files: {removed.Count}");
             log.AppendLine($"Direct compile targets: {compileTargets.Count}");
+            var compileTargetBreakdown = compileTargets
+                .GroupBy(path => Path.GetExtension(path).ToLowerInvariant())
+                .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(group => $"{group.Key}={group.Count()}")
+                .ToArray();
+            log.AppendLine($"Compile target breakdown: {(compileTargetBreakdown.Length == 0 ? "none" : string.Join(", ", compileTargetBreakdown))}");
             log.AppendLine($"Known stale compiled outputs removed: {removedCompiledOutputs}");
+            AppendStageTiming(log, "Content hashing and compile-target selection", stageTimer.Elapsed);
 
+            stageTimer.Restart();
             if (compileTargets.Count > 0)
             {
                 Report(progress, 40, LocalizedText.T($"Compiling {compileTargets.Count} changed asset(s)...", $"Компиляция изменённых ресурсов: {compileTargets.Count}..."));
@@ -353,7 +339,9 @@ public sealed class BuildAndTestService
                 Report(progress, 79, LocalizedText.T("No Source 2 compile inputs changed; reusing verified compiled output...", "Исходники Source 2 для компиляции не изменились; используется проверенный compiled output..."));
                 log.AppendLine("No compile inputs changed and all expected direct outputs exist; ResourceCompiler skipped.");
             }
+            AppendStageTiming(log, "ResourceCompiler and output verification", stageTimer.Elapsed);
 
+            stageTimer.Restart();
             var compiledMainModel = GetCompiledMainModelPath(manifest, addonGameRoot);
             if (!File.Exists(compiledMainModel))
             {
@@ -383,6 +371,7 @@ public sealed class BuildAndTestService
 
             manifest.CompiledVmdl = compiledMainModel;
             ProjectStore.Save(manifest);
+            AppendStageTiming(log, "Compiled model finalization", stageTimer.Elapsed);
 
             cancellationToken.ThrowIfCancellationRequested();
             Report(progress, 90, LocalizedText.T("Packing VPK directly into retail Deadlock addons...", "Упаковка VPK непосредственно в retail addons Deadlock..."));
@@ -391,6 +380,7 @@ public sealed class BuildAndTestService
             Directory.CreateDirectory(retailAddonsRoot);
             var vpkPath = Path.Combine(retailAddonsRoot, $"pak{releaseSlot:D2}_dir.vpk");
 
+            stageTimer.Restart();
             var packagingPlan = RetailResourcePackagingPolicy.Resolve(
                 manifest,
                 _paths.RetailDeadlockRoot,
@@ -415,6 +405,7 @@ public sealed class BuildAndTestService
                 log,
                 progress,
                 cancellationToken);
+            AppendStageTiming(log, "Retail reuse analysis and VPK packaging", stageTimer.Elapsed);
 
             var skippedRelativePaths = particlesToSkip
                 .Select(path => NormalizeRelativePath(Path.GetRelativePath(prepare.AddonContentRoot, path)))
@@ -434,6 +425,7 @@ public sealed class BuildAndTestService
             });
 
             Report(progress, 100, LocalizedText.T("Build & Test complete.", "Сборка для теста завершена."));
+            AppendStageTiming(log, "Total BUILD & TEST", totalTimer.Elapsed);
             log.AppendLine();
             log.AppendLine("RESULT: BUILD & TEST SUCCESS");
             log.AppendLine($"VPK deployed: {vpkPath}");
@@ -451,28 +443,12 @@ public sealed class BuildAndTestService
         }
         catch (Exception ex)
         {
-            if (preservedGameBackup is not null && Directory.Exists(preservedGameBackup))
-            {
-                try
-                {
-                    if (Directory.Exists(addonGameRoot))
-                    {
-                        Directory.Delete(addonGameRoot, recursive: true);
-                    }
-                    Directory.Move(preservedGameBackup, addonGameRoot);
-                    log.AppendLine("Restored previous game output after failed prepare transaction.");
-                }
-                catch (Exception restoreEx)
-                {
-                    log.AppendLine($"WARNING: failed to restore preserved game output: {restoreEx}");
-                }
-            }
-
             if (ex is ParticleCompilationException particleCompilationException)
             {
                 particleCompilationException.LogPath = logPath;
             }
 
+            AppendStageTiming(log, "Total BUILD & TEST before failure", totalTimer.Elapsed);
             log.AppendLine();
             log.AppendLine($"RESULT: FAILED — {ex}");
             File.WriteAllText(logPath, log.ToString());
@@ -691,25 +667,31 @@ public sealed class BuildAndTestService
             }
         }
 
-        var renderMeshDependencyChanged = changed.Concat(removed)
-            .Any(path =>
+        var changedRenderMeshes = changed.Concat(removed)
+            .Where(path =>
                 string.Equals(Path.GetExtension(path), ".dmx", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(Path.GetExtension(path), ".fbx", StringComparison.OrdinalIgnoreCase));
-        if (renderMeshDependencyChanged)
+                || string.Equals(Path.GetExtension(path), ".fbx", StringComparison.OrdinalIgnoreCase))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (changedRenderMeshes.Count > 0)
         {
-            foreach (var vmdl in allDirectSources.Where(path =>
-                         string.Equals(Path.GetExtension(path), ".vmdl", StringComparison.OrdinalIgnoreCase)))
+            foreach (var vmdl in FindDirectDependents(
+                         allDirectSources,
+                         changedRenderMeshes,
+                         ".vmdl"))
             {
                 targets.Add(vmdl);
             }
         }
 
-        var imageDependencyChanged = changed.Concat(removed)
-            .Any(path => ImageSourceExtensions.Contains(Path.GetExtension(path)));
-        if (imageDependencyChanged)
+        var changedImages = changed.Concat(removed)
+            .Where(path => ImageSourceExtensions.Contains(Path.GetExtension(path)))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (changedImages.Count > 0)
         {
-            foreach (var vmat in allDirectSources.Where(path =>
-                         string.Equals(Path.GetExtension(path), ".vmat", StringComparison.OrdinalIgnoreCase)))
+            foreach (var vmat in FindDirectDependents(
+                         allDirectSources,
+                         changedImages,
+                         ".vmat"))
             {
                 targets.Add(vmat);
             }
@@ -738,6 +720,46 @@ public sealed class BuildAndTestService
         }
 
         return targets;
+    }
+
+    private static IReadOnlyList<string> FindDirectDependents(
+        IReadOnlyList<string> allDirectSources,
+        IReadOnlySet<string> changedDependencies,
+        string consumerExtension)
+    {
+        if (changedDependencies.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        var normalizedDependencies = changedDependencies
+            .Select(NormalizeRelativePath)
+            .ToArray();
+        var dependents = new List<string>();
+
+        foreach (var source in allDirectSources.Where(path =>
+                     string.Equals(Path.GetExtension(path), consumerExtension, StringComparison.OrdinalIgnoreCase)))
+        {
+            string text;
+            try
+            {
+                text = File.ReadAllText(source).Replace('\\', '/');
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // If a source is concurrently being saved, its own content hash will
+                // select it on the next run. Avoid broad invalidation as a fallback.
+                continue;
+            }
+
+            if (normalizedDependencies.Any(dependency =>
+                    text.Contains(dependency, StringComparison.OrdinalIgnoreCase)))
+            {
+                dependents.Add(source);
+            }
+        }
+
+        return dependents;
     }
 
     private static HashSet<string> ResolveFullCompileTargets(
@@ -948,7 +970,9 @@ public sealed class BuildAndTestService
         var batches = nonParticleSources
             .Chunk(CompileBatchSize)
             .Select(batch => new CompileBatch(batch, IsParticle: false))
-            .Concat(particleSources.Select(path => new CompileBatch([path], IsParticle: true)))
+            .Concat(particleSources
+                .Chunk(CompileBatchSize)
+                .Select(batch => new CompileBatch(batch, IsParticle: true)))
             .ToArray();
         var failedParticleSources = new List<string>();
         var failedParticleVersions = new HashSet<int>();
@@ -990,23 +1014,21 @@ public sealed class BuildAndTestService
             {
                 if (batch.IsParticle)
                 {
-                    var versions = batch.Sources
-                        .Select(ReadParticleFormatVersion)
-                        .Where(version => version is not null)
-                        .Select(version => version!.Value)
-                        .Distinct()
-                        .Order()
-                        .ToArray();
-                    failedParticleSources.AddRange(batch.Sources);
-                    foreach (var version in versions)
+                    log.AppendLine(
+                        $"VPCF batch failed; probing {batch.Sources.Length} source(s) individually to identify only the incompatible definitions.");
+                    var probeFailures = await ProbeParticleBatchFailuresAsync(
+                        batch.Sources,
+                        log,
+                        cancellationToken);
+                    failedParticleSources.AddRange(probeFailures.SourcePaths);
+                    foreach (var version in probeFailures.FormatVersions)
                     {
                         failedParticleVersions.Add(version);
                     }
-                    if (firstParticleExitCode == 0)
+                    if (firstParticleExitCode == 0 && probeFailures.ExitCode != 0)
                     {
-                        firstParticleExitCode = result.ExitCode;
+                        firstParticleExitCode = probeFailures.ExitCode;
                     }
-                    log.AppendLine($"Continuing VPCF probe after failure so every incompatible particle can be reported: {batch.Sources[0]}");
                     continue;
                 }
 
@@ -1028,6 +1050,48 @@ public sealed class BuildAndTestService
             firstParticleExitCode,
             failedParticleSources,
             failedParticleVersions.Order().ToArray());
+    }
+
+    private async Task<ParticleCompilationFailures> ProbeParticleBatchFailuresAsync(
+        IReadOnlyList<string> sources,
+        StringBuilder log,
+        CancellationToken cancellationToken)
+    {
+        var failedSources = new List<string>();
+        var failedVersions = new HashSet<int>();
+        var firstExitCode = 0;
+
+        for (var index = 0; index < sources.Count; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var source = sources[index];
+            var result = await RunProcessAsync(
+                _paths.ResourceCompilerPath,
+                ["-i", source, "-nop4"],
+                Path.GetDirectoryName(_paths.ResourceCompilerPath)!,
+                cancellationToken);
+            AppendProcessLog(log, $"ResourceCompiler VPCF probe {index + 1}/{sources.Count}", result);
+            if (result.Success)
+            {
+                continue;
+            }
+
+            failedSources.Add(source);
+            var version = ReadParticleFormatVersion(source);
+            if (version is not null)
+            {
+                failedVersions.Add(version.Value);
+            }
+            if (firstExitCode == 0)
+            {
+                firstExitCode = result.ExitCode;
+            }
+        }
+
+        return new ParticleCompilationFailures(
+            firstExitCode,
+            failedSources,
+            failedVersions.Order().ToArray());
     }
 
     private static ParticleCompilationFailures VerifyCompiledOutputs(
@@ -1687,6 +1751,9 @@ public sealed class BuildAndTestService
 
     private static string QuoteForLog(string value) =>
         value.Any(char.IsWhiteSpace) ? $"\"{value}\"" : value;
+
+    private static void AppendStageTiming(StringBuilder log, string stage, TimeSpan elapsed) =>
+        log.AppendLine($"TIMING {stage}: {elapsed.TotalSeconds:F3}s");
 
     private static int MapPrepareProgress(string message)
     {

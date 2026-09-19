@@ -104,7 +104,8 @@ try {
 
     $buildSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/BuildAndTestService.cs' -Raw
     foreach ($required in @(
-        'var renderMeshDependencyChanged',
+        'var changedRenderMeshes',
+        'FindDirectDependents(',
         'Path.GetExtension(path), ".dmx"',
         'Path.GetExtension(path), ".fbx"')) {
         if (-not $buildSource.Contains($required, [StringComparison]::Ordinal)) {
