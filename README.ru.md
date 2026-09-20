@@ -18,10 +18,13 @@ Deadlimit объединяет разрозненный пайплайн мод�
 
 **[Скачать `Install-Deadlimit.cmd`](https://github.com/downlimit/Deadlimit/raw/refs/heads/main/Install-Deadlimit.cmd)**
 
-Скачайте установщик и запустите его. Deadlimit установится в:
+Положите установщик туда, где хотите хранить Deadlimit, и запустите его.
+
+Deadlimit создаст рядом с установщиком папку `Deadlimit` и установится в неё.
 
 ```text
-%LocalAppData%\Programs\Deadlimit
+D:\Tools\Install-Deadlimit.cmd
+D:\Tools\Deadlimit\
 ```
 
 Пользоваться Git или вручную настраивать .NET SDK не нужно. Если Git for Windows или .NET 10 SDK отсутствуют, установщик покажет, чего не хватает, и отдельно спросит разрешение на установку через WinGet.
