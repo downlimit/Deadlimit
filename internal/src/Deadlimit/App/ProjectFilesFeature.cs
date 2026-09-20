@@ -146,22 +146,22 @@ internal static class ProjectFilesFeature
 
                 foreach (var file in scan.DmxFiles)
                 {
-                    dmxList.Items.Add($"[DMX] {file}");
+                    dmxList.Items.Add($"[DMX] {ToAuthoringDisplayPath(file)}");
                 }
 
                 foreach (var file in scan.FbxFiles)
                 {
-                    dmxList.Items.Add($"[FBX] {file}");
+                    dmxList.Items.Add($"[FBX] {ToAuthoringDisplayPath(file)}");
                 }
 
                 foreach (var file in scan.GltfFiles)
                 {
-                    dmxList.Items.Add($"[{Path.GetExtension(file).TrimStart('.').ToUpperInvariant()}] {file}");
+                    dmxList.Items.Add($"[{Path.GetExtension(file).TrimStart('.').ToUpperInvariant()}] {ToAuthoringDisplayPath(file)}");
                 }
 
                 foreach (var file in scan.PngTextures)
                 {
-                    pngList.Items.Add(file);
+                    pngList.Items.Add(ToAuthoringDisplayPath(file));
                 }
 
                 var manifest = ProjectStore.TryLoad(folder);
@@ -221,6 +221,15 @@ internal static class ProjectFilesFeature
 
         ResizeColumns();
         Refresh();
+    }
+
+    private static string ToAuthoringDisplayPath(string path)
+    {
+        var normalized = path.Replace('\\', '/');
+        var prefix = ProjectAuthoringLayout.AuthoringFolderName + "/";
+        return normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+            ? normalized[prefix.Length..]
+            : normalized;
     }
 
     private static Control CreateFileColumn(string title, ListBox list, Padding margin)

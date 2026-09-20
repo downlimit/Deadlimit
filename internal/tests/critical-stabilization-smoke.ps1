@@ -70,6 +70,14 @@ foreach ($required in @(
     Assert-Contains $mainForm $required 'Project migration and extraction shutdown'
 }
 
+$projectFilesUi = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ProjectFilesFeature.cs' -Raw
+foreach ($required in @(
+    'ToAuthoringDisplayPath(file)',
+    'ProjectAuthoringLayout.AuthoringFolderName + "/"'
+)) {
+    Assert-Contains $projectFilesUi $required 'Authoring file-list display'
+}
+
 $projectEntry = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ProjectCreationChoiceFeature.cs' -Raw
 Assert-Contains $projectEntry 'Cannot create or import a project while' 'Project mutation interlock'
 
