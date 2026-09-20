@@ -24,6 +24,8 @@
   <ItemGroup>
     <EmbeddedResource Include="..\..\assets\DeadlimitManager_128_v4.ico" LogicalName="DeadlimitManager.AppIcon.ico" />
     <EmbeddedResource Include="..\..\..\.deadlimit\scripts\DeadlimitPipelineScripts.ms" LogicalName="Deadlimit.Scripts.PipelineScripts.ms" />
+    <EmbeddedResource Include="Localization\zh-CN.json" LogicalName="Deadlimit.Localization.zh-CN.json" />
+    <EmbeddedResource Include="Localization\pt-BR.json" LogicalName="Deadlimit.Localization.pt-BR.json" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1064,12 +1064,12 @@ public sealed class BuildAndTestService
             cancellationToken.ThrowIfCancellationRequested();
             var batch = batches[batchIndex];
             var beforePercent = 40 + (int)Math.Floor(36.0 * batchIndex / Math.Max(1, batches.Length));
-            var kind = batch.IsParticle ? "VPCF particle" : "Source 2 asset";
+            var kind = batch.IsParticle
+                ? LocalizedText.T("VPCF particle", "VPCF")
+                : LocalizedText.T("Source 2 asset", "ресурс Source 2");
             Report(progress, beforePercent, LocalizedText.T(
                 $"Compiling {kind} — batch {batchIndex + 1}/{batches.Length}...",
-                batch.IsParticle
-                    ? $"Компиляция VPCF — пакет {batchIndex + 1}/{batches.Length}..."
-                    : $"Компиляция ресурсов Source 2 — пакет {batchIndex + 1}/{batches.Length}..."));
+                $"Компиляция {kind} — пакет {batchIndex + 1}/{batches.Length}..."));
 
             var arguments = new List<string>(batch.Sources.Length * 2 + 1);
             foreach (var source in batch.Sources)
@@ -1118,13 +1118,14 @@ public sealed class BuildAndTestService
             }
 
             var afterPercent = 40 + (int)Math.Ceiling(36.0 * (batchIndex + 1) / Math.Max(1, batches.Length));
-            Report(progress, afterPercent, LocalizedText.T(
-                batch.IsParticle
-                    ? $"Compiled VPCF particle — batch {batchIndex + 1}/{batches.Length}."
-                    : $"Compiled Source 2 assets — batch {batchIndex + 1}/{batches.Length}.",
-                batch.IsParticle
-                    ? $"VPCF скомпилирован — пакет {batchIndex + 1}/{batches.Length}."
-                    : $"Ресурсы Source 2 скомпилированы — пакет {batchIndex + 1}/{batches.Length}."));
+            var compiledMessage = batch.IsParticle
+                ? LocalizedText.T(
+                    $"Compiled VPCF particle — batch {batchIndex + 1}/{batches.Length}.",
+                    $"VPCF скомпилирован — пакет {batchIndex + 1}/{batches.Length}.")
+                : LocalizedText.T(
+                    $"Compiled Source 2 assets — batch {batchIndex + 1}/{batches.Length}.",
+                    $"Ресурсы Source 2 скомпилированы — пакет {batchIndex + 1}/{batches.Length}.");
+            Report(progress, afterPercent, compiledMessage);
         }
 
         return new ParticleCompilationFailures(

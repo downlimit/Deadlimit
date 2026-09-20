@@ -268,7 +268,13 @@ public static class ProjectStore
     }
 
     private static string NormalizeUiLanguage(string? value) =>
-        string.Equals(value?.Trim(), "ru", StringComparison.OrdinalIgnoreCase) ? "ru" : "en";
+        value?.Trim().ToLowerInvariant() switch
+        {
+            "ru" => "ru",
+            "zh-cn" => "zh-CN",
+            "pt-br" => "pt-BR",
+            _ => "en",
+        };
 
     private static string NormalizeUiTheme(string? value)
     {

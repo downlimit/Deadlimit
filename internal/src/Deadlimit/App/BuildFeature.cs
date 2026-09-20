@@ -746,17 +746,23 @@ internal static class BuildFeature
                     "\n\n⚠ Vertex Color warning:\n" + string.Join("\n", result.Warnings.Select(warning => $"• {warning}")),
                     "\n\n⚠ Предупреждение Vertex Color:\n" + string.Join("\n", result.Warnings.Select(warning => $"• {warning}")));
 
+            var buildMode = result.FullRebuild
+                ? UiText.T("clean/full", "полная")
+                : UiText.T("incremental", "инкрементальная");
+            var ag2Status = result.Ag2Applied
+                ? UiText.T("yes", "да")
+                : UiText.T("not needed", "не требовалось");
             var summary = UiText.T(
                 $"Addon: {result.AddonName}\n" +
-                $"Mode: {(result.FullRebuild ? "clean/full" : "incremental")}\n" +
+                $"Mode: {buildMode}\n" +
                 $"Compiled sources: {result.CompiledSourceCount}\n" +
                 $"Stale compiled outputs removed: {result.RemovedCompiledOutputCount}\n" +
-                $"AG2 restored this run: {(result.Ag2Applied ? "yes" : "not needed")}",
+                $"AG2 restored this run: {ag2Status}",
                 $"Аддон: {result.AddonName}\n" +
-                $"Режим: {(result.FullRebuild ? "clean/full" : "incremental")}\n" +
+                $"Режим: {buildMode}\n" +
                 $"Скомпилировано source-файлов: {result.CompiledSourceCount}\n" +
                 $"Удалено устаревших compiled outputs: {result.RemovedCompiledOutputCount}\n" +
-                $"AG2 восстановлен: {(result.Ag2Applied ? "да" : "не требовалось")}")
+                $"AG2 восстановлен: {ag2Status}")
                 + forceSummary
                 + modLoadingSummary
                 + legacySlotSummary

@@ -83,6 +83,12 @@ internal static class Program
 
         if (startupSmoke)
         {
+            var localizationResult = LocalizedTextCatalog.RunSmoke();
+            if (localizationResult != 0)
+            {
+                return 2 + localizationResult;
+            }
+
             var mutationCoordinatorResult = ApplicationMutationCoordinator.RunSmoke();
             if (mutationCoordinatorResult != 0)
             {
