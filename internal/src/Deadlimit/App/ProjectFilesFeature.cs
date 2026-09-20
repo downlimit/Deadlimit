@@ -60,7 +60,7 @@ internal static class ProjectFilesFeature
             IntegralHeight = false,
             HorizontalScrollbar = true,
         };
-        var pngList = new ListBox
+        var textureList = new ListBox
         {
             Dock = DockStyle.Fill,
             IntegralHeight = false,
@@ -93,16 +93,16 @@ internal static class ProjectFilesFeature
         };
 
         var dmxColumn = CreateFileColumn("DMX / FBX / glTF", dmxList, new Padding(0, 0, 5, 0));
-        var pngColumn = CreateFileColumn("PNG", pngList, new Padding(5, 0, 0, 0));
+        var textureColumn = CreateFileColumn("PNG / TGA / PSD", textureList, new Padding(5, 0, 0, 0));
         fileColumns.Controls.Add(dmxColumn);
-        fileColumns.Controls.Add(pngColumn);
+        fileColumns.Controls.Add(textureColumn);
 
         void ResizeColumns()
         {
             var width = Math.Max(120, (fileColumns.ClientSize.Width - 12) / 2);
             var height = Math.Max(70, fileColumns.ClientSize.Height - 4);
             dmxColumn.Size = new Size(width, height);
-            pngColumn.Size = new Size(width, height);
+            textureColumn.Size = new Size(width, height);
         }
         fileColumns.SizeChanged += (_, _) => ResizeColumns();
 
@@ -123,11 +123,11 @@ internal static class ProjectFilesFeature
         void Refresh()
         {
             dmxList.BeginUpdate();
-            pngList.BeginUpdate();
+            textureList.BeginUpdate();
             try
             {
                 dmxList.Items.Clear();
-                pngList.Items.Clear();
+                textureList.Items.Clear();
 
                 var folder = folderText.Text.Trim();
                 if (!Directory.Exists(folder))
@@ -146,22 +146,22 @@ internal static class ProjectFilesFeature
 
                 foreach (var file in scan.DmxFiles)
                 {
-                    dmxList.Items.Add($"[DMX] {ToAuthoringDisplayPath(file)}");
+                    dmxList.Items.Add(ToAuthoringDisplayPath(file));
                 }
 
                 foreach (var file in scan.FbxFiles)
                 {
-                    dmxList.Items.Add($"[FBX] {ToAuthoringDisplayPath(file)}");
+                    dmxList.Items.Add(ToAuthoringDisplayPath(file));
                 }
 
                 foreach (var file in scan.GltfFiles)
                 {
-                    dmxList.Items.Add($"[{Path.GetExtension(file).TrimStart('.').ToUpperInvariant()}] {ToAuthoringDisplayPath(file)}");
+                    dmxList.Items.Add(ToAuthoringDisplayPath(file));
                 }
 
                 foreach (var file in scan.PngTextures)
                 {
-                    pngList.Items.Add(ToAuthoringDisplayPath(file));
+                    textureList.Items.Add(ToAuthoringDisplayPath(file));
                 }
 
                 var manifest = ProjectStore.TryLoad(folder);
@@ -188,7 +188,7 @@ internal static class ProjectFilesFeature
             finally
             {
                 dmxList.EndUpdate();
-                pngList.EndUpdate();
+                textureList.EndUpdate();
             }
         }
 
