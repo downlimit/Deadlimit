@@ -73,9 +73,27 @@ foreach ($required in @(
 $projectFilesUi = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ProjectFilesFeature.cs' -Raw
 foreach ($required in @(
     'ToAuthoringDisplayPath(file)',
-    'ProjectAuthoringLayout.AuthoringFolderName + "/"'
+    'ProjectAuthoringLayout.AuthoringFolderName + "/"',
+    'CreateFileColumn("PNG / TGA / PSD", textureList',
+    'textureList.Items.Add(ToAuthoringDisplayPath(file))'
 )) {
     Assert-Contains $projectFilesUi $required 'Authoring file-list display'
+}
+foreach ($forbidden in @(
+    'dmxList.Items.Add($"[DMX]',
+    'dmxList.Items.Add($"[FBX]',
+    'dmxList.Items.Add($"[{Path.GetExtension'
+)) {
+    Assert-NotContains $projectFilesUi $forbidden 'Authoring file-list display'
+}
+
+$projectScanner = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ProjectScanner.cs' -Raw
+foreach ($required in @(
+    'Path.GetExtension(path).Equals(".png"',
+    'Path.GetExtension(path).Equals(".tga"',
+    'Path.GetExtension(path).Equals(".psd"'
+)) {
+    Assert-Contains $projectScanner $required 'Texture authoring format scan'
 }
 
 $projectEntry = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ProjectCreationChoiceFeature.cs' -Raw
