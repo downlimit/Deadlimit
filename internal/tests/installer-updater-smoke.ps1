@@ -46,9 +46,7 @@ foreach ($required in @(
     '$installRoot = Join-Path $installerDirectory ''Deadlimit''',
     "Invoke-Git @('clone'",
     "'--branch','main','--single-branch'",
-    'Test-LegacyDeadlimitInstallation',
     'Move or remove that folder manually',
-    "'UserData'",
     "'DeadlimitManager.cmd'",
     "'Deadlimit Manager.lnk'",
     "'Deadlimit Updater.lnk'"
@@ -67,8 +65,10 @@ foreach ($retired in @(
     Assert-NotContains $payload $retired 'Installer'
 }
 
-Assert-NotContains $payload 'Remove-Item -LiteralPath $legacyRoot -Recurse -Force' 'Installer'
-Assert-Contains $payload 'Previous Deadlimit installation preserved for manual review' 'Installer'
+Assert-NotContains $payload 'Test-LegacyDeadlimitInstallation' 'Installer'
+Assert-NotContains $payload 'pre-git-' 'Installer'
+Assert-NotContains $payload 'package-based Deadlimit installation' 'Installer'
+Assert-NotContains $payload "'UserData'" 'Installer'
 
 $entry = Get-Content -LiteralPath 'Update Deadlimit.cmd' -Raw
 foreach ($required in @(
@@ -107,14 +107,10 @@ foreach ($required in @(
 $updaterWorker = Get-Content -LiteralPath 'internal/DeadlimitUpdater.ps1' -Raw
 Assert-Contains $updaterWorker '[int]$WaitForPid = 0' 'Git updater worker'
 Assert-Contains $updaterWorker '$managerProcess.WaitForExit(60000)' 'Git updater worker'
-Assert-Contains $updaterWorker '$env:DEADLIMIT_UPDATE_RELAUNCH -eq "1"' 'Git updater worker'
-Assert-Contains $updaterWorker 'public static class NativeWindow' 'Git updater worker'
-Assert-Contains $updaterWorker 'public static extern IntPtr GetLastActivePopup' 'Git updater worker'
-Assert-Contains $updaterWorker 'public static extern bool PostMessage' 'Git updater worker'
-Assert-Contains $updaterWorker '[DeadlimitUpdater.NativeWindow]::GetLastActivePopup' 'Git updater worker'
-Assert-Contains $updaterWorker '[DeadlimitUpdater.NativeWindow]::PostMessage' 'Git updater worker'
-Assert-Contains $updaterWorker 'Legacy Deadlimit Manager did not close normally. The update was not applied.' 'Git updater worker'
 Assert-Contains $updaterWorker 'Use UPDATE from Deadlimit Manager Settings so it can close safely and restart automatically.' 'Git updater worker'
+Assert-NotContains $updaterWorker 'DeadlimitAggregator' 'Git updater worker'
+Assert-NotContains $updaterWorker 'DeadlimitUpdater.NativeWindow' 'Git updater worker'
+Assert-NotContains $updaterWorker 'Legacy Deadlimit Manager' 'Git updater worker'
 Assert-NotContains $updaterWorker 'Stop-Process -Force' 'Git updater worker'
 
 $workflow = Get-Content -LiteralPath '.github/workflows/build.yml' -Raw
