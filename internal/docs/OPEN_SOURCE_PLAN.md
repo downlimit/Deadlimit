@@ -75,7 +75,7 @@ understand their rights, obligations, validation steps, and review path from roo
 - [x] Document the clone-based user and contributor start paths.
 - [x] Document the contributor/developer setup using .NET SDK 10.
 - [x] Add `COMPATIBILITY.md` with the exact audited workstation snapshot: Windows/DCC/Painter versions, Wall Worm build, CSDK binary fingerprints, Deadlock build/depot manifests, DeadlockTools release/commit/fingerprint, and Shade research status. Upstream archive authentication remains a separate trust gate.
-- [x] Add `CHANGELOG.md` and adopt semantic versioning starting at `0.1.0-beta.1`.
+- [x] Add `CHANGELOG.md` and use semantic versioning for numbered source milestones.
 - [x] Retire obsolete `DeadlimitAggregator*` entry points after compatibility review; keep only the neutral `Deadlimit.cmd` shim for older local shortcuts.
 - [x] Remove maintainer-workstation path defaults from runtime code and public installation paths; derive repository roots and keep Steam discovery explicit in Settings.
 - [x] Expand `.gitignore`, `.gitattributes`, and `.editorconfig` for public development without renormalizing unrelated source files in this change.
@@ -107,27 +107,20 @@ separate instructions without knowing the maintainer's workstation layout.
   supported installation.
 - [x] Preserve user settings and caches in centralized
   `%LocalAppData%\Deadlimit`.
-- [x] Migrate the retired package-based install's in-folder `UserData` during
-  the first clone-based installation.
-- [x] Retire the portable ZIP builder/updater, rolling `latest-main` publisher,
-  package checksums, local package rollback payload, and package-specific policy.
-- [x] Stop uploading routine CI artifacts that are not consumed by users or
-  maintainers.
+- [x] Publish numbered source milestones with only `Install-Deadlimit.cmd` and
+  its SHA-256 checksum as user-facing assets.
+- [x] Do not publish packaged Deadlimit binaries or routine per-merge artifacts.
 
-Historical evidence later in this document can reference the retired
-portable/release channel. Those entries record past validation and are not the
-current delivery contract.
 
 ## Phase 4 — CI, security, and repository policy
 
 - [x] Require the Windows `build`, `dco`, and `smoke` checks on protected `main`.
 - [ ] Add CodeQL for C# as a later security improvement; it is outside the first installer/release scope.
 - [x] Add Dependabot for NuGet and GitHub Actions.
-- [~] Add dependency review and license-policy checks. Exact package license evidence and release-manifest verification pass; GitHub dependency review waits for public availability or GitHub Advanced Security.
+- [~] Add dependency review and license-policy checks. Dependency license evidence is recorded; GitHub dependency review still depends on repository feature availability.
 - [x] Add repository-owned DCO enforcement for every pull-request commit.
-- [x] Add release-package smoke tests, manifest/license checks, and checksum verification.
-- [x] Keep PR validation read-only; grant contents write only to the post-merge `publish-latest` job.
-- [x] Confirm fork pull requests cannot publish: the artist publication job runs only for a push to protected `main`, uses the scoped workflow token, and no `pull_request_target` workflow exists.
+- [x] Keep PR validation read-only; grant contents write only to the post-merge source-milestone workflow.
+- [x] Confirm fork pull requests cannot publish: source milestones are created only after successful checks on protected `main`, using the scoped workflow token.
 - [ ] After the repository becomes public, protect `main`:
   - require pull requests;
   - require `build` and `smoke`;
@@ -145,10 +138,6 @@ The current Git-only delivery contract is validated by the repository CI:
 Release build, startup smoke, installer/updater static contract, updater
 root-resolution and dirty-worktree transaction smoke, path-default policy,
 content policy, and the existing pipeline regression tests.
-
-Historical portable-package rehearsals and the published `0.1.0-beta.1`
-milestone remain part of Git history, but they are retired implementation
-evidence and no longer define the supported installation/update path.
 
 ## Phase 5 — Public repository operation
 
@@ -185,53 +174,3 @@ promise for unspecified "latest" versions.
 The bootstrap and locally built Manager are unsigned. Windows reputation or
 script-policy warnings can still occur; code signing can be reconsidered if the
 project gains enough users to justify certificate cost and maintenance.
-
-## Change log
-
-### 2026-09-20
-
-- Retired the routine portable ZIP and rolling `latest-main` delivery channel.
-- Switched the one-file installer to a Git checkout of `main`; Git for Windows
-  and .NET 10 SDK are now explicit prerequisites.
-- Unified updates on the guarded Git fast-forward/rebuild path.
-- Removed package-specific updater/policy code, portable-package tests, routine
-  release publication, and the unused identifier-audit artifact upload.
-- Centralized supported-install user data under `%LocalAppData%\Deadlimit`.
-
-### 2026-09-05 — historical portable-delivery work
-
-- Replaced manual numbered delivery with the rolling `latest-main` artist channel. Every successful `main` build now refreshes the package, checksum, installer, and version metadata automatically; the permanent installer and Settings updater use that channel.
-- Published `v0.1.0-beta.1` after PR #111 and both post-merge workflows passed. The release contains one installer, one self-contained ZIP, and their SHA-256 files; the tagged-package workflow passed in 1m40s.
-- Changed repository visibility to public with protected `main`, then restored the agreed single-file installer. This earlier installer/portable split was superseded by the rolling `latest-main` artist channel documented above.
-- Merged private PR #99 with the portable packager, checksum-verified installer/updater, rollback path, security tests, release workflows, and updated documentation.
-- Confirmed the repository remains private with zero tags and zero GitHub Releases after the merge.
-- Replaced maintainer-specific runtime defaults with application-root derivation and explicit Settings-based Steam discovery, and retired the obsolete `DeadlimitAggregator*` launchers.
-- Documented the unsigned-beta SmartScreen warning and checksum-verification rule in both public guides.
-- Updated official GitHub Actions to their current Node 24-based majors, then passed private rehearsal run `33922258940` without the prior Node 20 warning.
-- Recorded the private `0.1.0-beta.1` ZIP/updater hashes, full manifest verification, packaged-content audit, and remaining public-release no-go items.
-- Captured the exact 2026-09-05 local compatibility snapshot without recording account identifiers or user content.
-- Passed a real rehearsal-to-rehearsal portable update and installed-entry rollback using the two independently checksummed ZIPs.
-- Re-scanned all 822 reachable commits without printing candidate values: zero prohibited game/authoring asset paths and zero high-confidence credential-signature hits.
-- Disabled unverified CSDK, DepotDownloader, and DeadlockTools install/update automation in packaged portable releases at both UI and service layers; retained manual path selection and the opt-in Developer channel.
-- Rebuilt a real self-contained portable package and passed both packaged release-policy and startup smokes, plus the manifest/checksum lifecycle test.
-- Passed private rehearsal run `33925867426` from merged commit `89ae79b`; the downloaded 82,726,499-byte ZIP matched its checksum and all 362 manifest items, with zero prohibited or undeclared entries.
-
-### 2026-09-04
-
-- Created the readiness plan.
-- Recorded the owner's licensing, governance, distribution, language, support,
-  and funding decisions.
-- Completed the first current-tree provenance and tracked-binary inventory.
-- Confirmed MIT licensing for the two direct NuGet dependencies.
-- Recorded the full resolved NuGet dependency/license inventory and the remaining exact-notice packaging gate.
-- Scanned all 812 commits: zero prohibited historical asset paths and zero configured secret signatures.
-- Added the network/external-execution trust audit; archive authenticity is a release blocker until versions and hashes are pinned.
-- Added MIT licensing, DCO contribution rules, community health files, issue/PR templates, ownership, support/security policies, and third-party disclaimers.
-- Added a CI content policy for retail resources, extracted paths, executables, archives, and unexpected large files.
-- Replaced the root landing page, added the Russian guide, documented the actual ONLINE CSDK recovery contract, and added compatibility/changelog files.
-- Added public development formatting/ignore rules, Dependabot, read-only workflow permissions, and a repository-owned DCO check.
-- Passed the complete locally available CI/smoke set and recorded the evidence.
-- Published private PR #95; its initial `build`, `dco`, and `smoke` checks all passed.
-- Began the portable release channel: self-contained packager, SHA-256 and file manifest, GitHub-Releases updater, transactional rollback, synthetic lifecycle smoke, and a private rehearsal workflow.
-- Added the single-file bootstrap, updater-asset checksum, static bootstrap trust test, and tag-gated GitHub release workflow. No tag or public release was created.
-- Kept repository visibility private pending the final explicit approval gate.
