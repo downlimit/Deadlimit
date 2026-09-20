@@ -410,9 +410,9 @@ The only permitted process candidate remains:
 
 | Field | Offline preflight result |
 |---|---|
-| executable | `C:\WorkProjects\Deadlock\Reduced_CSDK_12\game\bin_tools\win64\Deadlock_with_tools.exe` |
+| executable | `<ReducedCsdkRoot>\game\bin_tools\win64\Deadlock_with_tools.exe` |
 | file version / SHA-256 | `1.0.0.0` / `151ae3a06e9819af963717b480ef277e519aa00b7ae6b8968cd953dfed5520ec` |
-| candidate shader VPK | `C:\WorkProjects\Deadlock\Reduced_CSDK_12\game\citadel\shaders_vulkan_dir.vpk` |
+| candidate shader VPK | `<ReducedCsdkRoot>\game\citadel\shaders_vulkan_dir.vpk` |
 | candidate VPK size / SHA-256 | 13,168 bytes / `d98aef4f19c19b6d9650ed920dbccc072618e55b0e9b4e1576919bebcb9c133a` |
 | candidate PS entry | `shaders/vfx/pbr_vulkan_60_ps.vcs`, 8,554,374 bytes |
 | candidate PS entry SHA-256 | `8c11deab675e919973ce8b630b77db0bac6a27ec29635c81ae278aad356983ab` |
