@@ -21,6 +21,18 @@ if ([string]::IsNullOrWhiteSpace($env:DEADLIMIT_INSTALLER_PATH)) {
 $installerPath = [IO.Path]::GetFullPath($env:DEADLIMIT_INSTALLER_PATH)
 $installerDirectory = Split-Path -Parent $installerPath
 $installRoot = Join-Path $installerDirectory 'Deadlimit'
+$failureLogPath = Join-Path $installerDirectory 'Install-Deadlimit-error.log'
+$sessionLogPath = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-installer-$([Guid]::NewGuid().ToString('N')).log"
+$transcriptStarted = $false
+$installationFailed = $false
+
+try {
+    Start-Transcript -LiteralPath $sessionLogPath -Force | Out-Null
+    $transcriptStarted = $true
+}
+catch {
+    # Logging must never prevent the installer itself from running.
+}
 
 function Refresh-ProcessPath {
     $machinePath = [Environment]::GetEnvironmentVariable('Path', [EnvironmentVariableTarget]::Machine)
@@ -156,6 +168,7 @@ function Publish-Shortcuts([string]$Root) {
     Copy-Item -LiteralPath $updaterShortcut -Destination (Join-Path $startFolder 'Deadlimit Updater.lnk') -Force
 }
 
+try {
 Refresh-ProcessPath
 $gitPath = Find-Git
 $dotnetPath = Find-DotNet10Sdk
@@ -253,3 +266,30 @@ if ($LASTEXITCODE -ne 0) { throw "Deadlimit Manager build failed with exit code 
 Publish-Shortcuts $installRoot
 Write-Host "Deadlimit installed successfully: $installRoot" -ForegroundColor Green
 Start-Process -FilePath (Join-Path $installRoot 'Deadlimit Manager.lnk') -WorkingDirectory $installRoot
+}
+catch {
+    $installationFailed = $true
+    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Output ($_ | Format-List * -Force | Out-String)
+}
+finally {
+    if ($transcriptStarted) {
+        try { Stop-Transcript | Out-Null } catch {}
+    }
+
+    if ($installationFailed -and (Test-Path -LiteralPath $sessionLogPath)) {
+        try {
+            Copy-Item -LiteralPath $sessionLogPath -Destination $failureLogPath -Force
+            Write-Host "Installation log: $failureLogPath" -ForegroundColor Yellow
+        }
+        catch {
+            Write-Host "WARNING: The installation log could not be saved next to the installer: $($_.Exception.Message)" -ForegroundColor Yellow
+        }
+    }
+
+    if (Test-Path -LiteralPath $sessionLogPath) {
+        Remove-Item -LiteralPath $sessionLogPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+if ($installationFailed) { exit 1 }
