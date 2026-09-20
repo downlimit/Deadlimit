@@ -77,12 +77,12 @@ internal static class OnlineCsdkPulseFeature
             return;
         }
 
-        var online = IsOnlineText(button.Text);
-        if (online)
+        var liveSync = IsLiveSyncText(button.Text);
+        if (liveSync)
         {
             var normalized = UiText.T(
-                IndicatorReserve + "ONLINE CSDK",
-                IndicatorReserve + "CSDK ОНЛАЙН");
+                IndicatorReserve + "LIVE SYNC",
+                IndicatorReserve + "LIVE SYNC");
             if (!string.Equals(button.Text, normalized, StringComparison.Ordinal))
             {
                 _normalizingText = true;
@@ -112,10 +112,8 @@ internal static class OnlineCsdkPulseFeature
         button.Invalidate();
     }
 
-    private static bool IsOnlineText(string text) =>
-        text.Contains("CSDK", StringComparison.OrdinalIgnoreCase)
-        && (text.Contains("ONLINE", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("ОНЛАЙН", StringComparison.OrdinalIgnoreCase));
+    private static bool IsLiveSyncText(string text) =>
+        text.Contains("LIVE SYNC", StringComparison.OrdinalIgnoreCase);
 
     private static void PaintOnlineIndicator(object? sender, PaintEventArgs e)
     {

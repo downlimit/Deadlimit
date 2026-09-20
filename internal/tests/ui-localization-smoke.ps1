@@ -17,8 +17,26 @@ Assert-NotContains 'internal/src/Deadlimit/App/SettingsForm.cs' ': status.Detail
 Assert-Contains 'internal/src/Deadlimit/App/SettingsToolchainProgressFeature.cs' 'update.State == ToolchainOperationState.Failed'
 Assert-Contains 'internal/src/Deadlimit/Core/PrepareAuthoringService.cs' 'LocalizedText.T("Validating Vertex Color source pairs'
 Assert-Contains 'internal/src/Deadlimit/Core/BuildAndTestService.cs' 'LocalizedText.T("Starting Build & Test...'
-Assert-Contains 'internal/src/Deadlimit/Core/OnlinePreparationSession.cs' 'ОНЛАЙН-ПОДГОТОВКА'
-Assert-Contains 'internal/src/Deadlimit/App/OnlinePreparationFeature.cs' 'ОНЛАЙН-ПОДГОТОВКА'
+Assert-Contains 'internal/src/Deadlimit/Core/OnlinePreparationSession.cs' 'LIVE SYNC'
+Assert-Contains 'internal/src/Deadlimit/App/OnlinePreparationFeature.cs' 'LIVE SYNC'
+Assert-Contains 'internal/src/Deadlimit/App/OnlineCsdkPulseFeature.cs' 'IndicatorReserve + "LIVE SYNC"'
+foreach ($path in @(
+    'internal/src/Deadlimit/Core/OnlinePreparationSession.cs',
+    'internal/src/Deadlimit/App/OnlinePreparationFeature.cs',
+    'internal/src/Deadlimit/App/OnlineCsdkPulseFeature.cs'
+)) {
+    foreach ($legacy in @(
+        'ONLINE PREPAR',
+        'Online preparation',
+        'ОНЛАЙН-ПОДГОТОВ',
+        'ONLINE CSDK',
+        'CSDK ОНЛАЙН',
+        'online synchronization',
+        'онлайн-синхрон'
+    )) {
+        Assert-NotContains $path $legacy
+    }
+}
 Assert-NotContains 'internal/src/Deadlimit/App/SettingsForm.cs' 'Text = "📂 CSDK Fast Startup Fix"'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'UiText.T("APPLY", "ПРИМЕНИТЬ")'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'UiText.T("CLOSE", "ЗАКРЫТЬ")'
