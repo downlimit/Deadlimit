@@ -2,14 +2,15 @@
 
 Deadlimit Shade is the Deadlock material-authoring product under the Deadlimit umbrella. It is intended to make Substance 3D Painter a reliable preview and texture-authoring environment for current retail Deadlock character materials.
 
-Status: implementation / prototyping.
+Status: active prototype / evidence-driven validation.
 
 Initial investigation: 2026-08-30.
 Implementation bootstrap: 2026-09-05.
+Research evidence through: 2026-09-13.
 
 ## Current implementation
 
-The first code/resources now exist:
+The current prototype includes:
 
 ```text
 DeadlimitShade/
