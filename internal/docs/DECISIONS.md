@@ -163,8 +163,10 @@ Deadlimit Manager name.
 
 Developers and artists use the same repository-backed installation model.
 `Install-Deadlimit.cmd` requires Git for Windows and the .NET 10 SDK, clones
-`main` into the managed Deadlimit folder, builds the Manager locally, and
-creates the normal Manager/Updater shortcuts.
+`main` into a `Deadlimit` subfolder next to the installer itself, builds the
+Manager locally, and creates the normal Manager/Updater shortcuts. The program
+install location is therefore chosen by where the artist places the installer;
+user settings and caches remain under the normal per-user LocalAppData root.
 
 Every supported installation updates through `origin/main`: the updater
 fetches, checks incoming paths against local tracked edits, fast-forwards only
