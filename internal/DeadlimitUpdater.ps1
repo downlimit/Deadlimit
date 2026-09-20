@@ -1,7 +1,8 @@
 param(
     [switch]$ResolveRootOnly,
     [switch]$NoWait,
-    [switch]$NoLaunch
+    [switch]$NoLaunch,
+    [int]$WaitForPid = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -123,18 +124,32 @@ try {
         }
     }
 
-    # Updating while the Manager is active can interrupt PREPARE/BUILD/deployment
-    # transactions and leave external state half-written. Never force-kill it.
-    $managerProcesses = @(Get-Process -Name DeadlimitManager, DeadlimitAggregator, Deadlimit -ErrorAction SilentlyContinue)
-    if ($managerProcesses.Count -gt 0) {
-        Write-Host "Waiting for Deadlimit Manager to close normally..."
-        foreach ($managerProcess in $managerProcesses) {
+    # An in-app update receives the exact Manager PID and waits for that
+    # process to close normally. Never kill it: FormClosing owns cancellation and
+    # transaction cleanup. A manually launched updater cannot safely initiate that
+    # protocol, so it refuses while a Manager is running.
+    if ($WaitForPid -gt 0) {
+        $managerProcess = Get-Process -Id $WaitForPid -ErrorAction SilentlyContinue
+        if ($null -ne $managerProcess) {
+            if ($managerProcess.ProcessName -notin @('DeadlimitManager', 'DeadlimitAggregator', 'Deadlimit')) {
+                throw "Updater wait PID $WaitForPid is not a Deadlimit Manager process."
+            }
+
+            Write-Host "Waiting for Deadlimit Manager to close normally..."
             try {
-                Wait-Process -Id $managerProcess.Id -Timeout 15 -ErrorAction Stop
+                if (-not $managerProcess.WaitForExit(60000)) {
+                    throw "timeout"
+                }
             }
             catch {
-                throw "Deadlimit Manager is still running. Close it normally, then run Deadlimit Updater again."
+                throw "Deadlimit Manager did not close normally. The update was not applied."
             }
+        }
+    }
+    else {
+        $managerProcesses = @(Get-Process -Name DeadlimitManager, DeadlimitAggregator, Deadlimit -ErrorAction SilentlyContinue)
+        if ($managerProcesses.Count -gt 0) {
+            throw "Deadlimit Manager is running. Use UPDATE from Deadlimit Manager Settings so it can close safely and restart automatically."
         }
     }
 

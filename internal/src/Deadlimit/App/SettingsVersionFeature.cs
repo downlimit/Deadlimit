@@ -366,7 +366,7 @@ internal static class SettingsVersionFeature
         }
     }
 
-    private static void LaunchUpdater(IWin32Window owner)
+    private static void LaunchUpdater(SettingsForm owner)
     {
         var updateRoot = DeadlimitPaths.DefaultDeadlimitRoot;
         var updater = Path.Combine(updateRoot, "Update Deadlimit.cmd");
@@ -386,13 +386,34 @@ internal static class SettingsVersionFeature
         try
         {
             ApplicationMutationCoordinator.ThrowIfBusy("Deadlimit update");
+
+            var managerProcessId = Environment.ProcessId;
+            var mainForm = Application.OpenForms.OfType<MainForm>().FirstOrDefault();
             Process.Start(new ProcessStartInfo
             {
                 FileName = updater,
+                Arguments = $"-WaitForPid {managerProcessId}",
                 WorkingDirectory = Path.GetDirectoryName(updater) ?? AppContext.BaseDirectory,
                 UseShellExecute = true,
             });
-            Application.Exit();
+
+            // Settings owns a modal message loop. Application.Exit() from this click
+            // handler can leave that modal chain alive long enough for the updater to
+            // time out. Unwind Settings first, then close its MainForm owner normally.
+            owner.BeginInvoke((Action)(() =>
+            {
+                owner.DialogResult = DialogResult.Cancel;
+                owner.Close();
+
+                if (mainForm is not null && !mainForm.IsDisposed && mainForm.IsHandleCreated)
+                {
+                    mainForm.BeginInvoke((Action)mainForm.Close);
+                }
+                else
+                {
+                    Application.Exit();
+                }
+            }));
         }
         catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
         {

@@ -82,6 +82,15 @@ Assert-NotContains $entry 'PackagePath' 'Git updater'
 $rootLauncher = Get-Content -LiteralPath 'DeadlimitManager.cmd' -Raw
 Assert-Contains $rootLauncher 'set "UPDATER=%ROOT%Update Deadlimit.cmd"' 'Updater shortcut routing'
 
+$settingsVersion = Get-Content -LiteralPath 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' -Raw
+foreach ($required in @(
+    'Arguments = $"-WaitForPid {managerProcessId}"',
+    'owner.BeginInvoke',
+    'mainForm.BeginInvoke((Action)mainForm.Close)'
+)) {
+    Assert-Contains $settingsVersion $required 'In-app updater graceful shutdown'
+}
+
 $originFeature = Get-Content -LiteralPath 'internal/src/Deadlimit/App/UpdaterLaunchOriginFeature.cs' -Raw
 foreach ($required in @(
     'DEADLIMIT_UPDATE_RELAUNCH',
@@ -92,7 +101,9 @@ foreach ($required in @(
 }
 
 $updaterWorker = Get-Content -LiteralPath 'internal/DeadlimitUpdater.ps1' -Raw
-Assert-Contains $updaterWorker 'Deadlimit Manager is still running. Close it normally' 'Git updater worker'
+Assert-Contains $updaterWorker '[int]$WaitForPid = 0' 'Git updater worker'
+Assert-Contains $updaterWorker '$managerProcess.WaitForExit(60000)' 'Git updater worker'
+Assert-Contains $updaterWorker 'Use UPDATE from Deadlimit Manager Settings so it can close safely and restart automatically.' 'Git updater worker'
 Assert-NotContains $updaterWorker 'Stop-Process -Force' 'Git updater worker'
 
 $workflow = Get-Content -LiteralPath '.github/workflows/build.yml' -Raw
