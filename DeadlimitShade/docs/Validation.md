@@ -1,8 +1,8 @@
 # Deadlimit Shade — Validation Protocol
 
-Status: bootstrap protocol.
+Status: active validation record.
 
-Updated: 2026-09-09.
+Research evidence through: 2026-09-13.
 
 ## Purpose
 
