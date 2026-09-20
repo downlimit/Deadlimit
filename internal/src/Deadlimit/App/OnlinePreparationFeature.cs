@@ -5,7 +5,7 @@ namespace Deadlimit.App;
 
 internal static class OnlinePreparationFeature
 {
-    private static string OnlineButtonText => UiText.T("▶  ONLINE CSDK", "▶  CSDK ОНЛАЙН");
+    private static string LiveSyncButtonText => UiText.T("▶  LIVE SYNC", "▶  LIVE SYNC");
 
     private static OnlinePreparationSession? _session;
     private static ToolTip? _toolTip;
@@ -107,8 +107,8 @@ internal static class OnlinePreparationFeature
         }
 
         UpdateToolTip(UiText.T(
-            "ONLINE PREPARATION is off.\n\nShift-click LAUNCH CSDK to prepare once and enable live synchronization. CSDK launches only if no CSDK process is already running.",
-            "ОНЛАЙН-ПОДГОТОВКА выключена.\n\nИспользуйте SHIFT+клик по ЗАПУСК CSDK, чтобы один раз выполнить подготовку и включить онлайн-синхронизацию. CSDK будет запущен только если другой процесс CSDK ещё не работает."));
+            "LIVE SYNC is off.\n\nShift-click LAUNCH CSDK to prepare once and enable LIVE SYNC. CSDK launches only if no CSDK process is already running.",
+            "Режим LIVE SYNC выключен.\n\nИспользуйте SHIFT+клик по ЗАПУСК CSDK, чтобы один раз выполнить подготовку и включить LIVE SYNC. CSDK будет запущен только если другой процесс CSDK ещё не работает."));
 
         _ = DisposeSessionAfterGameLaunchAsync(session);
         return true;
@@ -143,7 +143,7 @@ internal static class OnlinePreparationFeature
             MessageBox.Show(
                 _form,
                 UiText.T(
-                    "Save the current Deadlimit Manager project before enabling ONLINE PREPARATION.",
+                    "Save the current Deadlimit Manager project before enabling LIVE SYNC.",
                     "Сохраните текущий проект Deadlimit Manager перед включением ОНЛАЙН-ПОДГОТОВКИ."),
                 "Deadlimit Manager",
                 MessageBoxButtons.OK,
@@ -171,27 +171,27 @@ internal static class OnlinePreparationFeature
                 }
             });
 
-            using var mutation = ApplicationMutationCoordinator.Begin("ONLINE PREPARATION");
+            using var mutation = ApplicationMutationCoordinator.Begin("LIVE SYNC");
             var paths = new DeadlimitPaths();
             var prepareService = new PrepareAuthoringService(paths);
             await prepareService.PrepareAsync(manifest, progress);
 
             var refreshedManifest = ProjectStore.TryLoadLastProject()
                 ?? throw new InvalidOperationException(
-                    "ONLINE PREPARATION could not reload the project after PREPARE FOR CSDK.");
+                    "LIVE SYNC could not reload the project after PREPARE FOR CSDK.");
 
             StartOrReplaceSession(refreshedManifest, paths);
-            _launchButton.Text = OnlineButtonText;
+            _launchButton.Text = LiveSyncButtonText;
 
             var csdkAlreadyRunning = CsdkProcessService.IsRunning(paths);
             UpdateToolTip(
                 csdkAlreadyRunning
                     ? UiText.T(
-                        "ONLINE PREPARATION is active.\n\nChanged DMX and texture files are synchronized automatically. The existing CSDK instance is kept; no second instance is launched.\n\nShift-click again to stop online synchronization.",
-                        "ОНЛАЙН-ПОДГОТОВКА активна.\n\nИзменённые DMX и текстуры синхронизируются автоматически. Уже запущенный CSDK остаётся активным; второй экземпляр не запускается.\n\nПовторный SHIFT+клик отключит онлайн-синхронизацию.")
+                        "LIVE SYNC is active.\n\nChanged DMX and texture files are synchronized automatically. The existing CSDK instance is kept; no second instance is launched.\n\nShift-click again to stop LIVE SYNC.",
+                        "Режим LIVE SYNC активен.\n\nИзменённые DMX и текстуры синхронизируются автоматически. Уже запущенный CSDK остаётся активным; второй экземпляр не запускается.\n\nПовторный SHIFT+клик отключит LIVE SYNC.")
                     : UiText.T(
-                        "ONLINE PREPARATION is active.\n\nChanged DMX and texture files are synchronized automatically. CSDK will launch now.\n\nShift-click again to stop online synchronization.",
-                        "ОНЛАЙН-ПОДГОТОВКА активна.\n\nИзменённые DMX и текстуры синхронизируются автоматически. CSDK сейчас будет запущен.\n\nПовторный SHIFT+клик отключит онлайн-синхронизацию."));
+                        "LIVE SYNC is active.\n\nChanged DMX and texture files are synchronized automatically. CSDK will launch now.\n\nShift-click again to stop LIVE SYNC.",
+                        "Режим LIVE SYNC активен.\n\nИзменённые DMX и текстуры синхронизируются автоматически. CSDK сейчас будет запущен.\n\nПовторный SHIFT+клик отключит LIVE SYNC."));
             shouldLaunchCsdk = !csdkAlreadyRunning;
         }
         catch (Exception ex) when (ex is IOException
@@ -201,7 +201,7 @@ internal static class OnlinePreparationFeature
             MessageBox.Show(
                 _form,
                 ex.Message,
-                UiText.T("Online preparation failed", "Ошибка ONLINE PREPARATION"),
+                UiText.T("LIVE SYNC failed", "Ошибка LIVE SYNC"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
         }
@@ -270,8 +270,8 @@ internal static class OnlinePreparationFeature
         if (!producedNewPrepareResult || !afterLog!.Succeeded)
         {
             UpdateToolTip(UiText.T(
-                $"ONLINE PREPARATION kept its previous live-sync baseline because {actionName} did not finish a successful PREPARE transaction.\n\nThe last good prepared DMX remains protected.",
-                $"ОНЛАЙН-ПОДГОТОВКА сохранила предыдущую базовую версию, потому что {actionName} не завершилась успешной транзакцией PREPARE.\n\nПоследний корректно подготовленный DMX сохранён."));
+                $"LIVE SYNC kept its previous LIVE SYNC baseline because {actionName} did not finish a successful PREPARE transaction.\n\nThe last good prepared DMX remains protected.",
+                $"LIVE SYNC сохранил предыдущую базовую версию, потому что {actionName} не завершилась успешной транзакцией PREPARE.\n\nПоследний корректно подготовленный DMX сохранён."));
             return;
         }
 
@@ -280,10 +280,10 @@ internal static class OnlinePreparationFeature
             StartOrReplaceSession(manifest, new DeadlimitPaths());
             if (_launchButton is not null && !_launchButton.IsDisposed)
             {
-                _launchButton.Text = OnlineButtonText;
+                _launchButton.Text = LiveSyncButtonText;
             }
             UpdateToolTip(UiText.T(
-                $"ONLINE PREPARATION baseline refreshed after {actionName}.\n\nChanged DMX and texture files will continue to synchronize automatically. Shift-click LAUNCH CSDK to stop.",
+                $"LIVE SYNC baseline refreshed after {actionName}.\n\nChanged DMX and texture files will continue to synchronize automatically. Shift-click LAUNCH CSDK to stop.",
                 $"Базовая версия ОНЛАЙН-ПОДГОТОВКИ обновлена после {actionName}.\n\nИзменённые DMX и текстуры продолжат синхронизироваться автоматически. Для остановки используйте SHIFT+клик по ЗАПУСК CSDK."));
         }
         catch (Exception ex) when (ex is IOException
@@ -291,7 +291,7 @@ internal static class OnlinePreparationFeature
             or InvalidOperationException)
         {
             UpdateToolTip(UiText.T(
-                $"ONLINE PREPARATION could not refresh its baseline after {actionName}: {ex.Message}",
+                $"LIVE SYNC could not refresh its baseline after {actionName}: {ex.Message}",
                 $"Не удалось обновить базовую версию ОНЛАЙН-ПОДГОТОВКИ после {actionName}."));
         }
     }
@@ -368,11 +368,11 @@ internal static class OnlinePreparationFeature
                 return;
             }
 
-            _launchButton.Text = OnlineButtonText;
+            _launchButton.Text = LiveSyncButtonText;
             var suffix = update.PrepareRequired
                 ? UiText.T(
-                    "\n\nA structural change was detected. ONLINE PREPARATION is rebuilding the full PREPARE baseline automatically.",
-                    "\n\nОбнаружено структурное изменение. ОНЛАЙН-ПОДГОТОВКА автоматически перестраивает полную базовую версию PREPARE.")
+                    "\n\nA structural change was detected. LIVE SYNC is rebuilding the full PREPARE baseline automatically.",
+                    "\n\nОбнаружено структурное изменение. LIVE SYNC автоматически перестраивает полную базовую версию PREPARE.")
                 : string.Empty;
             UpdateToolTip(update.Message + suffix);
 
@@ -422,7 +422,7 @@ internal static class OnlinePreparationFeature
 
                 var manifest = ProjectStore.TryLoadLastProject()
                     ?? throw new InvalidOperationException(
-                        "ONLINE PREPARATION could not reload the project for automatic PREPARE.");
+                        "LIVE SYNC could not reload the project for automatic PREPARE.");
                 var paths = new DeadlimitPaths();
                 var sourceSnapshot = CaptureOnlineSourceSnapshot(manifest.ProjectFolder);
                 var progress = new Progress<PrepareAuthoringProgress>(update =>
@@ -434,8 +434,8 @@ internal static class OnlinePreparationFeature
                 });
 
                 UpdateToolTip(UiText.T(
-                    "ONLINE PREPARATION detected a structural project change and is running PREPARE FOR CSDK automatically. CSDK remains open and will receive the refreshed authoring content.",
-                    "ОНЛАЙН-ПОДГОТОВКА обнаружила структурное изменение проекта и автоматически выполняет ПОДГОТОВИТЬ ДЛЯ CSDK. CSDK остаётся открытым и получит обновлённый authoring content."));
+                    "LIVE SYNC detected a structural project change and is running PREPARE FOR CSDK automatically. CSDK remains open and will receive the refreshed authoring content.",
+                    "LIVE SYNC обнаружил структурное изменение проекта и автоматически выполняет ПОДГОТОВИТЬ ДЛЯ CSDK. CSDK остаётся открытым и получит обновлённый authoring content."));
 
                 await new PrepareAuthoringService(paths).PrepareAsync(manifest, progress);
 
@@ -448,7 +448,7 @@ internal static class OnlinePreparationFeature
 
                 var refreshedManifest = ProjectStore.TryLoadLastProject()
                     ?? throw new InvalidOperationException(
-                        "ONLINE PREPARATION could not reload the project after automatic PREPARE.");
+                        "LIVE SYNC could not reload the project after automatic PREPARE.");
                 StartOrReplaceSession(refreshedManifest, paths);
                 if (!string.Equals(
                         sourceSnapshot,
@@ -459,12 +459,12 @@ internal static class OnlinePreparationFeature
                 }
                 if (_launchButton is not null && !_launchButton.IsDisposed)
                 {
-                    _launchButton.Text = OnlineButtonText;
+                    _launchButton.Text = LiveSyncButtonText;
                 }
 
                 UpdateToolTip(UiText.T(
-                    "ONLINE PREPARATION refreshed the full PREPARE baseline automatically. Changed DMX and texture files continue to synchronize without another click.",
-                    "ОНЛАЙН-ПОДГОТОВКА автоматически обновила полную базовую версию PREPARE. Изменённые DMX и текстуры продолжают синхронизироваться без дополнительного клика."));
+                    "LIVE SYNC refreshed the full PREPARE baseline automatically. Changed DMX and texture files continue to synchronize without another click.",
+                    "LIVE SYNC автоматически обновил полную базовую версию PREPARE. Изменённые DMX и текстуры продолжают синхронизироваться без дополнительного клика."));
             }
         }
         catch (Exception ex) when (ex is IOException
@@ -472,8 +472,8 @@ internal static class OnlinePreparationFeature
             or InvalidOperationException)
         {
             UpdateToolTip(UiText.T(
-                $"ONLINE PREPARATION could not refresh the full PREPARE baseline automatically: {ex.Message}. The last good prepared content was kept; run PREPARE FOR CSDK manually to recover.",
-                $"ОНЛАЙН-ПОДГОТОВКА не смогла автоматически обновить полную базовую версию PREPARE: {ex.Message}. Последний корректный подготовленный content сохранён; для восстановления выполните ПОДГОТОВИТЬ ДЛЯ CSDK вручную."));
+                $"LIVE SYNC could not refresh the full PREPARE baseline automatically: {ex.Message}. The last good prepared content was kept; run PREPARE FOR CSDK manually to recover.",
+                $"LIVE SYNC не смог автоматически обновить полную базовую версию PREPARE: {ex.Message}. Последний корректный подготовленный content сохранён; для восстановления выполните ПОДГОТОВИТЬ ДЛЯ CSDK вручную."));
         }
         finally
         {
@@ -536,8 +536,8 @@ internal static class OnlinePreparationFeature
         }
 
         UpdateToolTip(UiText.T(
-            "ONLINE PREPARATION is off.\n\nShift-click LAUNCH CSDK to prepare once and enable live synchronization. CSDK launches only if no CSDK process is already running.",
-            "ОНЛАЙН-ПОДГОТОВКА выключена.\n\nИспользуйте SHIFT+клик по ЗАПУСК CSDK, чтобы один раз выполнить подготовку и включить онлайн-синхронизацию. CSDK будет запущен только если другой процесс CSDK ещё не работает."));
+            "LIVE SYNC is off.\n\nShift-click LAUNCH CSDK to prepare once and enable LIVE SYNC. CSDK launches only if no CSDK process is already running.",
+            "Режим LIVE SYNC выключен.\n\nИспользуйте SHIFT+клик по ЗАПУСК CSDK, чтобы один раз выполнить подготовку и включить LIVE SYNC. CSDK будет запущен только если другой процесс CSDK ещё не работает."));
     }
 
     private static void Detach()
