@@ -131,7 +131,7 @@ try {
     if ($WaitForPid -gt 0) {
         $managerProcess = Get-Process -Id $WaitForPid -ErrorAction SilentlyContinue
         if ($null -ne $managerProcess) {
-            if ($managerProcess.ProcessName -notin @('DeadlimitManager', 'DeadlimitAggregator', 'Deadlimit')) {
+            if ($managerProcess.ProcessName -ne 'DeadlimitManager') {
                 throw "Updater wait PID $WaitForPid is not a Deadlimit Manager process."
             }
 
