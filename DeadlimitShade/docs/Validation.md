@@ -1,8 +1,8 @@
 # Deadlimit Shade — Validation Protocol
 
-Status: bootstrap protocol.
+Status: active validation record.
 
-Updated: 2026-09-09.
+Research evidence through: 2026-09-13.
 
 ## Purpose
 
@@ -304,7 +304,7 @@ loopback. `Get-NetTCPConnection` identified `::1:60041`; the official
 The API created the project from the exact disposable OBJ and asserted the
 Texture Set names `DeadlimitTest` and `__deadlimit_outline`. The JavaScript API
 created independent `Deadlimit Hero` and `Deadlimit Outline` instances. Painter's
-runtime log recorded successful creation of both shaders. Computer Use viewport
+runtime log recorded successful creation of both shaders. Painter viewport
 captures proved the black `Custom` silhouette, synchronized green/red Ivy
 diagnostic colors, restoration of the original `Custom` result and correct
 silhouette culling after camera rotation. Preserving reloads visibly changed
@@ -326,7 +326,7 @@ already open disposable copy of the textured character SPP:
 
 ```powershell
 & DeadlimitShade/tools/Open-PainterShadePreview.ps1 `
-  -PreviewMesh 'C:\WorkProjects\Deadlock\IvyBuilder\4texture\texture_ivy_builder.fbx' `
+  -PreviewMesh '<ProjectRoot>\IvyBuilder\4texture\texture_ivy_builder.fbx' `
   -UseExistingProject `
   -HeroOnly `
   -Character Ivy
@@ -502,7 +502,7 @@ Retail Deadlock-style lighting skeleton: VISUAL PASS — readable matte diffuse,
 restrained stepped copper highlights and no simultaneous Painter HDRI specular
 Painter light rotation: VISUAL PASS — signed N dot L changes at 145/235 degrees
 Sampler artifacts: PASS — no cyan/blue/checker output
-Computer Use viewport capture: PASS — actual Painter window captured
+Painter viewport capture: PASS — actual Painter window captured
 ```
 
 Capture hashes are evidence identifiers only; the PNGs remain in `.scratch`
@@ -550,7 +550,7 @@ Deadlock probes, so the preview uses Painter's panorama-prefiltered
 It is exposed independently as `Environment Specular Raw` and `Environment
 Specular Final`; ordinary Shaded adds only the scaled final contribution.
 
-A Computer Use pass on the deterministic Ivy scene captured both diagnostics,
+A Painter viewport validation pass on the deterministic Ivy scene captured both diagnostics,
 then changed Environment Rotation from 145 to 180 degrees. The lobe moved over
 the copper cuffs and weapon in both the isolated pass and final Shaded. Direct
 NPR lighting continued to use the same Painter yaw bridge. The environment was
@@ -675,7 +675,7 @@ already loaded retail `ivy_gearv3` binding made the copper cuff and weapon
 fittings large enough for channel inspection; lighting and material inputs
 were unchanged.
 
-Computer Use captured these shader-native views from the live Painter viewport:
+Painter viewport validation captured these shader-native views from the live Painter viewport:
 
 | View | Observed result |
 | --- | --- |

@@ -1,6 +1,6 @@
 # Deadlimit Manager UI settings
 
-Deadlimit Manager stores machine-local interface preferences in the legacy compatibility path `%LOCALAPPDATA%\Deadlimit\settings.json`.
+Deadlimit Manager stores machine-local interface preferences in `%LOCALAPPDATA%\Deadlimit\settings.json`.
 
 ## Projects library
 
@@ -30,7 +30,7 @@ The workspace header follows a Steam-library-style hierarchy. A compact gear ope
 
 The large launch buttons retain their project colors. The smaller Settings/Prepare/Build controls use a dark 70%-opaque overlay so project artwork remains visible beneath them, with no backing surface outside their bounds. A 33%-opacity edge vignette is drawn over the cover artwork and below the controls.
 
-While ONLINE CSDK synchronization is active, the CSDK launch button replaces its play glyph with a red circular indicator of the same visual size. The indicator preserves the normal two-space gap before the label and continuously pulses its opacity on a sinusoidal cycle until online synchronization is stopped.
+While LIVE SYNC is active, the CSDK launch button shows `LIVE SYNC` with a red circular indicator of the same visual size as the normal play glyph. The indicator preserves the normal two-space gap before the label and continuously pulses its opacity on a sinusoidal cycle until LIVE SYNC is stopped.
 
 A normal click on `LAUNCH GAME / ЗАПУСК ИГРЫ` immediately changes the button to the blue `GAME IS LAUNCHING / ИГРА ЗАПУСКАЕТСЯ` state and launches Deadlock through the installed Steam client using app id `1422450`, with the Steam URI as a fallback. The pending state is retained through Steam's pre-launch phase instead of returning to the green launch state after 15 seconds; a two-minute safety timeout recovers from a launch request that Steam silently drops. While the Deadlock process is present, the blue button reads `CLOSE / ЗАКРЫТЬ` and closes the game when clicked. Process discovery, Steam-path resolution, and shutdown polling run away from the WinForms UI thread; only one process-state probe may run at a time, so slow Windows process enumeration cannot stall painting or input. Holding SHIFT while clicking does not launch or close Deadlock; it only copies `cl_lock_camera true` to the Windows clipboard for visual testing.
 
@@ -61,4 +61,4 @@ The Original theme uses the current CSDK12 reference values for the controls dis
 
 ## Language
 
-The interface language supports English and Russian and is stored alongside the theme. Language changes are also applied after restart.
+The interface supports English, Russian, Simplified Chinese, and Brazilian Portuguese. The selected language is stored alongside the theme, and language changes are applied after restart.

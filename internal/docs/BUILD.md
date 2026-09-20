@@ -101,7 +101,7 @@ NmSkeletonList
 AnimGraph2List
 ```
 
-This matches the earlier remembered manual workaround: remove the two current-CSDK-incompatible AG2 source nodes, keep the rest of the retail ModelDoc.
+This matches the earlier documented manual workaround: remove the two current-CSDK-incompatible AG2 source nodes and keep the rest of the retail ModelDoc.
 
 The known-good `RenderMeshList` contains six retail source meshes:
 

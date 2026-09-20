@@ -4,9 +4,9 @@ Capture date: 2026-09-05.
 
 | Item | Retail identity | SHA-256 | Evidence |
 |---|---|---|---|
-| Steam app manifest | `D:\Program Files (x86)\Steam\steamapps\appmanifest_1422450.acf`; `buildid 24882156`; 1,013 bytes; modified `2026-09-04T17:14:01.5801720Z` | `065a6dc1e4c04372908da54f6a5543f3ad9fae79b0e7e8f7be788b0942f9bf5e` | Confirmed by retail / our pipeline |
-| Main resource directory | `D:\Program Files (x86)\Steam\steamapps\common\Project8Staging\game\citadel\pak01_dir.vpk`; 6,890,162-byte directory file; modified `2026-08-23T14:09:47.7777856Z` | `3a12192e51306ef074656e6355fb940fad81e1be3be6b1ed030de1e1934df6dd` | Confirmed by retail / our pipeline |
-| Vulkan shader directory | `D:\Program Files (x86)\Steam\steamapps\common\Project8Staging\game\citadel\shaders_vulkan_dir.vpk`; 13,249-byte directory file; modified `2026-07-31T08:20:32.6278337Z` | `5ae9ee6e4aa57dac4cba96dbff4d785f6770585ae447e90763527e39d781142d` | Confirmed by retail / our pipeline |
+| Steam app manifest | `<SteamRoot>\steamapps\appmanifest_1422450.acf`; `buildid 24882156`; 1,013 bytes; modified `2026-09-04T17:14:01.5801720Z` | `065a6dc1e4c04372908da54f6a5543f3ad9fae79b0e7e8f7be788b0942f9bf5e` | Confirmed by retail / our pipeline |
+| Main resource directory | `<DeadlockRoot>\game\citadel\pak01_dir.vpk`; 6,890,162-byte directory file; modified `2026-08-23T14:09:47.7777856Z` | `3a12192e51306ef074656e6355fb940fad81e1be3be6b1ed030de1e1934df6dd` | Confirmed by retail / our pipeline |
+| Vulkan shader directory | `<DeadlockRoot>\game\citadel\shaders_vulkan_dir.vpk`; 13,249-byte directory file; modified `2026-07-31T08:20:32.6278337Z` | `5ae9ee6e4aa57dac4cba96dbff4d785f6770585ae447e90763527e39d781142d` | Confirmed by retail / our pipeline |
 | Ivy model | `models/heroes_wip/ivy/ivy.vmdl_c`; 4,111,943 bytes | `6fca3312a1c4cb5cb9a88ed90c30a32c96c051f4dc96379b2e7ddeb2e6e1137a` | Confirmed by retail / our pipeline |
 | Selected material | `models/heroes_staging/tengu/tengu_v2/materials/ivy_bodyv3.vmat_c`; 5,263 bytes | `74815a7acecd73483268d2b5a4ea0db459e9c8e3f86f3b7552fc753659f406c1` | Confirmed by retail / our pipeline |
 
@@ -24,7 +24,7 @@ All selected resources, embedded mesh/VBIB data, seven VTEX resources, and the
 three Vulkan SM 6 shader metadata resources parsed successfully. Evidence:
 Confirmed by retail / our pipeline.
 
-`C:\WorkProjects\Deadlock\DeadlockTools\DeadlockTools.exe` was present as
+`<DeadlockToolsRoot>\DeadlockTools.exe` was present as
 requested (file version `1.0.0.0`, product version
 `1.0.0+ed8eda954f63dde4869b57b8976f9e873fe19187`, SHA-256
 `0a7d29bebc20a6fe004ce075a7891b19f1bc4ba2a9e0dad5c861ec646699af27`).
@@ -287,7 +287,7 @@ texture channel has an established source/constant and processing path.
 # Reproduction Notes
 
 1. Verify Steam app `1422450` reports `buildid 24882156` in
-   `D:\Program Files (x86)\Steam\steamapps\appmanifest_1422450.acf`, then verify
+   `<SteamRoot>\steamapps\appmanifest_1422450.acf`, then verify
    the file identities in `# Identity`.
 2. With ValveResourceFormat `20.0.6980` / commit
    `a06886f7d06049052d32a7381ec05523064a2ca0`, open the primary retail VPK

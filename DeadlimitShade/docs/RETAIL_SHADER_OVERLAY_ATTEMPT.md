@@ -1,6 +1,6 @@
-# Disposable Retail-Shader Overlay
+# Research record — disposable retail-shader overlay
 
-Issue #145 rechecked Steam app `1422450` before launching. The manifest still
+The research snapshot rechecked Steam app `1422450` before launching. The manifest still
 reports buildid `24882156`. ValvePak read
 `shaders/vfx/pbr_vulkan_60_ps.vcs` from the installed retail
 `shaders_vulkan_dir.vpk` as 9,230,833 bytes with SHA-256

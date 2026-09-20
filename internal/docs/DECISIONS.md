@@ -27,7 +27,7 @@ Routine builds must never overwrite an existing authored custom VMAT.
 
 ### Extraction is a first-class module
 
-Deadlimit Manager should eventually be able to select a retail Deadlock hero and create a modding-ready source folder containing the model and relevant dependencies.
+Deadlimit Manager can select a Deadlock hero and create a modding-ready source tree containing the model and supported dependencies.
 
 Hero resource paths must be discovered from current retail data rather than assumed from a fixed template.
 
@@ -154,10 +154,10 @@ Implementation, documentation, icons, and source code live under the hidden `int
 
 The repository itself remains complete; hiding files in Explorer is only a local presentation choice.
 
-`Deadlimit.cmd` remains as a neutral compatibility shim for older local
-shortcuts. The obsolete `DeadlimitAggregator*` entry points were retired before
-the first public release. New user-facing launch and shortcut surfaces use the
-Deadlimit Manager name.
+Obsolete legacy launchers and aggregator entry points are not part of the supported
+public installation. The supported user entry points are `DeadlimitManager.cmd`,
+`DeadlimitUpdater.bat`, and `Install-Deadlimit.cmd`. New user-facing launch and
+shortcut surfaces use the Deadlimit Manager name.
 
 ## Git-checkout delivery
 

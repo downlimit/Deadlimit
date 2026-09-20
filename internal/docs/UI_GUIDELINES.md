@@ -69,3 +69,12 @@ Changing language or theme must not require the user to manually relaunch Deadli
 - Paths, filenames, command names, Git refs and labels the user must match literally in another program remain verbatim.
 - Tool/workspace paths persist immediately when installed or selected and do not depend on `APPLY`.
 - Do not use `Application.Restart()` for normal language/theme changes.
+
+
+## Visual style
+
+The desktop theme should stay visually close to Source 2 tooling rather than stock
+high-contrast WinForms: low-contrast dark surfaces, restrained one-pixel borders,
+slightly lighter controls, and no bright framing around ordinary groups. CSDK
+references may guide hierarchy and density, but Deadlimit Manager keeps its own
+palette and layout rather than copying one external tool literally.

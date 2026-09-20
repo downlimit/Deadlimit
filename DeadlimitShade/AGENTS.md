@@ -18,14 +18,14 @@ For Adobe Substance 3D Painter and other desktop DCC applications, separate **pr
 Use the minimum evidence sufficient for the current claim:
 
 1. For scripted Painter operations, prefer Painter's supported remote scripting / Python API or another direct application-level response.
-2. For claims about a visible window or viewport, use Computer Use / real top-level-window discovery and a screenshot of the actual Painter window when visual proof is required.
+2. For claims about a visible window or viewport, use real top-level-window discovery or another GUI-automation path plus a screenshot of the actual Painter window when visual proof is required.
 3. Use OS process properties such as PID, `MainWindowHandle`, and `MainWindowTitle` only as supporting diagnostics.
 
 A successful API/remote-scripting response proves automation readiness, not viewport appearance. A process existing proves only process existence. A visual PASS requires visual evidence.
 
 ### Failure classification
 
-If Painter is running but window discovery or Computer Use cannot access its window, report exactly that boundary, for example:
+If Painter is running but window discovery or the available GUI-automation path cannot access its window, report exactly that boundary, for example:
 
 `Painter is running, but the window/viewport could not be accessed through the available GUI automation path.`
 
@@ -35,7 +35,7 @@ Do not rewrite that as:
 
 Likewise, do not issue a visual PASS without actual visual evidence.
 
-### Retry / token discipline
+### Retry discipline
 
 - For one unchanged GUI-discovery method, make at most two meaningful attempts.
 - If the same result repeats, change the evidence source or record the blocker. Do not enter long blind polling loops.

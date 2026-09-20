@@ -67,7 +67,7 @@ Manager 会将美术人员自己的源文件转换为 Reduced CSDK 的可编辑�
 
 准备后的项目仍然是可编辑的创作阶段。你可以在 CSDK/ModelDoc 中打开它，继续调整材质和着色器、保存修改并持续迭代，而不是把整个流程变成不可见的一键转换。
 
-### Live Sync
+### LIVE SYNC
 
 工作时可以保持 CSDK 打开。
 
@@ -167,7 +167,7 @@ DCC + Deadlimit Scripts
 Substance 3D Painter + Deadlimit Shade
         ↓
 Deadlimit Manager
-Prepare / Live Sync / Build & Test
+Prepare / LIVE SYNC / Build & Test
         ↓
 Reduced CSDK
         ↓

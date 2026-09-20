@@ -195,3 +195,11 @@ PREPARE FOR CSDK    -> Reduced CSDK content/game roots
 BUILD FOR TEST      -> Reduced CSDK + Deadlock client + DeadlockTools
 LAUNCH CSDK         -> Reduced CSDK\csdkcfg.exe
 ```
+
+
+## Validation
+
+CI must compile Deadlimit Manager and complete the settings/startup smoke coverage.
+Runtime install and setup paths also require Windows integration testing because they
+can invoke folder selection, Git/.NET, DepotDownloader, Steam authentication, and
+external tool processes.

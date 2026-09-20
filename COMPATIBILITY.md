@@ -16,7 +16,7 @@ apply only to the snapshots recorded below for the current supported `main` revi
 | ValveResourceFormat / Source 2 Viewer library | NuGet 20.0.6980 | Build dependency | Revalidate extraction after package or game-format changes. |
 | Khronos glTF importer for Max | KHRglTFImporter_2025.dli | Required for the glTF DCC pipeline | Remove the obsolete HSglTFImporter.dli and HSglTFExporter.dle. Keeping the pre-Khronos HS build beside the KHR build makes importer selection ambiguous and can produce incorrect scene results. |
 | DeadlockTools | release `v1.1.0`, product commit `ed8eda954f63dde4869b57b8976f9e873fe19187` | Snapshot-tested | Installed executable is fingerprinted below; the upstream ZIP still needs an authenticated release hash. |
-| Substance 3D Painter / Deadlimit Shade | Painter `9.1.0`; Shade research snapshot only | Experimental | No distributable Shade shader or preset exists yet. |
+| Substance 3D Painter / Deadlimit Shade | Painter `9.1.0`; current Shade prototype in repository | Experimental | Shader, export preset, Painter integration, preview tooling, and research utilities exist, but broad cross-character visual parity is not claimed. |
 | Blender | — | Unsupported / planned | No Blender pipeline exists yet. |
 | Linux and macOS | — | Unsupported | The Manager is a Windows desktop application. |
 
