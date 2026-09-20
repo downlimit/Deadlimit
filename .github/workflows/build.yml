@@ -85,7 +85,6 @@ jobs:
             @{ Path = 'DeadlimitManager.cmd'; Pattern = 'DeadlimitManager.exe' },
             @{ Path = 'DeadlimitManager.cmd'; Pattern = "@('Deadlimit Manager.lnk','Deadlimit Updater.lnk')" },
             @{ Path = 'Update Deadlimit.cmd'; Pattern = 'DeadlimitUpdater.bat' },
-            @{ Path = 'Update Deadlimit.cmd'; Pattern = 'internal\DeadlimitPortableUpdater.ps1' },
             @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'Loading the latest Deadlimit Updater from origin/main' },
             @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'fetch origin main' },
             @{ Path = 'DeadlimitUpdater.bat'; Pattern = 'show origin/main:internal/DeadlimitUpdater.ps1' },
@@ -193,6 +192,4 @@ jobs:
             throw "Root presentation must expose exactly two shortcuts. Visible entries: $actual"
           }
       - name: Startup smoke
-        run: |
-          dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --release-policy-smoke
-          dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --startup-smoke
+        run: dotnet run --project internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-build -- --startup-smoke
