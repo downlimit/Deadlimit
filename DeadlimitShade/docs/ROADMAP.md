@@ -1,11 +1,11 @@
 # Deadlimit Shade — Implementation Roadmap
 
-Status: implementation started.
+Status: active implementation and research roadmap.
 
-Updated: 2026-09-08.
+Research evidence through: 2026-09-13.
 
 The current Deadlock-look investigation status, rejected lighting experiment,
-milestone gates and next-session brief are recorded in
+milestone gates and next research steps are recorded in
 [`DEADLOCK_LOOK_STATUS.md`](DEADLOCK_LOOK_STATUS.md).
 
 The full character uber-shader decomposition now has a reproducible first-stage
