@@ -22,7 +22,7 @@ $requiredFragments = @(
 
 foreach ($fragment in $requiredFragments) {
     if (-not $pathsSource.Contains($fragment, [StringComparison]::Ordinal)) {
-        throw "Portable default-path contract is missing: $fragment"
+        throw "Default-path contract is missing: $fragment"
     }
 }
 
@@ -39,4 +39,4 @@ foreach ($path in $retiredEntryPoints) {
     }
 }
 
-Write-Host 'Portable path defaults and retired entry-point contracts passed.'
+Write-Host 'Path defaults and retired entry-point contracts passed.'
