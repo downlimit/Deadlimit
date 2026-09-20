@@ -128,7 +128,7 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Retire legacy release assets
+      - name: Remove obsolete release entries
         if: >-
           steps.freshness.outputs.current == 'true' &&
           steps.version.outputs.tag == 'v0.1.0-beta.3'
@@ -138,55 +138,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          latest_release_id="$(
-            gh api "repos/$GITHUB_REPOSITORY/releases/tags/latest-main" \
-              --jq '.id' 2>/dev/null || true
-          )"
-          if [[ -n "$latest_release_id" ]]; then
-            gh api --method DELETE \
-              "repos/$GITHUB_REPOSITORY/releases/$latest_release_id"
-          fi
-
-          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/latest-main" >/dev/null 2>&1; then
-            gh api --method DELETE \
-              "repos/$GITHUB_REPOSITORY/git/refs/tags/latest-main"
-          fi
-
-          archive_notice='> **Archived source milestone. Do not install Deadlimit from this release. Use the current Install-Deadlimit.cmd linked from the repository README.**'
-
-          for tag in v0.1.0-beta.1 v0.1.0-beta.2; do
+          for tag in latest-main v0.1.0-beta.1 v0.1.0-beta.2; do
             release_id="$(
-              gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" \
-                --jq '.id' 2>/dev/null || true
+              gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag"                 --jq '.id' 2>/dev/null || true
             )"
-            if [[ -z "$release_id" ]]; then
-              continue
+            if [[ -n "$release_id" ]]; then
+              gh api --method DELETE                 "repos/$GITHUB_REPOSITORY/releases/$release_id"
             fi
 
-            asset_ids="$(
-              gh api "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" \
-                --paginate \
-                --jq '.[].id'
-            )"
-            while IFS= read -r asset_id; do
-              if [[ -n "$asset_id" ]]; then
-                gh api --method DELETE \
-                  "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
-              fi
-            done <<< "$asset_ids"
-
-            case "$tag" in
-              v0.1.0-beta.1)
-                history='Historical source milestone published on 2026-09-05. Its original portable installer and ZIP assets were retired when Deadlimit moved to Git-based delivery.'
-                ;;
-              v0.1.0-beta.2)
-                history='Historical source milestone published on 2026-09-05. It established the canonical Deadlimit Manager / Deadlimit Scripts / Deadlimit Shade product naming. Its original portable installer and ZIP assets were retired when Deadlimit moved to Git-based delivery.'
-                ;;
-            esac
-            updated_body="$(printf '%s\n\n%s' "$archive_notice" "$history")"
-            gh api --method PATCH \
-              "repos/$GITHUB_REPOSITORY/releases/$release_id" \
-              -f "body=$updated_body" >/dev/null
+            if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+              gh api --method DELETE                 "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag"
+            fi
           done
 
       - name: Prepare installer checksum
