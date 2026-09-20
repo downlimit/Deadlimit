@@ -6,7 +6,25 @@ public sealed record VpkSlotOwnershipCheck(
     string VpkPath,
     bool ExistingFilePresent,
     bool OwnedByProject,
-    bool LegacyOwnershipAdopted);
+    bool LegacyOwnershipAdopted,
+    string? ExistingFamilySha256 = null);
+
+public sealed class LegacyVpkOwnershipException : InvalidOperationException
+{
+    public LegacyVpkOwnershipException(string vpkPath, string legacyStatePath)
+        : base(
+            "Deadlimit found a VPK in this Release ID together with legacy build state, " +
+            "but the old state does not contain a cryptographic identity for the deployed VPK. " +
+            "Automatic ownership adoption is blocked.\n\n" +
+            $"VPK: {vpkPath}\nLegacy state: {legacyStatePath}")
+    {
+        VpkPath = vpkPath;
+        LegacyStatePath = legacyStatePath;
+    }
+
+    public string VpkPath { get; }
+    public string LegacyStatePath { get; }
+}
 
 public sealed class VpkSlotOwnershipService
 {
@@ -30,7 +48,8 @@ public sealed class VpkSlotOwnershipService
                 vpkPath,
                 ExistingFilePresent: false,
                 OwnedByProject: false,
-                LegacyOwnershipAdopted: false);
+                LegacyOwnershipAdopted: false,
+                ExistingFamilySha256: null);
         }
 
         var ownershipPath = GetOwnershipPath(manifest);
@@ -54,7 +73,8 @@ public sealed class VpkSlotOwnershipService
                     vpkPath,
                     ExistingFilePresent: true,
                     OwnedByProject: true,
-                    LegacyOwnershipAdopted: false);
+                    LegacyOwnershipAdopted: false,
+                    ExistingFamilySha256: ComputeFamilySha256(vpkPath));
             }
 
             throw new InvalidOperationException(
@@ -69,17 +89,111 @@ public sealed class VpkSlotOwnershipService
             && !ownershipFileExists
             && File.Exists(legacyBuildState))
         {
-            return new VpkSlotOwnershipCheck(
-                vpkPath,
-                ExistingFilePresent: true,
-                OwnedByProject: true,
-                LegacyOwnershipAdopted: true);
+            throw new LegacyVpkOwnershipException(vpkPath, legacyBuildState);
         }
 
         throw new InvalidOperationException(
             $"Release ID {slot:D2} is already occupied by a VPK that is not known to this Deadlimit Manager project.\n\n" +
             $"{vpkPath}\n\n" +
             "Deadlimit Manager will not overwrite an unknown mod. Choose another Release ID or remove/move that VPK manually.");
+    }
+
+    public VpkSlotOwnershipCheck AdoptLegacySlot(ProjectManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (manifest.Mode != ProjectMode.Authoring)
+        {
+            throw new InvalidOperationException(
+                "Legacy VPK slot adoption is only valid for an authoring project.");
+        }
+
+        var slot = ParseReleaseSlot(manifest.ReleaseTarget);
+        var vpkPath = GetVpkPath(slot);
+        if (!File.Exists(vpkPath))
+        {
+            throw new FileNotFoundException(
+                $"Release ID {slot:D2} cannot be adopted because its retail VPK is no longer present.",
+                vpkPath);
+        }
+
+        var legacyBuildState = Path.Combine(
+            ProjectStore.GetMetadataFolder(manifest.ProjectFolder),
+            BuildStateFileName);
+        if (!File.Exists(legacyBuildState))
+        {
+            throw new InvalidOperationException(
+                "Legacy VPK ownership cannot be adopted because build-test-state.json is missing.");
+        }
+
+        var ownershipPath = GetOwnershipPath(manifest);
+        if (File.Exists(ownershipPath))
+        {
+            return EnsureSlotAvailable(manifest);
+        }
+
+        var familyHash = ComputeFamilySha256(vpkPath);
+        WriteRecord(
+            ownershipPath,
+            new DeploymentRecord
+            {
+                SchemaVersion = 2,
+                ReleaseSlot = slot,
+                VpkPath = Path.GetFullPath(vpkPath),
+                Sha256 = ComputeSha256(vpkPath),
+                FamilySha256 = familyHash,
+                UpdatedUtc = DateTimeOffset.UtcNow,
+            });
+
+        return new VpkSlotOwnershipCheck(
+            vpkPath,
+            ExistingFilePresent: true,
+            OwnedByProject: true,
+            LegacyOwnershipAdopted: true,
+            ExistingFamilySha256: familyHash);
+    }
+
+    public void EnsureSlotUnchanged(
+        ProjectManifest manifest,
+        VpkSlotOwnershipCheck snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        var slot = ParseReleaseSlot(manifest.ReleaseTarget);
+        var expectedPath = GetVpkPath(slot);
+        if (!string.Equals(
+                NormalizePath(snapshot.VpkPath),
+                NormalizePath(expectedPath),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "The VPK deployment target changed while BUILD FOR TEST was running.");
+        }
+
+        var existsNow = File.Exists(expectedPath);
+        if (existsNow != snapshot.ExistingFilePresent)
+        {
+            throw new InvalidOperationException(
+                $"Release ID {slot:D2} changed while BUILD FOR TEST was running. " +
+                "Deployment was stopped before replacing the retail VPK.");
+        }
+
+        if (!existsNow)
+        {
+            return;
+        }
+
+        var currentFamilyHash = ComputeFamilySha256(expectedPath);
+        if (string.IsNullOrWhiteSpace(snapshot.ExistingFamilySha256)
+            || !string.Equals(
+                snapshot.ExistingFamilySha256,
+                currentFamilyHash,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Release ID {slot:D2} was modified while BUILD FOR TEST was running. " +
+                "Deployment was stopped before replacing the changed VPK family.");
+        }
     }
 
     public VpkSlotOwnershipCheck AdoptImportedSource(ProjectManifest manifest)
@@ -157,7 +271,8 @@ public sealed class VpkSlotOwnershipService
                     vpkPath,
                     ExistingFilePresent: true,
                     OwnedByProject: true,
-                    LegacyOwnershipAdopted: false);
+                    LegacyOwnershipAdopted: false,
+                    ExistingFamilySha256: ComputeFamilySha256(vpkPath));
             }
 
             throw new InvalidOperationException(
@@ -182,7 +297,8 @@ public sealed class VpkSlotOwnershipService
             vpkPath,
             ExistingFilePresent: true,
             OwnedByProject: true,
-            LegacyOwnershipAdopted: false);
+            LegacyOwnershipAdopted: false,
+            ExistingFamilySha256: ComputeFamilySha256(vpkPath));
     }
 
     public void RecordSuccessfulDeployment(ProjectManifest manifest, string deployedVpkPath)

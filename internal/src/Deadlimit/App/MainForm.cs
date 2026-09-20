@@ -31,6 +31,8 @@ public sealed class MainForm : Form
     private ProjectManifest? _loadedManifest;
     private bool _refreshingProjectLibrary;
     private bool _libraryInitialized;
+    private CancellationTokenSource? _heroExtractionCancellation;
+    private bool _closeAfterHeroExtraction;
 
     public MainForm()
     {
@@ -41,6 +43,24 @@ public sealed class MainForm : Form
         MinimumSize = new Size(800, 540);
 
         BuildUi();
+        FormClosing += (_, args) =>
+        {
+            if (_heroExtractionCancellation is null)
+            {
+                return;
+            }
+
+            _closeAfterHeroExtraction = true;
+            args.Cancel = true;
+            if (!_heroExtractionCancellation.IsCancellationRequested)
+            {
+                _heroExtractionCancellation.Cancel();
+                _extractHeroButton.Enabled = false;
+                SetStatus(UiText.T(
+                    "Cancelling hero source extraction before closing...",
+                    "Отмена извлечения исходников перед закрытием..."));
+            }
+        };
         Shown += (_, _) =>
         {
             _libraryInitialized = true;
@@ -104,6 +124,40 @@ public sealed class MainForm : Form
         {
             if (_refreshingProjectLibrary || _projectLibrary.SelectedItem is not ProjectLibraryItem item)
             {
+                return;
+            }
+
+            if (ApplicationMutationCoordinator.IsBusy
+                && _loadedManifest is not null
+                && !string.Equals(
+                    Path.GetFullPath(item.Folder),
+                    Path.GetFullPath(_loadedManifest.ProjectFolder),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _refreshingProjectLibrary = true;
+                try
+                {
+                    for (var index = 0; index < _projectLibrary.Items.Count; index++)
+                    {
+                        if (_projectLibrary.Items[index] is ProjectLibraryItem candidate
+                            && string.Equals(
+                                Path.GetFullPath(candidate.Folder),
+                                Path.GetFullPath(_loadedManifest.ProjectFolder),
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            _projectLibrary.SelectedIndex = index;
+                            break;
+                        }
+                    }
+                }
+                finally
+                {
+                    _refreshingProjectLibrary = false;
+                }
+
+                SetStatus(UiText.T(
+                    $"Project switching is locked while {ApplicationMutationCoordinator.ActiveOperation} is running.",
+                    $"Переключение проекта заблокировано, пока выполняется операция: {ApplicationMutationCoordinator.ActiveOperation}."));
                 return;
             }
 
@@ -571,6 +625,19 @@ public sealed class MainForm : Form
 
     private void ShowSettings()
     {
+        if (ApplicationMutationCoordinator.IsBusy)
+        {
+            MessageBox.Show(
+                this,
+                UiText.T(
+                    $"Wait for the active operation to finish or cancel it first: {ApplicationMutationCoordinator.ActiveOperation}",
+                    $"Сначала дождитесь завершения активной операции или отмените её: {ApplicationMutationCoordinator.ActiveOperation}"),
+                UiText.T("Operation in progress", "Операция выполняется"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
         using var dialog = new SettingsForm();
         if (dialog.ShowDialog(this) == DialogResult.OK)
         {
@@ -601,6 +668,14 @@ public sealed class MainForm : Form
 
     private bool TrySaveProject()
     {
+        if (ApplicationMutationCoordinator.IsBusy)
+        {
+            ShowValidation(UiText.T(
+                $"Project settings cannot be changed while {ApplicationMutationCoordinator.ActiveOperation} is running.",
+                $"Нельзя менять настройки проекта, пока выполняется операция: {ApplicationMutationCoordinator.ActiveOperation}."));
+            return false;
+        }
+
         var folder = _projectFolderText.Text.Trim();
         var projectName = _projectNameText.Text.Trim();
         var hero = _heroText.Text.Trim();
@@ -629,6 +704,11 @@ public sealed class MainForm : Form
         try
         {
             var fullFolder = Path.GetFullPath(folder);
+            if (!EnsureLegacyRootAuthoringMigrated(fullFolder))
+            {
+                return false;
+            }
+
             ProjectAuthoringLayout.EnsureStructure(fullFolder);
             var scan = ProjectScanner.Scan(fullFolder);
             var existing = ProjectStore.TryLoad(fullFolder);
@@ -725,9 +805,17 @@ public sealed class MainForm : Form
         _extractHeroButton.Enabled = false;
         try
         {
+            using var mutation = ApplicationMutationCoordinator.Begin("EXTRACT HERO SOURCE");
+            using var cancellation = new CancellationTokenSource();
+            _heroExtractionCancellation = cancellation;
+
             var progress = new Progress<HeroExtractionProgress>(update => SetStatus(update.Message));
             var service = new HeroExtractionService(new DeadlimitPaths());
-            var result = await service.ExtractAsync(_loadedManifest, dialogResult.Options, progress);
+            var result = await service.ExtractAsync(
+                _loadedManifest,
+                dialogResult.Options,
+                progress,
+                cancellation.Token);
 
             var backupCleanupWarning = dialogResult.RemoveBackupAfterSuccess
                 ? TryRemovePreviousHeroSourceBackup(
@@ -757,6 +845,12 @@ public sealed class MainForm : Form
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
+        catch (OperationCanceledException) when (_heroExtractionCancellation?.IsCancellationRequested == true)
+        {
+            SetStatus(UiText.T(
+                "Hero source extraction cancelled.",
+                "Извлечение исходников героя отменено."));
+        }
         catch (Exception ex) when (ex is IOException
             or UnauthorizedAccessException
             or InvalidOperationException
@@ -774,7 +868,12 @@ public sealed class MainForm : Form
         }
         finally
         {
+            _heroExtractionCancellation = null;
             _extractHeroButton.Enabled = true;
+            if (_closeAfterHeroExtraction && !IsDisposed && IsHandleCreated)
+            {
+                BeginInvoke((Action)Close);
+            }
         }
     }
 
@@ -901,6 +1000,79 @@ public sealed class MainForm : Form
         _sourceFolderLabel.Text = UiText.T(
             "Select a project folder from the library.",
             "Выберите папку проекта в библиотеке.");
+    }
+
+    private bool EnsureLegacyRootAuthoringMigrated(string projectFolder)
+    {
+        var authoringRoot = Path.Combine(projectFolder, ProjectAuthoringLayout.AuthoringFolderName);
+        var authoringAlreadyPopulated = Directory.Exists(authoringRoot)
+            && Directory.EnumerateFiles(authoringRoot, "*", SearchOption.AllDirectories)
+                .Any(IsLegacyAuthoringExtension);
+        if (authoringAlreadyPopulated)
+        {
+            return true;
+        }
+
+        var legacyFiles = Directory.EnumerateFiles(projectFolder, "*", SearchOption.TopDirectoryOnly)
+            .Where(IsLegacyAuthoringExtension)
+            .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (legacyFiles.Length == 0)
+        {
+            return true;
+        }
+
+        var names = string.Join(
+            Environment.NewLine,
+            legacyFiles.Take(12).Select(path => $"  • {Path.GetFileName(path)}"));
+        if (legacyFiles.Length > 12)
+        {
+            names += Environment.NewLine + $"  … +{legacyFiles.Length - 12}";
+        }
+
+        var migrate = MessageBox.Show(
+            this,
+            UiText.T(
+                $"This project still contains authoring files in the legacy project root. Current Deadlimit reads authoring inputs only from 1authoring.\n\nCopy these files into 1authoring now? The originals will be left unchanged.\n\n{names}",
+                $"В корне проекта остались authoring-файлы старого формата. Текущий Deadlimit читает входные файлы только из 1authoring.\n\nСкопировать эти файлы в 1authoring? Оригиналы останутся без изменений.\n\n{names}"),
+            UiText.T("Migrate legacy authoring files", "Перенести старые authoring-файлы"),
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+        if (migrate != DialogResult.Yes)
+        {
+            return false;
+        }
+
+        Directory.CreateDirectory(authoringRoot);
+        foreach (var source in legacyFiles)
+        {
+            var destination = Path.Combine(authoringRoot, Path.GetFileName(source));
+            if (File.Exists(destination))
+            {
+                throw new IOException(
+                    $"Legacy authoring migration cannot copy '{Path.GetFileName(source)}' because that file already exists in 1authoring.");
+            }
+
+            File.Copy(source, destination, overwrite: false);
+        }
+
+        return true;
+    }
+
+    private static bool IsLegacyAuthoringExtension(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return extension.Equals(".dmx", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".fbx", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".gltf", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".glb", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".tga", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".psd", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".tif", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".tiff", StringComparison.OrdinalIgnoreCase);
     }
 
     private void ShowValidation(string message)

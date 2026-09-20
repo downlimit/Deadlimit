@@ -1248,6 +1248,14 @@ internal static class ProjectLibraryFeature
 
         private void TryRename()
         {
+            if (ApplicationMutationCoordinator.IsBusy)
+            {
+                ShowError(UiText.T(
+                    $"Cannot rename a project while {ApplicationMutationCoordinator.ActiveOperation} is running.",
+                    $"Нельзя переименовать проект, пока выполняется операция: {ApplicationMutationCoordinator.ActiveOperation}."));
+                return;
+            }
+
             var newName = _nameText.Text.Trim();
             if (!ValidateProjectName(newName, out var validationMessage))
             {
@@ -1464,6 +1472,19 @@ internal static class ProjectLibraryFeature
 
         private void TryDelete()
         {
+            if (ApplicationMutationCoordinator.IsBusy)
+            {
+                MessageBox.Show(
+                    this,
+                    UiText.T(
+                        $"Cannot delete a project while {ApplicationMutationCoordinator.ActiveOperation} is running.",
+                        $"Нельзя удалить проект, пока выполняется операция: {ApplicationMutationCoordinator.ActiveOperation}."),
+                    UiText.T("Operation in progress", "Операция выполняется"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
+
             if (!string.Equals(_confirmationText.Text, _projectName, StringComparison.Ordinal))
             {
                 return;

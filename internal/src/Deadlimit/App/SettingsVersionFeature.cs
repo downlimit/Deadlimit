@@ -385,12 +385,14 @@ internal static class SettingsVersionFeature
 
         try
         {
+            ApplicationMutationCoordinator.ThrowIfBusy("Deadlimit update");
             Process.Start(new ProcessStartInfo
             {
                 FileName = updater,
                 WorkingDirectory = Path.GetDirectoryName(updater) ?? AppContext.BaseDirectory,
                 UseShellExecute = true,
             });
+            Application.Exit();
         }
         catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
         {

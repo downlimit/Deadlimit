@@ -23,6 +23,9 @@ jobs:
       - name: Installer and updater smoke
         shell: pwsh
         run: internal/tests/installer-updater-smoke.ps1
+      - name: Critical stabilization smoke
+        shell: pwsh
+        run: internal/tests/critical-stabilization-smoke.ps1
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'

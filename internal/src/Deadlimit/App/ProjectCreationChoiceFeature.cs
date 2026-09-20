@@ -116,6 +116,19 @@ internal static class ProjectCreationChoiceFeature
         Button sender,
         IReadOnlyList<EventHandler> createProjectHandlers)
     {
+        if (ApplicationMutationCoordinator.IsBusy)
+        {
+            MessageBox.Show(
+                form,
+                UiText.T(
+                    $"Cannot create or import a project while {ApplicationMutationCoordinator.ActiveOperation} is running.",
+                    $"Нельзя создать или импортировать проект, пока выполняется операция: {ApplicationMutationCoordinator.ActiveOperation}."),
+                UiText.T("Operation in progress", "Операция выполняется"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
         var settings = ProjectStore.GetToolPathSettings();
         using var dialog = new ProjectEntryChoiceDialog(settings.UiTheme);
         if (dialog.ShowDialog(form) != DialogResult.OK)

@@ -146,6 +146,20 @@ function Copy-DirectoryChildren([string]$Source, [string]$Destination) {
     }
 }
 
+function Test-LegacyDeadlimitInstallation([string]$Root) {
+    if (-not (Test-Path -LiteralPath $Root -PathType Container)) { return $false }
+
+    $launcher = Join-Path $Root 'DeadlimitManager.cmd'
+    $updater = Join-Path $Root 'DeadlimitUpdater.bat'
+    $project = Join-Path $Root 'internal\src\Deadlimit\Deadlimit.csproj'
+    $managerExe = Join-Path $Root 'DeadlimitManager.exe'
+
+    return (Test-Path -LiteralPath $launcher -PathType Leaf) -and
+        ((Test-Path -LiteralPath $updater -PathType Leaf) -or
+         (Test-Path -LiteralPath $project -PathType Leaf) -or
+         (Test-Path -LiteralPath $managerExe -PathType Leaf))
+}
+
 function Publish-Shortcuts([string]$Root) {
     $managerShortcut = Join-Path $Root 'Deadlimit Manager.lnk'
     $updaterShortcut = Join-Path $Root 'Deadlimit Updater.lnk'
@@ -230,6 +244,15 @@ if (Test-Path -LiteralPath (Join-Path $installRoot '.git') -PathType Container) 
 else {
     $legacyRoot = $null
     if (Test-Path -LiteralPath $installRoot) {
+        if (-not (Test-LegacyDeadlimitInstallation $installRoot)) {
+            throw @"
+Deadlimit will not replace the existing folder because it cannot prove that the folder is an older Deadlimit installation:
+$installRoot
+
+Move or remove that folder manually, then run Install-Deadlimit.cmd again.
+"@
+        }
+
         $legacyRoot = "$installRoot.pre-git-$([Guid]::NewGuid().ToString('N'))"
         Write-Host 'Migrating the previous package-based Deadlimit installation to a Git checkout...'
         Move-Item -LiteralPath $installRoot -Destination $legacyRoot
@@ -239,7 +262,7 @@ else {
         Invoke-Git @('clone','--branch','main','--single-branch',$repositoryUrl,$installRoot)
         if ($null -ne $legacyRoot) {
             Copy-DirectoryChildren (Join-Path $legacyRoot 'UserData') $userDataRoot
-            Remove-Item -LiteralPath $legacyRoot -Recurse -Force
+            Write-Host "Previous Deadlimit installation preserved for manual review: $legacyRoot" -ForegroundColor Yellow
         }
     }
     catch {

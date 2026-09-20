@@ -43,6 +43,8 @@ foreach ($required in @(
     "'Programs\Deadlimit'",
     "Invoke-Git @('clone'",
     "'--branch','main','--single-branch'",
+    'Test-LegacyDeadlimitInstallation',
+    'Move or remove that folder manually',
     "'UserData'",
     "'DeadlimitManager.cmd'",
     "'Deadlimit Manager.lnk'",
@@ -60,6 +62,9 @@ foreach ($retired in @(
 )) {
     Assert-NotContains $payload $retired 'Installer'
 }
+
+Assert-NotContains $payload 'Remove-Item -LiteralPath $legacyRoot -Recurse -Force' 'Installer'
+Assert-Contains $payload 'Previous Deadlimit installation preserved for manual review' 'Installer'
 
 $entry = Get-Content -LiteralPath 'Update Deadlimit.cmd' -Raw
 foreach ($required in @(
@@ -85,6 +90,10 @@ foreach ($required in @(
 )) {
     Assert-Contains $originFeature $required 'In-app updater relaunch marker'
 }
+
+$updaterWorker = Get-Content -LiteralPath 'internal/DeadlimitUpdater.ps1' -Raw
+Assert-Contains $updaterWorker 'Deadlimit Manager is still running. Close it normally' 'Git updater worker'
+Assert-NotContains $updaterWorker 'Stop-Process -Force' 'Git updater worker'
 
 $workflow = Get-Content -LiteralPath '.github/workflows/build.yml' -Raw
 foreach ($retired in @(

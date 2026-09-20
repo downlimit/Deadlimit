@@ -10,15 +10,18 @@ Deadlimit Manager should remove repetitive mechanical work from Deadlock charact
 
 The user points Deadlimit Manager at an existing artist project folder.
 
-The current project-root convention is intentionally simple:
+The current artist workspace uses explicit source/authoring boundaries:
 
 ```text
 <ProjectFolder>\
-├─ *.dmx
-├─ *.png
-├─ 0source\     # current retail hero extraction; created only on request
-├─ optional artist-owned folders
-└─ .deadlimit\  # hidden Deadlimit project metadata
+├─ 0source\      # generated retail extraction
+├─ 1authoring\   # recursive DMX/FBX/glTF/GLB and texture inputs
+├─ 2concept\
+├─ 3scene\
+├─ 4texture\
+├─ 5promo\
+├─ 6temp\
+└─ .deadlimit\   # hidden Deadlimit project metadata
 ```
 
 The project folder name is the canonical project name. Deadlimit Manager does not maintain a second user-editable display name for the same project.
@@ -27,11 +30,11 @@ Each project manifest also carries a permanent `ProjectId` and `AddonId`. New pr
 
 At minimum the user provides:
 
-- the existing project folder containing the current DMX model files and PNG textures in its root;
+- the existing project folder; current compile inputs live recursively under `1authoring`;
 - the Deadlock hero;
 - optionally a release/VPK slot or target identifier, once the loader/deploy convention is finalized.
 
-Deadlimit Manager must not reorganize the artist's source files merely to initialize a project. The detailed workspace contract lives in `WORKSPACE.md`.
+Deadlimit Manager creates the standard workspace folders but does not overwrite artist files in `1authoring`. Projects created under the pre-`1authoring` contract receive an explicit one-time copy migration: legacy root inputs are copied into `1authoring` only after user confirmation, while originals remain unchanged. The detailed workspace contract lives in `WORKSPACE.md`.
 
 ### 2. Authoring stage
 
@@ -74,7 +77,7 @@ Intended behavior:
 - extract materials and texture dependencies into the same extraction package;
 - preserve original retail resource paths in project metadata;
 - optionally include additional resources such as animations when explicitly requested;
-- never overwrite or relocate the artist's DMX/PNG files in the project root as part of extraction.
+- never overwrite artist-authored model/texture inputs under `1authoring`; portrait/UI extraction copies only missing convenience sources.
 
 The extraction should be refreshable so `0source` can represent a current retail reference package for the selected hero.
 

@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
-using System.Net;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using SteamDatabase.ValvePak;
@@ -34,32 +34,26 @@ public sealed record ToolchainInstallResult(string RootPath, ToolchainStatus Sta
 
 public sealed class ToolchainDependencyService
 {
-    private const string CsdkCatalogUrl = "https://deadlockmodding.pages.dev/modding-tools/";
-    private const string CsdkFallbackPage = "https://deadlockmodding.pages.dev/modding-tools/csdk-12";
-    private const string CsdkFallbackDriveId = "1-Z-4CszWQNudzwzs6e6abPsp5RGFOURS";
+    private const int PinnedCsdkGeneration = 12;
+    private const string CsdkPinnedPage = "https://deadlockmodding.pages.dev/modding-tools/csdk-12";
+    private const string CsdkPinnedDriveId = "1-Z-4CszWQNudzwzs6e6abPsp5RGFOURS";
+    private const string CsdkPinnedManifestArchiveUrl = "https://deadlockmodding.pages.dev/attachments/csdk12/DepotDownloaderManifests.zip";
     private const string DeadlockToolsRepositoryUrl = "https://github.com/dotryen/DeadlockTools.git";
     private const string DeadlockToolsCommitApiUrl = "https://api.github.com/repos/dotryen/DeadlockTools/commits/master";
-    private const string DeadlockToolsLatestReleaseApiUrl = "https://api.github.com/repos/dotryen/DeadlockTools/releases/latest";
+    private const string DeadlockToolsPinnedTag = "v1.1.0";
+    private const string DeadlockToolsReleaseApiUrl = "https://api.github.com/repos/dotryen/DeadlockTools/releases/tags/v1.1.0";
     private const string DeadlockToolsWindowsAssetName = "DeadlockTools-windows-x64.zip";
-    private const string DepotDownloaderLatestReleaseApiUrl = "https://api.github.com/repos/SteamRE/DepotDownloader/releases/latest";
+    private const string DeadlockToolsWindowsSha256 = "7E4668DA796E4CA67B1EE684CF03270E07FECEBECCF66D04DDF1F3A3E7409DCF";
+    private const string DepotDownloaderPinnedTag = "DepotDownloader_3.4.0";
+    private const string DepotDownloaderReleaseApiUrl = "https://api.github.com/repos/SteamRE/DepotDownloader/releases/tags/DepotDownloader_3.4.0";
+    private const string DepotDownloaderWindowsSha256 = "41C9E9F0DF54B3AD02E67A11726756E5C73283BD7C2E1B04ACFA5AE4C2ED3767";
     private const string CsdkMarkerFileName = ".deadlimit-csdk.json";
     private const string CsdkSetupMarkerFileName = ".deadlimit-csdk-setup.json";
     private const string DeadlockToolsMarkerFileName = ".deadlimit-deadlocktools.json";
+    private const string DepotDownloaderMarkerFileName = ".deadlimit-depotdownloader.json";
 
-    private static readonly Regex CsdkGenerationRegex = new(
-        "\\bCSDK\\s+(?<generation>\\d+)\\b",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private static readonly Regex CsdkGenerationFromPathRegex = new(
         "(?:reduced[_\\s-]*)?csdk[_\\s-]*(?<generation>\\d+)",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex GoogleDriveFileRegex = new(
-        "https://drive\\.google\\.com/file/d/(?<id>[A-Za-z0-9_-]+)/view",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex DepotManifestRegex = new(
-        "-app\\s+(?<app>\\d+)\\s+-depot\\s+(?<depot>\\d+)\\s+-manifest\\s+(?<manifest>\\d+)",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex DepotManifestArchiveRegex = new(
-        "href=[\"'](?<href>[^\"']*DepotDownloaderManifests\\.zip)[\"']",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private readonly HttpClient _http = new()
@@ -170,11 +164,12 @@ public sealed class ToolchainDependencyService
             var latestRelease = await GetLatestDeadlockToolsReleaseAsync(cancellationToken).ConfigureAwait(false);
             if (!string.IsNullOrWhiteSpace(installedRelease))
             {
-                if (string.Equals(installedRelease, latestRelease.TagName, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(installedRelease, latestRelease.TagName, StringComparison.OrdinalIgnoreCase)
+                    && IsTrustedManagedDeadlockTools(root))
                 {
                     return new(
                         ToolchainStatusKind.UpToDate,
-                        $"Installed DeadlockTools release: {installedRelease}.",
+                        $"Installed DeadlockTools reviewed release: {installedRelease}.",
                         true,
                         InstalledVersion: installedRelease,
                         AvailableVersion: latestRelease.TagName);
@@ -182,7 +177,9 @@ public sealed class ToolchainDependencyService
 
                 return new(
                     ToolchainStatusKind.UpdateAvailable,
-                    $"Installed DeadlockTools {installedRelease}; {latestRelease.TagName} is available.",
+                    string.Equals(installedRelease, latestRelease.TagName, StringComparison.OrdinalIgnoreCase)
+                        ? $"DeadlockTools {installedRelease} is installed, but its integrity marker is missing or does not match. Reinstall the reviewed release."
+                        : $"Installed DeadlockTools {installedRelease}; reviewed release {latestRelease.TagName} is required.",
                     true,
                     InstalledVersion: installedRelease,
                     AvailableVersion: latestRelease.TagName);
@@ -336,7 +333,7 @@ public sealed class ToolchainDependencyService
         {
             EnsureEmptyDestination(installRoot, "DeadlockTools");
             Directory.CreateDirectory(installRoot);
-            Report(operation, progress, ProgressText("Checking latest DeadlockTools release…", "Проверка последнего релиза DeadlockTools…"), 3);
+            Report(operation, progress, ProgressText("Checking reviewed DeadlockTools release…", "Проверка проверенного релиза DeadlockTools…"), 3);
             var release = await GetLatestDeadlockToolsReleaseAsync(operation.Token).ConfigureAwait(false);
             Report(operation, progress, ProgressText($"Downloading DeadlockTools {release.TagName}…", $"Загрузка DeadlockTools {release.TagName}…"), 7);
             await InstallDeadlockToolsReleaseAsync(release, installRoot, overwrite: false, operation, progress, 7, 96).ConfigureAwait(false);
@@ -404,7 +401,7 @@ public sealed class ToolchainDependencyService
                 throw new InvalidOperationException("This DeadlockTools installation has no managed release metadata. Use INSTALL to install the current official release.");
             }
 
-            Report(operation, progress, ProgressText("Checking latest DeadlockTools release…", "Проверка последнего релиза DeadlockTools…"), 3);
+            Report(operation, progress, ProgressText("Checking reviewed DeadlockTools release…", "Проверка проверенного релиза DeadlockTools…"), 3);
             release = await GetLatestDeadlockToolsReleaseAsync(operation.Token).ConfigureAwait(false);
             Report(operation, progress, ProgressText($"Downloading DeadlockTools {release.TagName}…", $"Загрузка DeadlockTools {release.TagName}…"), 7);
             await InstallDeadlockToolsReleaseAsync(release, root, overwrite: true, operation, progress, 7, 96).ConfigureAwait(false);
@@ -561,78 +558,40 @@ public sealed class ToolchainDependencyService
         }
     }
 
-    private async Task<CsdkCatalog> GetLatestCsdkCatalogAsync(CancellationToken cancellationToken)
+    private static Task<CsdkCatalog> GetLatestCsdkCatalogAsync(CancellationToken cancellationToken)
     {
-        string html;
-        try
+        cancellationToken.ThrowIfCancellationRequested();
+        var downloadUri = new Uri(
+            $"https://drive.usercontent.google.com/download?id={Uri.EscapeDataString(CsdkPinnedDriveId)}&export=download&confirm=t");
+        var depots = new[]
         {
-            html = await _http.GetStringAsync(CsdkCatalogUrl, cancellationToken).ConfigureAwait(false);
-        }
-        catch (HttpRequestException)
-        {
-            return await ReadCsdkPageAsync(12, new Uri(CsdkFallbackPage), CsdkFallbackDriveId, cancellationToken).ConfigureAwait(false);
-        }
-
-        var generations = CsdkGenerationRegex.Matches(WebUtility.HtmlDecode(html))
-            .Select(match => int.Parse(match.Groups["generation"].Value, System.Globalization.CultureInfo.InvariantCulture))
-            .Distinct()
-            .OrderByDescending(value => value)
-            .ToArray();
-        if (generations.Length == 0)
-        {
-            return await ReadCsdkPageAsync(12, new Uri(CsdkFallbackPage), CsdkFallbackDriveId, cancellationToken).ConfigureAwait(false);
-        }
-        var generation = generations[0];
-        return await ReadCsdkPageAsync(
-            generation,
-            new Uri($"https://deadlockmodding.pages.dev/modding-tools/csdk-{generation}"),
-            generation == 12 ? CsdkFallbackDriveId : null,
-            cancellationToken).ConfigureAwait(false);
-    }
-
-    private async Task<CsdkCatalog> ReadCsdkPageAsync(
-        int generation,
-        Uri pageUri,
-        string? fallbackDriveId,
-        CancellationToken cancellationToken)
-    {
-        var html = WebUtility.HtmlDecode(await _http.GetStringAsync(pageUri, cancellationToken).ConfigureAwait(false));
-        var driveMatch = GoogleDriveFileRegex.Match(html);
-        var driveId = driveMatch.Success ? driveMatch.Groups["id"].Value : fallbackDriveId;
-        if (string.IsNullOrWhiteSpace(driveId))
-        {
-            throw new InvalidOperationException($"Could not locate the CSDK {generation} archive on the current installation page.");
-        }
-
-        var depots = DepotManifestRegex.Matches(html)
-            .Select(match => new DepotManifest(
-                match.Groups["app"].Value,
-                match.Groups["depot"].Value,
-                match.Groups["manifest"].Value))
-            .Distinct()
-            .ToArray();
-        var fallbackMatch = DepotManifestArchiveRegex.Match(html);
-        Uri? fallbackUri = null;
-        if (fallbackMatch.Success)
-        {
-            fallbackUri = new Uri(pageUri, WebUtility.HtmlDecode(fallbackMatch.Groups["href"].Value));
-        }
-
-        var downloadUri = new Uri($"https://drive.usercontent.google.com/download?id={Uri.EscapeDataString(driveId)}&export=download&confirm=t");
-        return new(generation, pageUri, downloadUri, depots, fallbackUri);
+            new DepotManifest("1422450", "1422451", "2639812037154209539"),
+            new DepotManifest("1422450", "1422456", "6378769520310560496"),
+        };
+        return Task.FromResult(new CsdkCatalog(
+            PinnedCsdkGeneration,
+            new Uri(CsdkPinnedPage),
+            downloadUri,
+            depots,
+            new Uri(CsdkPinnedManifestArchiveUrl)));
     }
 
     private async Task<DeadlockToolsRelease> GetLatestDeadlockToolsReleaseAsync(CancellationToken cancellationToken)
     {
-        using var response = await _http.GetAsync(DeadlockToolsLatestReleaseApiUrl, cancellationToken).ConfigureAwait(false);
+        using var response = await _http.GetAsync(DeadlockToolsReleaseApiUrl, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
         var root = document.RootElement;
         var tagName = root.GetProperty("tag_name").GetString()
-            ?? throw new InvalidDataException("DeadlockTools latest release response did not contain tag_name.");
+            ?? throw new InvalidDataException("DeadlockTools release response did not contain tag_name.");
+        if (!string.Equals(tagName, DeadlockToolsPinnedTag, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"DeadlockTools release identity mismatch. Expected {DeadlockToolsPinnedTag}, received {tagName}.");
+        }
         var htmlUrl = root.GetProperty("html_url").GetString()
-            ?? throw new InvalidDataException("DeadlockTools latest release response did not contain html_url.");
+            ?? throw new InvalidDataException("DeadlockTools release response did not contain html_url.");
         var assetUrl = root.GetProperty("assets")
             .EnumerateArray()
             .Where(asset => string.Equals(asset.GetProperty("name").GetString(), DeadlockToolsWindowsAssetName, StringComparison.OrdinalIgnoreCase))
@@ -671,7 +630,29 @@ public sealed class ToolchainDependencyService
             var launcher = Directory.EnumerateFiles(extract, "csdkcfg.exe", SearchOption.AllDirectories).FirstOrDefault()
                 ?? throw new InvalidDataException("The downloaded CSDK archive does not contain csdkcfg.exe.");
             Report(operation, progress, ProgressText("Applying CSDK files…", "Применение файлов CSDK…"), endPercent - 7);
-            CopyDirectory(Path.GetDirectoryName(launcher)!, destinationRoot, overwrite, operation.Token, operation, progress, endPercent - 7, endPercent);
+            if (overwrite)
+            {
+                ApplyOverlayTransaction(
+                    Path.GetDirectoryName(launcher)!,
+                    destinationRoot,
+                    operation.Token,
+                    operation,
+                    progress,
+                    endPercent - 7,
+                    endPercent);
+            }
+            else
+            {
+                CopyDirectory(
+                    Path.GetDirectoryName(launcher)!,
+                    destinationRoot,
+                    overwrite: false,
+                    operation.Token,
+                    operation,
+                    progress,
+                    endPercent - 7,
+                    endPercent);
+            }
         }
         finally
         {
@@ -702,13 +683,36 @@ public sealed class ToolchainDependencyService
                 progress,
                 ProgressText($"Downloading DeadlockTools {release.TagName}", $"Загрузка DeadlockTools {release.TagName}"),
                 startPercent,
-                downloadEnd).ConfigureAwait(false);
+                downloadEnd,
+                DeadlockToolsWindowsSha256).ConfigureAwait(false);
             Report(operation, progress, ProgressText("Extracting DeadlockTools…", "Распаковка DeadlockTools…"), downloadEnd + 1);
             await ExtractZipAsync(archive, extract, true, operation.Token, operation, progress, downloadEnd + 1, endPercent - 8).ConfigureAwait(false);
             var executable = Directory.EnumerateFiles(extract, "DeadlockTools.exe", SearchOption.AllDirectories).FirstOrDefault()
                 ?? throw new InvalidDataException("The downloaded DeadlockTools release does not contain DeadlockTools.exe.");
             Report(operation, progress, ProgressText("Installing DeadlockTools files…", "Установка файлов DeadlockTools…"), endPercent - 7);
-            CopyDirectory(Path.GetDirectoryName(executable)!, destinationRoot, overwrite, operation.Token, operation, progress, endPercent - 7, endPercent);
+            if (overwrite)
+            {
+                ApplyOverlayTransaction(
+                    Path.GetDirectoryName(executable)!,
+                    destinationRoot,
+                    operation.Token,
+                    operation,
+                    progress,
+                    endPercent - 7,
+                    endPercent);
+            }
+            else
+            {
+                CopyDirectory(
+                    Path.GetDirectoryName(executable)!,
+                    destinationRoot,
+                    overwrite: false,
+                    operation.Token,
+                    operation,
+                    progress,
+                    endPercent - 7,
+                    endPercent);
+            }
         }
         finally
         {
@@ -748,21 +752,37 @@ public sealed class ToolchainDependencyService
     {
         var cacheRoot = UserDataPaths.Combine("tools", "DepotDownloader");
         var executable = Path.Combine(cacheRoot, "DepotDownloader.exe");
-        if (File.Exists(executable))
+        if (File.Exists(executable) && IsTrustedDepotDownloaderCache(cacheRoot, executable))
         {
             return executable;
         }
 
-        using var response = await _http.GetAsync(DepotDownloaderLatestReleaseApiUrl, operation.Token).ConfigureAwait(false);
+        if (Directory.Exists(cacheRoot))
+        {
+            TryDeleteDirectory(cacheRoot);
+            if (Directory.Exists(cacheRoot))
+            {
+                throw new IOException(
+                    $"The unverified DepotDownloader cache could not be removed: {cacheRoot}");
+            }
+        }
+
+        using var response = await _http.GetAsync(DepotDownloaderReleaseApiUrl, operation.Token).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync(operation.Token).ConfigureAwait(false);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: operation.Token).ConfigureAwait(false);
+        var tagName = document.RootElement.GetProperty("tag_name").GetString();
+        if (!string.Equals(tagName, DepotDownloaderPinnedTag, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"DepotDownloader release identity mismatch. Expected {DepotDownloaderPinnedTag}, received {tagName ?? "<missing>"}.");
+        }
         var assetUrl = document.RootElement.GetProperty("assets")
             .EnumerateArray()
             .Where(asset => string.Equals(asset.GetProperty("name").GetString(), "DepotDownloader-windows-x64.zip", StringComparison.OrdinalIgnoreCase))
             .Select(asset => asset.GetProperty("browser_download_url").GetString())
             .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))
-            ?? throw new InvalidOperationException("The latest DepotDownloader release does not contain a Windows x64 archive.");
+            ?? throw new InvalidOperationException("The reviewed DepotDownloader release does not contain a Windows x64 archive.");
 
         var workRoot = CreateTempFolder("depotdownloader");
         var archive = Path.Combine(workRoot, "DepotDownloader.zip");
@@ -775,17 +795,24 @@ public sealed class ToolchainDependencyService
                 progress,
                 ProgressText("Downloading DepotDownloader", "Загрузка DepotDownloader"),
                 5,
-                12).ConfigureAwait(false);
+                12,
+                DepotDownloaderWindowsSha256).ConfigureAwait(false);
             Directory.CreateDirectory(cacheRoot);
             await ExtractZipAsync(archive, cacheRoot, true, operation.Token, operation, progress, 12, 15).ConfigureAwait(false);
+            if (!File.Exists(executable))
+            {
+                throw new FileNotFoundException("DepotDownloader.exe was not found after extraction.", executable);
+            }
+            WriteDepotDownloaderMarker(cacheRoot, executable);
         }
         finally
         {
             TryDeleteDirectory(workRoot);
         }
-        return File.Exists(executable)
+        return File.Exists(executable) && IsTrustedDepotDownloaderCache(cacheRoot, executable)
             ? executable
-            : throw new FileNotFoundException("DepotDownloader.exe was not found after extraction.", executable);
+            : throw new InvalidDataException(
+                "DepotDownloader extraction completed, but integrity verification metadata is not valid.");
     }
 
     private async Task DownloadFileAsync(
@@ -795,7 +822,8 @@ public sealed class ToolchainDependencyService
         IProgress<string>? progress,
         string label,
         int startPercent,
-        int endPercent)
+        int endPercent,
+        string? expectedSha256 = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         using var response = await _http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, operation.Token).ConfigureAwait(false);
@@ -810,6 +838,9 @@ public sealed class ToolchainDependencyService
         await using var target = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, 1024 * 1024, true);
         var buffer = new byte[256 * 1024];
         long transferred = 0;
+        using var hasher = expectedSha256 is null
+            ? null
+            : IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
         var stopwatch = Stopwatch.StartNew();
         while (true)
         {
@@ -820,6 +851,7 @@ public sealed class ToolchainDependencyService
             }
 
             await target.WriteAsync(buffer.AsMemory(0, read), operation.Token).ConfigureAwait(false);
+            hasher?.AppendData(buffer, 0, read);
             transferred += read;
             if (total is > 0)
             {
@@ -831,6 +863,16 @@ public sealed class ToolchainDependencyService
             else
             {
                 Report(operation, progress, $"{label}… {FormatBytes(transferred)}", null);
+            }
+        }
+
+        if (hasher is not null)
+        {
+            var actualSha256 = Convert.ToHexString(hasher.GetHashAndReset());
+            if (!string.Equals(actualSha256, expectedSha256, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException(
+                    $"Downloaded archive SHA-256 mismatch. Expected {expectedSha256}, received {actualSha256}.");
             }
         }
 
@@ -1058,6 +1100,119 @@ public sealed class ToolchainDependencyService
         }
     }
 
+    private static void ApplyOverlayTransaction(
+        string sourceRoot,
+        string destinationRoot,
+        CancellationToken cancellationToken,
+        ToolchainOperationHub.OperationScope operation,
+        IProgress<string>? progress,
+        int startPercent,
+        int endPercent)
+    {
+        Directory.CreateDirectory(destinationRoot);
+        var files = Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories).ToArray();
+        var rollbackRoot = CreateTempFolder("toolchain-overlay-rollback");
+        var createdTargets = new List<string>();
+        var replacedTargets = new List<(string Target, string Backup)>();
+        var rollbackErrors = new List<Exception>();
+
+        try
+        {
+            for (var index = 0; index < files.Length; index++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var source = files[index];
+                var relative = Path.GetRelativePath(sourceRoot, source);
+                var destination = SafePath.ResolveUnderRoot(
+                    destinationRoot,
+                    relative,
+                    "toolchain overlay destination");
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+
+                if (File.Exists(destination))
+                {
+                    var backup = SafePath.ResolveUnderRoot(
+                        rollbackRoot,
+                        relative,
+                        "toolchain overlay rollback file");
+                    Directory.CreateDirectory(Path.GetDirectoryName(backup)!);
+                    File.Copy(destination, backup, overwrite: true);
+                    replacedTargets.Add((destination, backup));
+                }
+                else
+                {
+                    createdTargets.Add(destination);
+                }
+
+                var temporary = destination + $".deadlimit-update-{Guid.NewGuid():N}.tmp";
+                try
+                {
+                    File.Copy(source, temporary, overwrite: true);
+                    File.Move(temporary, destination, overwrite: true);
+                }
+                finally
+                {
+                    if (File.Exists(temporary))
+                    {
+                        File.Delete(temporary);
+                    }
+                }
+
+                if (index == 0 || (index + 1) % 50 == 0 || index == files.Length - 1)
+                {
+                    var fraction = files.Length == 0 ? 1d : (double)(index + 1) / files.Length;
+                    var percent = startPercent + (int)Math.Round((endPercent - startPercent) * fraction);
+                    Report(operation, progress, ProgressText("Applying files…", "Применение файлов…"), percent);
+                }
+            }
+
+            TryDeleteDirectory(rollbackRoot);
+        }
+        catch (Exception applyError)
+        {
+            foreach (var target in createdTargets.AsEnumerable().Reverse())
+            {
+                try
+                {
+                    if (File.Exists(target))
+                    {
+                        File.Delete(target);
+                    }
+                }
+                catch (Exception rollbackError) when (rollbackError is IOException or UnauthorizedAccessException)
+                {
+                    rollbackErrors.Add(rollbackError);
+                }
+            }
+
+            foreach (var item in replacedTargets.AsEnumerable().Reverse())
+            {
+                try
+                {
+                    if (File.Exists(item.Backup))
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(item.Target)!);
+                        File.Copy(item.Backup, item.Target, overwrite: true);
+                    }
+                }
+                catch (Exception rollbackError) when (rollbackError is IOException or UnauthorizedAccessException)
+                {
+                    rollbackErrors.Add(rollbackError);
+                }
+            }
+
+            if (rollbackErrors.Count == 0)
+            {
+                TryDeleteDirectory(rollbackRoot);
+                throw;
+            }
+
+            throw new AggregateException(
+                $"Toolchain update failed and rollback was incomplete. Recovery files were preserved at: {rollbackRoot}",
+                new[] { applyError }.Concat(rollbackErrors));
+        }
+    }
+
     private static int? TryReadCsdkGeneration(string root)
     {
         var marker = Path.Combine(root, CsdkMarkerFileName);
@@ -1109,7 +1264,7 @@ public sealed class ToolchainDependencyService
             source = catalog.PageUri.ToString(),
             updatedUtc = DateTimeOffset.UtcNow,
         }, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(Path.Combine(root, CsdkMarkerFileName), marker);
+        AtomicFile.WriteAllText(Path.Combine(root, CsdkMarkerFileName), marker);
         if (!setup)
         {
             return;
@@ -1120,7 +1275,7 @@ public sealed class ToolchainDependencyService
             completedUtc = DateTimeOffset.UtcNow,
             depots = catalog.Depots,
         }, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(Path.Combine(root, CsdkSetupMarkerFileName), setupMarker);
+        AtomicFile.WriteAllText(Path.Combine(root, CsdkSetupMarkerFileName), setupMarker);
     }
 
     internal static bool IsCsdkSetupCurrent(
@@ -1183,14 +1338,98 @@ public sealed class ToolchainDependencyService
 
     private static void WriteDeadlockToolsMarker(string root, DeadlockToolsRelease release)
     {
+        var executable = GetDeadlockToolsExecutable(root);
         var marker = JsonSerializer.Serialize(new
         {
             tag = release.TagName,
             source = release.PageUri.ToString(),
             asset = DeadlockToolsWindowsAssetName,
+            archiveSha256 = DeadlockToolsWindowsSha256,
+            executableSha256 = ComputeFileSha256(executable),
             updatedUtc = DateTimeOffset.UtcNow,
         }, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(Path.Combine(root, DeadlockToolsMarkerFileName), marker);
+        AtomicFile.WriteAllText(Path.Combine(root, DeadlockToolsMarkerFileName), marker);
+    }
+
+    private static bool IsTrustedManagedDeadlockTools(string root)
+    {
+        var markerPath = Path.Combine(root, DeadlockToolsMarkerFileName);
+        var executable = GetDeadlockToolsExecutable(root);
+        if (!File.Exists(markerPath) || !File.Exists(executable))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(markerPath));
+            var marker = document.RootElement;
+            return marker.TryGetProperty("tag", out var tag)
+                && string.Equals(tag.GetString(), DeadlockToolsPinnedTag, StringComparison.Ordinal)
+                && marker.TryGetProperty("archiveSha256", out var archiveHash)
+                && string.Equals(archiveHash.GetString(), DeadlockToolsWindowsSha256, StringComparison.OrdinalIgnoreCase)
+                && marker.TryGetProperty("executableSha256", out var executableHash)
+                && string.Equals(
+                    executableHash.GetString(),
+                    ComputeFileSha256(executable),
+                    StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static void WriteDepotDownloaderMarker(string cacheRoot, string executable)
+    {
+        var marker = JsonSerializer.Serialize(new
+        {
+            tag = DepotDownloaderPinnedTag,
+            archiveSha256 = DepotDownloaderWindowsSha256,
+            executableSha256 = ComputeFileSha256(executable),
+            updatedUtc = DateTimeOffset.UtcNow,
+        }, new JsonSerializerOptions { WriteIndented = true });
+        AtomicFile.WriteAllText(Path.Combine(cacheRoot, DepotDownloaderMarkerFileName), marker);
+    }
+
+    private static bool IsTrustedDepotDownloaderCache(string cacheRoot, string executable)
+    {
+        var markerPath = Path.Combine(cacheRoot, DepotDownloaderMarkerFileName);
+        if (!File.Exists(markerPath) || !File.Exists(executable))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(markerPath));
+            var marker = document.RootElement;
+            return marker.TryGetProperty("tag", out var tag)
+                && string.Equals(tag.GetString(), DepotDownloaderPinnedTag, StringComparison.Ordinal)
+                && marker.TryGetProperty("archiveSha256", out var archiveHash)
+                && string.Equals(archiveHash.GetString(), DepotDownloaderWindowsSha256, StringComparison.OrdinalIgnoreCase)
+                && marker.TryGetProperty("executableSha256", out var executableHash)
+                && string.Equals(
+                    executableHash.GetString(),
+                    ComputeFileSha256(executable),
+                    StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static string ComputeFileSha256(string path)
+    {
+        using var stream = new FileStream(
+            path,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read,
+            1024 * 128,
+            FileOptions.SequentialScan);
+        return Convert.ToHexString(SHA256.HashData(stream));
     }
 
     private static void EnsureEmptyDestination(string path, string toolName)
