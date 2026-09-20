@@ -86,6 +86,19 @@ foreach ($forbidden in @(
 )) {
     Assert-NotContains $projectFilesUi $forbidden 'Authoring file-list display'
 }
+foreach ($required in @(
+    'RowCount = 2',
+    'summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50))',
+    'TextAlign = ContentAlignment.MiddleCenter',
+    'AUTHORING MODELS:',
+    'АВТОРСКИЕ МОДЕЛИ:',
+    'MAIN FILE:',
+    'ОСНОВНОЙ ФАЙЛ:',
+    'SOURCE:',
+    'ИСХОДНИКИ:'
+)) {
+    Assert-Contains $projectFilesUi $required 'Compact project file summary'
+}
 
 $projectScanner = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ProjectScanner.cs' -Raw
 foreach ($required in @(

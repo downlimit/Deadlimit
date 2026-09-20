@@ -36,24 +36,36 @@ internal static class ProjectFilesFeature
         assetsGroup.Text = UiText.T("Project files", "Файлы проекта");
         assetsGroup.Controls.Clear();
 
-        var summaryLabel = new Label
-        {
-            AutoSize = true,
-            Margin = new Padding(0, 0, 0, 5),
-        };
-        var sourceCountLabel = new Label
-        {
-            AutoSize = true,
-            Margin = new Padding(0, 0, 0, 3),
-        };
-        var mainModelLabel = new Label
+        var contextLabel = new Label
         {
             AutoSize = false,
             Dock = DockStyle.Fill,
-            Height = 20,
             AutoEllipsis = true,
-            Margin = new Padding(0, 0, 0, 7),
+            TextAlign = ContentAlignment.MiddleCenter,
+            Margin = new Padding(0, 0, 6, 5),
         };
+        var countsLabel = new Label
+        {
+            AutoSize = false,
+            Dock = DockStyle.Fill,
+            AutoEllipsis = true,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Margin = new Padding(6, 0, 0, 5),
+        };
+
+        var summaryRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            RowCount = 1,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+        };
+        summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        summaryRow.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        summaryRow.Controls.Add(contextLabel, 0, 0);
+        summaryRow.Controls.Add(countsLabel, 1, 0);
         var dmxList = new ListBox
         {
             Dock = DockStyle.Fill,
@@ -71,12 +83,10 @@ internal static class ProjectFilesFeature
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 4,
+            RowCount = 2,
             Margin = Padding.Empty,
             Padding = Padding.Empty,
         };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
@@ -106,10 +116,8 @@ internal static class ProjectFilesFeature
         }
         fileColumns.SizeChanged += (_, _) => ResizeColumns();
 
-        root.Controls.Add(summaryLabel, 0, 0);
-        root.Controls.Add(sourceCountLabel, 0, 1);
-        root.Controls.Add(mainModelLabel, 0, 2);
-        root.Controls.Add(fileColumns, 0, 3);
+        root.Controls.Add(summaryRow, 0, 0);
+        root.Controls.Add(fileColumns, 0, 1);
         assetsGroup.Controls.Add(root);
 
         var toolTip = new ToolTip
@@ -132,17 +140,21 @@ internal static class ProjectFilesFeature
                 var folder = folderText.Text.Trim();
                 if (!Directory.Exists(folder))
                 {
-                    summaryLabel.Text = UiText.T("MODELS: 0     TEXTURES: 0", "МОДЕЛИ: 0     ТЕКСТУРЫ: 0");
-                    sourceCountLabel.Text = UiText.T("Hero source: not extracted", "Исходники героя: не извлечены");
-                    mainModelLabel.Text = UiText.T("Main file: —", "Основной файл: —");
-                    toolTip.SetToolTip(mainModelLabel, string.Empty);
+                    countsLabel.Text = UiText.T(
+                        "AUTHORING MODELS: 0    TEXTURES: 0",
+                        "АВТОРСКИЕ МОДЕЛИ: 0    ТЕКСТУРЫ: 0");
+                    contextLabel.Text = UiText.T(
+                        "MAIN FILE: —    SOURCE: —",
+                        "ОСНОВНОЙ ФАЙЛ: —    ИСХОДНИКИ: —");
+                    toolTip.SetToolTip(contextLabel, string.Empty);
                     return;
                 }
 
                 var scan = ProjectScanner.Scan(folder);
-                summaryLabel.Text = UiText.T(
-                    $"MODELS: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}     TEXTURES: {scan.PngTextures.Count}",
-                    $"МОДЕЛИ: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}     ТЕКСТУРЫ: {scan.PngTextures.Count}");
+                var modelCount = scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count;
+                countsLabel.Text = UiText.T(
+                    $"AUTHORING MODELS: {modelCount}    TEXTURES: {scan.PngTextures.Count}",
+                    $"АВТОРСКИЕ МОДЕЛИ: {modelCount}    ТЕКСТУРЫ: {scan.PngTextures.Count}");
 
                 foreach (var file in scan.DmxFiles)
                 {
@@ -166,24 +178,27 @@ internal static class ProjectFilesFeature
 
                 var manifest = ProjectStore.TryLoad(folder);
                 var extractedCount = manifest?.ExtractedSourceFileCount;
-                sourceCountLabel.Text = extractedCount is not null
-                    ? UiText.T($"Hero source: {extractedCount} files", $"Исходники героя: {extractedCount} файлов")
-                    : UiText.T("Hero source: not extracted", "Исходники героя: не извлечены");
 
                 var retailMainModel = manifest?.RetailMainModel;
                 var mainModel = string.IsNullOrWhiteSpace(retailMainModel)
                     ? null
                     : retailMainModel.Trim();
-                mainModelLabel.Text = UiText.T(
-                    $"Main file: {mainModel ?? "—"}",
-                    $"Основной файл: {mainModel ?? "—"}");
-                toolTip.SetToolTip(mainModelLabel, mainModel ?? string.Empty);
+                var sourceCountEnglish = extractedCount is not null
+                    ? $"{extractedCount} files"
+                    : "—";
+                var sourceCountRussian = extractedCount is not null
+                    ? $"{extractedCount} файлов"
+                    : "—";
+                contextLabel.Text = UiText.T(
+                    $"MAIN FILE: {mainModel ?? "—"}    SOURCE: {sourceCountEnglish}",
+                    $"ОСНОВНОЙ ФАЙЛ: {mainModel ?? "—"}    ИСХОДНИКИ: {sourceCountRussian}");
+                toolTip.SetToolTip(contextLabel, mainModel ?? string.Empty);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
-                summaryLabel.Text = UiText.T("Could not scan project files.", "Не удалось просканировать файлы проекта.");
-                sourceCountLabel.Text = ex.Message;
-                mainModelLabel.Text = string.Empty;
+                countsLabel.Text = UiText.T("SCAN FAILED", "ОШИБКА СКАНИРОВАНИЯ");
+                contextLabel.Text = ex.Message;
+                toolTip.SetToolTip(contextLabel, ex.Message);
             }
             finally
             {
