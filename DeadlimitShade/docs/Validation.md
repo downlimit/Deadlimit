@@ -304,7 +304,7 @@ loopback. `Get-NetTCPConnection` identified `::1:60041`; the official
 The API created the project from the exact disposable OBJ and asserted the
 Texture Set names `DeadlimitTest` and `__deadlimit_outline`. The JavaScript API
 created independent `Deadlimit Hero` and `Deadlimit Outline` instances. Painter's
-runtime log recorded successful creation of both shaders. Computer Use viewport
+runtime log recorded successful creation of both shaders. Painter viewport
 captures proved the black `Custom` silhouette, synchronized green/red Ivy
 diagnostic colors, restoration of the original `Custom` result and correct
 silhouette culling after camera rotation. Preserving reloads visibly changed
