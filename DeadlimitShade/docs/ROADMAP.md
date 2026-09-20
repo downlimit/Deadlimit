@@ -6,7 +6,7 @@ Updated: 2026-09-08.
 
 The current Deadlock-look investigation status, rejected lighting experiment,
 milestone gates and next-session brief are recorded in
-[`DEADLOCK_LOOK_HANDOFF.md`](DEADLOCK_LOOK_HANDOFF.md).
+[`DEADLOCK_LOOK_STATUS.md`](DEADLOCK_LOOK_STATUS.md).
 
 The full character uber-shader decomposition now has a reproducible first-stage
 permutation inventory in [`UBER_SHADER_PERMUTATION_MAP.md`](UBER_SHADER_PERMUTATION_MAP.md):
@@ -718,7 +718,7 @@ acceptance result.
   reported the original FBX and all seven expected Texture Sets, mapped every
   set to `Deadlimit Hero`, selected Ivy ID 1 with shaded view and saved the copy;
 - that textured-SPP result is confirmed at application/API level. Current
-  Computer Use discovery returned no Windows application surfaces, so no new
+  GUI-window discovery returned no usable Painter surface, so no new
   visual PASS is claimed for the Ivy viewport;
 - a full-scene export that created 73 source nodes plus 73 separate outline
   nodes (87,197 source faces; 261,591 split shell vertices) left Painter at
