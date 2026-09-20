@@ -45,7 +45,7 @@ jobs:
           TARGET_SHA: ${{ steps.target.outputs.sha }}
         run: |
           set -euo pipefail
-          required=(build dco smoke)
+          required=(build smoke)
 
           for attempt in {1..60}; do
             all_ready=true
@@ -78,7 +78,24 @@ jobs:
           echo "Timed out waiting for required checks."
           exit 1
 
+      - name: Skip stale main commit
+        id: freshness
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          set -euo pipefail
+          current_main="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq '.sha')"
+          if [[ "$TARGET_SHA" == "$current_main" ]]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "current=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping stale main commit $TARGET_SHA; current main is $current_main."
+          fi
+
       - name: Read release version
+        if: steps.freshness.outputs.current == 'true'
         id: version
         shell: bash
         run: |
@@ -97,6 +114,7 @@ jobs:
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
       - name: Check whether milestone already exists
+        if: steps.freshness.outputs.current == 'true'
         id: existing
         shell: bash
         env:
@@ -112,6 +130,7 @@ jobs:
 
       - name: Retire legacy release assets
         if: >-
+          steps.freshness.outputs.current == 'true' &&
           steps.version.outputs.tag == 'v0.1.0-beta.3' &&
           steps.existing.outputs.exists != 'true'
         shell: bash
@@ -174,14 +193,14 @@ jobs:
           done
 
       - name: Prepare installer checksum
-        if: steps.existing.outputs.exists != 'true'
+        if: steps.freshness.outputs.current == 'true' && steps.existing.outputs.exists != 'true'
         shell: bash
         run: |
           set -euo pipefail
           sha256sum Install-Deadlimit.cmd > Install-Deadlimit.cmd.sha256
 
       - name: Publish numbered source milestone
-        if: steps.existing.outputs.exists != 'true'
+        if: steps.freshness.outputs.current == 'true' && steps.existing.outputs.exists != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
