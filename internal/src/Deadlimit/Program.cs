@@ -182,6 +182,11 @@ internal static class Program
         var settings = ProjectStore.GetToolPathSettings();
         UiTheme.ConfigureApplication(settings.UiTheme);
 
+        var initializingCsdkText = UiText.T("Initializing CSDK actions...", "Инициализация действий CSDK...");
+        var loadingProjectControlsText = UiText.T("Loading project controls...", "Загрузка элементов проекта...");
+        var preparingWorkspaceText = UiText.T("Preparing project workspace...", "Подготовка рабочей области проекта...");
+        var applyingInterfaceText = UiText.T("Applying interface settings...", "Применение настроек интерфейса...");
+
         UpdateStartup(startup, 28, UiText.T("Building interface...", "Создание интерфейса..."));
         var form = new MainForm
         {
@@ -194,12 +199,12 @@ internal static class Program
             ShowInTaskbar = true,
         };
 
-        UpdateStartup(startup, 46, UiText.T("Initializing CSDK actions...", "Инициализация действий CSDK..."));
+        UpdateStartup(startup, 46, initializingCsdkText);
         BuildFeature.Attach(form);
         OnlinePreparationFeature.Attach(form);
         ExtractionProgressFeature.Attach(form);
 
-        UpdateStartup(startup, 62, UiText.T("Loading project controls...", "Загрузка элементов проекта..."));
+        UpdateStartup(startup, 62, loadingProjectControlsText);
         ProjectLibraryHotfixFeature.Attach(form);
         ProjectLibraryFeature.Attach(form);
         ProjectCreationChoiceFeature.Attach(form);
@@ -208,16 +213,17 @@ internal static class Program
         ProjectSaveStateFeature.Attach(form);
         ProjectExternalChangeFeature.Attach(form);
 
-        UpdateStartup(startup, 78, UiText.T("Preparing project workspace...", "Подготовка рабочей области проекта..."));
+        UpdateStartup(startup, 78, preparingWorkspaceText);
         ProjectHeaderFeature.Attach(form);
         OnlineCsdkPulseFeature.Attach(form);
         ProjectFilesFeature.Attach(form);
         VertexColorExportFeature.Attach(form);
 
-        UpdateStartup(startup, 90, UiText.T("Applying interface settings...", "Применение настроек интерфейса..."));
+        UpdateStartup(startup, 90, applyingInterfaceText);
         UiTheme.ApplyCustomPalette(form, settings.UiTheme);
         WindowProgressFeature.Attach(form);
         SteamStatusFeature.Attach(form, settings.UiTheme);
+
         UpdateStartup(startup, 94, UiText.T("Loading projects and finalizing...", "Загрузка проектов и завершение запуска..."));
         return form;
     }

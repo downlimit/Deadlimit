@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 
 namespace Deadlimit.Core;
 
@@ -276,6 +277,27 @@ public static class ProjectStore
             _ => "en",
         };
 
+    private static string GetDefaultUiLanguage()
+    {
+        var culture = CultureInfo.CurrentUICulture;
+        if (string.Equals(culture.TwoLetterISOLanguageName, "ru", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ru";
+        }
+
+        if (string.Equals(culture.TwoLetterISOLanguageName, "zh", StringComparison.OrdinalIgnoreCase))
+        {
+            return "zh-CN";
+        }
+
+        if (string.Equals(culture.Name, "pt-BR", StringComparison.OrdinalIgnoreCase))
+        {
+            return "pt-BR";
+        }
+
+        return "en";
+    }
+
     private static string NormalizeUiTheme(string? value)
     {
         var normalized = value?.Trim().ToLowerInvariant();
@@ -291,7 +313,7 @@ public static class ProjectStore
         public string CsdkRoot { get; set; } = string.Empty;
         public string DeadlockToolsRoot { get; set; } = string.Empty;
         public string RetailDeadlockRoot { get; set; } = string.Empty;
-        public string UiLanguage { get; set; } = "en";
+        public string UiLanguage { get; set; } = GetDefaultUiLanguage();
         public string UiTheme { get; set; } = "system";
     }
 }

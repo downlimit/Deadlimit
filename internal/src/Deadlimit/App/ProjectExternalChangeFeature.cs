@@ -12,18 +12,12 @@ internal static class ProjectExternalChangeFeature
     public static void Attach(MainForm form)
     {
         var projectGroup = FindDescendants<GroupBox>(form)
-            .FirstOrDefault(group =>
-                string.Equals(group.Text, "Project", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Проект", StringComparison.Ordinal));
+            .FirstOrDefault(group => group.Name == UiControlNames.ProjectGroup);
         var folderText = projectGroup is null
             ? null
-            : FindDescendants<TextBox>(projectGroup).FirstOrDefault(textBox => textBox.ReadOnly);
+            : FindDescendants<TextBox>(projectGroup).FirstOrDefault(textBox => textBox.Name == UiControlNames.ProjectFolder);
         var library = FindDescendants<GroupBox>(form)
-            .FirstOrDefault(group =>
-                string.Equals(group.Text, "Library", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Библиотека", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Projects", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Проекты", StringComparison.Ordinal))
+            .FirstOrDefault(group => group.Name == UiControlNames.LibraryGroup)
             ?.Controls.OfType<ListBox>()
             .FirstOrDefault();
 

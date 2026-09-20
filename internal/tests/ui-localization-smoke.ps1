@@ -40,10 +40,31 @@ foreach ($path in @(
 Assert-NotContains 'internal/src/Deadlimit/App/SettingsForm.cs' 'Text = "📂 CSDK Fast Startup Fix"'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'new LanguageItem("zh-CN", "简体中文")'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'new LanguageItem("pt-BR", "Português (Brasil)")'
+$settingsFormSource = Get-Content 'internal/src/Deadlimit/App/SettingsForm.cs' -Raw
+$languageOrder = @(
+    'new LanguageItem("ru", "Русский")',
+    'new LanguageItem("en", "English")',
+    'new LanguageItem("zh-CN", "简体中文")',
+    'new LanguageItem("pt-BR", "Português (Brasil)")'
+)
+$previousLanguageIndex = -1
+foreach ($languageItem in $languageOrder) {
+    $languageIndex = $settingsFormSource.IndexOf($languageItem, [StringComparison]::Ordinal)
+    if ($languageIndex -le $previousLanguageIndex) {
+        throw "Language dropdown order is incorrect at: $languageItem"
+    }
+    $previousLanguageIndex = $languageIndex
+}
+Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'item.Code, "en", StringComparison.OrdinalIgnoreCase'
 Assert-Contains 'internal/src/Deadlimit/Core/ProjectStore.cs' '"zh-cn" => "zh-CN"'
 Assert-Contains 'internal/src/Deadlimit/Core/ProjectStore.cs' '"pt-br" => "pt-BR"'
+Assert-Contains 'internal/src/Deadlimit/Core/ProjectStore.cs' 'CultureInfo.CurrentUICulture'
+Assert-Contains 'internal/src/Deadlimit/Core/ProjectStore.cs' 'UiLanguage { get; set; } = GetDefaultUiLanguage();'
 Assert-Contains 'internal/src/Deadlimit/Deadlimit.csproj' 'Localization\zh-CN.json'
 Assert-Contains 'internal/src/Deadlimit/Deadlimit.csproj' 'Localization\pt-BR.json'
+Assert-Contains 'internal/src/Deadlimit/App/UiControlNames.cs' 'internal const string ProjectGroup'
+Assert-Contains 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs' 'UiControlNames.BuildForTestButton'
+Assert-Contains 'internal/src/Deadlimit/Program.cs' 'ProjectHeaderFeature.Attach(form);'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'UiText.T("APPLY", "ПРИМЕНИТЬ")'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'UiText.T("CLOSE", "ЗАКРЫТЬ")'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'UiText.T("CANCEL", "ОТМЕНА")'
@@ -102,6 +123,29 @@ foreach ($file in $appTooltipFiles) {
 $assemblyPath = Resolve-Path 'internal/src/Deadlimit/bin/Release/net10.0-windows/DeadlimitManager.dll'
 $assembly = [Reflection.Assembly]::LoadFrom($assemblyPath)
 $flags = [Reflection.BindingFlags]::Static -bor [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Public
+$projectStoreType = $assembly.GetType('Deadlimit.Core.ProjectStore', $true)
+$defaultLanguageMethod = $projectStoreType.GetMethod('GetDefaultUiLanguage', $flags)
+if ($null -eq $defaultLanguageMethod) { throw 'ProjectStore.GetDefaultUiLanguage was not found.' }
+$originalUiCulture = [Globalization.CultureInfo]::CurrentUICulture
+try {
+    foreach ($case in @(
+        @{ Culture = 'ru-RU'; Expected = 'ru' },
+        @{ Culture = 'en-US'; Expected = 'en' },
+        @{ Culture = 'zh-TW'; Expected = 'zh-CN' },
+        @{ Culture = 'pt-BR'; Expected = 'pt-BR' },
+        @{ Culture = 'pt-PT'; Expected = 'en' },
+        @{ Culture = 'ja-JP'; Expected = 'en' }
+    )) {
+        [Globalization.CultureInfo]::CurrentUICulture = [Globalization.CultureInfo]::GetCultureInfo($case.Culture)
+        $actualLanguage = [string]$defaultLanguageMethod.Invoke($null, @())
+        if ($actualLanguage -ne $case.Expected) {
+            throw "System culture $($case.Culture) selected '$actualLanguage' instead of '$($case.Expected)'."
+        }
+    }
+}
+finally {
+    [Globalization.CultureInfo]::CurrentUICulture = $originalUiCulture
+}
 $catalogType = $assembly.GetType('Deadlimit.Core.LocalizedTextCatalog', $true)
 $catalogSmokeMethod = $catalogType.GetMethod('RunSmoke', $flags)
 if ($null -eq $catalogSmokeMethod) { throw 'LocalizedTextCatalog.RunSmoke was not found.' }

@@ -8,9 +8,7 @@ internal static class HeroCatalogFeature
     public static void Attach(MainForm form)
     {
         var projectGroup = FindDescendants<GroupBox>(form)
-            .FirstOrDefault(group =>
-                string.Equals(group.Text, "Project", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Проект", StringComparison.Ordinal));
+            .FirstOrDefault(group => group.Name == UiControlNames.ProjectGroup);
         if (projectGroup is null)
         {
             return;
@@ -30,6 +28,7 @@ internal static class HeroCatalogFeature
 
         var combo = new HeroComboBox
         {
+            Name = UiControlNames.Hero,
             Dock = DockStyle.Fill,
             DropDownStyle = ComboBoxStyle.DropDownList,
             IntegralHeight = true,
@@ -230,9 +229,7 @@ internal static class HeroCatalogFeature
 
         var saveButton = grid.Controls
             .OfType<Button>()
-            .FirstOrDefault(button =>
-                string.Equals(button.Text, "SAVE PROJECT", StringComparison.Ordinal)
-                || string.Equals(button.Text, "СОХРАНИТЬ ПРОЕКТ", StringComparison.Ordinal));
+            .FirstOrDefault(button => button.Name == UiControlNames.SaveProjectButton);
         if (saveButton is not null)
         {
             if (actionColumnWidth > 0)
