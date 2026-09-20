@@ -102,7 +102,8 @@ try {
     New-Item -ItemType Directory -Path $preparedHeroRoot -Force | Out-Null
 
     $artistMain = Join-Path $authoringRoot 'ivy_ivy.dmx'
-    $artistAbility = Join-Path $authoringRoot $abilityName
+    $artistAbility = Join-Path $authoringRoot ('abilities\' + $abilityName)
+    New-Item -ItemType Directory -Path (Split-Path $artistAbility) -Force | Out-Null
     Set-Content -LiteralPath $artistMain -Value 'artist main' -Encoding utf8NoBOM
     Set-Content -LiteralPath $artistAbility -Value 'artist ability' -Encoding utf8NoBOM
     Set-Content -LiteralPath (Join-Path $sourceHeroRoot 'ivy_ivy.dmx') -Value 'retail main' -Encoding utf8NoBOM
@@ -121,6 +122,18 @@ try {
     $stageOwners = $resolverType.GetMethod('StageOwningVmdlSourceTrees', $flags)
     if ($null -eq $resolveDmxTarget -or $null -eq $stageOwners) {
         throw 'Extracted-source DMX routing contract was not found.'
+    }
+
+    $manifestType = $assembly.GetType('Deadlimit.Core.ProjectManifest', $true)
+    $projectStoreType = $assembly.GetType('Deadlimit.Core.ProjectStore', $true)
+    $manifest = [Activator]::CreateInstance($manifestType)
+    $manifest.ProjectFolder = $projectRoot
+    $manifest.SourceDumpFolderName = '0source'
+    $projectStoreType.GetMethod('Save').Invoke($null, [object[]]@($manifest)) | Out-Null
+
+    $dmxTargetFromNestedAuthoring = $resolveDmxTarget.Invoke($null, [object[]]@([string]$artistAbility, $null))
+    if ($null -eq $dmxTargetFromNestedAuthoring -or $dmxTargetFromNestedAuthoring.ResourcePath -ne $abilityResource) {
+        throw 'Nested 1authoring DMX did not discover its project 0source through the project manifest.'
     }
 
     $dmxTarget = $resolveDmxTarget.Invoke($null, [object[]]@([string]$artistAbility, [string]$sourceRoot))

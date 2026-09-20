@@ -22,13 +22,32 @@ internal static class ExtractedSourceAssetResolver
 
     internal static string? TryResolveSourceRootForArtistPath(string artistPath)
     {
-        var projectFolder = Path.GetDirectoryName(Path.GetFullPath(artistPath));
-        if (string.IsNullOrWhiteSpace(projectFolder))
+        var fullArtistPath = Path.GetFullPath(artistPath);
+        var current = new DirectoryInfo(
+            Path.GetDirectoryName(fullArtistPath)
+            ?? throw new ArgumentException("Artist path has no parent folder.", nameof(artistPath)));
+
+        DirectoryInfo? projectFolder = null;
+        while (current is not null)
+        {
+            if (string.Equals(
+                    current.Name,
+                    ProjectAuthoringLayout.AuthoringFolderName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                projectFolder = current.Parent;
+                break;
+            }
+
+            current = current.Parent;
+        }
+
+        if (projectFolder is null)
         {
             return null;
         }
 
-        var manifest = ProjectStore.TryLoad(projectFolder);
+        var manifest = ProjectStore.TryLoad(projectFolder.FullName);
         if (manifest is null)
         {
             return null;
