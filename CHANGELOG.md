@@ -8,8 +8,9 @@ historical source milestones. Dates use `YYYY-MM-DD`.
 
 ### Changed
 
-- The one-file installer now requires Git for Windows and the .NET 10 SDK,
-  clones `main`, and builds Deadlimit Manager locally.
+- The one-file installer uses Git for Windows and the .NET 10 SDK, asks before
+  installing either missing dependency through WinGet, then clones `main` and
+  builds Deadlimit Manager locally.
 - Every supported installation now updates through the existing Git
   fast-forward/rebuild path.
 - The portable ZIP, `latest-main` rolling release channel, package checksums,

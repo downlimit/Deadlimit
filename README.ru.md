@@ -9,8 +9,9 @@ CSDK, компиляцию ресурсов, упаковку VPK и локал�
 развивается энтузиастами без SLA; обновления Deadlock и внешних программ могут
 временно нарушать совместимость.
 
-> Deadlimit устанавливается из публичного Git-репозитория. Для установки и
-> обновления нужны Git for Windows и .NET 10 SDK.
+> Deadlimit устанавливается из публичного Git-репозитория. Нужны Git for
+> Windows и .NET 10 SDK; если их нет, installer спросит разрешение и установит
+> недостающие компоненты через Windows Package Manager (WinGet).
 
 [English README](README.md)
 
@@ -113,10 +114,11 @@ internal/tests/prepare-behavior-smoke.ps1
 
 ## Установка для художников
 
-1. Установите **Git for Windows** и **.NET 10 SDK**.
-2. Скачайте один файл
+1. Скачайте один файл
    [`Install-Deadlimit.cmd`](https://raw.githubusercontent.com/downlimit/Deadlimit/main/Install-Deadlimit.cmd)
    из официального репозитория и запустите его.
+2. Если Git for Windows или .NET 10 SDK отсутствуют, installer перечислит
+   недостающие зависимости и спросит разрешение установить их через WinGet.
 3. Установщик клонирует `main` в `%LocalAppData%\Programs\Deadlimit`,
    локально собирает Deadlimit Manager, создаёт ярлыки Manager/Updater на
    рабочем столе и в меню «Пуск», затем запускает Manager.
