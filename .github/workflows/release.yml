@@ -139,15 +139,10 @@ jobs:
           set -euo pipefail
 
           for tag in latest-main v0.1.0-beta.1 v0.1.0-beta.2; do
-            release_id="$(
-              gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag"                 --jq '.id' 2>/dev/null || true
-            )"
-            if [[ -n "$release_id" ]]; then
-              gh api --method DELETE                 "repos/$GITHUB_REPOSITORY/releases/$release_id"
-            fi
-
-            if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
-              gh api --method DELETE                 "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag"
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              gh release delete "$tag" --cleanup-tag --yes --repo "$GITHUB_REPOSITORY"
+            elif gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+              gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag"
             fi
           done
 
