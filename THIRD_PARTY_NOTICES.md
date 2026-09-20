@@ -22,11 +22,6 @@ components.
 | Vortice.SpirvCross | 1.5.4 | MIT |
 | ZstdSharp.Port | 0.8.8 | MIT |
 
-Release packaging carries the exact package nuspec, package-provided notices,
-and the full standard license text for resolved SPDX expressions. It also keeps
-the resolved version, copyright, project URL, and repository URL with every
-package entry.
-
 ## External tools and content
 
 Deadlimit interoperates with user-installed software and local content from
@@ -41,6 +36,6 @@ authors, or the maintainers of the other external tools it can invoke.
 
 Users and contributors are responsible for complying with the licenses, terms,
 account requirements, and redistribution rules that apply to their tools and
-content. Deadlimit releases must not bundle retail game content, Reduced CSDK
-content, extracted resources, or third-party executables unless a later audit
-documents explicit redistribution permission.
+content. Deadlimit repository and release assets must not bundle retail game content,
+Reduced CSDK content, extracted resources, or third-party executables unless a
+later audit documents explicit redistribution permission.
