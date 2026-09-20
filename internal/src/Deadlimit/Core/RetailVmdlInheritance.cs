@@ -37,6 +37,11 @@ public sealed record AuthoringPhysicsSnapshot(IReadOnlyList<AuthoringPhysicsNode
     public bool HasNodes => Nodes.Count > 0;
 }
 
+public sealed record AuthoringAnimationSnapshot(IReadOnlyList<string> Nodes)
+{
+    public bool HasNodes => Nodes.Count > 0;
+}
+
 public static class RetailVmdlInheritance
 {
     // Current Reduced CSDK12 cannot instantiate these source ModelDoc classes.
@@ -128,6 +133,9 @@ public static class RetailVmdlInheritance
         var existingPhysics = preserveExistingPhysics && File.Exists(destinationVmdl)
             ? CaptureAuthoringPhysics(destinationVmdl)
             : new AuthoringPhysicsSnapshot(Array.Empty<AuthoringPhysicsNode>());
+        var existingAnimations = File.Exists(destinationVmdl)
+            ? CaptureAuthoringAnimations(destinationVmdl)
+            : new AuthoringAnimationSnapshot(Array.Empty<string>());
 
         var copied = 0;
         foreach (var sourceFile in Directory.EnumerateFiles(sourceFolder, "*", SearchOption.AllDirectories))
@@ -174,6 +182,10 @@ public static class RetailVmdlInheritance
         if (existingPhysics.HasNodes)
         {
             RestoreAuthoringPhysics(destinationVmdl, existingPhysics);
+        }
+        if (existingAnimations.HasNodes)
+        {
+            RestoreAuthoringAnimations(destinationVmdl, existingAnimations);
         }
 
         return new RetailModelSourceCopyResult(
@@ -261,6 +273,51 @@ public static class RetailVmdlInheritance
         foreach (var remaining in replacements.Values.SelectMany(queue => queue))
         {
             merged.Add(new RetailVmdlNode(remaining.ClassName, remaining.Text));
+        }
+
+        WriteRootChildren(vmdlPath, text, root, merged);
+    }
+
+    public static AuthoringAnimationSnapshot CaptureAuthoringAnimations(string vmdlPath)
+    {
+        var text = File.ReadAllText(vmdlPath);
+        var nodes = LocateRootChildren(text).Nodes
+            .Where(node => string.Equals(node.ClassName, "AnimationList", StringComparison.Ordinal))
+            .Select(node => node.Text)
+            .ToArray();
+        return new AuthoringAnimationSnapshot(nodes);
+    }
+
+    public static void RestoreAuthoringAnimations(
+        string vmdlPath,
+        AuthoringAnimationSnapshot snapshot)
+    {
+        if (!snapshot.HasNodes)
+        {
+            return;
+        }
+
+        var text = File.ReadAllText(vmdlPath);
+        var root = LocateRootChildren(text);
+        var replacements = new Queue<string>(snapshot.Nodes);
+        var merged = new List<RetailVmdlNode>();
+
+        foreach (var node in root.Nodes)
+        {
+            if (!string.Equals(node.ClassName, "AnimationList", StringComparison.Ordinal))
+            {
+                merged.Add(node);
+                continue;
+            }
+
+            merged.Add(replacements.Count > 0
+                ? new RetailVmdlNode("AnimationList", replacements.Dequeue())
+                : node);
+        }
+
+        while (replacements.Count > 0)
+        {
+            merged.Add(new RetailVmdlNode("AnimationList", replacements.Dequeue()));
         }
 
         WriteRootChildren(vmdlPath, text, root, merged);

@@ -4,6 +4,10 @@ This file records concrete local build results. Hero-specific observations remai
 
 ## 2026-09-17 — compiled FE physics inheritance
 
+Current behavior: when ResourceCompiler produces a complete authored cloth FE graph, BUILD & TEST validates and preserves the compiled `PHYS` block byte-for-byte, including authored rigid bodies and joints. Retail rigid-body/secondary-motion restoration remains only as a compatibility fallback for compiled models without authored cloth topology.
+
+Normal PREPARE also snapshots and restores the existing root `AnimationList` while refreshing the extracted retail source tree. ModelDoc-authored `AnimEvent` children, including `AE_CL_CLOTH_STIFFEN`, therefore survive later PREPARE and BUILD & TEST runs.
+
 VRF decompilation does not reconstruct Ivy's retail finite-element authoring graph. Recompiling the prepared VMDL therefore produced a PHYS block containing only artist-authored jiggle bones and dropped the retail vine/tail simulation.
 
 `BUILD FOR TEST` now restores the retail `m_pFeModel` after ResourceCompiler and AG2 repair, then merges independent artist jiggle nodes into the retail graph. The PHYS block is replaced in place at compiled-resource level; all other compiled blocks remain byte-identical. Unsupported custom FE node types fail the build explicitly instead of silently discarding physics.

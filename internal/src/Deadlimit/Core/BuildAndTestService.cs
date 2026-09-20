@@ -369,11 +369,13 @@ public sealed class BuildAndTestService
 
             cancellationToken.ThrowIfCancellationRequested();
             Report(progress, 86, LocalizedText.T(
-                "Finalizing retail rigid bodies and authored secondary motion...",
-                "Финализация retail rigidbody и авторской вторичной физики..."));
+                "Validating compiled rigid bodies and authored secondary motion...",
+                "Проверка compiled rigidbody и авторской вторичной физики..."));
             var inheritedPhysics = CompiledModelPhysicsInheritance.Apply(manifest, compiledMainModel);
             log.AppendLine(
-                $"Retail rigid-body physics restored: {inheritedPhysics.RetailRigidBodyCount} body part(s). " +
+                (inheritedPhysics.RestoredRetailRigidBodies
+                    ? $"Retail rigid-body fallback applied: {inheritedPhysics.RigidBodyCount} body part(s). "
+                    : $"Compiled rigid-body physics preserved: {inheritedPhysics.RigidBodyCount} body part(s). ") +
                 (inheritedPhysics.PreservedAuthoredCloth
                     ? $"Authored cloth FE preserved: {inheritedPhysics.MergedNodeCount} node(s); retail secondary-motion FE was not applied."
                     : $"Retail secondary-motion FE restored: {inheritedPhysics.RetailNodeCount} retail node(s), " +

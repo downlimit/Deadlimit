@@ -107,6 +107,12 @@ internal static class Program
                 return 70 + physicsInheritanceResult;
             }
 
+            var vmdlInheritanceResult = RetailVmdlInheritanceSmoke.Run();
+            if (vmdlInheritanceResult != 0)
+            {
+                return 80 + vmdlInheritanceResult;
+            }
+
             var repackResult = ImportedVpkRepackSmoke.Run();
             if (repackResult != 0)
             {

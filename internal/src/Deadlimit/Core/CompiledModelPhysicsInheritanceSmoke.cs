@@ -60,14 +60,30 @@ internal static class CompiledModelPhysicsInheritanceSmoke
         compiledPhysics["m_parts"] = Array("compiled_body");
         compiledPhysics["m_joints"] = Array("compiled_joint");
         compiledPhysics["m_pFeModel"] = new KVObject("authored_cloth_fe");
-        var restoredPhysics = CompiledModelPhysicsInheritance.RestoreRetailRigidBodiesForSmoke(
+        var restoredPhysics = CompiledModelPhysicsInheritance.FinalizeRigidBodiesForSmoke(
             retailPhysics,
-            compiledPhysics);
+            compiledPhysics,
+            preserveAuthoredCloth: false);
         if ((string)restoredPhysics["m_parts"][0] != "retail_body"
             || (string)restoredPhysics["m_joints"][0] != "retail_joint"
             || (string)restoredPhysics["m_pFeModel"] != "authored_cloth_fe")
         {
             return 6;
+        }
+
+        var authoredPhysics = KVObject.Collection();
+        authoredPhysics["m_parts"] = Array("authored_body");
+        authoredPhysics["m_joints"] = Array("authored_joint");
+        authoredPhysics["m_pFeModel"] = new KVObject("authored_cloth_fe");
+        var preservedPhysics = CompiledModelPhysicsInheritance.FinalizeRigidBodiesForSmoke(
+            retailPhysics,
+            authoredPhysics,
+            preserveAuthoredCloth: true);
+        if ((string)preservedPhysics["m_parts"][0] != "authored_body"
+            || (string)preservedPhysics["m_joints"][0] != "authored_joint"
+            || (string)preservedPhysics["m_pFeModel"] != "authored_cloth_fe")
+        {
+            return 7;
         }
 
         var resource = CreateCompiledResource();
@@ -77,7 +93,7 @@ internal static class CompiledModelPhysicsInheritanceSmoke
             || !ReadBlock(rewritten, "PHYS").SequenceEqual(replacement)
             || !ReadBlock(rewritten, "DATA").SequenceEqual(Encoding.ASCII.GetBytes("unchanged-data")))
         {
-            return 7;
+            return 8;
         }
         return 0;
     }
