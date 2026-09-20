@@ -18,10 +18,13 @@ It removes the repetitive Source 2 work that would otherwise mean digging throug
 
 **[Download `Install-Deadlimit.cmd`](https://github.com/downlimit/Deadlimit/raw/refs/heads/main/Install-Deadlimit.cmd)**
 
-Download the installer and run it. Deadlimit installs into:
+Put the installer where you want to keep Deadlimit, then run it.
+
+Deadlimit creates a `Deadlimit` folder next to the installer and installs itself there.
 
 ```text
-%LocalAppData%\Programs\Deadlimit
+D:\Tools\Install-Deadlimit.cmd
+D:\Tools\Deadlimit\
 ```
 
 You do not need to know Git or set up the .NET SDK manually. If Git for Windows or the .NET 10 SDK is missing, the installer shows what is required and asks permission before installing it through WinGet.

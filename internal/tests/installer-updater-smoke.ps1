@@ -40,7 +40,10 @@ foreach ($required in @(
     'Find-DotNet10Sdk',
     '--list-sdks',
     "^10\.0\.",
-    "'Programs\Deadlimit'",
+    'DEADLIMIT_INSTALLER_PATH',
+    '[IO.Path]::GetFullPath($env:DEADLIMIT_INSTALLER_PATH)',
+    '$installerDirectory = Split-Path -Parent $installerPath',
+    '$installRoot = Join-Path $installerDirectory ''Deadlimit''',
     "Invoke-Git @('clone'",
     "'--branch','main','--single-branch'",
     'Test-LegacyDeadlimitInstallation',
@@ -58,7 +61,8 @@ foreach ($retired in @(
     'Deadlimit-win-x64.zip',
     'DeadlimitPortableUpdater',
     'Deadlimit-release.json',
-    'packageSha256'
+    'packageSha256',
+    "'Programs\Deadlimit'"
 )) {
     Assert-NotContains $payload $retired 'Installer'
 }

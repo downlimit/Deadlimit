@@ -16,7 +16,12 @@ Set-StrictMode -Version Latest
 
 $repositoryUrl = 'https://github.com/downlimit/Deadlimit.git'
 $localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
-$installRoot = Join-Path $localAppData 'Programs\Deadlimit'
+if ([string]::IsNullOrWhiteSpace($env:DEADLIMIT_INSTALLER_PATH)) {
+    throw 'Deadlimit installer path is unavailable.'
+}
+$installerPath = [IO.Path]::GetFullPath($env:DEADLIMIT_INSTALLER_PATH)
+$installerDirectory = Split-Path -Parent $installerPath
+$installRoot = Join-Path $installerDirectory 'Deadlimit'
 $userDataRoot = Join-Path $localAppData 'Deadlimit'
 
 function Refresh-ProcessPath {
