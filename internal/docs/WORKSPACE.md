@@ -11,7 +11,7 @@ A Deadlimit Manager authoring project uses this managed artist-facing structure:
 ├─ 0source\          # generated retail extraction
 │  └─ glTFpipeline\  # isolated glTF extraction and PREPARE fallback root
 ├─ 1authoring\       # recursive DMX/FBX/glTF/GLB and texture inputs
-│  └─ portraits\     # non-destructive portrait/UI working copies from extraction
+│  └─ portraits\     # flat, non-destructive portrait/UI working copies from extraction
 ├─ 2concept\
 ├─ 3scene\
 ├─ 4texture\
@@ -33,7 +33,7 @@ Deadlimit creates these folders when an authoring project is saved or extracted.
 
 Subfolder names have no routing meaning. When duplicate authoring basenames exist, image priority is TGA, then PNG, then PSD; ties use the alphabetically first relative path. Multiple Deadlock resources with the same basename require an explicit user selection, which can be persisted per authoring file.
 
-Deadlimit Manager does not overwrite artist files in `1authoring`. Portrait/UI extraction copies missing files into `1authoring\portraits` and preserves existing edited copies.
+Deadlimit Manager does not overwrite artist files in `1authoring`. Portrait/UI extraction flattens missing files into `1authoring\portraits` by filename and preserves existing edited copies. If extraction produces the same filename at multiple resource paths, the alphabetically first source path supplies the initial working copy.
 
 ## `0source` contract
 

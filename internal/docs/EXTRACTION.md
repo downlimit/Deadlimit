@@ -10,7 +10,7 @@ The artist-facing destination is:
 <ProjectFolder>\0source\
 ```
 
-`1authoring` and its subfolders are the artist-owned handoff area for edited DMX, FBX, glTF/GLB and texture files. Extraction preserves those assets. When portraits/UI are selected, missing working copies are also placed under `1authoring\portraits`; existing files there are never overwritten.
+`1authoring` and its subfolders are the artist-owned handoff area for edited DMX, FBX, glTF/GLB and texture files. Extraction preserves those assets. When portraits/UI are selected, missing working copies are placed directly under the flat `1authoring\portraits` folder; existing files there are never overwritten.
 
 Two generated extraction layouts coexist:
 

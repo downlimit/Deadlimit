@@ -85,10 +85,14 @@ try {
     $scope = Join-Path $copyRoot 'scope'
     $sourceA = Join-Path $scope 'panorama\images\heroes\test_card.png'
     $sourceB = Join-Path $scope 'panorama\images\heroes\test_mm.tga'
-    $existingA = Join-Path $project '1authoring\portraits\panorama\images\heroes\test_card.png'
+    $duplicateSourceB = Join-Path $scope 'zzz\duplicate\test_mm.tga'
+    $portraits = Join-Path $project '1authoring\portraits'
+    $existingA = Join-Path $portraits 'test_card.png'
     New-Item -ItemType Directory -Path (Split-Path $sourceA),(Split-Path $existingA) -Force | Out-Null
+    New-Item -ItemType Directory -Path (Split-Path $duplicateSourceB) -Force | Out-Null
     [IO.File]::WriteAllBytes($sourceA, [byte[]](1,2,3))
     [IO.File]::WriteAllBytes($sourceB, [byte[]](4,5,6))
+    [IO.File]::WriteAllBytes($duplicateSourceB, [byte[]](7,8,9))
     [IO.File]::WriteAllBytes($existingA, [byte[]](9,9,9))
     $manifestType = $assembly.GetType('Deadlimit.Core.ProjectManifest', $true)
     $manifest = [Activator]::CreateInstance($manifestType)
@@ -97,9 +101,12 @@ try {
     if ([IO.File]::ReadAllBytes($existingA)[0] -ne 9) {
         throw 'Portrait convenience copy overwrote an existing artist edit.'
     }
-    $copiedB = Join-Path $project '1authoring\portraits\panorama\images\heroes\test_mm.tga'
+    $copiedB = Join-Path $portraits 'test_mm.tga'
     if (-not (Test-Path -LiteralPath $copiedB) -or [IO.File]::ReadAllBytes($copiedB)[0] -ne 4) {
-        throw 'Portrait convenience copy did not populate a missing 1authoring source.'
+        throw 'Portrait convenience copy did not flatten a missing 1authoring source deterministically.'
+    }
+    if (@(Get-ChildItem -LiteralPath $portraits -Directory).Count -ne 0) {
+        throw 'Portrait convenience copy recreated extracted resource subfolders under 1authoring\portraits.'
     }
 }
 finally {
