@@ -1,7 +1,7 @@
 # Environment BRDF runtime decomposition — 2026-09-12
 
 The manual captured-bundle UI procedure below describes the earlier Preview.
-TЗ 14 moved environment selection to the `Deadlimit Environment` panel; see
+Environment selection now lives in the `Deadlimit Environment` panel; see
 `PREVIEW_ENVIRONMENT_STABILITY.md` for the current artist workflow and internal
 Default bundle loading.
 
