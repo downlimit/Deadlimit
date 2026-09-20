@@ -35,6 +35,7 @@ internal static class ProjectFilesFeature
 
         assetsGroup.Text = UiText.T("Project files", "Файлы проекта");
         assetsGroup.Controls.Clear();
+        assetsGroup.Padding = new Padding(3, 0, 3, 3);
 
         var authoringModelsLabel = CreateSummaryLabel();
         var authoringTexturesLabel = CreateSummaryLabel();
@@ -76,7 +77,7 @@ internal static class ProjectFilesFeature
             ColumnCount = 1,
             RowCount = 2,
             Margin = Padding.Empty,
-            Padding = new Padding(0, 2, 0, 0),
+            Padding = Padding.Empty,
         };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -89,7 +90,7 @@ internal static class ProjectFilesFeature
             AutoScroll = true,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = true,
-            Margin = new Padding(0, 3, 0, 0),
+            Margin = new Padding(0, 5, 0, 0),
             Padding = Padding.Empty,
         };
 
@@ -264,7 +265,7 @@ internal static class ProjectFilesFeature
         {
             Text = title,
             AutoSize = true,
-            Margin = new Padding(0, 0, 0, 4),
+            Margin = new Padding(0, 0, 0, 2),
         };
 
         panel.Controls.Add(label, 0, 0);

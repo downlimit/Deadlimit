@@ -109,6 +109,13 @@ foreach ($forbidden in @(
 )) {
     Assert-NotContains $projectFilesUi $forbidden 'Compact project file summary'
 }
+foreach ($required in @(
+    'assetsGroup.Padding = new Padding(3, 0, 3, 3)',
+    'Margin = new Padding(0, 5, 0, 0)',
+    'Margin = new Padding(0, 0, 0, 2)'
+)) {
+    Assert-Contains $projectFilesUi $required 'Project file vertical spacing'
+}
 
 $projectScanner = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ProjectScanner.cs' -Raw
 foreach ($required in @(
