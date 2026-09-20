@@ -20,6 +20,7 @@ internal sealed class OnlinePreparationSession : IDisposable
     {
         ".png",
         ".tga",
+        ".psd",
         ".jpg",
         ".jpeg",
         ".tif",
@@ -78,7 +79,7 @@ internal sealed class OnlinePreparationSession : IDisposable
 
         _watcher = new FileSystemWatcher(projectFolder)
         {
-            IncludeSubdirectories = false,
+            IncludeSubdirectories = true,
             NotifyFilter = NotifyFilters.FileName
                 | NotifyFilters.LastWrite
                 | NotifyFilters.Size
@@ -140,19 +141,21 @@ internal sealed class OnlinePreparationSession : IDisposable
             "Online addon content root");
         var textureTargetFolder = Path.Combine(addonContentRoot, "materials", addonName, "textures");
 
-        var rootDmxFiles = Directory.EnumerateFiles(manifest.ProjectFolder, "*.dmx", SearchOption.TopDirectoryOnly)
+        var authoringFiles = ProjectAuthoringLayout.EnumerateAuthoringFiles(manifest).ToArray();
+        var rootDmxFiles = authoringFiles
+            .Where(path => Path.GetExtension(path).Equals(".dmx", StringComparison.OrdinalIgnoreCase))
             .Where(path => !VertexColorSidecarService.IsSidecarPath(path))
             .Select(Path.GetFullPath)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        var hasRootModelSource = Directory.EnumerateFiles(manifest.ProjectFolder, "*", SearchOption.TopDirectoryOnly)
+        var hasRootModelSource = authoringFiles
             .Any(path => ModelSourceExtensions.Contains(Path.GetExtension(path))
                 && !VertexColorSidecarService.IsSidecarPath(path));
         if (!hasRootModelSource)
         {
             throw new InvalidOperationException(
-                LocalizedText.T("ONLINE PREPARATION found no root-level DMX, FBX, glTF, or GLB model files in the current project.", "ОНЛАЙН-ПОДГОТОВКА не нашла DMX, FBX, glTF или GLB в корне текущего проекта."));
+                LocalizedText.T("ONLINE PREPARATION found no DMX, FBX, glTF, or GLB model files in 1authoring.", "ОНЛАЙН-ПОДГОТОВКА не нашла DMX, FBX, glTF или GLB в 1authoring."));
         }
 
         var dmxMappings = rootDmxFiles.Length == 0
@@ -412,7 +415,7 @@ internal sealed class OnlinePreparationSession : IDisposable
         if (membershipChanges.Any(path => !VertexColorSidecarService.IsSidecarPath(path)))
         {
             MarkPrepareRequired(
-                LocalizedText.T("ONLINE PREPARATION detected a new, deleted, or renamed root model/texture file. A normal PREPARE FOR CSDK is required to rebuild project structure and bindings.", "ОНЛАЙН-ПОДГОТОВКА обнаружила новый, удалённый или переименованный файл модели/текстуры в корне проекта. Для перестроения структуры и привязок требуется обычный ПОДГОТОВИТЬ ДЛЯ CSDK."),
+                LocalizedText.T("ONLINE PREPARATION detected a new, deleted, or renamed model/texture file in 1authoring. A normal PREPARE FOR CSDK is required to rebuild project structure and bindings.", "ОНЛАЙН-ПОДГОТОВКА обнаружила новый, удалённый или переименованный файл модели/текстуры в 1authoring. Для перестроения структуры и привязок требуется обычный ПОДГОТОВИТЬ ДЛЯ CSDK."),
                 null);
             return;
         }
@@ -662,7 +665,9 @@ internal sealed class OnlinePreparationSession : IDisposable
 
     private static IEnumerable<string> EnumerateRelevantFiles(string projectFolder)
     {
-        return Directory.EnumerateFiles(projectFolder, "*", SearchOption.TopDirectoryOnly)
+        var manifest = ProjectStore.TryLoad(projectFolder)
+            ?? new ProjectManifest { ProjectFolder = Path.GetFullPath(projectFolder) };
+        return ProjectAuthoringLayout.EnumerateAuthoringFiles(manifest)
             .Where(IsRelevantPath)
             .Select(Path.GetFullPath)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase);

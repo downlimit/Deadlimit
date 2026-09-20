@@ -119,6 +119,7 @@ public sealed partial class HeroExtractionService
             manifest.ProjectFolder,
             manifest.SourceDumpFolderName,
             "Project source-extraction folder");
+        ProjectAuthoringLayout.EnsureStructure(manifest.ProjectFolder);
         var outputFolder = isGltf
             ? SafePath.ResolveUnderRoot(
                 sourceOutputFolder,
@@ -271,6 +272,14 @@ public sealed partial class HeroExtractionService
                 progress);
             HeroExtractionScopePublisher.SaveState(scopeStatePath, publication.State);
 
+            if (options.ExtractPortraitsAndUi
+                && freshScopeFolders.TryGetValue(
+                    HeroExtractionScopePublisher.PortraitsAndUiScope,
+                    out var portraitsScopeFolder))
+            {
+                CopyPortraitsToAuthoring(manifest, portraitsScopeFolder, cancellationToken);
+            }
+
             if (!isGltf)
             {
                 // glTF has its own refresh lifecycle and backup. Keep the DMX backup bounded
@@ -349,6 +358,37 @@ public sealed partial class HeroExtractionService
         {
             DeleteDirectoryIfExists(stagingFolder);
             throw;
+        }
+    }
+
+    private static void CopyPortraitsToAuthoring(
+        ProjectManifest manifest,
+        string sourceFolder,
+        CancellationToken cancellationToken)
+    {
+        var portraitsRoot = Path.Combine(
+            ProjectAuthoringLayout.GetAuthoringRoot(manifest),
+            "portraits");
+        Directory.CreateDirectory(portraitsRoot);
+
+        foreach (var source in Directory.EnumerateFiles(sourceFolder, "*", SearchOption.AllDirectories)
+                     .Where(path => Path.GetExtension(path).Equals(".png", StringComparison.OrdinalIgnoreCase)
+                         || Path.GetExtension(path).Equals(".tga", StringComparison.OrdinalIgnoreCase)
+                         || Path.GetExtension(path).Equals(".psd", StringComparison.OrdinalIgnoreCase))
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var destination = SafePath.ResolveUnderRoot(
+                portraitsRoot,
+                Path.GetRelativePath(sourceFolder, source),
+                "Authoring portrait copy");
+            if (File.Exists(destination))
+            {
+                continue;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+            File.Copy(source, destination);
         }
     }
 

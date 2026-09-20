@@ -157,7 +157,7 @@ internal static class GltfAuthoringAdapter
         {
             1 => matches[0],
             0 => throw new InvalidOperationException(
-                $"No extracted glTF reference matches project-root '{Path.GetFileName(artistPath)}'. " +
+                $"No extracted glTF reference matches 1authoring file '{Path.GetFileName(artistPath)}'. " +
                 "Export from a Deadlimit glTF source and keep its filename."),
             _ => throw new InvalidOperationException(
                 $"More than one extracted glTF reference matches '{Path.GetFileName(artistPath)}'. Keep a unique extracted filename."),

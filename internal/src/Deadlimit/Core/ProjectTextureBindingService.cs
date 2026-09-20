@@ -27,6 +27,7 @@ internal static class ProjectTextureBindingService
     {
         ".png",
         ".tga",
+        ".psd",
         ".jpg",
         ".jpeg",
         ".tif",
@@ -152,10 +153,10 @@ internal static class ProjectTextureBindingService
                 cancellationToken)
             : 0;
 
-        var projectTextures = Directory.EnumerateFiles(manifest.ProjectFolder, "*", SearchOption.TopDirectoryOnly)
-            .Where(path => TextureSourceExtensions.Contains(Path.GetExtension(path)))
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var projectTextures = ProjectAuthoringLayout.SelectPreferredFiles(
+            manifest,
+            ProjectAuthoringLayout.EnumerateAuthoringFiles(manifest)
+                .Where(path => TextureSourceExtensions.Contains(Path.GetExtension(path))));
 
         var projectTextureNames = projectTextures
             .Select(Path.GetFileName)
@@ -355,7 +356,7 @@ internal static class ProjectTextureBindingService
         log.AppendLine($"Managed custom VMAT project-texture sync: {managedMaterials} material(s), {boundTextures} texture binding(s), {sanitizedTextures} stale/mismatched inherited or derived source repair(s), {unresolvedTextures} unmatched project texture(s).");
         log.AppendLine("Custom texture naming policy: project textures bind only when the filename material prefix exactly matches the custom material name; a matching standard PBR texture replaces the existing compatible Texture* assignment or inserts the canonical slot when that assignment is absent. Deadlimit does not guess based on there being only one material or one texture.");
         log.AppendLine("Custom VMAT lifecycle policy: Deadlimit-owned generated VMAT files are removed when their material is no longer referenced by the current artist DMX. Artist-owned/unmanaged VMAT files are preserved.");
-        log.AppendLine("Custom VMAT parameter policy: retail/template shader and non-texture parameters are inherited only when a VMAT is first created. Later PREPARE runs do not re-apply hero parameters; matching project-root texture files are the only automatic overrides.");
+        log.AppendLine("Custom VMAT parameter policy: retail/template shader and non-texture parameters are inherited only when a VMAT is first created. Later PREPARE runs do not re-apply hero parameters; matching 1authoring texture files are the only automatic overrides.");
 
         return new ProjectTextureBindingResult(
             managedMaterials,

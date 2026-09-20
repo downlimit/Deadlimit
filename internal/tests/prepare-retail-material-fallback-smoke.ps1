@@ -12,6 +12,7 @@ $stageOverrides = $textureType.GetMethod('StageProjectRootOverrides', [Reflectio
 $temp = Join-Path ([IO.Path]::GetTempPath()) ('deadlimit-prepare-authoring-textures-' + [Guid]::NewGuid().ToString('N'))
 $projectRoot = Join-Path $temp 'project'
 $sourceRoot = Join-Path $projectRoot '0source'
+$authoringRoot = Join-Path $projectRoot '1authoring'
 $addonRoot = Join-Path $temp 'content\citadel_addons\ivytest'
 $materialRelative = 'models\heroes_staging\tengu\tengu_v2\materials\ivy_wingsv3.vmat'
 $colorRelative = 'models\heroes_staging\tengu\tengu_v2\materials\ivy_wingsv3_color.png'
@@ -33,6 +34,7 @@ function Write-TestBytes([string]$root, [string]$relative, [byte[]]$bytes) {
 try {
     New-Item -ItemType Directory -Path $projectRoot -Force | Out-Null
     New-Item -ItemType Directory -Path $addonRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $authoringRoot -Force | Out-Null
 
     $vmat = @"
 Layer0
@@ -52,7 +54,7 @@ Layer0
 
     # Project-root artist source with the exact retail source name must replace the stock
     # CSDK working copy at the original Tengu/Ivy resource path.
-    Write-TestBytes $projectRoot 'ivy_wingsv3_color.png' ([byte[]](8,7,6,5)) | Out-Null
+    Write-TestBytes $authoringRoot 'ivy_wingsv3_color.png' ([byte[]](8,7,6,5)) | Out-Null
 
     $manifest = [Activator]::CreateInstance($manifestType)
     $manifest.ProjectFolder = $projectRoot

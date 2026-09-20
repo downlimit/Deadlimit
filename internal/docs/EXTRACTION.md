@@ -10,7 +10,7 @@ The artist-facing destination is:
 <ProjectFolder>\0source\
 ```
 
-The project root remains the artist-owned handoff area for edited DMX, FBX, glTF/GLB and texture files. Extraction must never modify those root assets.
+`1authoring` and its subfolders are the artist-owned handoff area for edited DMX, FBX, glTF/GLB and texture files. Extraction preserves those assets. When portraits/UI are selected, missing working copies are also placed under `1authoring\portraits`; existing files there are never overwritten.
 
 Two generated extraction layouts coexist:
 
@@ -178,7 +178,7 @@ PREPARE resolves extracted retail resources by logical path in this order:
 2. `0source\glTFpipeline`;
 3. legacy `0source\glTFsource` for existing projects.
 
-The project root remains authoritative for artist edits. Root DMX is copied onto its retail render-mesh target, root FBX is referenced directly by ModelDoc, and root glTF/GLB is adapted into the extracted companion DMX while retaining the retail skeleton and animation bindings.
+`1authoring` remains authoritative for artist edits. Its recursive DMX inputs are copied onto their retail render-mesh targets, FBX inputs are referenced directly by ModelDoc, and glTF/GLB inputs are adapted into the extracted companion DMX while retaining the retail skeleton and animation bindings.
 
 For a root glTF/GLB edit, keep the extracted primitive count and order. PREPARE may accept changed vertex and triangle counts inside each primitive, but it deliberately fails when primitives are added, removed, or reordered because that would make the retail render-mesh/material mapping ambiguous. Animation clips in the extracted glTF are available for DCC inspection; PREPARE retains the retail animation bindings even when a DCC exports only the edited bind-pose mesh.
 

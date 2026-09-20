@@ -40,7 +40,7 @@ Each selected project owns a header image at `.deadlimit/project-header.png`. Fo
 
 The project-files panel shows the information needed for the current artist-input contract without repeating full source paths: counts by format, extracted hero-source file count, the detected retail main model, and filename lists grouped by format.
 
-The artist-facing project root accepts `DMX`, `FBX`, `glTF`/`GLB` model exports and supported texture sources. The project-files view groups model formats together and labels each file by format. Animation replacement remains a separate future authoring contract: extracted glTF animations are available for DCC inspection, while PREPARE retains the retail model animation bindings.
+The artist-facing `1authoring` tree accepts `DMX`, `FBX`, `glTF`/`GLB` model exports and supported texture sources recursively. The project-files view groups model formats together and labels each file by format. Animation replacement remains a separate future authoring contract: extracted glTF animations are available for DCC inspection, while PREPARE retains the retail model animation bindings.
 
 ## Status bar
 

@@ -41,6 +41,7 @@ public sealed class BuildAndTestService
     {
         ".png",
         ".tga",
+        ".psd",
         ".jpg",
         ".jpeg",
         ".tif",
@@ -204,7 +205,7 @@ public sealed class BuildAndTestService
             if (explicitProjectRootOverrides.Count > 0)
             {
                 log.AppendLine(
-                    $"Explicit project-root texture overrides forced into authored compilation: {explicitProjectRootOverrides.Count}");
+                    $"Explicit 1authoring texture overrides forced into authored compilation: {explicitProjectRootOverrides.Count}");
             }
             var projectChanged = changed
                 .Where(projectOwnedSources.Contains)
@@ -679,7 +680,7 @@ public sealed class BuildAndTestService
         var compiledExtension = extension.ToLowerInvariant() switch
         {
             ".dmx" or ".fbx" => ".vmesh_c",
-            ".png" or ".tga" or ".jpg" or ".jpeg" or ".tif" or ".tiff" => ".vtex_c",
+            ".png" or ".tga" or ".psd" or ".jpg" or ".jpeg" or ".tif" or ".tiff" => ".vtex_c",
             _ => null,
         };
         return compiledExtension is null
@@ -1905,7 +1906,7 @@ public sealed class BuildAndTestService
             ".css" => ".vcss_c",
             ".js" => ".vjs_c",
             ".vsvg" => ".vsvg_c",
-            ".png" or ".tga" or ".jpg" or ".jpeg" or ".tif" or ".tiff" => ".vtex_c",
+            ".png" or ".tga" or ".psd" or ".jpg" or ".jpeg" or ".tif" or ".tiff" => ".vtex_c",
             _ => null,
         };
 

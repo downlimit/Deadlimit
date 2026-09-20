@@ -82,7 +82,11 @@ public static class ProjectStore
     public static void Save(ProjectManifest manifest)
     {
         CanonicalizeProjectIdentity(manifest, manifest.ProjectFolder);
-        manifest.SchemaVersion = Math.Max(manifest.SchemaVersion, 4);
+        manifest.SchemaVersion = Math.Max(manifest.SchemaVersion, 5);
+        if (manifest.Mode == ProjectMode.Authoring && Directory.Exists(manifest.ProjectFolder))
+        {
+            ProjectAuthoringLayout.EnsureStructure(manifest.ProjectFolder);
+        }
 
         var metadataFolder = GetMetadataFolder(manifest.ProjectFolder);
         Directory.CreateDirectory(metadataFolder);
@@ -207,6 +211,9 @@ public static class ProjectStore
         manifest.SourceDumpFolderName = SafePath.NormalizeRelative(
             string.IsNullOrWhiteSpace(manifest.SourceDumpFolderName) ? "0source" : manifest.SourceDumpFolderName,
             "Project source-dump folder");
+        manifest.TextureTargetBindings = new Dictionary<string, List<string>>(
+            manifest.TextureTargetBindings ?? new Dictionary<string, List<string>>(),
+            StringComparer.OrdinalIgnoreCase);
 
         if (manifest.Mode == ProjectMode.ImportedVpk && manifest.ImportedVpk is null)
         {

@@ -13,11 +13,31 @@ public sealed record RetailTextureOverride(
     string StagedSourceResourcePath,
     string ReferencingMaterialResourcePath = "");
 
+public sealed class AmbiguousTextureTargetException : InvalidOperationException
+{
+    public AmbiguousTextureTargetException(
+        string artistSourcePath,
+        string authoringIdentity,
+        IReadOnlyList<string> candidateResourcePaths)
+        : base(
+            $"Authoring texture '{authoringIdentity}' matches more than one Deadlock resource:" +
+            Environment.NewLine + string.Join(Environment.NewLine, candidateResourcePaths.Select(path => $"  - {path}")))
+    {
+        ArtistSourcePath = artistSourcePath;
+        AuthoringIdentity = authoringIdentity;
+        CandidateResourcePaths = candidateResourcePaths;
+    }
+
+    public string ArtistSourcePath { get; }
+    public string AuthoringIdentity { get; }
+    public IReadOnlyList<string> CandidateResourcePaths { get; }
+}
+
 public static class RetailTextureOverrideService
 {
     private static readonly HashSet<string> ArtistTextureExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".png", ".tga", ".jpg", ".jpeg", ".tif", ".tiff",
+        ".png", ".tga", ".psd", ".jpg", ".jpeg", ".tif", ".tiff",
     };
 
     private static readonly HashSet<string> RetailTextureReferenceExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -119,16 +139,25 @@ public static class RetailTextureOverrideService
             .ToDictionary(
                 group => group.Key,
                 group => group
-                    .GroupBy(target => target.ResourcePath, StringComparer.OrdinalIgnoreCase)
-                    .Select(resourceGroup => resourceGroup.First())
+                    .GroupBy(
+                        target => Path.ChangeExtension(target.ResourcePath, ".vtex_c"),
+                        StringComparer.OrdinalIgnoreCase)
+                    .Select(resourceGroup => resourceGroup
+                        .OrderBy(target => Path.GetExtension(target.ResourcePath).Equals(
+                            ".vtex",
+                            StringComparison.OrdinalIgnoreCase) ? 1 : 0)
+                        .ThenBy(target => target.ResourcePath, StringComparer.OrdinalIgnoreCase)
+                        .First())
                     .OrderBy(target => target.ResourcePath, StringComparer.OrdinalIgnoreCase)
                     .ToArray(),
                 StringComparer.OrdinalIgnoreCase);
 
         var overrides = new List<RetailTextureOverride>();
-        foreach (var artistSource in Directory.EnumerateFiles(manifest.ProjectFolder, "*", SearchOption.TopDirectoryOnly)
-                     .Where(path => ArtistTextureExtensions.Contains(Path.GetExtension(path)))
-                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        var artistSources = ProjectAuthoringLayout.SelectPreferredFiles(
+            manifest,
+            ProjectAuthoringLayout.EnumerateAuthoringFiles(manifest)
+                .Where(path => ArtistTextureExtensions.Contains(Path.GetExtension(path))));
+        foreach (var artistSource in artistSources)
         {
             var artistFileName = Path.GetFileName(artistSource);
             var stem = Path.GetFileNameWithoutExtension(artistSource);
@@ -137,47 +166,47 @@ public static class RetailTextureOverrideService
                 continue;
             }
 
-            var exactMatches = stemMatches
-                .Where(target => string.Equals(
-                    Path.GetFileName(target.ResourcePath.Replace('/', Path.DirectorySeparatorChar)),
-                    artistFileName,
-                    StringComparison.OrdinalIgnoreCase))
-                .ToArray();
+            var authoringIdentity = ProjectAuthoringLayout.GetAuthoringIdentity(manifest, artistSource);
+            var selectedPaths = manifest.TransientTextureTargetBindings.TryGetValue(authoringIdentity, out var transient)
+                ? transient
+                : manifest.TextureTargetBindings.TryGetValue(authoringIdentity, out var persisted)
+                    ? persisted
+                    : null;
+            var selectedMatches = selectedPaths is null
+                ? stemMatches
+                : stemMatches.Where(target => selectedPaths.Contains(
+                    target.ResourcePath,
+                    StringComparer.OrdinalIgnoreCase)).ToArray();
 
-            if (exactMatches.Length == 0)
+            if (selectedPaths is not null && selectedMatches.Length != selectedPaths.Count)
             {
-                var expectedNames = string.Join(
-                    ", ",
-                    stemMatches
-                        .Select(match => Path.GetFileName(match.ResourcePath.Replace('/', Path.DirectorySeparatorChar)))
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .OrderBy(name => name, StringComparer.OrdinalIgnoreCase));
-                throw new InvalidOperationException(
-                    $"Project-root texture '{artistFileName}' has the same basename as a retail texture but a different source extension. " +
-                    $"Use the original retail filename: {expectedNames}");
+                manifest.TextureTargetBindings.Remove(authoringIdentity);
+                manifest.TransientTextureTargetBindings.Remove(authoringIdentity);
+                selectedPaths = null;
+                selectedMatches = stemMatches;
             }
 
-            if (exactMatches.Length != 1)
+            if (selectedPaths is null && stemMatches.Length > 1)
             {
-                var candidates = string.Join(
-                    Environment.NewLine,
-                    exactMatches.Select(match => $"  - {match.ResourcePath}"));
-                throw new InvalidOperationException(
-                    $"Project-root texture '{artistFileName}' matches more than one retail texture resource. " +
-                    "Deadlimit will not guess which resource to replace." + Environment.NewLine + candidates);
+                throw new AmbiguousTextureTargetException(
+                    artistSource,
+                    authoringIdentity,
+                    stemMatches.Select(match => match.ResourcePath).ToArray());
             }
 
-            var target = exactMatches[0];
-            var targetDirectory = GetResourceDirectory(target.ResourcePath);
-            var stagedResourcePath = targetDirectory.Length == 0
-                ? artistFileName
-                : targetDirectory + "/" + artistFileName;
+            foreach (var target in selectedMatches)
+            {
+                var targetDirectory = GetResourceDirectory(target.ResourcePath);
+                var stagedResourcePath = targetDirectory.Length == 0
+                    ? artistFileName
+                    : targetDirectory + "/" + artistFileName;
 
-            overrides.Add(new RetailTextureOverride(
-                artistSource,
-                target.ResourcePath,
-                stagedResourcePath,
-                target.ReferencingMaterialResourcePath));
+                overrides.Add(new RetailTextureOverride(
+                    artistSource,
+                    target.ResourcePath,
+                    stagedResourcePath,
+                    target.ReferencingMaterialResourcePath));
+            }
         }
 
         return overrides;
@@ -222,6 +251,16 @@ public static class RetailTextureOverrideService
 
             var text = File.ReadAllText(materialPath);
             var sanitized = CompiledTexturesBlockRegex.Replace(text, string.Empty);
+            foreach (var replacement in overrides.Where(item => string.Equals(
+                         item.ReferencingMaterialResourcePath,
+                         materialResourcePath,
+                         StringComparison.OrdinalIgnoreCase)))
+            {
+                sanitized = sanitized.Replace(
+                    replacement.RetailTextureResourcePath,
+                    replacement.StagedSourceResourcePath,
+                    StringComparison.OrdinalIgnoreCase);
+            }
             if (!string.Equals(text, sanitized, StringComparison.Ordinal))
             {
                 File.WriteAllText(materialPath, sanitized);

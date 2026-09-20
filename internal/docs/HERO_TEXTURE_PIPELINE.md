@@ -6,7 +6,7 @@ Tracking issue: #161
 
 Make retail hero textures an optional first-class project source and replacement target.
 
-When enabled, `EXTRACT HERO SOURCE` follows the selected hero's material/texture dependencies, extracts referenced retail textures into `0source` with their original Source 2 resource paths, and exposes a strict replacement contract for artist-edited root textures.
+When enabled, `EXTRACT HERO SOURCE` follows the selected hero's material/texture dependencies, extracts referenced retail textures into `0source` with their original Source 2 resource paths, and exposes a strict replacement contract for artist-edited textures under `1authoring`.
 
 ## User contract
 
@@ -15,10 +15,10 @@ When enabled, `EXTRACT HERO SOURCE` follows the selected hero's material/texture
 - Disabled mode preserves the previous folder-only extraction behavior.
 - Enabled mode resolves retail dependencies through ValveResourceFormat RERL references: selected VMDL -> referenced VMAT resources -> referenced VTEX resources.
 - Extracted material and texture outputs preserve their retail Source 2 resource paths under `<Project>\0source\`.
-- Artist-edited replacements remain top-level project files, consistent with the current artist DMX handoff.
-- A supported root image whose filename, including extension, uniquely matches an extracted retail logical texture source targets that texture's original Source 2 resource path during PREPARE.
-- Same-stem files with a different extension fail closed. Current retail evidence shows the logical source type participates in the compiled VTEX resource identity.
-- Duplicate retail filenames in different resource paths fail closed with an explicit ambiguity error. Deadlimit never guesses between multiple retail targets.
+- Artist-edited replacements may be placed anywhere under `1authoring`; subfolder names do not affect resource routing.
+- Same-stem authoring images use TGA, then PNG, then PSD priority. Equal-priority duplicates use the alphabetically first relative path.
+- A supported authoring image whose basename uniquely matches an extracted retail logical texture source targets that texture's original Source 2 resource path during PREPARE.
+- Duplicate retail basenames in different resource paths open an explicit selection dialog. The user may target one or all matches and remember the choice for that specific authoring file.
 - ONLINE PREPARATION routes edits to an existing retail replacement back to the same retail resource path; ordinary project/custom-material textures retain their existing addon texture target.
 - Existing custom-material project-root texture binding remains independent and must not regress.
 
@@ -27,6 +27,7 @@ Supported artist image source extensions follow the existing project texture pol
 ```text
 .png
 .tga
+.psd
 .jpg
 .jpeg
 .tif
@@ -38,7 +39,7 @@ Supported artist image source extensions follow the existing project texture pol
 1. Persist extraction preference and localized Settings checkbox — **implemented**.
 2. Hero VMDL/VMAT/VTEX dependency extraction with retail resource-path preservation — **implemented**.
 3. Deterministic project retail-texture target index rebuilt from extracted VMAT sources — **implemented**.
-4. Strict unique filename + original-extension root override resolution — **implemented**.
+4. Recursive `1authoring` basename resolution, image priority, and persistent ambiguity choices — **implemented**.
 5. PREPARE staging at the original retail resource path — **implemented**.
 6. ONLINE PREPARATION routing for existing root retail replacements — **implemented**.
 7. Dedicated Windows CI for dependency/wiring and override-resolution smokes — **implemented; live CI proof required before merge**.
@@ -47,8 +48,8 @@ Supported artist image source extensions follow the existing project texture pol
 ## Invariants
 
 - `0source` remains generated retail-source data.
-- Project-root artist files remain authoritative replacement inputs.
+- `1authoring` artist files remain authoritative replacement inputs; root-level files are ignored.
 - Retail texture replacement does not rewrite original retail VMAT paths to addon-private paths; the replacement source occupies the original referenced resource path.
-- A user texture never replaces more than one retail resource through an ambiguous filename match.
-- Removing a root retail override restores the extracted retail source on the next normal PREPARE because the retail source tree/dependencies are copied before root overrides are applied.
+- A user texture replaces multiple retail resources only after an explicit “replace all” selection.
+- Removing a `1authoring` retail override restores the extracted retail source on the next normal PREPARE because the retail source tree/dependencies are copied before authoring overrides are applied.
 - Extraction failure preserves the last successfully published `0source` according to the existing publish-after-success transaction.

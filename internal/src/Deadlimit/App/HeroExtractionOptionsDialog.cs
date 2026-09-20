@@ -232,8 +232,8 @@ internal static class HeroExtractionOptionsDialog
 
             formatNote.Text = isGltf
                 ? UiText.T(
-                    "glTF files, animation clips, buffers, textures and CSDK companion sources are refreshed inside 0source\\glTFpipeline. PREPARE accepts an edited DMX, FBX, glTF or GLB from the project root.",
-                    "Файлы glTF, анимационные клипы, буферы, текстуры и вспомогательные исходники CSDK обновляются в 0source\\glTFpipeline. ПОДГОТОВКА принимает изменённый DMX, FBX, glTF или GLB из корня проекта.")
+                    "glTF files, animation clips, buffers, textures and CSDK companion sources are refreshed inside 0source\\glTFpipeline. PREPARE accepts an edited DMX, FBX, glTF or GLB from 1authoring and its subfolders.",
+                    "Файлы glTF, анимационные клипы, буферы, текстуры и вспомогательные исходники CSDK обновляются в 0source\\glTFpipeline. ПОДГОТОВКА принимает изменённый DMX, FBX, glTF или GLB из 1authoring и её подпапок.")
                 : UiText.T(
                     "DMX keeps the current compile-ready extraction layout directly in 0source.",
                     "DMX сохраняет текущую готовую к компиляции структуру непосредственно в 0source.");

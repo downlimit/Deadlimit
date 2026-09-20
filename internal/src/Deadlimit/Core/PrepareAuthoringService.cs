@@ -85,24 +85,24 @@ public sealed class PrepareAuthoringService
         ValidateEnvironment(manifest);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var rootDmxFiles = Directory.EnumerateFiles(manifest.ProjectFolder, "*.dmx", SearchOption.TopDirectoryOnly)
+        var authoringFiles = ProjectAuthoringLayout.EnumerateAuthoringFiles(manifest).ToArray();
+        var rootDmxFiles = ProjectAuthoringLayout.SelectFirstByFileName(manifest, authoringFiles
+            .Where(path => Path.GetExtension(path).Equals(".dmx", StringComparison.OrdinalIgnoreCase))
             .Where(path => !VertexColorSidecarService.IsSidecarPath(path))
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var rootFbxFiles = Directory.EnumerateFiles(manifest.ProjectFolder, "*.fbx", SearchOption.TopDirectoryOnly)
+            ).ToArray();
+        var rootFbxFiles = ProjectAuthoringLayout.SelectFirstByFileName(manifest, authoringFiles
+            .Where(path => Path.GetExtension(path).Equals(".fbx", StringComparison.OrdinalIgnoreCase))
             .Where(path => !VertexColorSidecarService.IsSidecarPath(path))
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-        var rootGltfFiles = Directory.EnumerateFiles(manifest.ProjectFolder, "*", SearchOption.TopDirectoryOnly)
+            ).ToArray();
+        var rootGltfFiles = ProjectAuthoringLayout.SelectFirstByFileName(manifest, authoringFiles
             .Where(path => Path.GetExtension(path).Equals(".gltf", StringComparison.OrdinalIgnoreCase)
                 || Path.GetExtension(path).Equals(".glb", StringComparison.OrdinalIgnoreCase))
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+            ).ToArray();
 
         if (rootDmxFiles.Length + rootFbxFiles.Length + rootGltfFiles.Length == 0)
         {
             throw new InvalidOperationException(
-                "No DMX, FBX, glTF, or GLB model files were found in the project root. Export the current artist model to the project root first.");
+                "No DMX, FBX, glTF, or GLB model files were found in 1authoring. Export the current artist model there first.");
         }
 
         if (string.IsNullOrWhiteSpace(manifest.RetailMainModel))
@@ -128,7 +128,7 @@ public sealed class PrepareAuthoringService
         log.AppendLine($"Retail model: {manifest.RetailMainModel}");
         log.AppendLine($"CSDK content root: {addonContentRoot}");
         log.AppendLine($"CSDK game output root: {addonGameRoot}");
-        log.AppendLine($"Project-root model sources: DMX={rootDmxFiles.Length}, FBX={rootFbxFiles.Length}, glTF/GLB={rootGltfFiles.Length}");
+        log.AppendLine($"1authoring model sources: DMX={rootDmxFiles.Length}, FBX={rootFbxFiles.Length}, glTF/GLB={rootGltfFiles.Length}");
         log.AppendLine($"Reset sections: {options.ResetSections}");
         log.AppendLine($"Prepare hero-select scene: {options.PrepareHeroSelectScene}");
         log.AppendLine($"Selected-section backup: {(options.CreateBackup && options.ResetSections != PrepareResetSections.None ? "enabled" : "disabled")}");
@@ -263,7 +263,7 @@ public sealed class PrepareAuthoringService
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Overlaying project-root model sources on matching retail render meshes...", "Подготовка моделей из корня проекта для соответствующих retail render mesh...")));
+            progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Overlaying 1authoring model sources on matching retail render meshes...", "Подготовка моделей из 1authoring для соответствующих retail render mesh...")));
 
             var replacedRenderMeshes = RetailVmdlInheritance.OverlayArtistDmx(
                 sourceCopy,
@@ -295,7 +295,7 @@ public sealed class PrepareAuthoringService
             if (duplicateTargets.Length > 0)
             {
                 throw new InvalidOperationException(
-                    "More than one project-root model source replaces the same retail render mesh. Keep one authoring format per target:\n" +
+                    "More than one 1authoring model source replaces the same retail render mesh. Keep one authoring format per target:\n" +
                     string.Join("\n", duplicateTargets));
             }
 

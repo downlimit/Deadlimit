@@ -31,23 +31,25 @@ function New-TestVmdl([string]$renderMeshPath) {
 
 try {
     $project = Join-Path $temp 'project'
+    $authoring = Join-Path $project '1authoring'
     $primaryModel = Join-Path $project '0source\models\heroes\hero\hero.vmdl'
     $fallbackModel = Join-Path $project '0source\glTFpipeline\models\heroes\hero\hero.vmdl'
     $addonRoot = Join-Path $temp 'addon'
     $preparedVmdl = Join-Path $addonRoot 'models\heroes\hero\hero.vmdl'
-    New-Item -ItemType Directory -Path $project,(Split-Path $fallbackModel),(Split-Path $preparedVmdl) -Force | Out-Null
+    New-Item -ItemType Directory -Path $project,$authoring,(Split-Path $fallbackModel),(Split-Path $preparedVmdl) -Force | Out-Null
     Set-Content -LiteralPath $fallbackModel -Value (New-TestVmdl 'models/heroes/hero/body.dmx') -Encoding utf8NoBOM
     Set-Content -LiteralPath $preparedVmdl -Value (New-TestVmdl 'models/heroes/hero/body.dmx') -Encoding utf8NoBOM
 
     foreach ($name in @('body.dmx','body.fbx','body_vertexcolor.fbx','hero.gltf','hero.glb','hero.png')) {
-        Set-Content -LiteralPath (Join-Path $project $name) -Value $name -Encoding utf8NoBOM
+        Set-Content -LiteralPath (Join-Path $authoring $name) -Value $name -Encoding utf8NoBOM
     }
+    Set-Content -LiteralPath (Join-Path $project 'ignored_root.dmx') -Value 'ignored' -Encoding utf8NoBOM
 
     $scan = [Deadlimit.Core.ProjectScanner]::Scan($project)
     if (@($scan.DmxFiles).Count -ne 1 -or @($scan.FbxFiles).Count -ne 1 -or @($scan.GltfFiles).Count -ne 2) {
-        throw "Root model scan did not expose DMX/FBX/glTF/GLB correctly: $scan"
+        throw "1authoring scan did not expose DMX/FBX/glTF/GLB correctly or included a project-root file: $scan"
     }
-    if (@($scan.FbxFiles) -contains 'body_vertexcolor.fbx') {
+    if (@($scan.FbxFiles) -match 'body_vertexcolor\.fbx$') {
         throw 'The Vertex Color FBX sidecar leaked into the root model-source list.'
     }
 
@@ -72,7 +74,7 @@ try {
         [string]$preparedVmdl,
         [string](Split-Path $preparedVmdl),
         1)
-    $artistFbx = Join-Path $project 'body.fbx'
+    $artistFbx = Join-Path $authoring 'body.fbx'
     $fbxResults = [Deadlimit.Core.RetailVmdlInheritance]::OverlayArtistFbx(
         $sourceCopy,
         $addonRoot,
