@@ -160,13 +160,13 @@ try {
 using System;
 using System.Runtime.InteropServices;
 namespace DeadlimitUpdater {
-    internal static class NativeWindow {
+    public static class NativeWindow {
         [DllImport("user32.dll")]
-        internal static extern IntPtr GetLastActivePopup(IntPtr hWnd);
+        public static extern IntPtr GetLastActivePopup(IntPtr hWnd);
 
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        internal static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+        public static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
     }
 }
 "@
