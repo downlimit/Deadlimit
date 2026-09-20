@@ -126,15 +126,13 @@ internal static class SteamStatusFeature
         root.SetColumnSpan(bar, root.ColumnCount);
 
         var projectGroup = FindDescendants<GroupBox>(form)
-            .FirstOrDefault(group =>
-                string.Equals(group.Text, "Project", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Проект", StringComparison.Ordinal));
+            .FirstOrDefault(group => group.Name == UiControlNames.ProjectGroup);
         var folderText = projectGroup is null
             ? null
-            : FindDescendants<TextBox>(projectGroup).FirstOrDefault(textBox => textBox.ReadOnly);
+            : FindDescendants<TextBox>(projectGroup).FirstOrDefault(textBox => textBox.Name == UiControlNames.ProjectFolder);
         var releaseId = projectGroup is null
             ? null
-            : FindDescendants<NumericUpDown>(projectGroup).FirstOrDefault();
+            : FindDescendants<NumericUpDown>(projectGroup).FirstOrDefault(input => input.Name == UiControlNames.ReleaseId);
 
         var toolTip = new ToolTip
         {
@@ -261,11 +259,7 @@ internal static class SteamStatusFeature
         }
 
         var projectFiles = FindDescendants<GroupBox>(workspace)
-            .FirstOrDefault(group =>
-                string.Equals(group.Text, "Project files", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Файлы проекта", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Detected in 1authoring", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Найдено в 1authoring", StringComparison.Ordinal));
+            .FirstOrDefault(group => group.Name == UiControlNames.ProjectFilesGroup);
 
         return Math.Max(0, workspace.Margin.Right + (projectFiles?.Margin.Right ?? 0));
     }

@@ -36,35 +36,32 @@ internal static class ProjectHeaderFeature
     public static void Attach(MainForm form)
     {
         var projectGroup = FindDescendants<GroupBox>(form)
-            .FirstOrDefault(group =>
-                string.Equals(group.Text, "Project", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Проект", StringComparison.Ordinal));
+            .FirstOrDefault(group => group.Name == UiControlNames.ProjectGroup);
         if (projectGroup?.Parent is not TableLayoutPanel workspace)
         {
-            return;
+            throw new InvalidOperationException("The current project workspace could not be composed.");
         }
 
         var projectGrid = projectGroup.Controls.OfType<TableLayoutPanel>().FirstOrDefault();
         var folderText = projectGrid?.GetControlFromPosition(1, 0) as TextBox;
         if (folderText is null)
         {
-            return;
+            throw new InvalidOperationException("The current project folder control is missing.");
         }
 
         var topBar = workspace.GetControlFromPosition(0, 0) as FlowLayoutPanel;
         if (topBar is null)
         {
-            return;
+            throw new InvalidOperationException("The current project action bar is missing.");
         }
 
-        var settingsButton = FindButton(topBar, "SETTINGS", "НАСТРОЙКИ");
-        var prepareButton = FindButton(topBar, "PREPARE FOR CSDK", "ПОДГОТОВИТЬ ДЛЯ CSDK");
-        var buildButton = FindButton(topBar, "BUILD FOR TEST", "СОБРАТЬ ДЛЯ ТЕСТА")
-            ?? FindButton(topBar, "BUILD & TEST", "СОБРАТЬ И ТЕСТИРОВАТЬ");
-        var launchCsdkButton = FindButton(topBar, "LAUNCH CSDK", "ЗАПУСТИТЬ CSDK");
+        var settingsButton = FindButton(topBar, UiControlNames.SettingsButton);
+        var prepareButton = FindButton(topBar, UiControlNames.PrepareButton);
+        var buildButton = FindButton(topBar, UiControlNames.BuildForTestButton);
+        var launchCsdkButton = FindButton(topBar, UiControlNames.LaunchCsdkButton);
         if (settingsButton is null || prepareButton is null || buildButton is null || launchCsdkButton is null)
         {
-            return;
+            throw new InvalidOperationException("The current project actions could not be composed.");
         }
 
         foreach (var button in new[] { settingsButton, prepareButton, buildButton, launchCsdkButton })
@@ -116,6 +113,7 @@ internal static class ProjectHeaderFeature
 
         var launchGameButton = new Button
         {
+            Name = UiControlNames.LaunchGameButton,
             AutoSize = false,
             Size = new Size(ActionWidth, LaunchHeight),
             Text = UiText.T("▶  LAUNCH GAME", "▶  ЗАПУСК ИГРЫ"),
@@ -905,11 +903,9 @@ internal static class ProjectHeaderFeature
         return null;
     }
 
-    private static Button? FindButton(Control root, string english, string russian) =>
+    private static Button? FindButton(Control root, string name) =>
         FindDescendants<Button>(root)
-            .FirstOrDefault(button =>
-                string.Equals(button.Text, english, StringComparison.Ordinal)
-                || string.Equals(button.Text, russian, StringComparison.Ordinal));
+            .FirstOrDefault(button => string.Equals(button.Name, name, StringComparison.Ordinal));
 
     private static IEnumerable<T> FindDescendants<T>(Control root) where T : Control
     {

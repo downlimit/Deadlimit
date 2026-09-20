@@ -9,22 +9,18 @@ internal static class ProjectSaveStateFeature
     public static void Attach(MainForm form)
     {
         var projectGroup = FindDescendants<GroupBox>(form)
-            .FirstOrDefault(group =>
-                string.Equals(group.Text, "Project", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Проект", StringComparison.Ordinal));
+            .FirstOrDefault(group => group.Name == UiControlNames.ProjectGroup);
         if (projectGroup is null)
         {
             return;
         }
 
         var folderText = FindDescendants<TextBox>(projectGroup)
-            .FirstOrDefault(textBox => textBox.ReadOnly);
-        var heroCombo = FindDescendants<ComboBox>(projectGroup).FirstOrDefault();
-        var releaseId = FindDescendants<NumericUpDown>(projectGroup).FirstOrDefault();
+            .FirstOrDefault(textBox => textBox.Name == UiControlNames.ProjectFolder);
+        var heroCombo = FindDescendants<ComboBox>(projectGroup).FirstOrDefault(combo => combo.Name == UiControlNames.Hero);
+        var releaseId = FindDescendants<NumericUpDown>(projectGroup).FirstOrDefault(input => input.Name == UiControlNames.ReleaseId);
         var saveButton = FindDescendants<Button>(projectGroup)
-            .FirstOrDefault(button =>
-                string.Equals(button.Text, "SAVE PROJECT", StringComparison.Ordinal)
-                || string.Equals(button.Text, "СОХРАНИТЬ ПРОЕКТ", StringComparison.Ordinal));
+            .FirstOrDefault(button => button.Name == UiControlNames.SaveProjectButton);
         if (folderText is null || saveButton is null)
         {
             return;

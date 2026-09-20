@@ -13,11 +13,7 @@ internal static class ProjectLibraryHotfixFeature
     public static void Attach(MainForm form)
     {
         var library = FindDescendants<GroupBox>(form)
-            .FirstOrDefault(group =>
-                string.Equals(group.Text, "Projects", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Проекты", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Library", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Библиотека", StringComparison.Ordinal))
+            .FirstOrDefault(group => group.Name == UiControlNames.LibraryGroup)
             ?.Controls.OfType<ListBox>()
             .FirstOrDefault();
 

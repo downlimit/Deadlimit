@@ -7,13 +7,11 @@ internal static class ImportedProjectModeFeature
     public static void Attach(MainForm form)
     {
         var projectGroup = FindDescendants<GroupBox>(form)
-            .FirstOrDefault(group =>
-                string.Equals(group.Text, "Project", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Проект", StringComparison.Ordinal));
+            .FirstOrDefault(group => group.Name == UiControlNames.ProjectGroup);
         var grid = projectGroup?.Controls.OfType<TableLayoutPanel>().FirstOrDefault();
         var folderText = grid?.Controls
             .OfType<TextBox>()
-            .FirstOrDefault(textBox => textBox.ReadOnly);
+            .FirstOrDefault(textBox => textBox.Name == UiControlNames.ProjectFolder);
         if (folderText is null)
         {
             return;
@@ -46,17 +44,10 @@ internal static class ImportedProjectModeFeature
 
     private static bool IsAuthoringOnlyButton(Button button)
     {
-        var text = button.Text.Trim();
-        return string.Equals(text, "SAVE PROJECT", StringComparison.Ordinal)
-            || string.Equals(text, "СОХРАНИТЬ ПРОЕКТ", StringComparison.Ordinal)
-            || string.Equals(text, "EXTRACT SOURCE", StringComparison.Ordinal)
-            || string.Equals(text, "ИЗВЛЕЧЬ ИСХОДНИКИ", StringComparison.Ordinal)
-            || string.Equals(text, "EXTRACT HERO SOURCE", StringComparison.Ordinal)
-            || string.Equals(text, "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ", StringComparison.Ordinal)
-            || string.Equals(text, "PREPARE FOR CSDK", StringComparison.Ordinal)
-            || string.Equals(text, "ПОДГОТОВИТЬ ДЛЯ CSDK", StringComparison.Ordinal)
-            || string.Equals(text, "BUILD FOR TEST", StringComparison.Ordinal)
-            || string.Equals(text, "СОБРАТЬ ДЛЯ ТЕСТА", StringComparison.Ordinal);
+        return button.Name is UiControlNames.SaveProjectButton
+            or UiControlNames.ExtractHeroSourceButton
+            or UiControlNames.PrepareButton
+            or UiControlNames.BuildForTestButton;
     }
 
     private static IEnumerable<T> FindDescendants<T>(Control root) where T : Control

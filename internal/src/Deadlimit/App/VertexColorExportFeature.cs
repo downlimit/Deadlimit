@@ -88,8 +88,7 @@ internal static class VertexColorExportFeature
     }
 
     private static bool IsSettingsButton(Button button) =>
-        string.Equals(button.Text, "SETTINGS", StringComparison.Ordinal)
-        || string.Equals(button.Text, "НАСТРОЙКИ", StringComparison.Ordinal);
+        string.Equals(button.Name, UiControlNames.SettingsButton, StringComparison.Ordinal);
 
     private static IEnumerable<T> FindDescendants<T>(Control root) where T : Control
     {

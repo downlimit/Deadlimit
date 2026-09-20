@@ -8,9 +8,7 @@ internal static class ProjectLogsFeature
     public static void Attach(MainForm form)
     {
         var projectGroup = FindDescendants<GroupBox>(form)
-            .FirstOrDefault(group =>
-                string.Equals(group.Text, "Project", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Проект", StringComparison.Ordinal));
+            .FirstOrDefault(group => group.Name == UiControlNames.ProjectGroup);
         if (projectGroup is null)
         {
             return;
@@ -26,9 +24,7 @@ internal static class ProjectLogsFeature
         var heroActions = grid.GetControlFromPosition(2, 2) as FlowLayoutPanel;
         var saveButton = grid.Controls
             .OfType<Button>()
-            .FirstOrDefault(button =>
-                string.Equals(button.Text, "SAVE PROJECT", StringComparison.Ordinal)
-                || string.Equals(button.Text, "СОХРАНИТЬ ПРОЕКТ", StringComparison.Ordinal));
+            .FirstOrDefault(button => button.Name == UiControlNames.SaveProjectButton);
         if (folderText is null || heroActions is null || saveButton is null)
         {
             return;

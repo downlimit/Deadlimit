@@ -9,11 +9,7 @@ internal static class ProjectCreationChoiceFeature
     public static void Attach(MainForm form)
     {
         var libraryGroup = FindDescendants<GroupBox>(form)
-            .FirstOrDefault(group =>
-                string.Equals(group.Text, "Projects", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Проекты", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Library", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Библиотека", StringComparison.Ordinal));
+            .FirstOrDefault(group => group.Name == UiControlNames.LibraryGroup);
         if (libraryGroup is null)
         {
             return;
@@ -398,5 +394,4 @@ internal static class ProjectCreationChoiceFeature
         }
     }
 }
-
 

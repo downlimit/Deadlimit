@@ -81,7 +81,7 @@ internal static class GameLaunchInterlockFeature
             }
 
             var launchButton = FindDescendants<Button>(_form)
-                .FirstOrDefault(IsGameLaunchButton);
+                .FirstOrDefault(button => button.Name == UiControlNames.LaunchGameButton);
             if (launchButton is null)
             {
                 return;
@@ -152,16 +152,6 @@ internal static class GameLaunchInterlockFeature
                 _settingLaunchEnabled = false;
             }
         }
-
-        private static bool IsGameLaunchButton(Button button) =>
-            string.Equals(button.Text, "▶  LAUNCH GAME", StringComparison.Ordinal)
-            || string.Equals(button.Text, "▶  ЗАПУСК ИГРЫ", StringComparison.Ordinal)
-            || string.Equals(button.Text, "✕  CLOSE", StringComparison.Ordinal)
-            || string.Equals(button.Text, "✕  ЗАКРЫТЬ", StringComparison.Ordinal)
-            || string.Equals(button.Text, "GAME IS LAUNCHING", StringComparison.Ordinal)
-            || string.Equals(button.Text, "ИГРА ЗАПУСКАЕТСЯ", StringComparison.Ordinal)
-            || string.Equals(button.Text, "BUILDING...", StringComparison.Ordinal)
-            || string.Equals(button.Text, "ИДЁТ СБОРКА", StringComparison.Ordinal);
 
         private static IEnumerable<T> FindDescendants<T>(Control root)
             where T : Control

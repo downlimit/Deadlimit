@@ -21,9 +21,7 @@ internal static class OnlineCsdkPulseFeature
     public static void Attach(MainForm form)
     {
         var launchButton = FindDescendants<Button>(form)
-            .FirstOrDefault(button =>
-                button.Text.Contains("LAUNCH CSDK", StringComparison.OrdinalIgnoreCase)
-                || button.Text.Contains("ЗАПУСК CSDK", StringComparison.OrdinalIgnoreCase));
+            .FirstOrDefault(button => button.Name == UiControlNames.LaunchCsdkButton);
         if (launchButton is null)
         {
             return;

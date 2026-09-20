@@ -26,18 +26,21 @@ internal static class BuildFeature
 
         var prepareButton = new Button
         {
+            Name = UiControlNames.PrepareButton,
             Text = UiText.T("PREPARE FOR CSDK", "ПОДГОТОВИТЬ ДЛЯ CSDK"),
             AutoSize = true,
         };
 
         var buildAndTestButton = new Button
         {
+            Name = UiControlNames.BuildForTestButton,
             Text = UiText.T("BUILD FOR TEST", "СОБРАТЬ ДЛЯ ТЕСТА"),
             AutoSize = true,
         };
 
         var launchCsdkButton = new Button
         {
+            Name = UiControlNames.LaunchCsdkButton,
             Text = UiText.T("LAUNCH CSDK", "ЗАПУСТИТЬ CSDK"),
             AutoSize = true,
         };

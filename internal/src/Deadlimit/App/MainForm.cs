@@ -6,17 +6,18 @@ public sealed class MainForm : Form
 {
     private readonly ListBox _projectLibrary = new()
     {
+        Name = UiControlNames.ProjectLibrary,
         Dock = DockStyle.Fill,
         IntegralHeight = false,
     };
-    private readonly TextBox _projectFolderText = new() { Dock = DockStyle.Fill, ReadOnly = true };
-    private readonly TextBox _projectNameText = new() { Dock = DockStyle.Fill };
-    private readonly TextBox _heroText = new() { Dock = DockStyle.Fill };
-    private readonly TextBox _releaseTargetText = new() { Dock = DockStyle.Fill };
+    private readonly TextBox _projectFolderText = new() { Name = UiControlNames.ProjectFolder, Dock = DockStyle.Fill, ReadOnly = true };
+    private readonly TextBox _projectNameText = new() { Name = UiControlNames.ProjectName, Dock = DockStyle.Fill };
+    private readonly TextBox _heroText = new() { Name = UiControlNames.Hero, Dock = DockStyle.Fill };
+    private readonly TextBox _releaseTargetText = new() { Name = UiControlNames.ReleaseIdBacking, Dock = DockStyle.Fill };
     private readonly Label _dmxCountLabel = new() { AutoSize = true };
     private readonly Label _pngCountLabel = new() { AutoSize = true };
     private readonly Label _sourceFolderLabel = new() { AutoSize = true };
-    private readonly ListBox _assetList = new() { Dock = DockStyle.Fill };
+    private readonly ListBox _assetList = new() { Name = UiControlNames.AssetList, Dock = DockStyle.Fill };
     private readonly ToolStripStatusLabel _statusLabel = new()
     {
         Text = UiText.T("Select a project from the library.", "Выберите проект в библиотеке."),
@@ -78,12 +79,8 @@ public sealed class MainForm : Form
         PerformLayoutRecursively(form);
 
         var groups = FindControls<GroupBox>(form).ToArray();
-        var library = groups.FirstOrDefault(group =>
-            string.Equals(group.Text, "Projects", StringComparison.Ordinal)
-            || string.Equals(group.Text, "Проекты", StringComparison.Ordinal));
-        var projectFiles = groups.FirstOrDefault(group =>
-            string.Equals(group.Text, "Detected in 1authoring", StringComparison.Ordinal)
-            || string.Equals(group.Text, "Найдено в 1authoring", StringComparison.Ordinal));
+        var library = groups.FirstOrDefault(group => group.Name == UiControlNames.LibraryGroup);
+        var projectFiles = groups.FirstOrDefault(group => group.Name == UiControlNames.ProjectFilesGroup);
         if (library is null || projectFiles is null)
         {
             return 1;
@@ -115,6 +112,7 @@ public sealed class MainForm : Form
 
         var libraryGroup = new GroupBox
         {
+            Name = UiControlNames.LibraryGroup,
             Text = UiText.T("Projects", "Проекты"),
             Dock = DockStyle.Fill,
             Padding = new Padding(10),
@@ -167,6 +165,7 @@ public sealed class MainForm : Form
 
         var workspace = new TableLayoutPanel
         {
+            Name = UiControlNames.Workspace,
             Dock = DockStyle.Fill,
             ColumnCount = 1,
             RowCount = 3,
@@ -178,6 +177,7 @@ public sealed class MainForm : Form
 
         var topBar = new FlowLayoutPanel
         {
+            Name = UiControlNames.PrimaryActions,
             Dock = DockStyle.Fill,
             AutoSize = true,
             FlowDirection = FlowDirection.LeftToRight,
@@ -187,6 +187,7 @@ public sealed class MainForm : Form
 
         var settingsButton = new Button
         {
+            Name = UiControlNames.SettingsButton,
             Text = UiText.T("SETTINGS", "НАСТРОЙКИ"),
             AutoSize = true,
         };
@@ -198,6 +199,7 @@ public sealed class MainForm : Form
 
         var projectGroup = new GroupBox
         {
+            Name = UiControlNames.ProjectGroup,
             Text = UiText.T("Project", "Проект"),
             Dock = DockStyle.Fill,
             AutoSize = true,
@@ -206,6 +208,7 @@ public sealed class MainForm : Form
 
         var projectGrid = new TableLayoutPanel
         {
+            Name = UiControlNames.ProjectGrid,
             Dock = DockStyle.Fill,
             ColumnCount = 3,
             RowCount = 5,
@@ -219,6 +222,7 @@ public sealed class MainForm : Form
 
         var openFolderButton = new Button
         {
+            Name = UiControlNames.OpenProjectFolderButton,
             Text = UiText.T("OPEN FOLDER", "ОТКРЫТЬ ПАПКУ"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
@@ -232,6 +236,7 @@ public sealed class MainForm : Form
 
         var saveButton = new Button
         {
+            Name = UiControlNames.SaveProjectButton,
             Text = UiText.T("SAVE PROJECT", "СОХРАНИТЬ ПРОЕКТ"),
             AutoSize = true,
             Anchor = AnchorStyles.Left,
@@ -244,6 +249,7 @@ public sealed class MainForm : Form
 
         var assetsGroup = new GroupBox
         {
+            Name = UiControlNames.ProjectFilesGroup,
             Text = UiText.T("Detected in 1authoring", "Найдено в 1authoring"),
             Dock = DockStyle.Fill,
             Padding = new Padding(12),
@@ -289,7 +295,7 @@ public sealed class MainForm : Form
         workspace.Controls.Add(projectGroup, 0, 1);
         workspace.Controls.Add(assetsGroup, 0, 2);
 
-        var statusStrip = new StatusStrip();
+        var statusStrip = new StatusStrip { Name = UiControlNames.StatusStrip };
         statusStrip.Items.Add(_statusLabel);
 
         root.Controls.Add(libraryGroup, 0, 0);
