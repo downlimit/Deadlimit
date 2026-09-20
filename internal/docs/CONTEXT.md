@@ -7,15 +7,17 @@ Deadlimit Manager is a Windows tool that automates the repetitive mechanical ste
 The intended user workflow is deliberately high-level:
 
 ```text
-source folder with DMX + textures
-→ create/open Deadlimit Manager project
-→ prepare intermediate Source 2 authoring workspace
-→ edit materials/shaders if needed
-→ Release
+create/open Deadlimit Manager project
+→ extract original hero resources when needed
+→ edit model/textures under 1authoring
+→ PREPARE FOR CSDK
+→ edit materials/shaders in CSDK / ModelDoc
+→ LIVE SYNC during supported iteration
+→ BUILD FOR TEST
 → test in Deadlock
 ```
 
-A separate extraction workflow should let the user select a retail Deadlock hero and produce a modding-ready source folder without manually navigating VPKs and decompiling dependencies one by one.
+The extraction workflow lets the user select a Deadlock hero and produce a modding-ready source tree without manually navigating VPKs and decompiling dependencies one by one.
 
 ## Why we are building it
 
@@ -39,20 +41,20 @@ Deadlimit Manager exists to make those operations deterministic and internal whi
 The normal interface should expose a small number of actions:
 
 ```text
-EXTRACT HERO
-NEW PROJECT
-PREPARE FOR AUTHORING
-OPEN AUTHORING TOOLS
-RELEASE
-RELEASE & TEST
+EXTRACT HERO SOURCE
+CREATE PROJECT / IMPORT VPK
+PREPARE FOR CSDK
+LAUNCH CSDK / LIVE SYNC
+BUILD FOR TEST
+LAUNCH GAME
 ```
 
 The user should normally provide only:
 
-- a source folder containing DMX and textures;
-- the hero being replaced;
+- a project folder and artist files under `1authoring`;
+- the hero being replaced for normal authoring projects;
 - a project name;
-- release/package identity when the final loading convention is settled.
+- a Release ID when deploying to a Deadlock addon VPK slot.
 
 Technical commands, paths, ResourceCompiler invocation, VMDL preprocessing, DeadlockTools post-processing, texture compilation, VPK extraction, and VPK packaging should remain internal unless diagnostics are required.
 
@@ -65,7 +67,7 @@ A replacement can contain both:
 - `REUSE` materials — existing retail Deadlock materials used by preserved hero geometry;
 - `CUSTOM` materials — project-owned materials used by new costume/skin geometry.
 
-Deadlimit Manager may create the initial scaffold for missing custom materials and texture resources. Once an artist has edited a custom VMAT, routine prepare/release operations must never overwrite it.
+Deadlimit Manager may create the initial scaffold for missing custom materials and texture resources. Once an artist has edited a custom VMAT, routine PREPARE, LIVE SYNC, and BUILD FOR TEST operations must never overwrite it.
 
 ## Problems we are solving
 
