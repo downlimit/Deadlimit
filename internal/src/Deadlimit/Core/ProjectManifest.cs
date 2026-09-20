@@ -23,7 +23,7 @@ public sealed class ImportedVpkMetadata
 
 public sealed class ProjectManifest
 {
-    public int SchemaVersion { get; set; } = 4;
+    public int SchemaVersion { get; set; } = 5;
 
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public ProjectMode Mode { get; set; } = ProjectMode.Authoring;
@@ -42,6 +42,12 @@ public sealed class ProjectManifest
     public List<string> FbxFiles { get; set; } = [];
     public List<string> GltfFiles { get; set; } = [];
     public List<string> PngTextures { get; set; } = [];
+    public Dictionary<string, List<string>> TextureTargetBindings { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    [JsonIgnore]
+    public Dictionary<string, List<string>> TransientTextureTargetBindings { get; } =
+        new(StringComparer.OrdinalIgnoreCase);
 
     public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedUtc { get; set; } = DateTimeOffset.UtcNow;

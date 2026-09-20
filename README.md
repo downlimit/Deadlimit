@@ -90,7 +90,7 @@ embedded color is unavailable. Unrelated DMX files do not wait for an FBX pair.
 
 ## Project and generated content boundary
 
-The project root is the artist-owned handoff area. Deadlimit stores metadata and
+`1authoring` is the recursive artist-owned handoff area. Deadlimit stores metadata and
 logs under its hidden `.deadlimit` folder and generates CSDK/game outputs in the
 configured local environments. Extracted `0source`, retail resources, compiled
 Source 2 files, and deployed VPKs are local user content and must never be
@@ -155,4 +155,4 @@ affiliation, sponsorship, endorsement, or approval from Valve, Autodesk, Adobe,
 Wall Worm, or the maintainers of the other tools it can invoke.
 
 The readiness record is
-[`internal/docs/OPEN_SOURCE_PLAN.md`](internal/docs/OPEN_SOURCE_PLAN.md). 
+[`internal/docs/OPEN_SOURCE_PLAN.md`](internal/docs/OPEN_SOURCE_PLAN.md).

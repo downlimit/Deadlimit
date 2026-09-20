@@ -160,7 +160,7 @@ Layer0
         'FX способностей включаются вместе с «Извлекать способности»',
         'DMX — CSDK build source',
         'glTF — DCC source in 0source\\glTFpipeline',
-        'PREPARE accepts an edited DMX, FBX, glTF or GLB from the project root',
+        'PREPARE accepts an edited DMX, FBX, glTF or GLB from 1authoring and its subfolders',
         'copyAbilityFxCheck.Enabled = false',
         'copyAbilityFxCheck.Checked = extractAbilitiesCheck.Checked && !isGltf',
         'BUILD FOR TEST tries every changed effect',

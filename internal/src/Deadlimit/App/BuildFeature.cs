@@ -337,11 +337,18 @@ internal static class BuildFeature
                     MapStandalonePrepareProgress(update.Message))));
 
             var service = new PrepareAuthoringService(new DeadlimitPaths());
-            var result = await service.PrepareAsync(
+            var result = await RunWithTextureTargetPromptsAsync(
+                form,
                 manifest,
-                progress,
-                cancellationToken,
-                options: options);
+                () => service.PrepareAsync(
+                    manifest,
+                    progress,
+                    cancellationToken,
+                    options: options));
+            if (result is null)
+            {
+                return;
+            }
             MarkOperationCompleting(
                 prepareButton,
                 UiText.T("PREPARATION COMPLETE", "ПОДГОТОВКА ЗАВЕРШЕНА"));
@@ -568,9 +575,17 @@ internal static class BuildFeature
                 var service = new BuildAndTestService(paths);
                 try
                 {
-                    result = await Task.Run(
-                        () => service.BuildAsync(manifest, progress, cancellationToken),
-                        cancellationToken);
+                    result = (await RunWithTextureTargetPromptsAsync(
+                        form,
+                        manifest,
+                        () => Task.Run(
+                            () => service.BuildAsync(manifest, progress, cancellationToken),
+                            cancellationToken)))!;
+                    if (result is null)
+                    {
+                        RestoreForceBuildState(forceStatePath, forceStateBackupPath);
+                        return;
+                    }
                 }
                 catch (ParticleCompilationException particleError)
                 {
@@ -698,6 +713,39 @@ internal static class BuildFeature
                 buildAndTestButton,
                 UiText.T("BUILD FOR TEST", "СОБРАТЬ ДЛЯ ТЕСТА"));
             SetBuildForTestRunning(form, false);
+        }
+    }
+
+    private static async Task<T?> RunWithTextureTargetPromptsAsync<T>(
+        MainForm form,
+        ProjectManifest manifest,
+        Func<Task<T>> operation)
+        where T : class
+    {
+        while (true)
+        {
+            try
+            {
+                return await operation();
+            }
+            catch (AmbiguousTextureTargetException ambiguity)
+            {
+                var choice = TextureTargetSelectionDialog.Show(form, ambiguity);
+                if (!choice.Accepted || choice.ResourcePaths.Count == 0)
+                {
+                    return null;
+                }
+
+                if (choice.Remember)
+                {
+                    manifest.TextureTargetBindings[ambiguity.AuthoringIdentity] = [.. choice.ResourcePaths];
+                    ProjectStore.Save(manifest);
+                }
+                else
+                {
+                    manifest.TransientTextureTargetBindings[ambiguity.AuthoringIdentity] = [.. choice.ResourcePaths];
+                }
+            }
         }
     }
 

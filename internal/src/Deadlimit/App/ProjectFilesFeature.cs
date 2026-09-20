@@ -8,8 +8,8 @@ internal static class ProjectFilesFeature
     {
         var assetsGroup = FindDescendants<GroupBox>(form)
             .FirstOrDefault(group =>
-                string.Equals(group.Text, "Detected in project root", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Найдено в корне проекта", StringComparison.Ordinal)
+                string.Equals(group.Text, "Detected in 1authoring", StringComparison.Ordinal)
+                || string.Equals(group.Text, "Найдено в 1authoring", StringComparison.Ordinal)
                 || string.Equals(group.Text, "Project files", StringComparison.Ordinal)
                 || string.Equals(group.Text, "Файлы проекта", StringComparison.Ordinal));
         if (assetsGroup is null)
@@ -132,7 +132,7 @@ internal static class ProjectFilesFeature
                 var folder = folderText.Text.Trim();
                 if (!Directory.Exists(folder))
                 {
-                    summaryLabel.Text = UiText.T("MODELS: 0     PNG: 0", "МОДЕЛИ: 0     PNG: 0");
+                    summaryLabel.Text = UiText.T("MODELS: 0     TEXTURES: 0", "МОДЕЛИ: 0     ТЕКСТУРЫ: 0");
                     sourceCountLabel.Text = UiText.T("Hero source: not extracted", "Исходники героя: не извлечены");
                     mainModelLabel.Text = UiText.T("Main file: —", "Основной файл: —");
                     toolTip.SetToolTip(mainModelLabel, string.Empty);
@@ -141,8 +141,8 @@ internal static class ProjectFilesFeature
 
                 var scan = ProjectScanner.Scan(folder);
                 summaryLabel.Text = UiText.T(
-                    $"MODELS: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}     PNG: {scan.PngTextures.Count}",
-                    $"МОДЕЛИ: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}     PNG: {scan.PngTextures.Count}");
+                    $"MODELS: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}     TEXTURES: {scan.PngTextures.Count}",
+                    $"МОДЕЛИ: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}     ТЕКСТУРЫ: {scan.PngTextures.Count}");
 
                 foreach (var file in scan.DmxFiles)
                 {

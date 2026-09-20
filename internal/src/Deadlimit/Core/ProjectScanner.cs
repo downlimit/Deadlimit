@@ -15,21 +15,23 @@ public static class ProjectScanner
             throw new DirectoryNotFoundException(projectFolder);
         }
 
-        var files = Directory.EnumerateFiles(projectFolder, "*", SearchOption.TopDirectoryOnly)
-            .ToArray();
+        var manifest = new ProjectManifest { ProjectFolder = Path.GetFullPath(projectFolder) };
+        var files = ProjectAuthoringLayout.EnumerateAuthoringFiles(manifest).ToArray();
 
         var dmx = files
             .Where(path => string.Equals(Path.GetExtension(path), ".dmx", StringComparison.OrdinalIgnoreCase))
             .Where(path => !VertexColorSidecarService.IsSidecarPath(path))
-            .Select(Path.GetFileName)
+            .Select(path => ProjectAuthoringLayout.GetAuthoringIdentity(manifest, path))
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Select(name => name!)
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         var png = files
-            .Where(path => string.Equals(Path.GetExtension(path), ".png", StringComparison.OrdinalIgnoreCase))
-            .Select(Path.GetFileName)
+            .Where(path => Path.GetExtension(path).Equals(".png", StringComparison.OrdinalIgnoreCase)
+                || Path.GetExtension(path).Equals(".tga", StringComparison.OrdinalIgnoreCase)
+                || Path.GetExtension(path).Equals(".psd", StringComparison.OrdinalIgnoreCase))
+            .Select(path => ProjectAuthoringLayout.GetAuthoringIdentity(manifest, path))
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Select(name => name!)
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
@@ -38,7 +40,7 @@ public static class ProjectScanner
         var fbx = files
             .Where(path => string.Equals(Path.GetExtension(path), ".fbx", StringComparison.OrdinalIgnoreCase))
             .Where(path => !VertexColorSidecarService.IsSidecarPath(path))
-            .Select(Path.GetFileName)
+            .Select(path => ProjectAuthoringLayout.GetAuthoringIdentity(manifest, path))
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Select(name => name!)
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
@@ -47,7 +49,7 @@ public static class ProjectScanner
         var gltf = files
             .Where(path => Path.GetExtension(path).Equals(".gltf", StringComparison.OrdinalIgnoreCase)
                 || Path.GetExtension(path).Equals(".glb", StringComparison.OrdinalIgnoreCase))
-            .Select(Path.GetFileName)
+            .Select(path => ProjectAuthoringLayout.GetAuthoringIdentity(manifest, path))
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Select(name => name!)
             .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)

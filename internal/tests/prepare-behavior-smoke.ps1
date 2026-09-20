@@ -5,6 +5,23 @@ $assembly = [Reflection.Assembly]::LoadFrom($assemblyPath)
 $nonPublicStatic = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Static
 $publicStatic = [Reflection.BindingFlags]::Public -bor [Reflection.BindingFlags]::Static
 
+$layoutType = $assembly.GetType('Deadlimit.Core.ProjectAuthoringLayout', $true)
+$layoutRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-layout-$([Guid]::NewGuid().ToString('N'))"
+try {
+    [IO.Directory]::CreateDirectory($layoutRoot) | Out-Null
+    $layoutType.GetMethod('EnsureStructure', $publicStatic).Invoke($null, @([string]$layoutRoot))
+    foreach ($folder in @('0source', '1authoring', '2concept', '3scene', '4texture', '5promo', '6temp')) {
+        if (-not [IO.Directory]::Exists((Join-Path $layoutRoot $folder))) {
+            throw "Artist project layout is missing $folder."
+        }
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $layoutRoot) {
+        Remove-Item -LiteralPath $layoutRoot -Recurse -Force
+    }
+}
+
 $atomicFileType = $assembly.GetType('Deadlimit.Core.AtomicFile', $true)
 $atomicWriteAllText = $atomicFileType.GetMethod(
     'WriteAllText',

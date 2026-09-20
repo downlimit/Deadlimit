@@ -90,7 +90,7 @@ internal static class ExtractedSourceAssetResolver
                 Environment.NewLine,
                 matches.Select(match => $"  - {match.ResourcePath}"));
             throw new InvalidOperationException(
-                $"Project-root asset '{fileName}' matches more than one extracted retail source. " +
+                $"1authoring asset '{fileName}' matches more than one extracted retail source. " +
                 "Deadlimit will not guess which resource to replace." + Environment.NewLine + candidates);
         }
 

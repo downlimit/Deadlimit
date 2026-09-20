@@ -16,7 +16,7 @@ foreach ($required in @(
     'RetailResourcePackagingPolicy.Resolve(',
     'packagingPlan.ExcludedRelativePaths',
     'Retail/redundant compiled outputs omitted from VPK',
-    'Explicit project-root texture overrides forced into authored compilation'
+    'Explicit 1authoring texture overrides forced into authored compilation'
 )) {
     if (-not $buildSource.Contains($required, [StringComparison]::Ordinal)) {
         throw "Build & Test retail resource reuse wiring is missing: $required"
@@ -24,7 +24,7 @@ foreach ($required in @(
 }
 $packagingSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/RetailResourcePackagingPolicy.cs' -Raw
 if (-not $packagingSource.Contains('textureOverridePaths.Contains(sourceRelativePath)', [StringComparison]::Ordinal)) {
-    throw 'Project-root texture overrides are not forced into the authored packaging roots.'
+    throw '1authoring texture overrides are not forced into the authored packaging roots.'
 }
 if ($packagingSource.Contains('Where(path => !path.EndsWith("_c"', [StringComparison]::Ordinal)) {
     throw 'Opaque CSDK outputs are still treated as implicit authored packaging roots.'

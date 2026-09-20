@@ -15,7 +15,7 @@ internal static class RetailResourcePackagingPolicy
     private static readonly HashSet<string> DirectCompileExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".vmdl", ".vmat", ".vtex", ".vpcf", ".vsndevts", ".wav", ".xml", ".css", ".js", ".vsvg",
-        ".png", ".tga", ".jpg", ".jpeg", ".tif", ".tiff",
+        ".png", ".tga", ".psd", ".jpg", ".jpeg", ".tif", ".tiff",
     };
 
     internal static RetailResourcePackagingPlan Resolve(

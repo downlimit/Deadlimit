@@ -25,7 +25,7 @@ internal sealed class CsdkEditableAssetCopyService
 
     private static readonly HashSet<string> AuthoringTextureExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".png", ".tga", ".jpg", ".jpeg", ".tif", ".tiff", ".exr", ".vtex",
+        ".png", ".tga", ".psd", ".jpg", ".jpeg", ".tif", ".tiff", ".exr", ".vtex",
     };
 
     private static readonly Regex VmatTextureSourceRegex = new(

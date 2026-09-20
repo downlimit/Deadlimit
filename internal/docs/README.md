@@ -27,7 +27,7 @@ Export DMX / save textures
 - `PROJECT.md` — product definition and intended user workflow.
 - `UI_GUIDELINES.md` — mandatory user-interface rules, including tooltip paragraph structure, bold shortcut tokens, visible status feedback, and live language/theme behavior. Read this before changing UI copy or interaction behavior.
 - `SETTINGS.md` — machine-local dependency manager behavior, tool statuses, CSDK setup, game-client path and interface preferences.
-- `WORKSPACE.md` — artist project-folder contract: root DMX/PNG inputs, hidden `.deadlimit` metadata, and `0source` extraction behavior.
+- `WORKSPACE.md` — artist project-folder contract: recursive `1authoring` inputs, hidden `.deadlimit` metadata, and `0source` extraction behavior.
 - `EXTRACTION.md` — current game-client hero discovery/decompilation implementation, Source 2 Viewer integration, safety rules, evidence, and dependency-closure hypothesis.
 - `MATERIALS.md` — REUSE/CUSTOM material routing, confirmed VMDL remap evidence, and automatic compatibility-repair rules such as the generic eye fallback detector.
 - `TEXTURES.md` — inherited CUSTOM VMAT scaffolding, project-root PNG naming conventions, automatic texture rebinding, managed add/remove behavior, and safe fallbacks.

@@ -85,6 +85,7 @@ function New-TestVmdl([string]$renderMeshPath) {
 # the same CSDK compatibility/material patch reach that owner VMDL.
 $routingTemp = Join-Path ([IO.Path]::GetTempPath()) ('deadlimit-source-routing-' + [Guid]::NewGuid().ToString('N'))
 $projectRoot = Join-Path $routingTemp 'project'
+$authoringRoot = Join-Path $projectRoot '1authoring'
 $sourceRoot = Join-Path $projectRoot '0source'
 $sourceHeroRoot = Join-Path $sourceRoot 'models\heroes_wip\ivy'
 $sourceAbilityRoot = Join-Path $sourceHeroRoot 'ability'
@@ -95,13 +96,13 @@ $abilityName = 'tengu_stone_form_model_fx_ivy.dmx'
 $abilityResource = 'models/heroes_wip/ivy/ability/tengu_stone_form_model_fx_ivy.dmx'
 $mainResource = 'models/heroes_wip/ivy/ivy_ivy.dmx'
 try {
-    New-Item -ItemType Directory -Path $projectRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $projectRoot,$authoringRoot -Force | Out-Null
     New-Item -ItemType Directory -Path $sourceHeroRoot -Force | Out-Null
     New-Item -ItemType Directory -Path $sourceAbilityRoot -Force | Out-Null
     New-Item -ItemType Directory -Path $preparedHeroRoot -Force | Out-Null
 
-    $artistMain = Join-Path $projectRoot 'ivy_ivy.dmx'
-    $artistAbility = Join-Path $projectRoot $abilityName
+    $artistMain = Join-Path $authoringRoot 'ivy_ivy.dmx'
+    $artistAbility = Join-Path $authoringRoot $abilityName
     Set-Content -LiteralPath $artistMain -Value 'artist main' -Encoding utf8NoBOM
     Set-Content -LiteralPath $artistAbility -Value 'artist ability' -Encoding utf8NoBOM
     Set-Content -LiteralPath (Join-Path $sourceHeroRoot 'ivy_ivy.dmx') -Value 'retail main' -Encoding utf8NoBOM
@@ -177,7 +178,7 @@ try {
     $uiSource = Join-Path $sourceRoot 'panorama\images\heroes\ivy_mm.png'
     New-Item -ItemType Directory -Path (Split-Path $uiSource) -Force | Out-Null
     [IO.File]::WriteAllBytes($uiSource, [byte[]](7,8,9))
-    $artistUi = Join-Path $projectRoot 'ivy_mm.png'
+    $artistUi = Join-Path $authoringRoot 'ivy_mm.png'
     [IO.File]::WriteAllBytes($artistUi, [byte[]](9,8,7))
 
     $textureType = $assembly.GetType('Deadlimit.Core.RetailTextureOverrideService', $true)

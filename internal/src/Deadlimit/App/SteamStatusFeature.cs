@@ -262,8 +262,8 @@ internal static class SteamStatusFeature
             .FirstOrDefault(group =>
                 string.Equals(group.Text, "Project files", StringComparison.Ordinal)
                 || string.Equals(group.Text, "Файлы проекта", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Detected in project root", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Найдено в корне проекта", StringComparison.Ordinal));
+                || string.Equals(group.Text, "Detected in 1authoring", StringComparison.Ordinal)
+                || string.Equals(group.Text, "Найдено в 1authoring", StringComparison.Ordinal));
 
         return Math.Max(0, workspace.Margin.Right + (projectFiles?.Margin.Right ?? 0));
     }

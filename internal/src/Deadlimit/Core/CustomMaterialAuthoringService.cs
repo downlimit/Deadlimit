@@ -34,6 +34,7 @@ public sealed class CustomMaterialAuthoringService
     {
         ".png",
         ".tga",
+        ".psd",
         ".jpg",
         ".jpeg",
         ".tif",
@@ -158,9 +159,10 @@ public sealed class CustomMaterialAuthoringService
         var textureFolder = Path.Combine(materialContentFolder, "textures");
         Directory.CreateDirectory(textureFolder);
 
-        var rootPngFiles = Directory.EnumerateFiles(manifest.ProjectFolder, "*", SearchOption.TopDirectoryOnly)
-            .Where(path => TextureSourceExtensions.Contains(Path.GetExtension(path)))
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+        var rootPngFiles = ProjectAuthoringLayout.SelectPreferredFiles(
+            manifest,
+            ProjectAuthoringLayout.EnumerateAuthoringFiles(manifest)
+                .Where(path => TextureSourceExtensions.Contains(Path.GetExtension(path))))
             .ToArray();
 
         SyncTextureSourceFolder(
@@ -177,7 +179,7 @@ public sealed class CustomMaterialAuthoringService
             .ToArray();
 
         log.AppendLine($"Custom materials detected: {customReferences.Length}");
-        log.AppendLine($"Custom texture sources synchronized from project root: {rootPngFiles.Length}");
+        log.AppendLine($"Custom texture sources synchronized from 1authoring: {rootPngFiles.Length}");
         log.AppendLine($"Custom texture source folder: {textureFolder}");
         log.AppendLine("Custom texture naming: standard PBR slots accept broad common aliases (for example BaseColor/BaseColour/Albedo/Diffuse/Color, Normal/NormalMap/NRM, Roughness/Rough/RGH, AO/AmbientOcclusion/Occlusion, RimMask/RimLightMask, Metalness/Metallic/Metal plus Map/Mask variants such as MetalnessMask). Separators _, -, space, and . are accepted. Packed ORM/RMA/MRA names are intentionally not auto-bound because channel layout is ambiguous. Specialty Texture* fields may also bind by matching the material prefix plus the Texture parameter semantic name.");
         log.AppendLine("Vertex-color naming: any custom material whose name contains 'vertexcolor' (prefix, suffix, or middle; case-insensitive) is prepared from the retail vertcolor_pbr_basic material and does not consume project color textures.");
@@ -367,7 +369,7 @@ public sealed class CustomMaterialAuthoringService
         log.AppendLine("Custom VMAT ownership policy: files carrying a DEADLIMIT_VERTEXCOLOR_VMAT marker remain identifiable as vertex-color materials; ordinary PREPARE does not rewrite them.");
         log.AppendLine("Custom VMAT ownership policy: generated markers and the project .deadlimit ownership registry identify texture-managed VMAT files even after Material Editor replaces the first-line marker.");
         log.AppendLine("Custom VMAT scaffold policy: inherit the current hero character material so shader, outline/NPR colors, strengths, thicknesses and other non-texture tuning survive, but never inherit unresolved hero texture-source paths.");
-        log.AppendLine("Custom texture policy: ordinary PREPARE copies the project-root PNG/TGA/JPG/TIFF set into the addon texture-source folder without changing existing VMAT assignments. Shift+PREPARE with Materials checked may rebuild managed assignments and remove stale derived texture copies.");
+        log.AppendLine("Custom texture policy: ordinary PREPARE copies the selected 1authoring image set into the addon texture-source folder without changing existing VMAT assignments. Shift+PREPARE with Materials checked may rebuild managed assignments and remove stale derived texture copies.");
 
         return new CustomMaterialAuthoringResult(
             remaps,
@@ -415,7 +417,7 @@ public sealed class CustomMaterialAuthoringService
             File.Copy(sourcePng, Path.Combine(textureFolder, Path.GetFileName(sourcePng)), overwrite: true);
         }
 
-        log.AppendLine($"Derived custom texture files removed because their project-root source disappeared: {removed}");
+        log.AppendLine($"Derived custom texture files removed because their 1authoring source disappeared: {removed}");
     }
 
     private static void ApplyRimLightMaskFallback(
@@ -1068,6 +1070,7 @@ public sealed class CustomMaterialAuthoringService
         var extension = Path.GetExtension(value.Replace('\\', '/'));
         return extension.Equals(".png", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".tga", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".psd", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".vtex", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase)
             || extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase)
@@ -1521,4 +1524,3 @@ public sealed class CustomMaterialAuthoringService
 
     private sealed record TextureReplacement(string Value, bool AutoBound, bool Sanitized);
 }
-

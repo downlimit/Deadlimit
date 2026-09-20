@@ -62,8 +62,8 @@ public sealed class MainForm : Form
             string.Equals(group.Text, "Projects", StringComparison.Ordinal)
             || string.Equals(group.Text, "Проекты", StringComparison.Ordinal));
         var projectFiles = groups.FirstOrDefault(group =>
-            string.Equals(group.Text, "Detected in project root", StringComparison.Ordinal)
-            || string.Equals(group.Text, "Найдено в корне проекта", StringComparison.Ordinal));
+            string.Equals(group.Text, "Detected in 1authoring", StringComparison.Ordinal)
+            || string.Equals(group.Text, "Найдено в 1authoring", StringComparison.Ordinal));
         if (library is null || projectFiles is null)
         {
             return 1;
@@ -190,7 +190,7 @@ public sealed class MainForm : Form
 
         var assetsGroup = new GroupBox
         {
-            Text = UiText.T("Detected in project root", "Найдено в корне проекта"),
+            Text = UiText.T("Detected in 1authoring", "Найдено в 1authoring"),
             Dock = DockStyle.Fill,
             Padding = new Padding(12),
             Margin = new Padding(3, 3, 0, 3),
@@ -594,8 +594,8 @@ public sealed class MainForm : Form
         {
             RefreshProjectLibrary(preserveSelection: true, rescanSelected: true);
             SetStatus(UiText.T(
-                $"Saved. Models: {_loadedManifest!.DmxFiles.Count + _loadedManifest.FbxFiles.Count + _loadedManifest.GltfFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}.",
-                $"Сохранено. Моделей: {_loadedManifest!.DmxFiles.Count + _loadedManifest.FbxFiles.Count + _loadedManifest.GltfFiles.Count}; PNG: {_loadedManifest.PngTextures.Count}."));
+                $"Saved. Models: {_loadedManifest!.DmxFiles.Count + _loadedManifest.FbxFiles.Count + _loadedManifest.GltfFiles.Count}; textures: {_loadedManifest.PngTextures.Count}.",
+                $"Сохранено. Моделей: {_loadedManifest!.DmxFiles.Count + _loadedManifest.FbxFiles.Count + _loadedManifest.GltfFiles.Count}; текстур: {_loadedManifest.PngTextures.Count}."));
         }
     }
 
@@ -629,6 +629,7 @@ public sealed class MainForm : Form
         try
         {
             var fullFolder = Path.GetFullPath(folder);
+            ProjectAuthoringLayout.EnsureStructure(fullFolder);
             var scan = ProjectScanner.Scan(fullFolder);
             var existing = ProjectStore.TryLoad(fullFolder);
             if (existing is null
@@ -659,6 +660,8 @@ public sealed class MainForm : Form
                 FbxFiles = [.. scan.FbxFiles],
                 GltfFiles = [.. scan.GltfFiles],
                 PngTextures = [.. scan.PngTextures],
+                TextureTargetBindings = existing?.TextureTargetBindings
+                    ?? new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase),
                 CreatedUtc = existing?.CreatedUtc ?? DateTimeOffset.UtcNow,
                 RetailMainModel = existing?.RetailMainModel,
                 RetailSourceVpk = existing?.RetailSourceVpk,
@@ -821,7 +824,7 @@ public sealed class MainForm : Form
         if (!Directory.Exists(folder))
         {
             _dmxCountLabel.Text = UiText.T("MODELS: 0", "МОДЕЛИ: 0");
-            _pngCountLabel.Text = "PNG: 0";
+            _pngCountLabel.Text = UiText.T("TEXTURES: 0", "ТЕКСТУРЫ: 0");
             _sourceFolderLabel.Text = UiText.T(
                 "Hero source destination: 0source (created on demand by hero extraction).",
                 "Папка исходников героя: 0source (создаётся по запросу при извлечении)." );
@@ -834,7 +837,9 @@ public sealed class MainForm : Form
             _dmxCountLabel.Text = UiText.T(
                 $"MODELS: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}",
                 $"МОДЕЛИ: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}");
-            _pngCountLabel.Text = $"PNG: {scan.PngTextures.Count}";
+            _pngCountLabel.Text = UiText.T(
+                $"TEXTURES: {scan.PngTextures.Count}",
+                $"ТЕКСТУРЫ: {scan.PngTextures.Count}");
 
             var sourcePath = Path.Combine(folder, _loadedManifest?.SourceDumpFolderName ?? "0source");
             if (_loadedManifest?.LastSourceExtractionUtc is not null)
@@ -867,14 +872,14 @@ public sealed class MainForm : Form
 
             foreach (var file in scan.PngTextures)
             {
-                _assetList.Items.Add($"[PNG] {file}");
+                _assetList.Items.Add($"[{Path.GetExtension(file).TrimStart('.').ToUpperInvariant()}] {file}");
             }
 
             if (showStatus)
             {
                 SetStatus(UiText.T(
-                    $"Scan complete. Models: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}; PNG: {scan.PngTextures.Count}.",
-                    $"Сканирование завершено. Моделей: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}; PNG: {scan.PngTextures.Count}."));
+                    $"Scan complete. Models: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}; textures: {scan.PngTextures.Count}.",
+                    $"Сканирование завершено. Моделей: {scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count}; текстур: {scan.PngTextures.Count}."));
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -892,7 +897,7 @@ public sealed class MainForm : Form
         _releaseTargetText.Clear();
         _assetList.Items.Clear();
         _dmxCountLabel.Text = UiText.T("MODELS: 0", "МОДЕЛИ: 0");
-        _pngCountLabel.Text = "PNG: 0";
+        _pngCountLabel.Text = UiText.T("TEXTURES: 0", "ТЕКСТУРЫ: 0");
         _sourceFolderLabel.Text = UiText.T(
             "Select a project folder from the library.",
             "Выберите папку проекта в библиотеке.");

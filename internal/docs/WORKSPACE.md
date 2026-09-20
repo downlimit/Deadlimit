@@ -4,37 +4,36 @@ This file defines the current project-folder contract used by the artist-facing 
 
 ## Working-folder layout
 
-A Deadlimit Manager project points at the artist's existing project folder. Deadlimit Manager does not require the artist to reorganize that folder into a tool-owned hierarchy.
-
-Current expected shape:
+A Deadlimit Manager authoring project uses this managed artist-facing structure:
 
 ```text
 <ProjectFolder>\
-├─ *.dmx / *.fbx / *.gltf / *.glb
-├─ *.png
-├─ 0source\          # DMX extraction and primary PREPARE lookup root
+├─ 0source\          # generated retail extraction
 │  └─ glTFpipeline\  # isolated glTF extraction and PREPARE fallback root
-├─ 1scene\           # optional artist-owned folder; Deadlimit Manager does not assume or manage it
-├─ 6temp\            # optional artist-owned folder; Deadlimit Manager does not assume or manage it
+├─ 1authoring\       # recursive DMX/FBX/glTF/GLB and texture inputs
+│  └─ portraits\     # non-destructive portrait/UI working copies from extraction
+├─ 2concept\
+├─ 3scene\
+├─ 4texture\
+├─ 5promo\
+├─ 6temp\
 └─ .deadlimit\       # hidden Deadlimit Manager metadata / staging / safety backup
    ├─ project.json
    └─ 0source.previous\   # previous extraction, when a refresh replaces an existing 0source
 ```
 
-Only the conventions that affect Deadlimit Manager are normative. Folder names such as `1scene` and `6temp` are examples of artist-owned structure and must not be hardcoded as required directories.
+Deadlimit creates these folders when an authoring project is saved or extracted.
 
-## Root asset contract
+## `1authoring` asset contract
 
-The project root is the normal handoff point from the DCC/texturing workflow.
-
-Deadlimit Manager scans only the top level of the selected project folder for:
+`1authoring` is the only handoff point from the DCC/texturing workflow. The project root is not scanned for authoring inputs. Deadlimit scans `1authoring` recursively for:
 
 - `*.dmx`, `*.fbx`, `*.gltf`, and `*.glb` model files;
-- `*.png` textures.
+- supported image sources including `*.tga`, `*.png`, and `*.psd`.
 
-It records relative file names in the project manifest. Other files and folders are ignored unless a later pipeline stage explicitly needs them.
+Subfolder names have no routing meaning. When duplicate authoring basenames exist, image priority is TGA, then PNG, then PSD; ties use the alphabetically first relative path. Multiple Deadlock resources with the same basename require an explicit user selection, which can be persisted per authoring file.
 
-Deadlimit Manager must not move, rename, overwrite, or copy these artist-owned root assets merely to create/open a project.
+Deadlimit Manager does not overwrite artist files in `1authoring`. Portrait/UI extraction copies missing files into `1authoring\portraits` and preserves existing edited copies.
 
 ## `0source` contract
 
@@ -52,9 +51,9 @@ Current intended/implemented behavior:
 8. if publishing the new extraction fails, Deadlimit Manager attempts to restore the previous `0source`;
 9. the selected retail model path, source VPK, ValveResourceFormat version, extraction timestamp, and extracted file count are persisted in `project.json`.
 
-`0source` is generated data. Artist-authored model and texture files remain in the project root and are not touched by extraction. PREPARE first resolves a resource from the DMX tree in `0source`, then from `0source\glTFpipeline` when the primary resource is absent. Existing `0source\glTFsource` projects remain readable as a final compatibility fallback.
+`0source` is generated data. Artist-authored model and texture files live under `1authoring` and are not overwritten by extraction. PREPARE first resolves a resource from the DMX tree in `0source`, then from `0source\glTFpipeline` when the primary resource is absent.
 
-Root DMX, FBX and glTF/GLB are compile inputs with different adapters. DMX is overlaid directly. FBX is a ModelDoc-supported render-mesh source. glTF/GLB is converted into the decompiled DMX companion extracted alongside the glTF package, preserving primitive boundaries, `COLOR_0`, four skin influences and the retail skeleton contract.
+DMX, FBX and glTF/GLB files found recursively in `1authoring` are compile inputs with different adapters. DMX is overlaid directly. FBX is a ModelDoc-supported render-mesh source. glTF/GLB is converted into the decompiled DMX companion extracted alongside the glTF package, preserving primitive boundaries, `COLOR_0`, four skin influences and the retail skeleton contract.
 
 The first extraction slice decompiles the discovered retail hero resource folder. Full transitive dependency closure outside that folder remains to be validated from real extraction output before it is generalized.
 
@@ -75,8 +74,9 @@ The manifest currently stores:
 - selected hero;
 - optional release target/ID;
 - `0source` destination name;
-- discovered root DMX files;
-- discovered root PNG textures;
+- discovered `1authoring` model files;
+- discovered `1authoring` texture files;
+- remembered authoring-file to Deadlock-resource texture bindings;
 - timestamps;
 - discovered retail main model and VPK;
 - last hero extraction metadata;
@@ -96,7 +96,7 @@ Confirmed locally:
 
 ```text
 select existing artist folder
-→ scan root DMX/PNG
+→ create and scan the recursive 1authoring workspace
 → enter project name + hero + optional release ID
 → save hidden manifest
 → close/reopen Deadlimit Manager
