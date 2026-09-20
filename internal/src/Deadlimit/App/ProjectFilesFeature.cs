@@ -37,8 +37,6 @@ internal static class ProjectFilesFeature
         assetsGroup.Controls.Clear();
         assetsGroup.Padding = new Padding(3, 8, 3, 3);
 
-        var authoringModelsLabel = CreateSummaryLabel();
-        var authoringTexturesLabel = CreateSummaryLabel();
         var mainFileLabel = CreateSummaryLabel();
         var sourceFilesLabel = CreateSummaryLabel();
 
@@ -46,18 +44,15 @@ internal static class ProjectFilesFeature
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 2,
+            RowCount = 1,
             Margin = Padding.Empty,
             Padding = new Padding(4, 1, 4, 1),
         };
         summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         summaryRow.RowStyles.Add(new RowStyle(SizeType.Absolute, 16));
-        summaryRow.RowStyles.Add(new RowStyle(SizeType.Absolute, 16));
-        summaryRow.Controls.Add(authoringModelsLabel, 0, 0);
-        summaryRow.Controls.Add(mainFileLabel, 1, 0);
-        summaryRow.Controls.Add(authoringTexturesLabel, 0, 1);
-        summaryRow.Controls.Add(sourceFilesLabel, 1, 1);
+        summaryRow.Controls.Add(mainFileLabel, 0, 0);
+        summaryRow.Controls.Add(sourceFilesLabel, 1, 0);
         var dmxList = new ListBox
         {
             Dock = DockStyle.Fill,
@@ -79,7 +74,7 @@ internal static class ProjectFilesFeature
             Margin = Padding.Empty,
             Padding = Padding.Empty,
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         // FlowLayoutPanel gives this section a wheel-scrollable overflow path if more
@@ -94,8 +89,16 @@ internal static class ProjectFilesFeature
             Padding = Padding.Empty,
         };
 
-        var dmxColumn = CreateFileColumn("DMX / FBX / glTF", dmxList, new Padding(0, 0, 5, 0));
-        var textureColumn = CreateFileColumn("PNG / TGA / PSD", textureList, new Padding(5, 0, 0, 0));
+        var dmxColumn = CreateFileColumn(
+            "DMX / FBX / glTF",
+            dmxList,
+            new Padding(0, 0, 5, 0),
+            out var dmxTitleLabel);
+        var textureColumn = CreateFileColumn(
+            "PNG / TGA / PSD",
+            textureList,
+            new Padding(5, 0, 0, 0),
+            out var textureTitleLabel);
         fileColumns.Controls.Add(dmxColumn);
         fileColumns.Controls.Add(textureColumn);
 
@@ -132,22 +135,28 @@ internal static class ProjectFilesFeature
                 var folder = folderText.Text.Trim();
                 if (!Directory.Exists(folder))
                 {
-                    authoringModelsLabel.Text = UiText.T("AUTHORING MODELS: 0", "АВТОРСКИЕ МОДЕЛИ: 0");
-                    authoringTexturesLabel.Text = UiText.T("AUTHORING TEXTURES: 0", "АВТОРСКИЕ ТЕКСТУРЫ: 0");
+                    dmxTitleLabel.Text = UiText.T(
+                        "DMX / FBX / glTF: 0 files",
+                        "DMX / FBX / glTF: 0 файлов");
+                    textureTitleLabel.Text = UiText.T(
+                        "PNG / TGA / PSD: 0 files",
+                        "PNG / TGA / PSD: 0 файлов");
                     mainFileLabel.Text = UiText.T("MAIN FILE: —", "ГЛАВНЫЙ ФАЙЛ: —");
-                    sourceFilesLabel.Text = UiText.T("SOURCE FILES: —", "ИСХОДНЫЕ ФАЙЛЫ: —");
+                    sourceFilesLabel.Text = UiText.T(
+                        "SOURCE FILE COUNT: —",
+                        "КОЛИЧЕСТВО ИСХОДНЫХ ФАЙЛОВ: —");
                     toolTip.SetToolTip(mainFileLabel, string.Empty);
                     return;
                 }
 
                 var scan = ProjectScanner.Scan(folder);
                 var modelCount = scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count;
-                authoringModelsLabel.Text = UiText.T(
-                    $"AUTHORING MODELS: {modelCount}",
-                    $"АВТОРСКИЕ МОДЕЛИ: {modelCount}");
-                authoringTexturesLabel.Text = UiText.T(
-                    $"AUTHORING TEXTURES: {scan.PngTextures.Count}",
-                    $"АВТОРСКИЕ ТЕКСТУРЫ: {scan.PngTextures.Count}");
+                dmxTitleLabel.Text = UiText.T(
+                    $"DMX / FBX / glTF: {modelCount} files",
+                    $"DMX / FBX / glTF: {modelCount} файлов");
+                textureTitleLabel.Text = UiText.T(
+                    $"PNG / TGA / PSD: {scan.PngTextures.Count} files",
+                    $"PNG / TGA / PSD: {scan.PngTextures.Count} файлов");
 
                 foreach (var file in scan.DmxFiles)
                 {
@@ -180,14 +189,18 @@ internal static class ProjectFilesFeature
                     $"MAIN FILE: {mainModel ?? "—"}",
                     $"ГЛАВНЫЙ ФАЙЛ: {mainModel ?? "—"}");
                 sourceFilesLabel.Text = UiText.T(
-                    $"SOURCE FILES: {extractedCount?.ToString() ?? "—"}",
-                    $"ИСХОДНЫЕ ФАЙЛЫ: {extractedCount?.ToString() ?? "—"}");
+                    $"SOURCE FILE COUNT: {extractedCount?.ToString() ?? "—"}",
+                    $"КОЛИЧЕСТВО ИСХОДНЫХ ФАЙЛОВ: {extractedCount?.ToString() ?? "—"}");
                 toolTip.SetToolTip(mainFileLabel, mainModel ?? string.Empty);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
-                authoringModelsLabel.Text = UiText.T("SCAN FAILED", "ОШИБКА СКАНИРОВАНИЯ");
-                authoringTexturesLabel.Text = string.Empty;
+                dmxTitleLabel.Text = UiText.T(
+                    "DMX / FBX / glTF: scan failed",
+                    "DMX / FBX / glTF: ошибка сканирования");
+                textureTitleLabel.Text = UiText.T(
+                    "PNG / TGA / PSD: scan failed",
+                    "PNG / TGA / PSD: ошибка сканирования");
                 mainFileLabel.Text = ex.Message;
                 sourceFilesLabel.Text = string.Empty;
                 toolTip.SetToolTip(mainFileLabel, ex.Message);
@@ -249,7 +262,11 @@ internal static class ProjectFilesFeature
             : normalized;
     }
 
-    private static Control CreateFileColumn(string title, ListBox list, Padding margin)
+    private static Control CreateFileColumn(
+        string title,
+        ListBox list,
+        Padding margin,
+        out Label titleLabel)
     {
         var panel = new TableLayoutPanel
         {
@@ -261,14 +278,14 @@ internal static class ProjectFilesFeature
         panel.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
-        var label = new Label
+        titleLabel = new Label
         {
             Text = title,
             AutoSize = true,
             Margin = new Padding(0, 0, 0, 2),
         };
 
-        panel.Controls.Add(label, 0, 0);
+        panel.Controls.Add(titleLabel, 0, 0);
         panel.Controls.Add(list, 0, 1);
         return panel;
     }
