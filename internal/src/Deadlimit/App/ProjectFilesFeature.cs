@@ -36,36 +36,27 @@ internal static class ProjectFilesFeature
         assetsGroup.Text = UiText.T("Project files", "Файлы проекта");
         assetsGroup.Controls.Clear();
 
-        var contextLabel = new Label
-        {
-            AutoSize = false,
-            Dock = DockStyle.Fill,
-            AutoEllipsis = true,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Margin = new Padding(0, 0, 6, 5),
-        };
-        var countsLabel = new Label
-        {
-            AutoSize = false,
-            Dock = DockStyle.Fill,
-            AutoEllipsis = true,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Margin = new Padding(6, 0, 0, 5),
-        };
+        var authoringModelsLabel = CreateSummaryLabel();
+        var authoringTexturesLabel = CreateSummaryLabel();
+        var mainFileLabel = CreateSummaryLabel();
+        var sourceFilesLabel = CreateSummaryLabel();
 
         var summaryRow = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 2,
-            RowCount = 1,
+            RowCount = 2,
             Margin = Padding.Empty,
-            Padding = Padding.Empty,
+            Padding = new Padding(4, 1, 4, 1),
         };
         summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        summaryRow.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        summaryRow.Controls.Add(contextLabel, 0, 0);
-        summaryRow.Controls.Add(countsLabel, 1, 0);
+        summaryRow.RowStyles.Add(new RowStyle(SizeType.Absolute, 16));
+        summaryRow.RowStyles.Add(new RowStyle(SizeType.Absolute, 16));
+        summaryRow.Controls.Add(authoringModelsLabel, 0, 0);
+        summaryRow.Controls.Add(mainFileLabel, 1, 0);
+        summaryRow.Controls.Add(authoringTexturesLabel, 0, 1);
+        summaryRow.Controls.Add(sourceFilesLabel, 1, 1);
         var dmxList = new ListBox
         {
             Dock = DockStyle.Fill,
@@ -85,9 +76,9 @@ internal static class ProjectFilesFeature
             ColumnCount = 1,
             RowCount = 2,
             Margin = Padding.Empty,
-            Padding = Padding.Empty,
+            Padding = new Padding(0, 2, 0, 0),
         };
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         // FlowLayoutPanel gives this section a wheel-scrollable overflow path if more
@@ -98,7 +89,7 @@ internal static class ProjectFilesFeature
             AutoScroll = true,
             FlowDirection = FlowDirection.LeftToRight,
             WrapContents = true,
-            Margin = Padding.Empty,
+            Margin = new Padding(0, 3, 0, 0),
             Padding = Padding.Empty,
         };
 
@@ -140,21 +131,22 @@ internal static class ProjectFilesFeature
                 var folder = folderText.Text.Trim();
                 if (!Directory.Exists(folder))
                 {
-                    countsLabel.Text = UiText.T(
-                        "AUTHORING MODELS: 0    TEXTURES: 0",
-                        "АВТОРСКИЕ МОДЕЛИ: 0    ТЕКСТУРЫ: 0");
-                    contextLabel.Text = UiText.T(
-                        "MAIN FILE: —    SOURCE: —",
-                        "ОСНОВНОЙ ФАЙЛ: —    ИСХОДНИКИ: —");
-                    toolTip.SetToolTip(contextLabel, string.Empty);
+                    authoringModelsLabel.Text = UiText.T("AUTHORING MODELS: 0", "АВТОРСКИЕ МОДЕЛИ: 0");
+                    authoringTexturesLabel.Text = UiText.T("AUTHORING TEXTURES: 0", "АВТОРСКИЕ ТЕКСТУРЫ: 0");
+                    mainFileLabel.Text = UiText.T("MAIN FILE: —", "ГЛАВНЫЙ ФАЙЛ: —");
+                    sourceFilesLabel.Text = UiText.T("SOURCE FILES: —", "ИСХОДНЫЕ ФАЙЛЫ: —");
+                    toolTip.SetToolTip(mainFileLabel, string.Empty);
                     return;
                 }
 
                 var scan = ProjectScanner.Scan(folder);
                 var modelCount = scan.DmxFiles.Count + scan.FbxFiles.Count + scan.GltfFiles.Count;
-                countsLabel.Text = UiText.T(
-                    $"AUTHORING MODELS: {modelCount}    TEXTURES: {scan.PngTextures.Count}",
-                    $"АВТОРСКИЕ МОДЕЛИ: {modelCount}    ТЕКСТУРЫ: {scan.PngTextures.Count}");
+                authoringModelsLabel.Text = UiText.T(
+                    $"AUTHORING MODELS: {modelCount}",
+                    $"АВТОРСКИЕ МОДЕЛИ: {modelCount}");
+                authoringTexturesLabel.Text = UiText.T(
+                    $"AUTHORING TEXTURES: {scan.PngTextures.Count}",
+                    $"АВТОРСКИЕ ТЕКСТУРЫ: {scan.PngTextures.Count}");
 
                 foreach (var file in scan.DmxFiles)
                 {
@@ -183,22 +175,21 @@ internal static class ProjectFilesFeature
                 var mainModel = string.IsNullOrWhiteSpace(retailMainModel)
                     ? null
                     : retailMainModel.Trim();
-                var sourceCountEnglish = extractedCount is not null
-                    ? $"{extractedCount} files"
-                    : "—";
-                var sourceCountRussian = extractedCount is not null
-                    ? $"{extractedCount} файлов"
-                    : "—";
-                contextLabel.Text = UiText.T(
-                    $"MAIN FILE: {mainModel ?? "—"}    SOURCE: {sourceCountEnglish}",
-                    $"ОСНОВНОЙ ФАЙЛ: {mainModel ?? "—"}    ИСХОДНИКИ: {sourceCountRussian}");
-                toolTip.SetToolTip(contextLabel, mainModel ?? string.Empty);
+                mainFileLabel.Text = UiText.T(
+                    $"MAIN FILE: {mainModel ?? "—"}",
+                    $"ГЛАВНЫЙ ФАЙЛ: {mainModel ?? "—"}");
+                sourceFilesLabel.Text = UiText.T(
+                    $"SOURCE FILES: {extractedCount?.ToString() ?? "—"}",
+                    $"ИСХОДНЫЕ ФАЙЛЫ: {extractedCount?.ToString() ?? "—"}");
+                toolTip.SetToolTip(mainFileLabel, mainModel ?? string.Empty);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
             {
-                countsLabel.Text = UiText.T("SCAN FAILED", "ОШИБКА СКАНИРОВАНИЯ");
-                contextLabel.Text = ex.Message;
-                toolTip.SetToolTip(contextLabel, ex.Message);
+                authoringModelsLabel.Text = UiText.T("SCAN FAILED", "ОШИБКА СКАНИРОВАНИЯ");
+                authoringTexturesLabel.Text = string.Empty;
+                mainFileLabel.Text = ex.Message;
+                sourceFilesLabel.Text = string.Empty;
+                toolTip.SetToolTip(mainFileLabel, ex.Message);
             }
             finally
             {
@@ -237,6 +228,16 @@ internal static class ProjectFilesFeature
         ResizeColumns();
         Refresh();
     }
+
+    private static Label CreateSummaryLabel() => new()
+    {
+        AutoSize = false,
+        Dock = DockStyle.Fill,
+        AutoEllipsis = true,
+        TextAlign = ContentAlignment.MiddleLeft,
+        Margin = Padding.Empty,
+        Padding = Padding.Empty,
+    };
 
     private static string ToAuthoringDisplayPath(string path)
     {
