@@ -9,7 +9,8 @@ project is hobby software maintained on a best-effort basis and may need updates
 whenever Deadlock or an external tool changes.
 
 > Deadlimit is installed from the public Git repository. Git for Windows and
-> the .NET 10 SDK are required for installation and updates.
+> the .NET 10 SDK are required; the installer can install missing copies through
+> Windows Package Manager (WinGet) after asking for permission.
 
 [Русская версия](README.ru.md)
 
@@ -111,10 +112,11 @@ sign-off.
 
 ## Install for artists
 
-1. Install **Git for Windows** and the **.NET 10 SDK**.
-2. Download the single
+1. Download the single
    [`Install-Deadlimit.cmd`](https://raw.githubusercontent.com/downlimit/Deadlimit/main/Install-Deadlimit.cmd)
    file from the official repository and run it.
+2. If Git for Windows or the .NET 10 SDK is missing, the installer lists the
+   missing dependencies and asks permission to install them through WinGet.
 3. The installer clones `main` into `%LocalAppData%\Programs\Deadlimit`,
    builds Deadlimit Manager locally, creates Manager/Updater shortcuts on the
    Desktop and in the Start menu, then launches the Manager.
