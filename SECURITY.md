@@ -3,7 +3,7 @@
 ## Supported versions
 
 Security fixes are provided on a best-effort basis for the current
-`latest-main` artist build. Older builds and unmerged branches are unsupported.
+`main` revision used by the supported Git-checkout installation. Older commits and unmerged branches are unsupported.
 
 ## Reporting a vulnerability
 

@@ -1,27 +1,29 @@
 # Changelog
 
-Artist builds are published continuously from successful `main` commits. The
-rolling package uses a build identity; numbered tags remain historical source
-milestones. Dates use `YYYY-MM-DD`.
+Deadlimit is delivered from `main` as a Git checkout. The installer and updater
+keep that checkout current and rebuild the Manager locally. Numbered tags remain
+historical source milestones. Dates use `YYYY-MM-DD`.
 
 ## Unreleased
 
 ### Changed
 
-- Successful merges to `main` now replace one rolling `latest-main` artist
-  package automatically. The permanent installer and in-app updater both use
-  that channel, removing manual numbered releases from routine delivery.
-- Settings now shows Deadlimit Manager as the first tool row, including the
-  current version, update status, and a contextual check/update action.
-- Artist installations keep settings and caches under local `UserData`, update
-  in place, and preserve the prior program payload under local `Backup`.
-- The one-file installer and in-app updater consume the same verified package.
-- GitHub workflows now use the current Node 24-based major versions of the
-  official checkout, .NET setup, and artifact upload actions.
-- Runtime tool defaults now derive from the current application location and
-  Steam discovery instead of maintainer-workstation drive paths.
-- Obsolete `DeadlimitAggregator*` compatibility entry points were retired;
-  `Deadlimit.cmd` remains as the neutral legacy shim.
+- The one-file installer now requires Git for Windows and the .NET 10 SDK,
+  clones `main`, and builds Deadlimit Manager locally.
+- Every supported installation now updates through the existing Git
+  fast-forward/rebuild path.
+- The portable ZIP, `latest-main` rolling release channel, package checksums,
+  package rollback payload, and package-specific release policy were retired.
+- CI no longer uploads the identifier-audit artifact or publishes Deadlimit
+  release assets after every merge.
+- User settings and caches use the centralized `%LocalAppData%\Deadlimit`
+  location for all supported installations.
+- Settings shows Deadlimit Manager as the first tool row, including the current
+  `main` commit status and a contextual check/update action.
+- Runtime tool defaults derive from the current application location and Steam
+  discovery instead of maintainer-workstation drive paths.
+- Obsolete `DeadlimitAggregator*` compatibility entry points remain retired;
+  `Deadlimit.cmd` stays as the neutral legacy shim.
 
 ### Added
 
@@ -35,7 +37,7 @@ milestones. Dates use `YYYY-MM-DD`.
 ### Security
 
 - External CSDK, DepotDownloader, and DeadlockTools operations remain explicit
-  user actions and are never bundled into the Deadlimit package.
+  user actions and are not distributed as part of Deadlimit.
 - Final 822-commit history scan found no configured high-confidence secret
   signatures or prohibited historical asset paths on 2026-09-05.
 

@@ -8,8 +8,8 @@ authoring, resource compilation, VPK packaging, and local game deployment. The
 project is hobby software maintained on a best-effort basis and may need updates
 whenever Deadlock or an external tool changes.
 
-> The source repository is public. Artist-ready installer and portable packages
-> are published on the official GitHub Releases page.
+> Deadlimit is installed from the public Git repository. Git for Windows and
+> the .NET 10 SDK are required for installation and updates.
 
 [Русская версия](README.ru.md)
 
@@ -101,7 +101,7 @@ committed to this repository or attached to its issues.
 dotnet restore internal/src/Deadlimit/Deadlimit.csproj
 dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
 internal/tests/open-source-content-policy-smoke.ps1
-internal/tests/portable-path-defaults-smoke.ps1
+internal/tests/path-defaults-smoke.ps1
 internal/tests/prepare-behavior-smoke.ps1
 ```
 
@@ -111,44 +111,34 @@ sign-off.
 
 ## Install for artists
 
-Download the single permanent
-[`Install-Deadlimit.cmd`](https://github.com/downlimit/Deadlimit/releases/download/latest-main/Install-Deadlimit.cmd)
-file and run it. The installer always downloads the newest successful build of
-`main`, verifies it, installs Deadlimit under
-`%LocalAppData%\Programs\Deadlimit`, creates Manager/Updater shortcuts on the
-Desktop and in the Start menu, and launches `DeadlimitManager.exe`. Git and the
-.NET SDK are unnecessary.
+1. Install **Git for Windows** and the **.NET 10 SDK**.
+2. Download the single
+   [`Install-Deadlimit.cmd`](https://raw.githubusercontent.com/downlimit/Deadlimit/main/Install-Deadlimit.cmd)
+   file from the official repository and run it.
+3. The installer clones `main` into `%LocalAppData%\Programs\Deadlimit`,
+   builds Deadlimit Manager locally, creates Manager/Updater shortcuts on the
+   Desktop and in the Start menu, then launches the Manager.
 
-Every accepted merge to `main` is built and published to this same rolling
-channel automatically after CI succeeds. The ZIP and checksum visible in that
-release are transport files used by the installer/updater; manual ZIP setup is
-not a separate supported user workflow. Settings and caches stay under
-`UserData`; artist projects remain wherever the user chooses to keep them.
+The supported installation is a normal Git checkout. No Deadlimit ZIP, portable
+package, package checksum, or rolling `latest-main` release is involved.
+Settings and caches are stored under `%LocalAppData%\Deadlimit`; artist
+projects remain wherever the user chooses to keep them.
 
-`Update Deadlimit.cmd` downloads the latest successful `main` package, verifies SHA-256,
-updates the program files in place, preserves `UserData`, and keeps the previous
-program payload under `Backup`. `Update Deadlimit.cmd -Rollback` swaps the
-current and backup program payloads while leaving user data in place. Deleting
-the extracted Deadlimit folder removes the application, its settings, cache,
-and rollback payload.
+If the old package-based installation exists at the standard install path, the
+installer performs a one-time migration: it clones a fresh Git checkout, copies
+the previous in-folder `UserData` into the centralized user-data directory, and
+removes the retired package payload only after the clone succeeds.
 
-The first row in Settings shows the installed Deadlimit Manager version and its
-update status. Its contextual `CHECK` / `UPDATE...` button uses the shared
-`Update Deadlimit.cmd` entry point: it updates a Git checkout from `main`, or
-downloads the latest verified package for artist installations. The
-application UI and release payload are shared.
+## Updating Deadlimit
 
-## Updating the current clone
+`Update Deadlimit.cmd` and the Settings update action use the same Git path:
+fetch `origin/main`, refuse an unsafe overlap with local tracked edits,
+fast-forward the checkout, rebuild Deadlimit Manager with the installed .NET 10
+SDK, and relaunch when appropriate.
 
-Inside a Git checkout, the shared updater fetches `origin/main`, preserves
-unrelated local work when it can fast-forward safely, and rebuilds the Manager.
-Artist installations consume the verified rolling `latest-main` package.
-
-Early Deadlimit executables are expected to be unsigned, so Windows
-SmartScreen may display an unknown-publisher warning. Continue only when the
-installer came from the official `downlimit/Deadlimit` rolling GitHub Release
-and its published SHA-256 checksum matches. Report any checksum mismatch and do
-not run the downloaded file.
+Early Deadlimit files are unsigned, so Windows may show a reputation warning.
+Run the installer only when it was downloaded from the official
+`downlimit/Deadlimit` repository.
 
 ## License, support, and independence
 
@@ -163,5 +153,4 @@ affiliation, sponsorship, endorsement, or approval from Valve, Autodesk, Adobe,
 Wall Worm, or the maintainers of the other tools it can invoke.
 
 The readiness record is
-[`internal/docs/OPEN_SOURCE_PLAN.md`](internal/docs/OPEN_SOURCE_PLAN.md). Changing
-the repository visibility and publishing releases remain owner-controlled.
+[`internal/docs/OPEN_SOURCE_PLAN.md`](internal/docs/OPEN_SOURCE_PLAN.md). 
