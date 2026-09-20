@@ -137,7 +137,7 @@ This makes it possible to design internal graphic strokes as part of the model i
 
 Its goal is to make Painter a useful preview environment for Deadlock character materials instead of forcing texture artists to judge their work through a generic PBR viewport and only discover the real result later in Source 2.
 
-The current prototype already includes Deadlock-oriented Painter shaders, character profiles, outline-preview tooling, retail material/texture inspection helpers, and a Painter dock that can apply the Deadlimit preview setup to a compatible project.
+The current prototype already includes Deadlock-oriented Painter shaders, character profiles, outline-preview tooling, retail material/texture inspection helpers, and a Painter dock that can apply the Deadlimit Shade preview setup to a compatible project.
 
 The target workflow is:
 
