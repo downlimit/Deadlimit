@@ -2,7 +2,7 @@
 
 Status: **PUBLIC SOURCE — FIRST BETA RELEASE PUBLISHED**
 
-Last updated: 2026-09-05
+Last updated: 2026-09-20
 
 This is the live implementation plan for preparing `github.com/downlimit/Deadlimit`
 for public use and outside contributions. Update this document in the same pull
@@ -18,9 +18,9 @@ request whenever scope, evidence, risk, or completion status changes.
 - Primary documentation language: English; Russian documentation is secondary.
 - Funding: no donations or sponsorship.
 - Audience: free, best-effort tooling for Deadlock modding enthusiasts.
-- Public user delivery: self-contained Windows x64 portable releases with a release-based updater.
-- Developer delivery: Git clone with a separate `main`/developer update path.
-- Public visibility and the first public release require explicit owner approval after the final audit.
+- Public user delivery: one-file bootstrap that creates a Git checkout of `main`; Git for Windows and .NET 10 SDK are required.
+- Developer delivery: the same Git checkout/update path.
+- The repository is public; supported installs track `main`.
 
 ## Status legend
 
@@ -38,10 +38,10 @@ request whenever scope, evidence, risk, or completion status changes.
 - [x] Inspect Wall Worm integration: it reads the export-history INI value and invokes the Autodesk FBX exporter; no Wall Worm source or binary was found.
 - [x] Inspect Valve integration: the repository contains compatibility code and resource-schema names; retail resources are read/decompiled from the user's local installation at runtime and are not tracked.
 - [x] Verify the two direct NuGet dependencies: KeyValues2 0.8.0 and ValveResourceFormat 20.0.6980 are MIT-licensed.
-- [x] Inventory and verify every transitive NuGet dependency and required notice. The portable packager includes each exact nuspec, package-provided notice, resolved metadata, and full standard text for SPDX-only MIT/BSD packages.
+- [x] Inventory and verify every transitive NuGet dependency and required notice. The resolved dependency inventory and required notices are recorded in `THIRD_PARTY_NOTICES.md`.
 - [x] Scan the full Git history for secrets, personal files, and prohibited game assets without printing secret values. The final 822-commit scan found zero prohibited asset paths and zero configured high-confidence credential signatures.
 - [x] Audit all network download/install paths and record their owners, checksums, and trust boundaries in `NETWORK_TRUST_AUDIT.md`.
-- [x] Review the opt-in CSDK setup path that automates DepotDownloader and local VPK extraction. Git and release copies expose the same explicitly initiated CSDK/DepotDownloader/DeadlockTools actions.
+- [x] Review the opt-in CSDK setup path that automates DepotDownloader and local VPK extraction. The supported Git installation exposes explicitly initiated CSDK/DepotDownloader/DeadlockTools actions.
 - [x] Add a CI policy that rejects prohibited game archives, extracted game-tree paths, compiled retail resources, third-party executables/archives, and unexpected files larger than 2 MiB.
 
 Phase acceptance: a written audit has no unresolved red finding; every yellow
@@ -72,12 +72,12 @@ understand their rights, obligations, validation steps, and review path from roo
 
 - [x] Rewrite the root `README.md` as the English product landing page.
 - [x] Add `README.ru.md` as the secondary Russian guide.
-- [x] Document a five-minute clone-based quick start and label the portable user path as pending.
+- [x] Document the clone-based user and contributor start paths.
 - [x] Document the contributor/developer setup using .NET SDK 10.
 - [x] Add `COMPATIBILITY.md` with the exact audited workstation snapshot: Windows/DCC/Painter versions, Wall Worm build, CSDK binary fingerprints, Deadlock build/depot manifests, DeadlockTools release/commit/fingerprint, and Shade research status. Upstream archive authentication remains a separate trust gate.
 - [x] Add `CHANGELOG.md` and adopt semantic versioning starting at `0.1.0-beta.1`.
 - [x] Retire obsolete `DeadlimitAggregator*` entry points after compatibility review; keep only the neutral `Deadlimit.cmd` shim for older local shortcuts.
-- [x] Remove maintainer-workstation path defaults from runtime code and public installation paths; derive clone/portable roots and keep Steam discovery explicit in Settings.
+- [x] Remove maintainer-workstation path defaults from runtime code and public installation paths; derive repository roots and keep Steam discovery explicit in Settings.
 - [x] Expand `.gitignore`, `.gitattributes`, and `.editorconfig` for public development without renormalizing unrelated source files in this change.
 - [x] Clearly separate current focus, experimental Shade, and unsupported/planned Blender and platforms.
 
@@ -88,7 +88,7 @@ Initial supported/tested matrix:
 - Wall Worm 7: supported only for the exact build recorded in release notes.
 - Reduced CSDK 12: supported only for the exact setup generation recorded in release notes.
 - Current Deadlock Steam build: tested snapshot recorded per release.
-- .NET SDK 10: developer requirement.
+- .NET SDK 10: required for all supported installations.
 - Windows 10: untested.
 - Linux and macOS: unsupported.
 - Deadlimit Shade: experimental.
@@ -97,23 +97,26 @@ Initial supported/tested matrix:
 Phase acceptance: a first-time user and a first-time contributor can follow
 separate instructions without knowing the maintainer's workstation layout.
 
-## Phase 3 — Unified delivery and updater
+## Phase 3 — Git-only delivery and updater
 
-- [x] Keep the current Git updater as the developer channel and label it accordingly in the public README.
-- [x] Publish one self-contained `win-x64` transport package used by the one-file installer and updater.
-- [x] Build and verify the artist package automatically after successful `main` CI.
-- [x] Generate a SHA-256 checksum for every package and require it during install/update.
-- [x] Keep settings and caches under local `UserData`; the installer creates user-facing shortcuts.
-- [x] Keep artist projects outside the replaceable application payload in their user-selected folders.
-- [x] Expose one updater entry and one UI action; route Git checkouts to `origin/main` and artist installations to `latest-main`.
-- [x] Make release updates transactional, preserve `UserData`, restore the current payload after a failed activation, and keep one recoverable version under local `Backup`.
-- [x] Keep an explicit Developer/main channel for contributors.
-- [x] Replace routine numbered releases with one automatically refreshed `latest-main` artist channel.
-- [x] Test first install, no-op update, successful update, bad-checksum/traversal/broken-package preservation, and rollback with isolated synthetic packages.
-- [x] Document the expected Windows SmartScreen warning for unsigned early releases in both public guides.
+- [x] Use one permanent `Install-Deadlimit.cmd` bootstrap from the repository.
+- [x] Require Git for Windows and .NET 10 SDK instead of publishing a
+  self-contained Deadlimit package.
+- [x] Install as a normal `main` checkout and build Deadlimit Manager locally.
+- [x] Use the same `origin/main` fast-forward/rebuild updater for every
+  supported installation.
+- [x] Preserve user settings and caches in centralized
+  `%LocalAppData%\Deadlimit`.
+- [x] Migrate the retired package-based install's in-folder `UserData` during
+  the first clone-based installation.
+- [x] Retire the portable ZIP builder/updater, rolling `latest-main` publisher,
+  package checksums, local package rollback payload, and package-specific policy.
+- [x] Stop uploading routine CI artifacts that are not consumed by users or
+  maintainers.
 
-Phase acceptance: a non-Git user downloads one permanent installer and receives
-accepted changes through one updater action, while a contributor clones `main`.
+Historical evidence later in this document can reference the retired
+portable/release channel. Those entries record past validation and are not the
+current delivery contract.
 
 ## Phase 4 — CI, security, and repository policy
 
@@ -138,60 +141,38 @@ cannot access release credentials.
 
 ## Current validation evidence
 
-Validated locally on Windows 11 and in private CI through 2026-09-05:
+The current Git-only delivery contract is validated by the repository CI:
+Release build, startup smoke, installer/updater static contract, updater
+root-resolution and dirty-worktree transaction smoke, path-default policy,
+content policy, and the existing pipeline regression tests.
 
-- [x] `dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore` — 0 warnings, 0 errors.
-- [x] `internal/tests/open-source-content-policy-smoke.ps1` — 144 repository files accepted.
-- [x] `internal/tests/prepare-behavior-smoke.ps1` — prepare plus nested extraction/resource-copy contracts passed.
-- [x] `internal/tests/metal-material-preset-smoke.ps1`.
-- [x] `internal/tests/texture-naming-alias-smoke.ps1`.
-- [x] `internal/tests/ui-localization-smoke.ps1`.
-- [x] `internal/tests/updater-dirty-worktree-smoke.ps1`.
-- [x] `internal/tests/launch-game-fastpath-smoke.ps1`.
-- [x] Manager `--startup-smoke`.
-- [x] Updater root-resolution contract.
-- [x] Root launcher refresh and two-shortcut presentation contract.
-- [x] Portable updater lifecycle, checksum rejection, traversal rejection, rollback, and single-file bootstrap parse/trust contracts.
-- [x] Portable path-default and retired-entry-point contract.
-- [x] Local self-contained `0.1.0-beta.1` rehearsal: 362 files, full license metadata/text payload, checksum verification, temporary install, and portable executable startup smoke.
-- [x] `git diff --check`.
-- [x] GitHub pull-request workflows on PR #95 initial head `89f491e`: `build`, `dco`, and `smoke` passed.
-- [x] GitHub pull-request workflows on portable-channel PR #99 head `7553955`: `build`, `dco`, and `smoke` passed; merged as `94dac0e`.
-- [x] GitHub pull-request workflows on portability PR #101: `build`, `dco`, and `smoke` passed; merged as `a8f8077`.
-- [x] GitHub pull-request workflows on actions-update PR #102 passed with current official action majors; merged as `3b339dc`.
-- [x] Private rehearsal run `33922258940`: self-contained package build, isolated install/startup smoke, and private artifact upload passed.
-- [x] Downloaded rehearsal artifact audit: ZIP/updater checksums match, all 362 manifest entries verify, 363 ZIP entries contain zero detected prohibited game/authoring assets, and dependency license evidence is present.
-- [x] Portable-policy PR #107 passed `build`, `dco`, and `smoke`; merged as `89ae79b`.
-- [x] Private rehearsal run `33925867426` from `89ae79b`: packaged release-policy/startup smokes passed, and the downloaded ZIP again verified all 362 manifest items with zero prohibited or undeclared entries.
-- [x] Pure-portable PR #109 passed `build`, `dco`, and `smoke`; merged as `8845f54`. Private rehearsal run `33961628049` then passed extraction, startup, manifest, in-folder updater, `UserData` preservation, and private artifact upload. The downloaded 82,728,285-byte ZIP independently matched SHA-256 `9A26C432...E09DBD3A` and all 362 manifest items.
+Historical portable-package rehearsals and the published `0.1.0-beta.1`
+milestone remain part of Git history, but they are retired implementation
+evidence and no longer define the supported installation/update path.
 
-## Phase 5 — Release rehearsal and public launch
+## Phase 5 — Public repository operation
 
-- [x] Build `0.1.0-beta.1` in the private repository and record exact artifact evidence in `RELEASE_REHEARSAL_0.1.0-beta.1.md`.
-- [~] Test installation on a clean Windows 11 environment without maintainer paths. The owner chose live testing by an external artist instead of provisioning a large disposable VM before beta publication.
-- [x] Test updater activation between synthetic packages, preservation of local `UserData`, local `Backup`, failed-update recovery, and rollback. The published workflow also passed extraction, startup, manifest, and same-package updater checks on the final tagged ZIP.
-- [x] Re-run provenance, secret, and packaged-file audits: 822 commits produced zero prohibited asset-path hits and zero high-confidence credential-signature hits; the private portable ZIP passed the manifest and packaged-content audit recorded in the rehearsal report.
-- [x] Accept the first public beta under the documented unsigned/community-tooling limitations after local, PR, main, and tagged-package checks passed. Clean-machine usability remains a live beta-feedback item.
-- [x] Receive explicit owner approval to change visibility.
-- [x] Change `PRIVATE` to `PUBLIC`.
-- [x] Apply branch protection immediately after visibility changes.
-- [x] Publish `v0.1.0-beta.1`; issue seeding can follow real user feedback.
+- [x] Repository is public with protected `main`.
+- [x] MIT/DCO/community-health files are in place.
+- [x] Supported user installation now follows the same Git checkout as
+  development, with a one-file bootstrap and guarded updater.
+- [ ] Continue clean-machine testing with real artists on the Git-only install
+  path and record compatibility regressions against concrete commits.
 
 ## Known risk register
 
 ### Yellow — CSDK setup automation
 
 Deadlimit can read a third-party CSDK guide, use DepotDownloader, and extract
-the user's locally downloaded VPK data after an explicit action. Git, installed,
-and artist installations expose the same behavior. Source and release
-archives carry no Valve content; these operations identify third-party sources
+the user's locally downloaded VPK data after an explicit action. The supported
+Git installation exposes this behavior. The repository carries no Valve content; these operations identify third-party sources
 and stop on authentication/access failure.
 
 ### Yellow — runtime decompilation of local retail resources
 
 Hero extraction uses ValveResourceFormat against the user's local Deadlock
 installation. Generated `0source` content belongs in the user's project and must
-never be accepted into this repository, issues, or release archives.
+never be accepted into this repository or issues.
 
 ### Yellow — rapidly changing external toolchain
 
@@ -199,15 +180,25 @@ Deadlock, Reduced CSDK, Wall Worm, and resource formats can change without
 notice. Compatibility claims must name a tested snapshot and avoid a permanent
 promise for unspecified "latest" versions.
 
-### Yellow — unsigned Windows binaries
+### Yellow — unsigned Windows scripts and locally built executable
 
-Early portable releases will likely trigger Windows reputation warnings. The
-documentation must explain this accurately; code signing can be reconsidered if
-the project gains enough users to justify certificate cost and maintenance.
+The bootstrap and locally built Manager are unsigned. Windows reputation or
+script-policy warnings can still occur; code signing can be reconsidered if the
+project gains enough users to justify certificate cost and maintenance.
 
 ## Change log
 
-### 2026-09-05
+### 2026-09-20
+
+- Retired the routine portable ZIP and rolling `latest-main` delivery channel.
+- Switched the one-file installer to a Git checkout of `main`; Git for Windows
+  and .NET 10 SDK are now explicit prerequisites.
+- Unified updates on the guarded Git fast-forward/rebuild path.
+- Removed package-specific updater/policy code, portable-package tests, routine
+  release publication, and the unused identifier-audit artifact upload.
+- Centralized supported-install user data under `%LocalAppData%\Deadlimit`.
+
+### 2026-09-05 — historical portable-delivery work
 
 - Replaced manual numbered delivery with the rolling `latest-main` artist channel. Every successful `main` build now refreshes the package, checksum, installer, and version metadata automatically; the permanent installer and Settings updater use that channel.
 - Published `v0.1.0-beta.1` after PR #111 and both post-merge workflows passed. The release contains one installer, one self-contained ZIP, and their SHA-256 files; the tagged-package workflow passed in 1m40s.

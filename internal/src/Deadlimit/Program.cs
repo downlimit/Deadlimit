@@ -9,7 +9,6 @@ namespace Deadlimit;
 internal static class Program
 {
     private const string StartupSmokeArgument = "--startup-smoke";
-    private const string ReleasePolicySmokeArgument = "--release-policy-smoke";
     private const string WriteVertexColorScriptArgument = "--write-vertex-color-script";
     private const string ExtractDmxVertexColorTransferArgument = "--extract-dmx-vertex-color-transfer";
     private const string SingleInstanceMutexName = @"Local\Deadlimit.Gui.SingleInstance.v1";
@@ -31,12 +30,6 @@ internal static class Program
             && string.Equals(args[0], ExtractDmxVertexColorTransferArgument, StringComparison.OrdinalIgnoreCase))
         {
             return ExtractDmxVertexColorTransfer(args);
-        }
-
-        if (args.Any(argument =>
-                string.Equals(argument, ReleasePolicySmokeArgument, StringComparison.OrdinalIgnoreCase)))
-        {
-            return RunReleasePolicySmoke();
         }
 
         var startupSmoke = args.Any(argument =>
@@ -81,28 +74,6 @@ internal static class Program
                 singleInstanceMutex.Dispose();
             }
         }
-    }
-
-    private static int RunReleasePolicySmoke()
-    {
-        var isPortable = ReleaseChannelPolicy.IsPortableRelease;
-        if (!ReleaseChannelPolicy.AllowsUnverifiedToolchainAutomation)
-        {
-            return 2;
-        }
-
-        var expectedPortableDataRoot = Path.Combine(AppContext.BaseDirectory, "UserData");
-        var usesPortableDataRoot = string.Equals(
-            UserDataPaths.Root,
-            expectedPortableDataRoot,
-            StringComparison.OrdinalIgnoreCase);
-        if (usesPortableDataRoot != isPortable)
-        {
-            return 4;
-        }
-
-        ReleaseChannelPolicy.RequireUnverifiedToolchainAutomation();
-        return 0;
     }
 
     private static int RunApplication(bool startupSmoke)

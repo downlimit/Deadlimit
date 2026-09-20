@@ -7,6 +7,12 @@ function Assert-Contains([string]$Text, [string]$Pattern, [string]$Label) {
     }
 }
 
+function Assert-NotContains([string]$Text, [string]$Pattern, [string]$Label) {
+    if ($Text.IndexOf($Pattern, [StringComparison]::Ordinal) -ge 0) {
+        throw "$Label contains retired contract text: $Pattern"
+    }
+}
+
 $installerPath = 'Install-Deadlimit.cmd'
 $lines = [IO.File]::ReadAllLines($installerPath)
 $marker = [Array]::IndexOf($lines, '# DEADLIMIT_POWERSHELL_INSTALLER')
@@ -23,32 +29,50 @@ if ($errors.Count -gt 0) {
 }
 
 foreach ($required in @(
-    'https://api.github.com/repos/downlimit/Deadlimit/releases/tags/latest-main',
-    'Deadlimit-win-x64.zip',
-    'Deadlimit-win-x64.zip.sha256',
-    'internal/DeadlimitPortableUpdater.ps1',
-    'Get-FileSha256',
-    'checksum mismatch',
-    '$uri.Host -ne ''github.com''',
+    'https://github.com/downlimit/Deadlimit.git',
+    'Confirm-DependencyInstall',
+    'System.Windows.Forms.MessageBox',
+    'Find-WinGet',
+    'Git.Git',
+    'Microsoft.DotNet.SDK.10',
+    '--accept-source-agreements',
+    '--accept-package-agreements',
+    'Find-DotNet10Sdk',
+    '--list-sdks',
+    "^10\.0\.",
     "'Programs\Deadlimit'",
-    'Deadlimit Manager.lnk',
-    'Deadlimit Updater.lnk'
+    "Invoke-Git @('clone'",
+    "'--branch','main','--single-branch'",
+    "'UserData'",
+    "'DeadlimitManager.cmd'",
+    "'Deadlimit Manager.lnk'",
+    "'Deadlimit Updater.lnk'"
 )) {
     Assert-Contains $payload $required 'Installer'
 }
 
+foreach ($retired in @(
+    'releases/tags/latest-main',
+    'Deadlimit-win-x64.zip',
+    'DeadlimitPortableUpdater',
+    'Deadlimit-release.json',
+    'packageSha256'
+)) {
+    Assert-NotContains $payload $retired 'Installer'
+}
+
 $entry = Get-Content -LiteralPath 'Update Deadlimit.cmd' -Raw
 foreach ($required in @(
-    'if exist "%DEADLIMIT_ROOT%\.git"',
+    'if not exist "%DEADLIMIT_ROOT%\.git"',
     'DeadlimitUpdater.bat',
-    'internal\DeadlimitPortableUpdater.ps1',
-    '-InstallRoot "%DEADLIMIT_ROOT%"',
     'DEADLIMIT_UPDATE_RELAUNCH',
     'DEADLIMIT_UPDATER_DEFAULT_ARGS=-NoLaunch',
     '%* %DEADLIMIT_UPDATER_DEFAULT_ARGS%'
 )) {
-    Assert-Contains $entry $required 'Unified updater'
+    Assert-Contains $entry $required 'Git updater'
 }
+Assert-NotContains $entry 'DeadlimitPortableUpdater' 'Git updater'
+Assert-NotContains $entry 'PackagePath' 'Git updater'
 
 $rootLauncher = Get-Content -LiteralPath 'DeadlimitManager.cmd' -Raw
 Assert-Contains $rootLauncher 'set "UPDATER=%ROOT%Update Deadlimit.cmd"' 'Updater shortcut routing'
@@ -62,21 +86,26 @@ foreach ($required in @(
     Assert-Contains $originFeature $required 'In-app updater relaunch marker'
 }
 
-$worker = Get-Content -LiteralPath 'internal/DeadlimitPortableUpdater.ps1' -Raw
-Assert-Contains $worker 'https://api.github.com/repos/downlimit/Deadlimit/releases/tags/latest-main' 'Installed updater'
-
-$packager = Get-Content -LiteralPath 'internal/release/New-DeadlimitPortable.ps1' -Raw
-Assert-Contains $packager "Join-Path `$outputRoot 'Deadlimit-release.json'" 'Artist package metadata'
-
 $workflow = Get-Content -LiteralPath '.github/workflows/build.yml' -Raw
-foreach ($required in @(
+foreach ($retired in @(
+    'actions/upload-artifact',
     'Publish latest artist build',
-    "github.event_name == 'push' && github.ref == 'refs/heads/main'",
-    "`$tag = 'latest-main'",
-    "`$metadataAsset = 'artifacts/portable/Deadlimit-release.json'",
-    'gh release upload $tag $metadataAsset'
+    'latest-main',
+    'gh release',
+    'Deadlimit-win-x64.zip'
 )) {
-    Assert-Contains $workflow $required 'Continuous artist delivery'
+    Assert-NotContains $workflow $retired 'Build workflow'
 }
 
-Write-Host 'Single installer, package, updater relaunch policy, and unified updater entry contract passed.'
+foreach ($retiredPath in @(
+    'internal/DeadlimitPortableUpdater.ps1',
+    'internal/release/New-DeadlimitPortable.ps1',
+    'internal/tests/portable-release-smoke.ps1',
+    'internal/tests/portable-path-defaults-smoke.ps1'
+)) {
+    if (Test-Path -LiteralPath $retiredPath) {
+        throw "Retired portable delivery file is still tracked: $retiredPath"
+    }
+}
+
+Write-Host 'Clone installer, Git updater, and artifact-free CI contracts passed.'

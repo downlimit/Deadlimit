@@ -159,18 +159,20 @@ shortcuts. The obsolete `DeadlimitAggregator*` entry points were retired before
 the first public release. New user-facing launch and shortcut surfaces use the
 Deadlimit Manager name.
 
-## Continuous artist delivery
+## Git-checkout delivery
 
-Developers use the repository, forks, and pull requests. Artists use one
-permanent `Install-Deadlimit.cmd` download and the updater exposed by Deadlimit
-Manager. After an accepted change is merged, the successful `main` workflow
-automatically replaces the single `latest-main` package. Routine delivery does
-not require a manually chosen public version, a second code copy, or a separate
-portable product.
+Developers and artists use the same repository-backed installation model.
+`Install-Deadlimit.cmd` requires Git for Windows and the .NET 10 SDK, clones
+`main` into the managed Deadlimit folder, builds the Manager locally, and
+creates the normal Manager/Updater shortcuts.
 
-The ZIP, checksum, and release metadata in `latest-main` are internal transport
-artifacts for verified installation and rollback. They are built from the same
-commit and do not define an additional user-facing edition of Deadlimit.
+Every supported installation updates through `origin/main`: the updater
+fetches, checks incoming paths against local tracked edits, fast-forwards only
+when safe, rebuilds the Manager, and relaunches it when appropriate.
+
+Deadlimit does not publish a routine ZIP/package channel. CI validates source
+and behavior only; it does not upload routine diagnostic artifacts or publish
+per-merge release assets.
 
 ## Documentation continuity
 

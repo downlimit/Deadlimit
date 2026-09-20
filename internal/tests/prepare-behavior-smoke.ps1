@@ -216,45 +216,15 @@ finally {
     }
 }
 
-# Portable releases are identified by package-owned release metadata. Their
-# unverified external tool installers must stay behind the service-layer guard.
-$releasePolicyType = $assembly.GetType('Deadlimit.Core.ReleaseChannelPolicy', $true)
-$isPortableRoot = $releasePolicyType.GetMethod('IsPortableReleaseRoot', $nonPublicStatic)
-if ($null -eq $isPortableRoot) { throw 'ReleaseChannelPolicy.IsPortableReleaseRoot was not found.' }
-$policyRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-release-policy-$([Guid]::NewGuid().ToString('N'))"
-try {
-    [IO.Directory]::CreateDirectory($policyRoot) | Out-Null
-    if ([bool]$isPortableRoot.Invoke($null, [object[]]@([string]$policyRoot))) {
-        throw 'A developer directory without release.json was classified as portable.'
-    }
-    [IO.File]::WriteAllText((Join-Path $policyRoot 'release.json'), '{}')
-    if (-not [bool]$isPortableRoot.Invoke($null, [object[]]@([string]$policyRoot))) {
-        throw 'A packaged directory with release.json was not classified as portable.'
-    }
-}
-finally {
-    if (Test-Path -LiteralPath $policyRoot) {
-        Remove-Item -LiteralPath $policyRoot -Recurse -Force
-    }
-}
-
+# All supported Deadlimit installations are Git checkouts. User state is centralized
+# under LocalAppData and the toolchain service has no release-channel gate.
 $userDataType = $assembly.GetType('Deadlimit.Core.UserDataPaths', $true)
 $resolveUserData = $userDataType.GetMethod('ResolveRoot', $nonPublicStatic)
 if ($null -eq $resolveUserData) { throw 'UserDataPaths.ResolveRoot was not found.' }
-$portableDataRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-user-data-$([Guid]::NewGuid().ToString('N'))"
-try {
-    [IO.Directory]::CreateDirectory($portableDataRoot) | Out-Null
-    [IO.File]::WriteAllText((Join-Path $portableDataRoot 'release.json'), '{}')
-    $resolvedUserData = [string]$resolveUserData.Invoke($null, [object[]]@([string]$portableDataRoot))
-    $expectedUserData = Join-Path $portableDataRoot 'UserData'
-    if (-not [string]::Equals($resolvedUserData, $expectedUserData, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Portable user data escaped the application folder: $resolvedUserData"
-    }
-}
-finally {
-    if (Test-Path -LiteralPath $portableDataRoot) {
-        Remove-Item -LiteralPath $portableDataRoot -Recurse -Force
-    }
+$resolvedUserData = [string]$resolveUserData.Invoke($null, @())
+$expectedUserData = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)) 'Deadlimit'
+if (-not [string]::Equals($resolvedUserData, $expectedUserData, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Deadlimit user data root is unexpected: $resolvedUserData"
 }
 
 foreach ($path in @(
@@ -263,14 +233,13 @@ foreach ($path in @(
     'internal/src/Deadlimit/App/ProjectLibraryFeature.cs')) {
     $source = Get-Content -LiteralPath $path -Raw
     if ($source.Contains('SpecialFolder.LocalApplicationData', [StringComparison]::Ordinal)) {
-        throw "Portable user state still has a direct AppData path: $path"
+        throw "User state bypasses UserDataPaths in: $path"
     }
 }
 
 $toolchainSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ToolchainDependencyService.cs' -Raw
-$guardCount = ([regex]::Matches($toolchainSource, 'ReleaseChannelPolicy\.RequireUnverifiedToolchainAutomation\(\);')).Count
-if ($guardCount -ne 5) {
-    throw "Expected five service-layer external-tool automation guards; found $guardCount."
+if ($toolchainSource.Contains('ReleaseChannelPolicy', [StringComparison]::Ordinal)) {
+    throw 'Retired release-channel toolchain policy remains in ToolchainDependencyService.'
 }
 foreach ($required in @(
     'IsCsdkSetupCurrent(csdkRoot, catalog.Generation, depotKeys)',
@@ -536,12 +505,9 @@ finally {
     }
 }
 $settingsSource = Get-Content -LiteralPath 'internal/src/Deadlimit/App/SettingsForm.cs' -Raw
-foreach ($required in @(
-    'ReleaseChannelPolicy.AllowsUnverifiedToolchainAutomation',
-    '&& _allowUnverifiedToolchainAutomation',
-    'PortableToolchainNotice()')) {
-    if (-not $settingsSource.Contains($required, [StringComparison]::Ordinal)) {
-        throw "Portable Settings safety contract is missing: $required"
+foreach ($retired in @('ReleaseChannelPolicy', 'PortableToolchainNotice', '_allowUnverifiedToolchainAutomation')) {
+    if ($settingsSource.Contains($retired, [StringComparison]::Ordinal)) {
+        throw "Retired portable Settings policy remains: $retired"
     }
 }
 

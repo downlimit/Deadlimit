@@ -1,14 +1,14 @@
 # Compatibility
 
 Deadlimit depends on rapidly changing external software. Compatibility claims
-apply only to the snapshots recorded below and in each release note.
+apply only to the snapshots recorded below for the current supported `main` revision.
 
 ## Current development baseline
 
 | Component | Baseline | Status | Evidence limitation |
 | --- | --- | --- | --- |
 | Operating system | Windows 11 Home 25H2 x64, build `26200.8894` | Supported and tested | Windows 10 is currently untested. |
-| .NET | SDK `10.0.400` | Required for clone-based development/launch | Portable `win-x64` rehearsal builds include a self-contained runtime. |
+| .NET | SDK `10.0.400` | Required for all supported Deadlimit installations | Revalidate after SDK/runtime changes. |
 | Deadlimit Scripts MAXScript host | 2025, `27.3.0.30874` | Supported and tested | Other Max versions are untested. |
 | Wall Worm | `7.36.2` | Snapshot-tested | Version read from the installed Wall Worm configuration; other builds remain untested. |
 | Reduced CSDK | Generation 12; `csdkcfg.exe` `0.1.0` | Snapshot-tested locally | Local binaries are fingerprinted below; the mutable upstream archive still lacks an authenticated release hash. |
@@ -35,13 +35,13 @@ do not authenticate the mutable upstream downloads.
 | Deadlock depot `1422452` | manifest `5497551246774317622` |
 | Deadlock depot `1422456` | manifest `4428960194428638747` |
 
-## Release rule
+## Compatibility update rule
 
-Every published build must refresh these exact versions, commit or manifest
+Compatibility updates must refresh these exact versions, commit or manifest
 identifiers, and local fingerprints. Automatic download trust additionally
 requires expected SHA-256 values for the upstream executable archives.
 “Latest” is not a durable compatibility claim.
 
-When reporting a bug, include the Deadlimit tag/commit and all relevant external
+When reporting a bug, include the Deadlimit commit and all relevant external
 versions. An upstream update can be the cause even when the same project worked
 with an earlier snapshot.
