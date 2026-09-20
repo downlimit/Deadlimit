@@ -149,7 +149,65 @@ try {
     else {
         $managerProcesses = @(Get-Process -Name DeadlimitManager, DeadlimitAggregator, Deadlimit -ErrorAction SilentlyContinue)
         if ($managerProcesses.Count -gt 0) {
-            throw "Deadlimit Manager is running. Use UPDATE from Deadlimit Manager Settings so it can close safely and restart automatically."
+            if ($env:DEADLIMIT_UPDATE_RELAUNCH -eq "1") {
+                # Compatibility path for Managers released before -WaitForPid.
+                # Those builds already mark an in-app updater launch, but can leave
+                # their modal Settings chain alive after Application.Exit(). Request
+                # WM_CLOSE on the active popup and main window, then wait. This is a
+                # normal window-close request, never a force kill.
+                if (-not ("DeadlimitUpdater.NativeWindow" -as [type])) {
+                    Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+namespace DeadlimitUpdater {
+    internal static class NativeWindow {
+        [DllImport("user32.dll")]
+        internal static extern IntPtr GetLastActivePopup(IntPtr hWnd);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+    }
+}
+"@
+                }
+
+                Write-Host "Closing legacy Deadlimit Manager normally before update..."
+                foreach ($managerProcess in $managerProcesses) {
+                    $mainWindow = $managerProcess.MainWindowHandle
+                    if ($mainWindow -ne [IntPtr]::Zero) {
+                        $popupWindow = [DeadlimitUpdater.NativeWindow]::GetLastActivePopup($mainWindow)
+                        if ($popupWindow -ne [IntPtr]::Zero -and $popupWindow -ne $mainWindow) {
+                            [void][DeadlimitUpdater.NativeWindow]::PostMessage(
+                                $popupWindow,
+                                0x0010,
+                                [IntPtr]::Zero,
+                                [IntPtr]::Zero)
+                            Start-Sleep -Milliseconds 250
+                        }
+
+                        [void][DeadlimitUpdater.NativeWindow]::PostMessage(
+                            $mainWindow,
+                            0x0010,
+                            [IntPtr]::Zero,
+                            [IntPtr]::Zero)
+                    }
+                }
+
+                foreach ($managerProcess in $managerProcesses) {
+                    try {
+                        if (-not $managerProcess.WaitForExit(60000)) {
+                            throw "timeout"
+                        }
+                    }
+                    catch {
+                        throw "Legacy Deadlimit Manager did not close normally. The update was not applied."
+                    }
+                }
+            }
+            else {
+                throw "Deadlimit Manager is running. Use UPDATE from Deadlimit Manager Settings so it can close safely and restart automatically."
+            }
         }
     }
 
