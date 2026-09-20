@@ -2,7 +2,7 @@
 
 **Ferramentas para artistas que criam mods para Deadlock.**
 
-O Deadlimit reúne o pipeline fragmentado de modding de personagens de Deadlock em um único fluxo de trabalho voltado para artistas: obter os assets originais do jogo, criar modelos e texturas, preparar o projeto para o Reduced CSDK, iterar nas ferramentas de autoria, gerar um VPK e testar o mod no Deadlock retail.
+O Deadlimit reúne as etapas dispersas da criação de mods de personagens de Deadlock em um único fluxo de trabalho voltado para artistas: obter os recursos originais do jogo, criar modelos e texturas, preparar o projeto para o Reduced CSDK, trabalhar nas ferramentas de autoria, gerar um VPK e testar o mod no Deadlock.
 
 Ele elimina grande parte do trabalho repetitivo de Source 2 que normalmente exigiria procurar arquivos dentro de VPKs, editar caminhos de recursos manualmente, mover arquivos entre diferentes ferramentas e reconstruir a mesma estrutura a cada iteração.
 
@@ -51,23 +51,23 @@ O **Deadlimit Manager** é o aplicativo desktop principal e o centro do fluxo de
 
 ### Projetos
 
-Cada mod existe como um projeto separado no Deadlimit Manager. O Manager mantém esses projetos em uma biblioteca e acompanha o personagem selecionado, os arquivos-fonte, o conteúdo de autoria gerado, o slot de release e o estado do pipeline.
+Cada mod existe como um projeto separado no Deadlimit Manager. O Manager mantém esses projetos em uma biblioteca e acompanha o personagem selecionado, os arquivos-fonte, o conteúdo preparado, o Release ID e o estado do projeto.
 
 ### Obter assets originais
 
-Selecione um personagem de Deadlock e o Manager recuperará, a partir dos dados atuais da versão retail do jogo, os recursos originais compatíveis necessários como base de trabalho.
+Selecione um personagem de Deadlock e o Manager recuperará, a partir da versão instalada do jogo, os recursos originais compatíveis necessários como base de trabalho.
 
 Isso substitui a procura manual em VPKs, caminhos de modelos, materiais e dependências relacionadas.
 
 ### Preparar para CSDK
 
-O Manager transforma os arquivos-fonte do artista em um workspace de autoria para o Reduced CSDK.
+O Manager transforma os arquivos-fonte do artista em um ambiente de trabalho editável para o Reduced CSDK.
 
 Ele cuida da organização dos arquivos, de correções conhecidas de exportadores e caminhos, da preparação do modelo, da estrutura inicial de materiais, da associação das texturas e de outras transformações específicas de Source 2 que normalmente exigiriam edição manual de arquivos.
 
 O projeto preparado continua sendo uma etapa de autoria editável. Você pode abri-lo no CSDK/ModelDoc, trabalhar nos materiais e shaders, salvar as alterações e continuar iterando sem transformar o processo em um conversor opaco de um clique.
 
-### Live Sync
+### LIVE SYNC
 
 Mantenha o CSDK aberto enquanto trabalha.
 
@@ -75,9 +75,9 @@ O Deadlimit Manager monitora alterações compatíveis no projeto e as sincroniz
 
 ### Build & Test
 
-Quando o projeto estiver pronto para um teste dentro do jogo, **Build & Test** executa o pipeline do lado da release.
+Quando o projeto estiver pronto para um teste dentro do jogo, **Build & Test** executa as etapas necessárias para gerar e instalar a versão de teste.
 
-O Deadlimit Manager prepara o estado mais recente do projeto, compila os recursos Source 2 alterados, restaura após a compilação os vínculos de animação necessários do personagem, verifica a saída, empacota o addon em um VPK e o implanta no slot local configurado de addons do Deadlock.
+O Deadlimit Manager prepara o estado mais recente do projeto, compila os recursos Source 2 alterados, restaura após a compilação os vínculos de animação necessários do personagem, verifica o resultado, empacota o addon em um VPK e o instala no slot configurado de addons do Deadlock.
 
 A etapa de autoria no CSDK permanece limpa: a correção dos vínculos de animação acontece depois da compilação, permitindo que o artista continue usando o CSDK para trabalhar no ModelDoc e nos materiais antes da build final de teste.
 
@@ -85,13 +85,13 @@ A etapa de autoria no CSDK permanece limpa: a correção dos vínculos de anima�
 
 O Deadlimit Manager também pode importar um `pak##_dir.vpk` existente como projeto.
 
-O payload compilado importado é preservado em vez de passar novamente pelo compilador normal de autoria. Durante **Build & Test**, o Deadlimit Manager pode comparar os vínculos de animação do personagem com o modelo atual do Deadlock retail, corrigir vínculos ausentes ou desatualizados, reconstruir o VPK, verificar o resultado e implantá-lo novamente no slot de release adotado.
+O conteúdo compilado importado é preservado em vez de passar novamente pelo compilador normal de autoria. Durante **Build & Test**, o Deadlimit Manager pode comparar os vínculos de animação do personagem com o modelo atual do Deadlock, corrigir vínculos ausentes ou desatualizados, reconstruir o VPK, verificar o resultado e instalá-lo novamente no mesmo Release ID.
 
 Esse caminho de reparo é propositalmente restrito: ele trata a classe de problemas relacionada a vínculos de animação, sem fingir ser um botão universal capaz de reparar qualquer problema possível em um mod.
 
-### Gerenciamento da toolchain
+### Gerenciamento das ferramentas
 
-O Manager centraliza as ferramentas externas usadas no modding de Deadlock.
+O Manager centraliza as ferramentas externas usadas para criar mods de Deadlock.
 
 Ele pode localizar e validar o Deadlock, gerenciar o Reduced CSDK e o DeadlockTools, verificar o estado das ferramentas compatíveis e executar utilitários auxiliares, como o DepotDownloader, quando um fluxo específico precisar deles.
 
@@ -113,11 +113,11 @@ Bone Tools pode ajustar o comprimento e a espessura visual dos bones com base na
 
 O Deadlimit Scripts facilita a criação e a verificação de Vertex Color antes de o modelo chegar ao jogo.
 
-Você pode transferir cores entre a paleta do objeto e Vertex Color, alternar a exibição no viewport, distribuir dados de Vertex Color/material/paleta entre meshes e preservar a stack de modifiers existente nas operações compatíveis.
+Você pode transferir cores entre a paleta do objeto e Vertex Color, alternar a exibição na janela 3D, distribuir dados de Vertex Color, material e paleta entre objetos e preservar os modificadores existentes nas operações compatíveis.
 
 Para visualização no engine, o Deadlimit Manager pode preparar um material que exibe Vertex Color diretamente no CSDK.
 
-Se um exportador DMX perder Vertex Color, **Export Vertex Color FBX** grava um arquivo auxiliar `*_vertexcolor.fbx`. Durante o Prepare, o Manager pode detectar esse sidecar e transferir automaticamente os dados de cor de volta para a mesh DMX correspondente.
+Se um exportador DMX perder Vertex Color, **Export Vertex Color FBX** grava um arquivo auxiliar `*_vertexcolor.fbx`. Durante o Prepare, o Manager pode detectar esse arquivo auxiliar e transferir automaticamente os dados de cor de volta para a malha DMX correspondente.
 
 ### Inner Lineart
 
@@ -158,7 +158,7 @@ O objetivo é oferecer paridade prática durante a autoria, sem afirmar que o Pa
 ## Fluxo de trabalho
 
 ```text
-Assets do Deadlock retail
+Recursos do Deadlock
         ↓
 Deadlimit Manager
         ↓
@@ -167,7 +167,7 @@ DCC + Deadlimit Scripts
 Substance 3D Painter + Deadlimit Shade
         ↓
 Deadlimit Manager
-Prepare / Live Sync / Build & Test
+Prepare / LIVE SYNC / Build & Test
         ↓
 Reduced CSDK
         ↓
@@ -176,17 +176,17 @@ VPK
 Deadlock retail
 ```
 
-O Deadlimit Shade ainda está em desenvolvimento e é opcional no pipeline atual de autoria de modelos.
+O Deadlimit Shade ainda está em desenvolvimento e é opcional no fluxo atual de autoria de modelos.
 
 ---
 
 ## Status do projeto
 
-O Deadlimit é desenvolvido ativamente em um ecossistema de Deadlock / Source 2 que continua mudando.
+O Deadlimit é desenvolvido ativamente enquanto Deadlock e as ferramentas Source 2 continuam mudando.
 
 Windows é a plataforma atualmente compatível. A implementação incluída do Deadlimit Scripts é baseada em MAXScript, o suporte ao Blender está planejado e o Deadlimit Shade está em desenvolvimento ativo.
 
-Atualizações do jogo e das ferramentas externas podem exigir mudanças no pipeline. As versões testadas e o estado atual de compatibilidade estão em [COMPATIBILITY.md](COMPATIBILITY.md).
+Atualizações do jogo e das ferramentas externas podem exigir mudanças no fluxo de trabalho. As versões testadas e o estado atual de compatibilidade estão em [COMPATIBILITY.md](COMPATIBILITY.md).
 
 ---
 
