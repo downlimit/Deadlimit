@@ -8,7 +8,7 @@ It removes the repetitive Source 2 work that would otherwise mean digging throug
 
 **Free · Open source · Windows**
 
-[Русская версия](README.ru.md)
+[English](README.md) · [Русский](README.ru.md) · [简体中文](README.zh-CN.md) · [Português (Brasil)](README.pt-BR.md)
 
 ---
 

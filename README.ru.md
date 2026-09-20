@@ -8,7 +8,7 @@ Deadlimit собирает основные этапы работы над мо�
 
 **Бесплатно · Открытый исходный код · Windows**
 
-[English version](README.md)
+[English](README.md) · [Русский](README.ru.md) · [简体中文](README.zh-CN.md) · [Português (Brasil)](README.pt-BR.md)
 
 ---
 
