@@ -74,8 +74,10 @@ $projectFilesUi = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ProjectFi
 foreach ($required in @(
     'ToAuthoringDisplayPath(file)',
     'ProjectAuthoringLayout.AuthoringFolderName + "/"',
-    'CreateFileColumn("PNG / TGA / PSD", textureList',
+    '"PNG / TGA / PSD",',
     'textureList.Items.Add(ToAuthoringDisplayPath(file))',
+    'out var dmxTitleLabel',
+    'out var textureTitleLabel',
     'dmxList.MouseDoubleClick',
     'textureList.MouseDoubleClick',
     'AttachBackgroundSelectionClear(form, ClearFileSelection)',
@@ -95,23 +97,26 @@ foreach ($forbidden in @(
 foreach ($required in @(
     'summaryRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50))',
     'summaryRow.RowStyles.Add(new RowStyle(SizeType.Absolute, 16))',
-    'root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34))',
+    'root.RowStyles.Add(new RowStyle(SizeType.Absolute, 18))',
     'TextAlign = ContentAlignment.MiddleLeft',
-    'AUTHORING MODELS:',
-    'АВТОРСКИЕ МОДЕЛИ:',
-    'AUTHORING TEXTURES:',
-    'АВТОРСКИЕ ТЕКСТУРЫ:',
     'MAIN FILE:',
     'ГЛАВНЫЙ ФАЙЛ:',
-    'SOURCE FILES:',
-    'ИСХОДНЫЕ ФАЙЛЫ:'
+    'SOURCE FILE COUNT:',
+    'КОЛИЧЕСТВО ИСХОДНЫХ ФАЙЛОВ:',
+    'DMX / FBX / glTF: {modelCount} files',
+    'DMX / FBX / glTF: {modelCount} файлов',
+    'PNG / TGA / PSD: {scan.PngTextures.Count} files',
+    'PNG / TGA / PSD: {scan.PngTextures.Count} файлов'
 )) {
     Assert-Contains $projectFilesUi $required 'Compact project file summary'
 }
 foreach ($forbidden in @(
     'TextAlign = ContentAlignment.MiddleCenter',
     'ОСНОВНОЙ ФАЙЛ:',
-    'SOURCE:'
+    'AUTHORING MODELS:',
+    'АВТОРСКИЕ МОДЕЛИ:',
+    'AUTHORING TEXTURES:',
+    'АВТОРСКИЕ ТЕКСТУРЫ:'
 )) {
     Assert-NotContains $projectFilesUi $forbidden 'Compact project file summary'
 }
