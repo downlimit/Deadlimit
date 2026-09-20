@@ -415,8 +415,8 @@ runtime-probe proof directory show restored diffuse brightness and copper
 response after retiring the old environment strength 0.18 and roughness bias
 0.12 (neutral defaults are 1 and 0). Painter was left in Material / Retail,
 Shaded. Existing camera, environment and outline were preserved. Static profile,
-Apply and retail-texture contracts and git diff --check passed. No commit was
-made: this is visible progress on the reconstruction slice, not full parity.
+Apply and retail-texture contracts and `git diff --check` passed. This remained
+an investigative reconstruction state rather than a promoted full-parity baseline.
 Next unresolved boundary is Source 2 environment BRDF lookup/multiple scattering
 (captured instructions 834-862) and final display transform. Do not resume
 arbitrary lobe calibration or repeat environment-rotation tests without new evidence.
@@ -449,8 +449,8 @@ iteration therefore did not establish visual progress.
 
 ### 2026-09-13 subsequent real viewport check
 
-Painter became capturable after user moved it to another monitor and the
-window was activated. Neutral Composite rendered, but isolated captured specular
+Painter became capturable after the window was moved to another monitor and
+reactivated. Neutral Composite rendered, but isolated captured specular
 was black and metallic regions failed. Debug 24 proved LUT sampling was nonzero;
 debug 25 compared a known nonzero atlas texel at top-down V and flipped V.
 Only flipped V produced the expected grey. Atlas sampling now flips V from image
@@ -487,7 +487,7 @@ and unconfirmed current retail equivalence. Do not label the decomposition compl
 A checkpoint commit preserved source, tests and documentation before the next
 investigation stage despite the pending full visual gate. It is not a release or
 an accepted Deadlock viewport match.
-Local captures, decoded assets, SPP, scratch data and user worktrees are excluded.
+Local captures, decoded assets, SPP, scratch data and local worktrees are excluded.
 
 ### Post-checkpoint implementation — 2026-09-13
 
