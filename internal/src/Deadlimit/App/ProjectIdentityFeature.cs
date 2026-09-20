@@ -11,18 +11,15 @@ internal static class ProjectIdentityFeature
 
     public static void Attach(MainForm form)
     {
-        var projectNameLabel = FindDescendants<Label>(form)
-            .FirstOrDefault(label =>
-                string.Equals(label.Text, "Project name", StringComparison.Ordinal)
-                || string.Equals(label.Text, "Имя проекта", StringComparison.Ordinal));
-        if (projectNameLabel?.Parent is not TableLayoutPanel grid)
+        var projectNameText = FindDescendants<TextBox>(form)
+            .FirstOrDefault(textBox => textBox.Name == UiControlNames.ProjectName);
+        if (projectNameText?.Parent is not TableLayoutPanel grid)
         {
             return;
         }
 
-        var projectNameRow = grid.GetRow(projectNameLabel);
-        var projectNameText = grid.GetControlFromPosition(1, projectNameRow) as TextBox;
-        if (projectNameText is null)
+        var projectNameRow = grid.GetRow(projectNameText);
+        if (grid.GetControlFromPosition(0, projectNameRow) is not Label projectNameLabel)
         {
             return;
         }
@@ -55,9 +52,7 @@ internal static class ProjectIdentityFeature
     {
         var openFolderButton = grid.Controls
             .OfType<Button>()
-            .FirstOrDefault(button =>
-                string.Equals(button.Text, "OPEN FOLDER", StringComparison.Ordinal)
-                || string.Equals(button.Text, "ОТКРЫТЬ ПАПКУ", StringComparison.Ordinal));
+            .FirstOrDefault(button => button.Name == UiControlNames.OpenProjectFolderButton);
         var extractButton = FindDescendants<Button>(form)
             .FirstOrDefault(button => string.Equals(
                 button.Name,
@@ -121,9 +116,7 @@ internal static class ProjectIdentityFeature
     {
         var saveButton = grid.Controls
             .OfType<Button>()
-            .FirstOrDefault(button =>
-                string.Equals(button.Text, "SAVE PROJECT", StringComparison.Ordinal)
-                || string.Equals(button.Text, "СОХРАНИТЬ ПРОЕКТ", StringComparison.Ordinal));
+            .FirstOrDefault(button => button.Name == UiControlNames.SaveProjectButton);
         if (saveButton is null)
         {
             return;
@@ -146,22 +139,23 @@ internal static class ProjectIdentityFeature
 
     private static void ReplaceReleaseIdWithNumericControl(TableLayoutPanel grid)
     {
-        var releaseLabel = grid.Controls
-            .OfType<Label>()
-            .FirstOrDefault(label => string.Equals(label.Text, "Release ID", StringComparison.Ordinal));
-        if (releaseLabel is null)
+        var backingReleaseText = grid.Controls
+            .OfType<TextBox>()
+            .FirstOrDefault(textBox => textBox.Name == UiControlNames.ReleaseIdBacking);
+        if (backingReleaseText is null)
         {
             return;
         }
 
-        var row = grid.GetRow(releaseLabel);
-        if (grid.GetControlFromPosition(1, row) is not TextBox backingReleaseText)
+        var row = grid.GetRow(backingReleaseText);
+        if (grid.GetControlFromPosition(0, row) is not Label releaseLabel)
         {
             return;
         }
 
         var releaseId = new ReleaseIdNumericUpDown
         {
+            Name = UiControlNames.ReleaseId,
             Dock = DockStyle.Fill,
             Margin = new Padding(0, 4, 8, 4),
         };
@@ -245,7 +239,7 @@ internal static class ProjectIdentityFeature
     {
         foreach (Control control in grid.Controls)
         {
-            if (control is TextBox textBox && textBox.ReadOnly)
+            if (control is TextBox textBox && textBox.Name == UiControlNames.ProjectFolder)
             {
                 return textBox;
             }

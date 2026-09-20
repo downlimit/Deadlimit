@@ -7,27 +7,21 @@ internal static class ProjectFilesFeature
     public static void Attach(MainForm form)
     {
         var assetsGroup = FindDescendants<GroupBox>(form)
-            .FirstOrDefault(group =>
-                string.Equals(group.Text, "Detected in 1authoring", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Найдено в 1authoring", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Project files", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Файлы проекта", StringComparison.Ordinal));
+            .FirstOrDefault(group => group.Name == UiControlNames.ProjectFilesGroup);
         if (assetsGroup is null)
         {
             return;
         }
 
         var projectGroup = FindDescendants<GroupBox>(form)
-            .FirstOrDefault(group =>
-                string.Equals(group.Text, "Project", StringComparison.Ordinal)
-                || string.Equals(group.Text, "Проект", StringComparison.Ordinal));
+            .FirstOrDefault(group => group.Name == UiControlNames.ProjectGroup);
         if (projectGroup is null)
         {
             return;
         }
 
         var folderText = FindDescendants<TextBox>(projectGroup)
-            .FirstOrDefault(textBox => textBox.ReadOnly);
+            .FirstOrDefault(textBox => textBox.Name == UiControlNames.ProjectFolder);
         if (folderText is null)
         {
             return;
@@ -242,18 +236,14 @@ internal static class ProjectFilesFeature
         form.Activated += (_, _) => Refresh();
 
         var saveButton = FindDescendants<Button>(projectGroup)
-            .FirstOrDefault(button =>
-                string.Equals(button.Text, "SAVE PROJECT", StringComparison.Ordinal)
-                || string.Equals(button.Text, "СОХРАНИТЬ ПРОЕКТ", StringComparison.Ordinal));
+            .FirstOrDefault(button => button.Name == UiControlNames.SaveProjectButton);
         if (saveButton is not null)
         {
             saveButton.Click += (_, _) => form.BeginInvoke((Action)Refresh);
         }
 
         var extractButton = FindDescendants<Button>(form)
-            .FirstOrDefault(button =>
-                string.Equals(button.Text, "EXTRACT SOURCE", StringComparison.Ordinal)
-                || string.Equals(button.Text, "ИЗВЛЕЧЬ ИСХОДНИКИ", StringComparison.Ordinal));
+            .FirstOrDefault(button => button.Name == UiControlNames.ExtractHeroSourceButton);
         if (extractButton is not null)
         {
             extractButton.EnabledChanged += (_, _) =>

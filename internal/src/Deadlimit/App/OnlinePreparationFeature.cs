@@ -20,17 +20,11 @@ internal static class OnlinePreparationFeature
     public static void Attach(MainForm form)
     {
         var prepareButton = FindDescendants<Button>(form)
-            .FirstOrDefault(button =>
-                string.Equals(button.Text, "PREPARE FOR CSDK", StringComparison.Ordinal)
-                || string.Equals(button.Text, "ПОДГОТОВИТЬ ДЛЯ CSDK", StringComparison.Ordinal));
+            .FirstOrDefault(button => button.Name == UiControlNames.PrepareButton);
         var buildButton = FindDescendants<Button>(form)
-            .FirstOrDefault(button =>
-                string.Equals(button.Text, "BUILD FOR TEST", StringComparison.Ordinal)
-                || string.Equals(button.Text, "СОБРАТЬ ДЛЯ ТЕСТА", StringComparison.Ordinal));
+            .FirstOrDefault(button => button.Name == UiControlNames.BuildForTestButton);
         var launchButton = FindDescendants<Button>(form)
-            .FirstOrDefault(button =>
-                string.Equals(button.Text, "LAUNCH CSDK", StringComparison.Ordinal)
-                || string.Equals(button.Text, "ЗАПУСТИТЬ CSDK", StringComparison.Ordinal));
+            .FirstOrDefault(button => button.Name == UiControlNames.LaunchCsdkButton);
         if (prepareButton is null || launchButton is null)
         {
             return;
@@ -568,11 +562,9 @@ internal static class OnlinePreparationFeature
         }
 
         return FindDescendants<Button>(_form)
-            .Where(button => button.Text.Contains("PREPARE", StringComparison.OrdinalIgnoreCase)
-                             || button.Text.Contains("ПОДГОТОВ", StringComparison.OrdinalIgnoreCase)
-                             || button.Text.Contains("BUILD", StringComparison.OrdinalIgnoreCase)
-                             || button.Text.Contains("СОБРАТЬ", StringComparison.OrdinalIgnoreCase)
-                             || button.Text.Contains("CSDK", StringComparison.OrdinalIgnoreCase));
+            .Where(button => button.Name is UiControlNames.PrepareButton
+                or UiControlNames.BuildForTestButton
+                or UiControlNames.LaunchCsdkButton);
     }
 
     private static IEnumerable<T> FindDescendants<T>(Control root)

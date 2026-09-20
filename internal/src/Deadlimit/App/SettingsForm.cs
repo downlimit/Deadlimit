@@ -82,15 +82,15 @@ internal sealed class SettingsForm : Form
 
         var languageItems = new[]
         {
-            new LanguageItem("en", "English"),
             new LanguageItem("ru", "Русский"),
+            new LanguageItem("en", "English"),
             new LanguageItem("zh-CN", "简体中文"),
             new LanguageItem("pt-BR", "Português (Brasil)"),
         };
         _languageCombo.Items.AddRange(languageItems);
         _languageCombo.SelectedItem = languageItems.FirstOrDefault(item =>
             string.Equals(item.Code, settings.UiLanguage, StringComparison.OrdinalIgnoreCase))
-            ?? languageItems[0];
+            ?? languageItems.First(item => string.Equals(item.Code, "en", StringComparison.OrdinalIgnoreCase));
 
         _themeCombo.Items.Add(new ThemeItem("system", UiText.T("System", "Системная")));
         _themeCombo.Items.Add(new ThemeItem("light", UiText.T("Light", "Светлая")));
@@ -1572,5 +1572,4 @@ internal sealed class SettingsForm : Form
         public override string ToString() => Label;
     }
 }
-
 
