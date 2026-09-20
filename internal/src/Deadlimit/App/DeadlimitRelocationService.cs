@@ -8,6 +8,9 @@ internal static class DeadlimitRelocationService
 {
     public static async Task PrepareRelocationAsync(string targetRoot)
     {
+        ApplicationMutationCoordinator.ThrowIfBusy("Deadlimit relocation");
+        using var mutation = ApplicationMutationCoordinator.Begin("Deadlimit relocation");
+
         var sourceRoot = NormalizeRoot(DeadlimitPaths.DefaultDeadlimitRoot);
         var destinationRoot = NormalizeRoot(targetRoot);
         ValidateRoots(sourceRoot, destinationRoot);

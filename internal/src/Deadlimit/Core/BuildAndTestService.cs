@@ -109,7 +109,7 @@ public sealed class BuildAndTestService
     {
         ValidateEnvironment(manifest);
         var slotOwnership = new VpkSlotOwnershipService(_paths);
-        slotOwnership.EnsureSlotAvailable(manifest);
+        var slotSnapshot = slotOwnership.EnsureSlotAvailable(manifest);
 
         var releaseSlot = ParseReleaseSlot(manifest.ReleaseTarget);
         var addonIdentity = new AddonIdentityService(_paths).ResolveAndClaim(manifest);
@@ -445,7 +445,12 @@ public sealed class BuildAndTestService
                 packagingExclusions,
                 log,
                 progress,
-                cancellationToken);
+                cancellationToken,
+                () =>
+                {
+                    slotOwnership.EnsureSlotUnchanged(manifest, slotSnapshot);
+                    log.AppendLine("Retail VPK slot identity revalidated at the deployment commit boundary.");
+                });
             slotOwnership.RecordSuccessfulDeployment(manifest, vpkPath);
             log.AppendLine("VPK slot ownership updated by the deployment transaction.");
             AppendStageTiming(log, "Retail reuse analysis and VPK packaging", stageTimer.Elapsed);
@@ -1292,7 +1297,8 @@ public sealed class BuildAndTestService
         IReadOnlySet<string> excludedRelativePaths,
         StringBuilder log,
         IProgress<BuildAndTestProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Action beforeDeploy)
     {
         if (!Directory.Exists(addonGameRoot))
         {
@@ -1353,6 +1359,8 @@ public sealed class BuildAndTestService
             Report(progress, 98, "Verifying VPK checksums...");
             VerifyVpk(temporaryVpk);
 
+            cancellationToken.ThrowIfCancellationRequested();
+            beforeDeploy();
             DeployVerifiedVpkFamily(temporaryVpk, outputVpk, log);
             log.AppendLine();
             log.AppendLine("[ValvePak in-process packaging]");

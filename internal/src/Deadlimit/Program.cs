@@ -83,6 +83,12 @@ internal static class Program
 
         if (startupSmoke)
         {
+            var mutationCoordinatorResult = ApplicationMutationCoordinator.RunSmoke();
+            if (mutationCoordinatorResult != 0)
+            {
+                return 5 + mutationCoordinatorResult;
+            }
+
             var vpkOwnershipResult = VpkSlotOwnershipSmoke.Run();
             if (vpkOwnershipResult != 0)
             {

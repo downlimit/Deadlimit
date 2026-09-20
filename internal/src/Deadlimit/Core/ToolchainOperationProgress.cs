@@ -33,21 +33,31 @@ internal static class ToolchainOperationHub
         CancellationToken externalToken,
         string initialMessage)
     {
+        var mutation = ApplicationMutationCoordinator.Begin(
+            target == ToolchainOperationTarget.Csdk ? "CSDK toolchain operation" : "DeadlockTools operation");
         CancellationTokenSource linked;
-        lock (Sync)
+        try
         {
+            lock (Sync)
+            {
             if (_activeCancellation is not null)
             {
                 throw new InvalidOperationException(UiTextBridge.T("Another toolchain operation is already running.", "Другая операция с инструментами уже выполняется."));
             }
 
-            _activeCancellation = new CancellationTokenSource();
-            _activeTarget = target;
-            linked = CancellationTokenSource.CreateLinkedTokenSource(externalToken, _activeCancellation.Token);
+                _activeCancellation = new CancellationTokenSource();
+                _activeTarget = target;
+                linked = CancellationTokenSource.CreateLinkedTokenSource(externalToken, _activeCancellation.Token);
+            }
+        }
+        catch
+        {
+            mutation.Dispose();
+            throw;
         }
 
         Publish(new(target, ToolchainOperationState.Running, initialMessage, 0));
-        return new OperationScope(target, linked);
+        return new OperationScope(target, linked, mutation);
     }
 
     public static void CancelActive()
@@ -121,12 +131,17 @@ internal static class ToolchainOperationHub
     internal sealed class OperationScope : IDisposable
     {
         private readonly CancellationTokenSource _linkedCancellation;
+        private readonly IDisposable _mutation;
         private bool _disposed;
 
-        internal OperationScope(ToolchainOperationTarget target, CancellationTokenSource linkedCancellation)
+        internal OperationScope(
+            ToolchainOperationTarget target,
+            CancellationTokenSource linkedCancellation,
+            IDisposable mutation)
         {
             Target = target;
             _linkedCancellation = linkedCancellation;
+            _mutation = mutation;
         }
 
         public ToolchainOperationTarget Target { get; }
@@ -142,6 +157,7 @@ internal static class ToolchainOperationHub
 
             _disposed = true;
             _linkedCancellation.Dispose();
+            _mutation.Dispose();
         }
     }
 

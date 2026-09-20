@@ -83,6 +83,83 @@ internal static class VpkSlotOwnershipSmoke
                 // Expected: external replacement invalidates the recorded family fingerprint.
             }
 
+            var legacyProjectFolder = Path.Combine(projectsRoot, "LegacyIvy");
+            Directory.CreateDirectory(ProjectStore.GetMetadataFolder(legacyProjectFolder));
+            var legacyManifest = new ProjectManifest
+            {
+                SchemaVersion = 4,
+                Mode = ProjectMode.Authoring,
+                ProjectId = AddonIdentityService.CreateProjectId(),
+                ProjectName = "LegacyIvy",
+                ProjectFolder = legacyProjectFolder,
+                Hero = "ivy",
+                ReleaseTarget = "43",
+            };
+            var legacyVpk = Path.Combine(addonsRoot, "pak43_dir.vpk");
+            WriteVpk(legacyVpk, [3, 3, 3, 3]);
+            File.WriteAllText(
+                Path.Combine(ProjectStore.GetMetadataFolder(legacyProjectFolder), "build-test-state.json"),
+                "{}");
+
+            try
+            {
+                _ = ownership.EnsureSlotAvailable(legacyManifest);
+                return 5;
+            }
+            catch (LegacyVpkOwnershipException)
+            {
+                // Expected: legacy state alone cannot silently claim an existing VPK.
+            }
+
+            var adoptedLegacy = ownership.AdoptLegacySlot(legacyManifest);
+            if (!adoptedLegacy.OwnedByProject
+                || !adoptedLegacy.LegacyOwnershipAdopted
+                || string.IsNullOrWhiteSpace(adoptedLegacy.ExistingFamilySha256))
+            {
+                return 6;
+            }
+
+            var deploymentSnapshot = ownership.EnsureSlotAvailable(legacyManifest);
+            foreach (var familyFile in VpkArchiveIdentityService.EnumerateFamily(legacyVpk))
+            {
+                File.Delete(familyFile);
+            }
+            WriteVpk(legacyVpk, [4, 4, 4, 4]);
+            try
+            {
+                ownership.EnsureSlotUnchanged(legacyManifest, deploymentSnapshot);
+                return 7;
+            }
+            catch (InvalidOperationException)
+            {
+                // Expected: TOCTOU replacement is detected immediately before deployment.
+            }
+
+            var emptyProjectFolder = Path.Combine(projectsRoot, "EmptySlot");
+            Directory.CreateDirectory(emptyProjectFolder);
+            var emptyManifest = new ProjectManifest
+            {
+                SchemaVersion = 5,
+                Mode = ProjectMode.Authoring,
+                ProjectId = AddonIdentityService.CreateProjectId(),
+                ProjectName = "EmptySlot",
+                ProjectFolder = emptyProjectFolder,
+                Hero = "ivy",
+                ReleaseTarget = "44",
+            };
+            var emptySnapshot = ownership.EnsureSlotAvailable(emptyManifest);
+            var appearedVpk = Path.Combine(addonsRoot, "pak44_dir.vpk");
+            WriteVpk(appearedVpk, [5, 5, 5, 5]);
+            try
+            {
+                ownership.EnsureSlotUnchanged(emptyManifest, emptySnapshot);
+                return 8;
+            }
+            catch (InvalidOperationException)
+            {
+                // Expected: a file appearing in a previously empty slot blocks deployment.
+            }
+
             return 0;
         }
         finally

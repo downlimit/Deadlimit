@@ -123,9 +123,20 @@ try {
         }
     }
 
-    # The Manager executable can otherwise stay locked while the updater rebuilds it.
-    Get-Process -Name DeadlimitManager, DeadlimitAggregator, Deadlimit -ErrorAction SilentlyContinue |
-        Stop-Process -Force -ErrorAction SilentlyContinue
+    # Updating while the Manager is active can interrupt PREPARE/BUILD/deployment
+    # transactions and leave external state half-written. Never force-kill it.
+    $managerProcesses = @(Get-Process -Name DeadlimitManager, DeadlimitAggregator, Deadlimit -ErrorAction SilentlyContinue)
+    if ($managerProcesses.Count -gt 0) {
+        Write-Host "Waiting for Deadlimit Manager to close normally..."
+        foreach ($managerProcess in $managerProcesses) {
+            try {
+                Wait-Process -Id $managerProcess.Id -Timeout 15 -ErrorAction Stop
+            }
+            catch {
+                throw "Deadlimit Manager is still running. Close it normally, then run Deadlimit Updater again."
+            }
+        }
+    }
 
     Write-Host "Updating the Deadlimit repository from origin/main..."
     & $git.Source -C $rootPath merge --ff-only origin/main

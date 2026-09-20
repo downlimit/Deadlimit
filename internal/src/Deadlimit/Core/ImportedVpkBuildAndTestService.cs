@@ -113,7 +113,12 @@ internal sealed class ImportedVpkBuildAndTestService
                 repack,
                 slotCheck.VpkPath,
                 cancellationToken,
-                log);
+                log,
+                () =>
+                {
+                    slotGuard.EnsureSlotUnchanged(manifest, slotCheck);
+                    log.AppendLine("Retail VPK slot identity revalidated at the deployment commit boundary.");
+                });
 
             slotGuard.RecordSuccessfulDeployment(manifest, deployedVpk);
 
@@ -197,7 +202,8 @@ internal sealed class ImportedVpkBuildAndTestService
         ImportedVpkRepackResult repack,
         string retailVpkPath,
         CancellationToken cancellationToken,
-        StringBuilder log)
+        StringBuilder log,
+        Action beforeCommit)
     {
         var sourceVpk = Path.GetFullPath(repack.OutputVpkPath);
         var destinationVpk = Path.GetFullPath(retailVpkPath);
@@ -243,6 +249,9 @@ internal sealed class ImportedVpkBuildAndTestService
                 File.Copy(source, staged, overwrite: false);
             }
             VerifyArchive(stagedVpk, repack);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            beforeCommit();
 
             foreach (var existing in VpkArchiveIdentityService.EnumerateFamily(destinationVpk))
             {

@@ -171,6 +171,7 @@ internal static class OnlinePreparationFeature
                 }
             });
 
+            using var mutation = ApplicationMutationCoordinator.Begin("ONLINE PREPARATION");
             var paths = new DeadlimitPaths();
             var prepareService = new PrepareAuthoringService(paths);
             await prepareService.PrepareAsync(manifest, progress);

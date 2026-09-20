@@ -75,6 +75,21 @@ internal static class BuildFeature
         var csdkIsRunning = false;
         CancellationTokenSource? prepareCancellation = null;
         CancellationTokenSource? buildCancellation = null;
+        var closeRequested = false;
+
+        void CloseAfterActiveOperationIfRequested()
+        {
+            if (!closeRequested
+                || prepareCancellation is not null
+                || buildCancellation is not null
+                || form.IsDisposed
+                || !form.IsHandleCreated)
+            {
+                return;
+            }
+
+            form.BeginInvoke((Action)form.Close);
+        }
 
         bool IsOnlineCsdkState() =>
             launchCsdkButton.Text.Contains("CSDK", StringComparison.OrdinalIgnoreCase)
@@ -187,6 +202,7 @@ internal static class BuildFeature
             finally
             {
                 prepareCancellation = null;
+                CloseAfterActiveOperationIfRequested();
             }
         };
         buildAndTestButton.Click += async (_, _) =>
@@ -214,6 +230,7 @@ internal static class BuildFeature
             finally
             {
                 buildCancellation = null;
+                CloseAfterActiveOperationIfRequested();
             }
         };
         launchCsdkButton.Click += async (_, _) =>
@@ -272,10 +289,32 @@ internal static class BuildFeature
             _ = RefreshCsdkButtonStateAsync();
         };
         form.Activated += (_, _) => _ = RefreshCsdkButtonStateAsync();
+        form.FormClosing += (_, args) =>
+        {
+            if (prepareCancellation is null && buildCancellation is null)
+            {
+                return;
+            }
+
+            closeRequested = true;
+            args.Cancel = true;
+            if (prepareCancellation is not null)
+            {
+                RequestCancellation(
+                    prepareButton,
+                    prepareCancellation,
+                    UiText.T("CANCELLING PREPARATION...", "ОТМЕНА ПОДГОТОВКИ..."));
+            }
+            if (buildCancellation is not null)
+            {
+                RequestCancellation(
+                    buildAndTestButton,
+                    buildCancellation,
+                    UiText.T("CANCELLING BUILD...", "ОТМЕНА СБОРКИ..."));
+            }
+        };
         form.FormClosed += (_, _) =>
         {
-            prepareCancellation?.Cancel();
-            buildCancellation?.Cancel();
             csdkStateTimer.Stop();
             csdkStateTimer.Dispose();
         };
@@ -305,6 +344,12 @@ internal static class BuildFeature
                 "Deadlimit Manager",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
+            return;
+        }
+
+        using var mutation = TryBeginMutation(form, "PREPARE FOR CSDK");
+        if (mutation is null)
+        {
             return;
         }
 
@@ -484,6 +529,12 @@ internal static class BuildFeature
             return;
         }
 
+        using var mutation = TryBeginMutation(form, "BUILD FOR TEST");
+        if (mutation is null)
+        {
+            return;
+        }
+
         var deadlockWasRunning = DeadlockProcessService.IsRunning();
         if (deadlockWasRunning)
         {
@@ -545,9 +596,32 @@ internal static class BuildFeature
                 UiText.T("Checking Deadlock game-client VPK release slot...", "Проверка слота VPK игрового клиента Deadlock..."),
                 1));
             var slotGuard = new VpkSlotOwnershipService(paths);
-            var slotCheck = await Task.Run(
-                () => slotGuard.EnsureSlotAvailable(manifest),
-                cancellationToken);
+            VpkSlotOwnershipCheck slotCheck;
+            try
+            {
+                slotCheck = await Task.Run(
+                    () => slotGuard.EnsureSlotAvailable(manifest),
+                    cancellationToken);
+            }
+            catch (LegacyVpkOwnershipException legacyOwnership)
+            {
+                var adopt = MessageBox.Show(
+                    form,
+                    UiText.T(
+                        $"This project has legacy BUILD FOR TEST state, but that old state cannot prove ownership of the existing retail VPK.\n\nVPK:\n{legacyOwnership.VpkPath}\n\nAdopt the current VPK as belonging to this project? Deadlimit will record its cryptographic identity before continuing and will stop if the file changes later.",
+                        $"У проекта есть старое состояние BUILD FOR TEST, но оно не может доказать владение существующим retail VPK.\n\nVPK:\n{legacyOwnership.VpkPath}\n\nПринять текущий VPK как принадлежащий этому проекту? Deadlimit сначала запишет его криптографическую идентичность и остановит сборку, если файл затем изменится."),
+                    UiText.T("Adopt legacy VPK slot", "Принять старый VPK-слот"),
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+                if (adopt != DialogResult.Yes)
+                {
+                    return;
+                }
+
+                slotCheck = await Task.Run(
+                    () => slotGuard.AdoptLegacySlot(manifest),
+                    cancellationToken);
+            }
 
             if (forceFullRebuild)
             {
@@ -622,8 +696,19 @@ internal static class BuildFeature
                 UiText.T("FINALIZING BUILD...", "ЗАВЕРШЕНИЕ СБОРКИ..."));
             if (forceStateBackupPath is not null && File.Exists(forceStateBackupPath))
             {
-                File.Delete(forceStateBackupPath);
-                forceStateBackupPath = null;
+                try
+                {
+                    File.Delete(forceStateBackupPath);
+                }
+                catch (Exception cleanupError) when (cleanupError is IOException or UnauthorizedAccessException)
+                {
+                    // The new build state and deployed VPK are already committed.
+                    // A stale force-backup is harmless and must never roll state back.
+                }
+                finally
+                {
+                    forceStateBackupPath = null;
+                }
             }
 
             if (manifest.Mode == ProjectMode.ImportedVpk)
@@ -641,8 +726,8 @@ internal static class BuildFeature
                 : string.Empty;
             var legacySlotSummary = slotCheck.LegacyOwnershipAdopted
                 ? UiText.T(
-                    "\nVPK slot ownership: adopted from the previous legacy Deadlimit build state.",
-                    "\nVPK-слот: владение принято из предыдущего legacy-состояния сборки Deadlimit.")
+                    "\nVPK slot ownership: explicitly adopted from legacy Deadlimit build state and fingerprinted before this build.",
+                    "\nVPK-слот: старое владение явно подтверждено пользователем и зафиксировано криптографически перед этой сборкой.")
                 : string.Empty;
             var forceSummary = forceFullRebuild
                 ? UiText.T("\nForced full rebuild: yes (SHIFT).", "\nПринудительная полная пересборка: да (SHIFT).")
@@ -967,6 +1052,24 @@ internal static class BuildFeature
                 UiText.T("Could not launch CSDK", "CSDK не удалось запустить"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
+        }
+    }
+
+    private static IDisposable? TryBeginMutation(MainForm form, string operation)
+    {
+        try
+        {
+            return ApplicationMutationCoordinator.Begin(operation);
+        }
+        catch (InvalidOperationException ex)
+        {
+            MessageBox.Show(
+                form,
+                ex.Message,
+                UiText.T("Operation in progress", "Операция выполняется"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return null;
         }
     }
 
