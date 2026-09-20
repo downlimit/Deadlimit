@@ -21,6 +21,10 @@ $requiredHeader = @(
     'await DeadlockProcessService.IsRunningAsync()',
     'gameStateProbeActive',
     'ApplyGameButtonState();',
+    'Task.Run(TryLaunchDeadlockExecutable)',
+    'ProjectStore.GetToolPathSettings().RetailDeadlockRoot',
+    'DeadlockInstallLocator.FindInstallation()',
+    'Arguments = "-steam -console -console"',
     'Task.Run(TryLaunchDeadlockThroughSteamExecutable)',
     'await DeadlockProcessService.CloseAsync()',
     'UiText.T("✕  CLOSE", "✕  ЗАКРЫТЬ")',
@@ -38,6 +42,12 @@ foreach ($pattern in $requiredHeader) {
 }
 if ($header.Contains('DeadlockProcessService.IsRunning()')) {
     throw 'ProjectHeaderFeature must not enumerate Deadlock processes on the UI thread.'
+}
+
+$directLaunchIndex = $header.IndexOf('Task.Run(TryLaunchDeadlockExecutable)', [StringComparison]::Ordinal)
+$steamLaunchIndex = $header.IndexOf('Task.Run(TryLaunchDeadlockThroughSteamExecutable)', [StringComparison]::Ordinal)
+if ($directLaunchIndex -lt 0 -or $steamLaunchIndex -lt 0 -or $directLaunchIndex -ge $steamLaunchIndex) {
+    throw 'Direct retail launch must run before Steam app launch so stale AppID tracking cannot swallow the request.'
 }
 
 $requiredBuildInterlock = @(

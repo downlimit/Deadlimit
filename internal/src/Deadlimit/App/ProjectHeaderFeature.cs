@@ -712,6 +712,11 @@ internal static class ProjectHeaderFeature
 
     private static async Task<bool> LaunchDeadlockAsync(MainForm form)
     {
+        if (await Task.Run(TryLaunchDeadlockExecutable))
+        {
+            return true;
+        }
+
         if (await Task.Run(TryLaunchDeadlockThroughSteamExecutable))
         {
             return true;
@@ -734,6 +739,43 @@ internal static class ProjectHeaderFeature
                 UiText.T("Could not launch Deadlock", "Не удалось запустить Deadlock"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
+            return false;
+        }
+    }
+
+    private static bool TryLaunchDeadlockExecutable()
+    {
+        var configuredRoot = ProjectStore.GetToolPathSettings().RetailDeadlockRoot;
+        var installRoot = !string.IsNullOrWhiteSpace(configuredRoot)
+            ? configuredRoot
+            : DeadlockInstallLocator.FindInstallation();
+        if (string.IsNullOrWhiteSpace(installRoot))
+        {
+            return false;
+        }
+
+        var executable = Path.Combine(installRoot, "game", "bin", "win64", "deadlock.exe");
+        if (!File.Exists(executable))
+        {
+            return false;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = executable,
+                Arguments = "-steam -console -console",
+                WorkingDirectory = Path.GetDirectoryName(executable),
+                UseShellExecute = false,
+            });
+            return true;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException
+            or System.ComponentModel.Win32Exception
+            or IOException
+            or UnauthorizedAccessException)
+        {
             return false;
         }
     }
