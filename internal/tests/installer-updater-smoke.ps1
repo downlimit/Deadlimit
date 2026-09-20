@@ -43,7 +43,7 @@ foreach ($required in @(
     'DEADLIMIT_INSTALLER_PATH',
     '[IO.Path]::GetFullPath($env:DEADLIMIT_INSTALLER_PATH)',
     '$installerDirectory = Split-Path -Parent $installerPath',
-    "$installRoot = Join-Path $installerDirectory 'Deadlimit'",
+    '$installRoot = Join-Path $installerDirectory ''Deadlimit''',
     "Invoke-Git @('clone'",
     "'--branch','main','--single-branch'",
     'Test-LegacyDeadlimitInstallation',
