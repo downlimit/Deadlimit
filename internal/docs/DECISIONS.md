@@ -154,8 +154,9 @@ Implementation, documentation, icons, and source code live under the hidden `int
 
 The repository itself remains complete; hiding files in Explorer is only a local presentation choice.
 
-`Deadlimit.cmd` remains as a neutral compatibility shim for older local
-shortcuts. The obsolete `DeadlimitAggregator*` entry points were retired before
+Obsolete legacy launchers and aggregator entry points are not part of the supported
+public installation. The supported user entry points are `DeadlimitManager.cmd`,
+`DeadlimitUpdater.bat`, and `Install-Deadlimit.cmd`.
 the first public release. New user-facing launch and shortcut surfaces use the
 Deadlimit Manager name.
 
