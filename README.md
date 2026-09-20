@@ -51,7 +51,7 @@ A development checkout requires the .NET 10 SDK. See [CONTRIBUTING.md](CONTRIBUT
 
 ### Projects
 
-Each mod lives as a separate Deadlimit project. Manager keeps projects in a library and tracks the selected character, source files, generated authoring content, release slot, and pipeline state.
+Each mod lives as a separate project in Deadlimit Manager. Manager keeps projects in a library and tracks the selected character, source files, generated authoring content, release slot, and pipeline state.
 
 ### Get original assets
 
