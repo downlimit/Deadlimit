@@ -128,24 +128,6 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Remove obsolete release entries
-        if: >-
-          steps.freshness.outputs.current == 'true' &&
-          steps.version.outputs.tag == 'v0.1.0-beta.3'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-
-          for tag in latest-main v0.1.0-beta.1 v0.1.0-beta.2; do
-            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-              gh release delete "$tag" --cleanup-tag --yes --repo "$GITHUB_REPOSITORY"
-            elif gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
-              gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag"
-            fi
-          done
-
       - name: Prepare installer checksum
         if: steps.freshness.outputs.current == 'true' && steps.existing.outputs.exists != 'true'
         shell: bash
