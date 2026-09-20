@@ -25,7 +25,15 @@ foreach ($path in @(
     'internal/src/Deadlimit/App/OnlinePreparationFeature.cs',
     'internal/src/Deadlimit/App/OnlineCsdkPulseFeature.cs'
 )) {
-    foreach ($legacy in @('ONLINE PREPARATION', 'ОНЛАЙН-ПОДГОТОВКА', 'ONLINE CSDK', 'CSDK ОНЛАЙН')) {
+    foreach ($legacy in @(
+        'ONLINE PREPAR',
+        'Online preparation',
+        'ОНЛАЙН-ПОДГОТОВ',
+        'ONLINE CSDK',
+        'CSDK ОНЛАЙН',
+        'online synchronization',
+        'онлайн-синхрон'
+    )) {
         Assert-NotContains $path $legacy
     }
 }
