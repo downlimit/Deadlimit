@@ -1,8 +1,9 @@
 # Deadlimit Shade — Painter Outline Architecture
 
-Status: architecture decision / prototype pending.
+Status: preview-shell architecture implemented; broader retail-parity validation remains.
 
 Recorded: 2026-09-05.
+Implementation evidence through: 2026-09-13.
 
 ## Goal
 
