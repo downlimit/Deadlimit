@@ -1,7 +1,7 @@
 # Deadlimit Support
 
-Deadlimit is free hobby tooling maintained on a best-effort basis. There is no
-support or compatibility SLA.
+Deadlimit is open-source community tooling maintained on a best-effort basis.
+There is no support or compatibility SLA.
 
 Use [GitHub Issues](https://github.com/downlimit/Deadlimit/issues) for
 reproducible Deadlimit bugs and focused feature proposals. Search existing
