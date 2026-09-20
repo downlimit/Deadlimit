@@ -1,0 +1,217 @@
+name: Publish source milestone
+
+on:
+  workflow_run:
+    workflows: ["Build"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  checks: read
+  actions: read
+
+jobs:
+  publish:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve target commit
+        id: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_run" ]]; then
+            sha="${{ github.event.workflow_run.head_sha }}"
+          else
+            sha="$GITHUB_SHA"
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Wait for required checks
+        if: github.event_name == 'workflow_run'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          set -euo pipefail
+          required=(build dco smoke)
+
+          for attempt in {1..60}; do
+            all_ready=true
+            for name in "${required[@]}"; do
+              conclusion="$(
+                gh api "repos/$GITHUB_REPOSITORY/commits/$TARGET_SHA/check-runs" \
+                  --jq ".check_runs[] | select(.name == \"$name\") | .conclusion" \
+                  | tail -n 1
+              )"
+
+              case "$conclusion" in
+                success) ;;
+                failure|cancelled|timed_out|action_required)
+                  echo "Required check '$name' finished with '$conclusion'."
+                  exit 1
+                  ;;
+                *)
+                  all_ready=false
+                  ;;
+              esac
+            done
+
+            if [[ "$all_ready" == "true" ]]; then
+              exit 0
+            fi
+
+            sleep 10
+          done
+
+          echo "Timed out waiting for required checks."
+          exit 1
+
+      - name: Read release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(
+            sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' \
+              internal/src/Deadlimit/Deadlimit.csproj \
+              | head -n 1
+          )"
+          if [[ -z "$version" ]]; then
+            echo "Deadlimit Manager version was not found."
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether milestone already exists
+        id: existing
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Retire legacy release assets
+        if: >-
+          steps.version.outputs.tag == 'v0.1.0-beta.3' &&
+          steps.existing.outputs.exists != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          latest_release_id="$(
+            gh api "repos/$GITHUB_REPOSITORY/releases/tags/latest-main" \
+              --jq '.id' 2>/dev/null || true
+          )"
+          if [[ -n "$latest_release_id" ]]; then
+            gh api --method DELETE \
+              "repos/$GITHUB_REPOSITORY/releases/$latest_release_id"
+          fi
+
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/latest-main" >/dev/null 2>&1; then
+            gh api --method DELETE \
+              "repos/$GITHUB_REPOSITORY/git/refs/tags/latest-main"
+          fi
+
+          archive_notice='> **Archived source milestone. Do not install Deadlimit from this release. Use the current Install-Deadlimit.cmd linked from the repository README.**'
+
+          for tag in v0.1.0-beta.1 v0.1.0-beta.2; do
+            release_id="$(
+              gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" \
+                --jq '.id' 2>/dev/null || true
+            )"
+            if [[ -z "$release_id" ]]; then
+              continue
+            fi
+
+            asset_ids="$(
+              gh api "repos/$GITHUB_REPOSITORY/releases/$release_id/assets" \
+                --paginate \
+                --jq '.[].id'
+            )"
+            while IFS= read -r asset_id; do
+              if [[ -n "$asset_id" ]]; then
+                gh api --method DELETE \
+                  "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+              fi
+            done <<< "$asset_ids"
+
+            body="$(
+              gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+                --jq '.body // ""'
+            )"
+            if ! grep -Fq 'Archived source milestone' <<< "$body"; then
+              updated_body="$archive_notice"
+              if [[ -n "$body" ]]; then
+                updated_body+=$'\n\n'
+                updated_body+="$body"
+              fi
+              gh api --method PATCH \
+                "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+                -f "body=$updated_body" >/dev/null
+            fi
+          done
+
+      - name: Prepare installer checksum
+        if: steps.existing.outputs.exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum Install-Deadlimit.cmd > Install-Deadlimit.cmd.sha256
+
+      - name: Publish numbered source milestone
+        if: steps.existing.outputs.exists != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          notes="$RUNNER_TEMP/release-notes.md"
+          cat > "$notes" <<EOF
+          Deadlimit $VERSION is a source milestone for the Git-based distribution model.
+
+          **For artists:** use \`Install-Deadlimit.cmd\`. The installer installs and updates Deadlimit Manager from the current \`main\` branch. This tag records the source state at the $VERSION milestone; it is not a frozen binary package.
+
+          No Deadlimit binary ZIP is published. The only user-facing release assets are the installer and its SHA-256 checksum. GitHub's automatic **Source code** archives are source snapshots, not installer packages.
+
+          See \`CHANGELOG.md\` for the milestone changes.
+          EOF
+
+          prerelease=()
+          if [[ "$VERSION" == *-* ]]; then
+            prerelease+=(--prerelease)
+          fi
+
+          gh release create "$TAG" \
+            Install-Deadlimit.cmd \
+            Install-Deadlimit.cmd.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "Deadlimit $VERSION" \
+            --notes-file "$notes" \
+            "${prerelease[@]}"

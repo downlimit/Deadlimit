@@ -6,6 +6,10 @@ historical source milestones. Dates use `YYYY-MM-DD`.
 
 ## Unreleased
 
+No user-facing changes recorded yet.
+
+## 0.1.0-beta.3 - 2026-09-20
+
 ### Changed
 
 - The one-file installer uses Git for Windows and the .NET 10 SDK, asks before
@@ -13,10 +17,13 @@ historical source milestones. Dates use `YYYY-MM-DD`.
   builds Deadlimit Manager locally.
 - Every supported installation now updates through the existing Git
   fast-forward/rebuild path.
-- The portable ZIP, `latest-main` rolling release channel, package checksums,
-  package rollback payload, and package-specific release policy were retired.
-- CI no longer uploads the identifier-audit artifact or publishes Deadlimit
-  release assets after every merge.
+- The portable ZIP, `latest-main` rolling release channel, package rollback
+  payload, and package-specific release policy were retired.
+- Numbered GitHub releases are source milestones. Their only user-facing
+  downloadable assets are `Install-Deadlimit.cmd` and its SHA-256 checksum;
+  no Deadlimit binary ZIP is published.
+- CI no longer uploads the identifier-audit artifact or publishes large
+  per-merge release packages.
 - User settings and caches use the centralized `%LocalAppData%\Deadlimit`
   location for all supported installations.
 - Settings shows Deadlimit Manager as the first tool row, including the current
@@ -25,11 +32,13 @@ historical source milestones. Dates use `YYYY-MM-DD`.
   discovery instead of maintainer-workstation drive paths.
 - Obsolete `DeadlimitAggregator*` compatibility entry points remain retired;
   `Deadlimit.cmd` stays as the neutral legacy shim.
+- Public project documentation was rebuilt around the artist workflow and now
+  includes English, Russian, Simplified Chinese, and Brazilian Portuguese
+  landing pages.
 
 ### Added
 
 - MIT licensing and DCO-based contribution policy.
-- English and Russian public project guides.
 - Community health, support, security, ownership, issue, and pull-request files.
 - Dependency, external-tool, compatibility, and network trust documentation.
 - CI policy rejecting retail game resources, extracted content paths,
@@ -42,6 +51,16 @@ historical source milestones. Dates use `YYYY-MM-DD`.
 - Final 822-commit history scan found no configured high-confidence secret
   signatures or prohibited historical asset paths on 2026-09-05.
 
-## 0.1.0-beta.1
+## 0.1.0-beta.2 - 2026-09-05
+
+### Changed
+
+- Established the canonical product names **Deadlimit Manager**,
+  **Deadlimit Scripts**, and **Deadlimit Shade**.
+- Renamed the bundled scripting product and source layout from the earlier
+  Max-focused naming to **Deadlimit Scripts**, while retaining MAXScript
+  implementation identifiers where compatibility requires them.
+
+## 0.1.0-beta.1 - 2026-09-05
 
 First public beta milestone.
