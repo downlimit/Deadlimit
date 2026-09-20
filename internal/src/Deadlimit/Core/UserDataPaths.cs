@@ -3,22 +3,13 @@ namespace Deadlimit.Core;
 public static class UserDataPaths
 {
     private const string ProductFolderName = "Deadlimit";
-    private const string PortableFolderName = "UserData";
 
-    public static string Root => ResolveRoot(AppContext.BaseDirectory);
+    public static string Root => ResolveRoot();
 
-    internal static string ResolveRoot(string applicationRoot)
-    {
-        var root = Path.GetFullPath(applicationRoot);
-        if (ReleaseChannelPolicy.IsPortableReleaseRoot(root))
-        {
-            return Path.Combine(root, PortableFolderName);
-        }
-
-        return Path.Combine(
+    internal static string ResolveRoot() =>
+        Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             ProductFolderName);
-    }
 
     public static string Combine(params string[] paths)
     {

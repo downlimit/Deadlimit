@@ -38,7 +38,6 @@ internal sealed class SettingsForm : Form
 
     private readonly RichToolTip _toolTip = new();
     private readonly ToolchainDependencyService _toolchain = new();
-    private readonly bool _allowUnverifiedToolchainAutomation = ReleaseChannelPolicy.AllowsUnverifiedToolchainAutomation;
     private readonly List<Button> _pathButtons = [];
     private readonly string _initialProjectsRoot;
     private readonly string _initialCsdkRoot;
@@ -372,11 +371,9 @@ internal sealed class SettingsForm : Form
 
         _toolTip.SetToolTip(
             _csdkPrimaryButton,
-            _allowUnverifiedToolchainAutomation
-                ? UiText.T(
+            UiText.T(
                     "**INSTALL…** selects an empty folder and downloads the current Reduced CSDK.\n\n**UPDATE…** overlays the current distribution onto the configured CSDK folder.\n\n**CHECK** validates the installation and checks the latest published CSDK generation.",
-                    "**УСТАНОВИТЬ…** выбирает пустую папку и скачивает актуальный Reduced CSDK.\n\n**ОБНОВИТЬ…** накладывает актуальный дистрибутив поверх настроенной папки CSDK.\n\n**ПРОВЕРИТЬ** валидирует установку и проверяет последнее опубликованное поколение CSDK.")
-                : PortableToolchainNotice());
+                    "**УСТАНОВИТЬ…** выбирает пустую папку и скачивает актуальный Reduced CSDK.\n\n**ОБНОВИТЬ…** накладывает актуальный дистрибутив поверх настроенной папки CSDK.\n\n**ПРОВЕРИТЬ** валидирует установку и проверяет последнее опубликованное поколение CSDK."));
         _toolTip.SetToolTip(
             _csdkSetupButton,
             UiText.T(
@@ -402,11 +399,9 @@ internal sealed class SettingsForm : Form
         _deadlockToolsPrimaryButton.Click += async (_, _) => await HandleDeadlockToolsPrimaryActionAsync();
         _toolTip.SetToolTip(
             _deadlockToolsPrimaryButton,
-            _allowUnverifiedToolchainAutomation
-                ? UiText.T(
+            UiText.T(
                     "**INSTALL…** downloads the latest official Windows x64 release from GitHub into an empty folder.\n\n**UPDATE…** updates a Deadlimit-managed release installation. Git checkouts are updated through Git and rebuilt.\n\n**CHECK** compares a managed install or Git checkout with the current upstream state.\n\nIf the version of a manually copied build cannot be identified, **INSTALL…** remains available instead of offering a meaningless CHECK.",
-                    "**УСТАНОВИТЬ…** скачивает последний официальный Windows x64 release с GitHub в пустую папку.\n\n**ОБНОВИТЬ…** обновляет установку release, которой управляет Deadlimit. Git checkout обновляется через Git и пересобирается.\n\n**ПРОВЕРИТЬ** сравнивает управляемую установку или Git checkout с текущим upstream.\n\nЕсли версию вручную скопированной сборки определить нельзя, остаётся доступна кнопка **УСТАНОВИТЬ…**, а не бесполезная проверка.")
-                : PortableToolchainNotice());
+                    "**УСТАНОВИТЬ…** скачивает последний официальный Windows x64 release с GitHub в пустую папку.\n\n**ОБНОВИТЬ…** обновляет установку release, которой управляет Deadlimit. Git checkout обновляется через Git и пересобирается.\n\n**ПРОВЕРИТЬ** сравнивает управляемую установку или Git checkout с текущим upstream.\n\nЕсли версию вручную скопированной сборки определить нельзя, остаётся доступна кнопка **УСТАНОВИТЬ…**, а не бесполезная проверка."));
         _toolTip.SetToolTip(
             browseButton,
             UiText.T(
@@ -823,8 +818,8 @@ internal sealed class SettingsForm : Form
 
     private void UpdateActionAvailability()
     {
-        _csdkPrimaryButton.Text = CsdkPrimaryActionText(_csdkStatus.Kind, _allowUnverifiedToolchainAutomation);
-        _deadlockToolsPrimaryButton.Text = DeadlockToolsPrimaryActionText(_deadlockToolsStatus.Kind, _allowUnverifiedToolchainAutomation);
+        _csdkPrimaryButton.Text = CsdkPrimaryActionText(_csdkStatus.Kind, true);
+        _deadlockToolsPrimaryButton.Text = DeadlockToolsPrimaryActionText(_deadlockToolsStatus.Kind, true);
         _retailDeadlockCheckButton.Text = _retailDeadlockStatus.Kind == ToolchainStatusKind.Checking
             ? UiText.T("CHECKING…", "ПРОВЕРКА…")
             : UiText.T("CHECK", "ПРОВЕРИТЬ");
@@ -838,7 +833,6 @@ internal sealed class SettingsForm : Form
             && File.Exists(Path.Combine(_csdkRootText.Text.Trim(), "csdkcfg.exe"));
         var gameClientValid = _retailDeadlockStatus.Kind == ToolchainStatusKind.Ready;
         _csdkSetupButton.Enabled = !_busy
-            && _allowUnverifiedToolchainAutomation
             && csdkValid
             && gameClientValid
             && _csdkStatus.NetworkAvailable
@@ -885,12 +879,6 @@ internal sealed class SettingsForm : Form
         if (_csdkStatus.Kind == ToolchainStatusKind.Checking)
         {
             CancelCsdkCheck();
-            return;
-        }
-
-        if (!_allowUnverifiedToolchainAutomation)
-        {
-            await RefreshCsdkStatusAsync();
             return;
         }
 
@@ -943,12 +931,6 @@ internal sealed class SettingsForm : Form
             return;
         }
 
-        if (!_allowUnverifiedToolchainAutomation)
-        {
-            await RefreshDeadlockToolsStatusAsync();
-            return;
-        }
-
         if (_deadlockToolsStatus.Kind == ToolchainStatusKind.UpdateAvailable)
         {
             await RunBusyOperationAsync(
@@ -995,17 +977,6 @@ internal sealed class SettingsForm : Form
 
     private async Task SetupCsdkAsync(bool force)
     {
-        if (!_allowUnverifiedToolchainAutomation)
-        {
-            MessageBox.Show(
-                this,
-                PortableToolchainNotice(),
-                UiText.T("Portable release safety", "Безопасность portable-релиза"),
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
-            return;
-        }
-
         await RunBusyOperationAsync(
             async progress =>
             {
@@ -1018,10 +989,6 @@ internal sealed class SettingsForm : Form
             },
             UiText.T("Could not complete CSDK setup", "Не удалось выполнить настройку CSDK"));
     }
-
-    private static string PortableToolchainNotice() => UiText.T(
-        "Portable releases require an existing Reduced CSDK/DeadlockTools installation selected with BROWSE. Automatic install, update, and full CSDK setup stay disabled until upstream archives have release-pinned trusted checksums.",
-        "Portable-релиз требует существующую установку Reduced CSDK/DeadlockTools, выбранную через ОБЗОР. Автоустановка, обновление и полная настройка CSDK отключены, пока для upstream-архивов нет привязанных к релизу доверенных SHA-256.");
 
     private async Task RunBusyOperationAsync(Func<IProgress<string>, Task> operation, string errorTitle)
     {

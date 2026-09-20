@@ -14,98 +14,99 @@ exit /b %EXIT_CODE%
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
-function Get-FileSha256([string]$Path) {
-    $stream = [IO.File]::OpenRead([IO.Path]::GetFullPath($Path))
-    $sha = [Security.Cryptography.SHA256]::Create()
-    try { return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '').ToLowerInvariant() }
-    finally { $sha.Dispose(); $stream.Dispose() }
+$repositoryUrl = 'https://github.com/downlimit/Deadlimit.git'
+$localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+$installRoot = Join-Path $localAppData 'Programs\Deadlimit'
+$userDataRoot = Join-Path $localAppData 'Deadlimit'
+
+function Require-Command([string]$Name, [string]$Message) {
+    $command = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($null -eq $command) { throw $Message }
+    return $command
 }
 
-function Get-ExpectedSha256([string]$Path) {
-    $text = [IO.File]::ReadAllText($Path)
-    $match = [Text.RegularExpressions.Regex]::Match($text, '(?i)(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])')
-    if (-not $match.Success) { throw 'The Deadlimit package checksum is malformed.' }
-    return $match.Value.ToLowerInvariant()
+function Invoke-Git([string[]]$Arguments) {
+    & $git.Source @Arguments
+    if ($LASTEXITCODE -ne 0) { throw "Git failed: git $($Arguments -join ' ')" }
 }
 
-function Set-Shortcut([object]$Shell, [string]$Path, [string]$Target, [string]$WorkingDirectory, [string]$Icon) {
-    $shortcut = $Shell.CreateShortcut($Path)
-    $shortcut.TargetPath = $Target
-    $shortcut.WorkingDirectory = $WorkingDirectory
-    $shortcut.IconLocation = $Icon
-    $shortcut.Description = [IO.Path]::GetFileNameWithoutExtension($Path)
-    $shortcut.Save()
+function Copy-DirectoryChildren([string]$Source, [string]$Destination) {
+    if (-not (Test-Path -LiteralPath $Source -PathType Container)) { return }
+    [IO.Directory]::CreateDirectory($Destination) | Out-Null
+    foreach ($item in @(Get-ChildItem -LiteralPath $Source -Force)) {
+        Copy-Item -LiteralPath $item.FullName -Destination $Destination -Recurse -Force
+    }
 }
 
-$workRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-installer-$([Guid]::NewGuid().ToString('N'))"
-[IO.Directory]::CreateDirectory($workRoot) | Out-Null
-try {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $headers = @{ 'User-Agent' = 'DeadlimitInstaller/0.1' }
-    $api = 'https://api.github.com/repos/downlimit/Deadlimit/releases/tags/latest-main'
-    Write-Host 'Locating the latest successful Deadlimit build...'
-    $releases = @(Invoke-RestMethod -UseBasicParsing -Headers $headers -Uri $api)
-    $release = $releases | Where-Object { -not $_.draft } | Select-Object -First 1
-    if ($null -eq $release) { throw 'No published Deadlimit release is available.' }
-
-    $archiveAsset = @($release.assets) | Where-Object { $_.name -eq 'Deadlimit-win-x64.zip' } | Select-Object -First 1
-    $checksumAsset = @($release.assets) | Where-Object { $_.name -eq 'Deadlimit-win-x64.zip.sha256' } | Select-Object -First 1
-    if ($null -eq $archiveAsset -or $null -eq $checksumAsset) {
-        throw "Deadlimit release $($release.tag_name) has no ZIP/checksum pair."
+function Publish-Shortcuts([string]$Root) {
+    $managerShortcut = Join-Path $Root 'Deadlimit Manager.lnk'
+    $updaterShortcut = Join-Path $Root 'Deadlimit Updater.lnk'
+    foreach ($path in @($managerShortcut, $updaterShortcut)) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Deadlimit shortcut was not created: $path" }
     }
-
-    foreach ($uriText in @($archiveAsset.browser_download_url, $checksumAsset.browser_download_url)) {
-        $uri = [Uri]$uriText
-        if ($uri.Scheme -ne 'https' -or $uri.Host -ne 'github.com') {
-            throw "Unexpected Deadlimit package source: $uriText"
-        }
-    }
-
-    $archivePath = Join-Path $workRoot 'Deadlimit-win-x64.zip'
-    $checksumPath = "$archivePath.sha256"
-    Invoke-WebRequest -UseBasicParsing -Headers $headers -Uri $archiveAsset.browser_download_url -OutFile $archivePath
-    Invoke-WebRequest -UseBasicParsing -Headers $headers -Uri $checksumAsset.browser_download_url -OutFile $checksumPath
-    $expected = Get-ExpectedSha256 $checksumPath
-    $actual = Get-FileSha256 $archivePath
-    if (-not [string]::Equals($actual, $expected, [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'Deadlimit package checksum mismatch. Installation was stopped.'
-    }
-
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $zip = [IO.Compression.ZipFile]::OpenRead($archivePath)
-    try {
-        $workerEntry = $zip.Entries | Where-Object { $_.FullName -eq 'internal/DeadlimitPortableUpdater.ps1' } | Select-Object -First 1
-        if ($null -eq $workerEntry) { throw 'The verified Deadlimit package has no updater worker.' }
-        $workerPath = Join-Path $workRoot 'DeadlimitPortableUpdater.ps1'
-        [IO.Compression.ZipFileExtensions]::ExtractToFile($workerEntry, $workerPath, $true)
-    }
-    finally { $zip.Dispose() }
-
-    $installRoot = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)) 'Programs\Deadlimit'
-    & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File $workerPath `
-        -InstallRoot $installRoot -PackagePath $archivePath -ChecksumPath $checksumPath -NoLaunch
-    if ($LASTEXITCODE -ne 0) { throw "Deadlimit installation failed with exit code $LASTEXITCODE." }
-
-    $manager = Join-Path $installRoot 'DeadlimitManager.exe'
-    $updater = Join-Path $installRoot 'Update Deadlimit.cmd'
-    $updaterIcon = "$manager,0"
-    $shell = New-Object -ComObject WScript.Shell
     $desktop = [Environment]::GetFolderPath([Environment+SpecialFolder]::DesktopDirectory)
     $startFolder = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::Programs)) 'Deadlimit'
     [IO.Directory]::CreateDirectory($startFolder) | Out-Null
-    Set-Shortcut $shell (Join-Path $desktop 'Deadlimit Manager.lnk') $manager $installRoot "$manager,0"
-    Set-Shortcut $shell (Join-Path $desktop 'Deadlimit Updater.lnk') $updater $installRoot $updaterIcon
-    Set-Shortcut $shell (Join-Path $startFolder 'Deadlimit Manager.lnk') $manager $installRoot "$manager,0"
-    Set-Shortcut $shell (Join-Path $startFolder 'Deadlimit Updater.lnk') $updater $installRoot $updaterIcon
+    Copy-Item -LiteralPath $managerShortcut -Destination (Join-Path $desktop 'Deadlimit Manager.lnk') -Force
+    Copy-Item -LiteralPath $updaterShortcut -Destination (Join-Path $desktop 'Deadlimit Updater.lnk') -Force
+    Copy-Item -LiteralPath $managerShortcut -Destination (Join-Path $startFolder 'Deadlimit Manager.lnk') -Force
+    Copy-Item -LiteralPath $updaterShortcut -Destination (Join-Path $startFolder 'Deadlimit Updater.lnk') -Force
+}
 
-    Write-Host "The latest Deadlimit build was installed successfully: $installRoot" -ForegroundColor Green
-    Start-Process -FilePath $manager -WorkingDirectory $installRoot
-    exit 0
+$git = Require-Command 'git.exe' 'Git for Windows is required to install Deadlimit. Install Git, then run Install-Deadlimit.cmd again.'
+$dotnet = Require-Command 'dotnet.exe' '.NET 10 SDK is required to install Deadlimit. Install the .NET 10 SDK, then run Install-Deadlimit.cmd again.'
+$sdkList = @(& $dotnet.Source --list-sdks)
+if ($LASTEXITCODE -ne 0 -or -not ($sdkList | Where-Object { $_ -match '^10\.0\.' })) {
+    throw '.NET 10 SDK was not found. Install the .NET 10 SDK, then run Install-Deadlimit.cmd again.'
 }
-catch {
-    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
-    exit 1
+
+[IO.Directory]::CreateDirectory((Split-Path -Parent $installRoot)) | Out-Null
+
+if (Test-Path -LiteralPath (Join-Path $installRoot '.git') -PathType Container) {
+    $origin = (& $git.Source -C $installRoot remote get-url origin).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($origin)) {
+        throw "The existing Deadlimit checkout has no readable origin remote: $installRoot"
+    }
+    $normalizedOrigin = $origin.TrimEnd('/').ToLowerInvariant()
+    if ($normalizedOrigin -notin @('https://github.com/downlimit/deadlimit.git','https://github.com/downlimit/deadlimit')) {
+        throw "The existing folder is a Git checkout with an unexpected origin: $origin"
+    }
+    Write-Host 'Updating the existing Deadlimit checkout...'
+    $updater = Join-Path $installRoot 'DeadlimitUpdater.bat'
+    if (-not (Test-Path -LiteralPath $updater -PathType Leaf)) {
+        throw "DeadlimitUpdater.bat was not found in the existing checkout: $installRoot"
+    }
+    & $env:ComSpec /d /c "`"$updater`" -NoWait -NoLaunch"
+    if ($LASTEXITCODE -ne 0) { throw 'The existing Deadlimit checkout could not be updated.' }
 }
-finally {
-    if (Test-Path -LiteralPath $workRoot) { Remove-Item -LiteralPath $workRoot -Recurse -Force }
+else {
+    $legacyRoot = $null
+    if (Test-Path -LiteralPath $installRoot) {
+        $legacyRoot = "$installRoot.pre-git-$([Guid]::NewGuid().ToString('N'))"
+        Write-Host 'Migrating the previous package-based Deadlimit installation to a Git checkout...'
+        Move-Item -LiteralPath $installRoot -Destination $legacyRoot
+    }
+    try {
+        Write-Host 'Cloning Deadlimit main...'
+        Invoke-Git @('clone','--branch','main','--single-branch',$repositoryUrl,$installRoot)
+        if ($null -ne $legacyRoot) {
+            Copy-DirectoryChildren (Join-Path $legacyRoot 'UserData') $userDataRoot
+            Remove-Item -LiteralPath $legacyRoot -Recurse -Force
+        }
+    }
+    catch {
+        if (Test-Path -LiteralPath $installRoot) { Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue }
+        if ($null -ne $legacyRoot -and (Test-Path -LiteralPath $legacyRoot)) { Move-Item -LiteralPath $legacyRoot -Destination $installRoot }
+        throw
+    }
 }
+
+$launcher = Join-Path $installRoot 'DeadlimitManager.cmd'
+if (-not (Test-Path -LiteralPath $launcher -PathType Leaf)) { throw "DeadlimitManager.cmd was not found after installation: $installRoot" }
+Write-Host 'Building Deadlimit Manager with the local .NET 10 SDK...'
+& $env:ComSpec /d /c "`"$launcher`" --refresh-only"
+if ($LASTEXITCODE -ne 0) { throw "Deadlimit Manager build failed with exit code $LASTEXITCODE." }
+
+Publish-Shortcuts $installRoot
+Write-Host "Deadlimit installed successfully: $installRoot" -ForegroundColor Green
+Start-Process -FilePath (Join-Path $installRoot 'Deadlimit Manager.lnk') -WorkingDirectory $installRoot
