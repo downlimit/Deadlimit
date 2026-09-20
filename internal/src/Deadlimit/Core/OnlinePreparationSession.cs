@@ -116,7 +116,7 @@ internal sealed class OnlinePreparationSession : IDisposable
         if (string.IsNullOrWhiteSpace(manifest.SourceVmdl) || !File.Exists(manifest.SourceVmdl))
         {
             throw new InvalidOperationException(
-                LocalizedText.T("LIVE SYNC needs prepared CSDK content first. Run PREPARE FOR CSDK once and try again.", "Для ОНЛАЙН-ПОДГОТОВКИ сначала нужен подготовленный CSDK content. Один раз выполните ПОДГОТОВИТЬ ДЛЯ CSDK и повторите попытку."));
+                LocalizedText.T("LIVE SYNC needs prepared CSDK content first. Run PREPARE FOR CSDK once and try again.", "Для LIVE SYNC сначала нужен подготовленный CSDK content. Один раз выполните ПОДГОТОВИТЬ ДЛЯ CSDK и повторите попытку."));
         }
 
         var sourceVmdlFullPath = SafePath.EnsureUnderRoot(
@@ -138,7 +138,7 @@ internal sealed class OnlinePreparationSession : IDisposable
         var addonContentRoot = SafePath.ResolveUnderRoot(
             paths.CsdkContentRoot,
             Path.Combine("citadel_addons", addonName),
-            "Online addon content root");
+            "LIVE SYNC addon content root");
         var textureTargetFolder = Path.Combine(addonContentRoot, "materials", addonName, "textures");
 
         var authoringFiles = ProjectAuthoringLayout.EnumerateAuthoringFiles(manifest).ToArray();
@@ -170,7 +170,7 @@ internal sealed class OnlinePreparationSession : IDisposable
             mapping => SafePath.ResolveUnderRoot(
                 addonContentRoot,
                 mapping.TargetResourcePath.Replace('/', Path.DirectorySeparatorChar),
-                "Online DMX target from VMDL"),
+                "LIVE SYNC DMX target from VMDL"),
             StringComparer.OrdinalIgnoreCase);
 
         var knownRelevantFiles = EnumerateRelevantFiles(manifest.ProjectFolder)
@@ -214,7 +214,7 @@ internal sealed class OnlinePreparationSession : IDisposable
     private void OnWatcherError(object sender, ErrorEventArgs e)
     {
         MarkPrepareRequired(
-            LocalizedText.T($"LIVE SYNC watcher error: {e.GetException().Message}. Run a normal PREPARE FOR CSDK to re-establish the LIVE SYNC baseline.", "Ошибка наблюдения за файлами ОНЛАЙН-ПОДГОТОВКИ. Выполните обычный ПОДГОТОВИТЬ ДЛЯ CSDK, чтобы восстановить базовую версию LIVE SYNC."),
+            LocalizedText.T($"LIVE SYNC watcher error: {e.GetException().Message}. Run a normal PREPARE FOR CSDK to re-establish the LIVE SYNC baseline.", "Ошибка наблюдения за файлами LIVE SYNC. Выполните обычный ПОДГОТОВИТЬ ДЛЯ CSDK, чтобы восстановить базовую версию LIVE SYNC."),
             null);
     }
 
@@ -387,7 +387,7 @@ internal sealed class OnlinePreparationSession : IDisposable
             or InvalidOperationException)
         {
             MarkPrepareRequired(
-                LocalizedText.T($"LIVE SYNC sync failed: {ex.Message}. Run a normal PREPARE FOR CSDK before continuing LIVE SYNC.", "Ошибка LIVE SYNC. Перед продолжением выполните обычный ПОДГОТОВИТЬ ДЛЯ CSDK."),
+                LocalizedText.T($"LIVE SYNC failed: {ex.Message}. Run a normal PREPARE FOR CSDK before continuing LIVE SYNC.", "Ошибка LIVE SYNC. Перед продолжением выполните обычный ПОДГОТОВИТЬ ДЛЯ CSDK."),
                 null);
 
             lock (_gate)
@@ -536,7 +536,7 @@ internal sealed class OnlinePreparationSession : IDisposable
                     RaiseUpdated(
                         LocalizedText.T(
                         $"LIVE SYNC detected a new DMX but kept the previous prepared copy until its Vertex Color source is safe. {Path.GetFileName(sourcePath)} — Vertex Color [{staged.VertexColor.Status}]: {staged.Message}",
-                        $"LIVE SYNC обнаружил новый DMX, но сохранила предыдущую подготовленную копию до получения безопасного исходника Vertex Color: {Path.GetFileName(sourcePath)}."),
+                        $"LIVE SYNC обнаружил новый DMX, но сохранил предыдущую подготовленную копию до получения безопасного исходника Vertex Color: {Path.GetFileName(sourcePath)}."),
                         sourcePath,
                         PrepareRequired);
                     continue;
