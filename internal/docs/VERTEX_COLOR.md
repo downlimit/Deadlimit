@@ -16,7 +16,7 @@ The artist DMX starts as a normal Wall Worm export with all settings controlled 
 3. Run `DeadlimitPipelineScripts.ms`, choose the `FIXED GAMMA` mode, and press **EXPORT VERTEX COLOR FBX**.
 4. Run PREPARE normally.
 
-The helper reads Wall Worm's last export folder from `3dsMax.ini` and finds the newest primary DMX there. It does not read a Deadlimit Manager project, launch Deadlimit Manager, or contain a path to `DeadlimitAggregator.exe`.
+The helper reads Wall Worm's last export folder from `3dsMax.ini` and finds the newest primary DMX there. It does not read a Deadlimit Manager project or launch Deadlimit Manager.
 
 The FBX export is ASCII, selection-only, animation/cameras/lights disabled and triangulation enabled. Renderable Shape/Spline objects receive a temporary `Turn To Mesh` modifier before export. `FIXED GAMMA` is on by default; its adjacent GAMMA spinner applies `channel 0 RGB^(GAMMA/2.2)`. The default `1.0` applies the established `1/2.2` Source 2 correction, while `2.2` produces exponent `1.0` and preserves stored RGB. The spinner locks while FIXED GAMMA is off. The helper restores temporary modifiers, previous FBX settings, host selection, and the scene dirty state after success or failure. During PREPARE, Deadlimit Manager patches the CSDK-bound DMX copy and reloads and validates its color streams. An applied `_vertexcolor.fbx` remains beside the artist DMX until the complete PREPARE transaction has saved the VMDL, materials, project metadata and final log. Only then is the temporary FBX removed. Rejection, cancellation, or any later PREPARE failure leaves the FBX available for retry and diagnosis.
 
