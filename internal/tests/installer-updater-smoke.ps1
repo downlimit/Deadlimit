@@ -30,8 +30,14 @@ if ($errors.Count -gt 0) {
 
 foreach ($required in @(
     'https://github.com/downlimit/Deadlimit.git',
-    "Require-Command 'git.exe'",
-    "Require-Command 'dotnet.exe'",
+    'Confirm-DependencyInstall',
+    'System.Windows.Forms.MessageBox',
+    'Find-WinGet',
+    "Install-WinGetPackage $wingetPath 'Git.Git' 'Git for Windows'",
+    "Install-WinGetPackage $wingetPath 'Microsoft.DotNet.SDK.10' '.NET 10 SDK'",
+    '--accept-source-agreements',
+    '--accept-package-agreements',
+    'Find-DotNet10Sdk',
     '--list-sdks',
     "^10\.0\.",
     "'Programs\Deadlimit'",
