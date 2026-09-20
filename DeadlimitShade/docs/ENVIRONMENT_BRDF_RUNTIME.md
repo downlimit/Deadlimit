@@ -2,7 +2,7 @@
 
 The manual captured-bundle UI procedure below describes the earlier Preview.
 TЗ 14 moved environment selection to the `Deadlimit Environment` panel; see
-`PREVIEW_STABILITY_TZ14.md` for the current artist workflow and internal
+`PREVIEW_ENVIRONMENT_STABILITY.md` for the current artist workflow and internal
 Default bundle loading.
 
 Scope: Reduced CSDK Ivy capture event 791, shader ResourceId::6491.
@@ -60,7 +60,7 @@ and matching event/resource arguments; the exporter does not infer bindings.
 It replays offline, exports the LUT and cube zero's six faces at all seven
 mips, records hashes, and closes its owned process before opening an unused
 main window. Existing output directories are rejected. It needs no game
-injection or Computer Use. HDR face exports have RGBE precision limits relative
+injection or GUI automation. HDR face exports have RGBE precision limits relative
 to the original BC6 values.
 
 Exporting the complete 340-cube allocation did not finish within the bounded
@@ -119,9 +119,9 @@ normalization coefficients are frozen; specular occlusion still uses the
 previous Painter substitute. These must not be described as exact runtime
 parity. Only the listed captured values and algebra are evidence-backed.
 
-Visual gate was not reached: Computer Use returned foreground Dota content for
+Visual gate was not reached: the automated GUI capture returned foreground Dota content for
 the selected Painter window, including after activation. No such frame counts
-as Painter evidence. Computer Use was reset; the project was returned to
+as Painter evidence. The project was returned to
 Material / Retail, Shaded, captured mode disabled, without saving this experiment
 over the existing SPP. No commit was made. Next action is a real neutral-input
 viewport check of the loaded branch, followed by material comparison if it passes.
