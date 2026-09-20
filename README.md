@@ -71,21 +71,21 @@ The prepared project remains an editable authoring stage. You can open it in CSD
 
 Keep CSDK open while you work.
 
-Deadlimit watches supported project changes and synchronizes them into the prepared CSDK project automatically. DMX, texture, and Vertex Color changes can be updated without repeating the full manual prepare/copy cycle. Structural or material-reference changes trigger the required full preparation while CSDK stays open.
+Deadlimit Manager watches supported project changes and synchronizes them into the prepared CSDK project automatically. DMX, texture, and Vertex Color changes can be updated without repeating the full manual prepare/copy cycle. Structural or material-reference changes trigger the required full preparation while CSDK stays open.
 
 ### Build & Test
 
 When the project is ready for an in-game check, **Build & Test** handles the release-side pipeline.
 
-Deadlimit prepares the latest project state, compiles changed Source 2 resources, restores the required character animation bindings after compilation, verifies the output, packages the addon into a VPK, and deploys it to the configured local Deadlock addons slot.
+Deadlimit Manager prepares the latest project state, compiles changed Source 2 resources, restores the required character animation bindings after compilation, verifies the output, packages the addon into a VPK, and deploys it to the configured local Deadlock addons slot.
 
 The CSDK authoring stage stays clean: animation binding repair happens after compilation, so the artist can continue using CSDK for ModelDoc and material work before the final test build.
 
 ### Import and repair existing VPKs
 
-Deadlimit can also import an existing `pak##_dir.vpk` as a project.
+Deadlimit Manager can also import an existing `pak##_dir.vpk` as a project.
 
-Imported compiled payload is preserved instead of being pushed through the normal authoring compiler. During **Build & Test**, Deadlimit can compare character animation bindings with the current retail Deadlock model, repair stale or missing bindings, rebuild the VPK, verify it, and deploy it back to the adopted release slot.
+Imported compiled payload is preserved instead of being pushed through the normal authoring compiler. During **Build & Test**, Deadlimit Manager can compare character animation bindings with the current retail Deadlock model, repair stale or missing bindings, rebuild the VPK, verify it, and deploy it back to the adopted release slot.
 
 This repair path is intentionally narrow: it targets the animation-binding class of breakage rather than pretending to be a universal repair button for every possible mod problem.
 
