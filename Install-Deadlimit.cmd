@@ -15,14 +15,12 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $repositoryUrl = 'https://github.com/downlimit/Deadlimit.git'
-$localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
 if ([string]::IsNullOrWhiteSpace($env:DEADLIMIT_INSTALLER_PATH)) {
     throw 'Deadlimit installer path is unavailable.'
 }
 $installerPath = [IO.Path]::GetFullPath($env:DEADLIMIT_INSTALLER_PATH)
 $installerDirectory = Split-Path -Parent $installerPath
 $installRoot = Join-Path $installerDirectory 'Deadlimit'
-$userDataRoot = Join-Path $localAppData 'Deadlimit'
 
 function Refresh-ProcessPath {
     $machinePath = [Environment]::GetEnvironmentVariable('Path', [EnvironmentVariableTarget]::Machine)
@@ -143,28 +141,6 @@ function Invoke-Git([string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) { throw "Git failed: git $($Arguments -join ' ')" }
 }
 
-function Copy-DirectoryChildren([string]$Source, [string]$Destination) {
-    if (-not (Test-Path -LiteralPath $Source -PathType Container)) { return }
-    [IO.Directory]::CreateDirectory($Destination) | Out-Null
-    foreach ($item in @(Get-ChildItem -LiteralPath $Source -Force)) {
-        Copy-Item -LiteralPath $item.FullName -Destination $Destination -Recurse -Force
-    }
-}
-
-function Test-LegacyDeadlimitInstallation([string]$Root) {
-    if (-not (Test-Path -LiteralPath $Root -PathType Container)) { return $false }
-
-    $launcher = Join-Path $Root 'DeadlimitManager.cmd'
-    $updater = Join-Path $Root 'DeadlimitUpdater.bat'
-    $project = Join-Path $Root 'internal\src\Deadlimit\Deadlimit.csproj'
-    $managerExe = Join-Path $Root 'DeadlimitManager.exe'
-
-    return (Test-Path -LiteralPath $launcher -PathType Leaf) -and
-        ((Test-Path -LiteralPath $updater -PathType Leaf) -or
-         (Test-Path -LiteralPath $project -PathType Leaf) -or
-         (Test-Path -LiteralPath $managerExe -PathType Leaf))
-}
-
 function Publish-Shortcuts([string]$Root) {
     $managerShortcut = Join-Path $Root 'Deadlimit Manager.lnk'
     $updaterShortcut = Join-Path $Root 'Deadlimit Updater.lnk'
@@ -247,32 +223,23 @@ if (Test-Path -LiteralPath (Join-Path $installRoot '.git') -PathType Container) 
     if ($LASTEXITCODE -ne 0) { throw 'The existing Deadlimit checkout could not be updated.' }
 }
 else {
-    $legacyRoot = $null
     if (Test-Path -LiteralPath $installRoot) {
-        if (-not (Test-LegacyDeadlimitInstallation $installRoot)) {
-            throw @"
-Deadlimit will not replace the existing folder because it cannot prove that the folder is an older Deadlimit installation:
+        throw @"
+Deadlimit cannot install because the target folder already exists:
 $installRoot
 
 Move or remove that folder manually, then run Install-Deadlimit.cmd again.
 "@
-        }
-
-        $legacyRoot = "$installRoot.pre-git-$([Guid]::NewGuid().ToString('N'))"
-        Write-Host 'Migrating the previous package-based Deadlimit installation to a Git checkout...'
-        Move-Item -LiteralPath $installRoot -Destination $legacyRoot
     }
+
     try {
         Write-Host 'Cloning Deadlimit main...'
         Invoke-Git @('clone','--branch','main','--single-branch',$repositoryUrl,$installRoot)
-        if ($null -ne $legacyRoot) {
-            Copy-DirectoryChildren (Join-Path $legacyRoot 'UserData') $userDataRoot
-            Write-Host "Previous Deadlimit installation preserved for manual review: $legacyRoot" -ForegroundColor Yellow
-        }
     }
     catch {
-        if (Test-Path -LiteralPath $installRoot) { Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue }
-        if ($null -ne $legacyRoot -and (Test-Path -LiteralPath $legacyRoot)) { Move-Item -LiteralPath $legacyRoot -Destination $installRoot }
+        if (Test-Path -LiteralPath $installRoot) {
+            Remove-Item -LiteralPath $installRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
         throw
     }
 }
