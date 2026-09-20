@@ -156,9 +156,8 @@ The repository itself remains complete; hiding files in Explorer is only a local
 
 Obsolete legacy launchers and aggregator entry points are not part of the supported
 public installation. The supported user entry points are `DeadlimitManager.cmd`,
-`DeadlimitUpdater.bat`, and `Install-Deadlimit.cmd`.
-the first public release. New user-facing launch and shortcut surfaces use the
-Deadlimit Manager name.
+`DeadlimitUpdater.bat`, and `Install-Deadlimit.cmd`. New user-facing launch and
+shortcut surfaces use the Deadlimit Manager name.
 
 ## Git-checkout delivery
 
