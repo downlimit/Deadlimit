@@ -144,7 +144,7 @@ internal static class OnlinePreparationFeature
                 _form,
                 UiText.T(
                     "Save the current Deadlimit Manager project before enabling LIVE SYNC.",
-                    "Сохраните текущий проект Deadlimit Manager перед включением ОНЛАЙН-ПОДГОТОВКИ."),
+                    "Сохраните текущий проект Deadlimit Manager перед включением LIVE SYNC."),
                 "Deadlimit Manager",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
@@ -270,7 +270,7 @@ internal static class OnlinePreparationFeature
         if (!producedNewPrepareResult || !afterLog!.Succeeded)
         {
             UpdateToolTip(UiText.T(
-                $"LIVE SYNC kept its previous LIVE SYNC baseline because {actionName} did not finish a successful PREPARE transaction.\n\nThe last good prepared DMX remains protected.",
+                $"LIVE SYNC kept its previous baseline because {actionName} did not finish a successful PREPARE transaction.\n\nThe last good prepared DMX remains protected.",
                 $"LIVE SYNC сохранил предыдущую базовую версию, потому что {actionName} не завершилась успешной транзакцией PREPARE.\n\nПоследний корректно подготовленный DMX сохранён."));
             return;
         }
@@ -283,8 +283,8 @@ internal static class OnlinePreparationFeature
                 _launchButton.Text = LiveSyncButtonText;
             }
             UpdateToolTip(UiText.T(
-                $"LIVE SYNC baseline refreshed after {actionName}.\n\nChanged DMX and texture files will continue to synchronize automatically. Shift-click LAUNCH CSDK to stop.",
-                $"Базовая версия ОНЛАЙН-ПОДГОТОВКИ обновлена после {actionName}.\n\nИзменённые DMX и текстуры продолжат синхронизироваться автоматически. Для остановки используйте SHIFT+клик по ЗАПУСК CSDK."));
+                $"LIVE SYNC baseline refreshed after {actionName}.\n\nChanged DMX and texture files will continue to synchronize automatically. Shift-click LAUNCH CSDK to stop LIVE SYNC.",
+                $"Базовая версия LIVE SYNC обновлена после {actionName}.\n\nИзменённые DMX и текстуры продолжат синхронизироваться автоматически. Для остановки LIVE SYNC используйте SHIFT+клик по ЗАПУСК CSDK."));
         }
         catch (Exception ex) when (ex is IOException
             or UnauthorizedAccessException
@@ -292,7 +292,7 @@ internal static class OnlinePreparationFeature
         {
             UpdateToolTip(UiText.T(
                 $"LIVE SYNC could not refresh its baseline after {actionName}: {ex.Message}",
-                $"Не удалось обновить базовую версию ОНЛАЙН-ПОДГОТОВКИ после {actionName}."));
+                $"Не удалось обновить базовую версию LIVE SYNC после {actionName}."));
         }
     }
 
