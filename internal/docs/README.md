@@ -1,47 +1,57 @@
-# Deadlimit Manager
+# Deadlimit Manager — internal documentation
 
-Deadlimit Manager is the Windows desktop application in the Deadlimit tool family for building and testing Deadlock character replacement mods with minimal manual Source 2/CSDK work.
+Deadlimit Manager is the Windows desktop application in the Deadlimit tool family for
+building, iterating, repairing, packaging, and testing Deadlock character replacement
+mods with minimal manual Source 2/CSDK work.
 
-The umbrella `Deadlimit` repository also contains `Deadlimit Scripts` and `Deadlimit Shade`; see the repository root `README.md` for the project split. `Deadlimit Updater` updates the whole repository rather than one subproduct.
+The repository also contains **Deadlimit Scripts** and **Deadlimit Shade**. See the
+root `README.md` for the public product overview.
 
-## Target workflow
-
-1. **Extract** — choose a Deadlock hero and export/decompile the relevant source assets into a working folder.
-2. **Author** — point Deadlimit Manager at a folder containing DMX, FBX, or glTF/GLB model files and textures; create a project; prepare a CSDK workspace; open the model/material authoring stage for shader and texture setup.
-3. **Iterate in game** — after authoring is established, use one `BUILD & TEST` action to prepare changes, compile, restore required model post-processing, package the VPK, and deploy it directly to the installed Deadlock game client addons. If the Deadlock game client is currently running, Deadlimit Manager must close it first because the loaded VPK is file-locked by the game.
-
-The user-facing normal iteration loop is:
+## Current workflow
 
 ```text
-Export DMX / save textures
-→ BUILD & TEST
-→ if Deadlock was running: allow Deadlimit Manager to close it
-→ compile/deploy
-→ launch/test in Deadlock
+Deadlock resources
+→ Deadlimit Manager extraction
+→ 1authoring model / texture work
+→ PREPARE FOR CSDK
+→ CSDK / ModelDoc
+→ LIVE SYNC during supported iteration
+→ BUILD FOR TEST
+→ compile / binding repair / VPK verification
+→ Deadlock
 ```
+
+Existing VPKs can instead be imported as compiled-payload projects. That path preserves
+the imported payload, inspects current model animation bindings against the current
+retail resources, repairs supported binding differences, verifies the rebuilt VPK, and
+deploys through the guarded VPK slot workflow.
 
 ## Documentation map
 
-- `CONTEXT.md` — what the Manager is for, which workflow problems it is solving, confirmed evidence, working hypotheses, open questions, and current development focus.
-- `DECISIONS.md` — durable product/technical decisions and rules for when a workaround is allowed to become generic behavior.
-- `PROJECT.md` — product definition and intended user workflow.
-- `UI_GUIDELINES.md` — mandatory user-interface rules, including tooltip paragraph structure, bold shortcut tokens, visible status feedback, and live language/theme behavior. Read this before changing UI copy or interaction behavior.
-- `SETTINGS.md` — machine-local dependency manager behavior, tool statuses, CSDK setup, game-client path and interface preferences.
-- `WORKSPACE.md` — artist project-folder contract: recursive `1authoring` inputs, hidden `.deadlimit` metadata, and `0source` extraction behavior.
-- `EXTRACTION.md` — current game-client hero discovery/decompilation implementation, Source 2 Viewer integration, safety rules, evidence, and dependency-closure hypothesis.
-- `MATERIALS.md` — REUSE/CUSTOM material routing, confirmed VMDL remap evidence, and automatic compatibility-repair rules such as the generic eye fallback detector.
-- `TEXTURES.md` — inherited CUSTOM VMAT scaffolding, project-root PNG naming conventions, automatic texture rebinding, managed add/remove behavior, and safe fallbacks.
-- `VERTEX_COLOR.md` — one-button Max sidecar export, strict DMX topology validation, color-stream transfer, and fail-safe fallback behavior.
-- `OUTPUT_LIFECYCLE.md` — authoritative `content` vs disposable compiled `game` contract, clean authoring PREPARE behavior, and incremental BUILD & TEST stale-output handling.
-- `BUILD_TEST.md` — accepted one-click daily iteration transaction: incremental prepare/compile, AG2 restoration, VPK packaging and direct game-client addons deployment.
-- `RUNNING_GAME.md` — live-confirmed VPK file-lock behavior when Deadlock is running and the resulting close-before-deploy contract.
-- `VPK_IMPORT_REPAIR.md` — staged plan for importing an existing addon VPK as a compiled-payload project, repairing model animation bindings against current Deadlock resources, rebuilding the same Release ID and validating the result in the Deadlock game client.
-- `ARCHITECTURE.md` — environment roots, architecture, pipeline structure, and confirmed technical facts.
-- `ROADMAP.md` — implementation stages and acceptance criteria.
-- `OPEN_SOURCE_PLAN.md` — live readiness plan, provenance audit, public-release gates, and implementation status for opening the repository to outside users and contributors.
-- `NETWORK_TRUST_AUDIT.md` — current download sources, executable trust boundaries, existing controls, and required public-release hardening.
-- `RELEASE_REHEARSAL_0.1.0-beta.1.md` — private package evidence, exact hashes, and the current public-release no-go items.
+- `CONTEXT.md` — product context, evidence, assumptions, and current technical focus.
+- `DECISIONS.md` — durable product and architecture decisions.
+- `PROJECT.md` — product definition and intended artist workflow.
+- `ARCHITECTURE.md` — environment roots, service boundaries, and pipeline structure.
+- `WORKSPACE.md` — `0source`, `1authoring`, and hidden project metadata contract.
+- `EXTRACTION.md` — current hero/model extraction behavior and safety rules.
+- `HERO_TEXTURE_PIPELINE.md` — optional retail hero texture extraction and replacement.
+- `MATERIALS.md` — REUSE/CUSTOM material routing and compatibility repairs.
+- `TEXTURES.md` — custom texture binding, reconciliation, and LIVE SYNC behavior.
+- `VERTEX_COLOR.md` — Vertex Color sidecar export and transfer contract.
+- `OUTPUT_LIFECYCLE.md` — CSDK content/game ownership and stale-output cleanup.
+- `BUILD.md` — concrete prepare/compile evidence and scoped hero observations.
+- `BUILD_TEST.md` — current build, verify, package, and deploy transaction.
+- `RUNNING_GAME.md` — current game-process and deployed-VPK behavior.
+- `VPK_IMPORT_REPAIR.md` — implemented compiled-VPK import and animation-binding repair path.
+- `SETTINGS.md` — machine-local paths, dependency setup, and preferences.
+- `UI.md` — current user-visible Manager behavior.
+- `UI_GUIDELINES.md` — reusable UI rules for future changes.
+- `NETWORK_TRUST_AUDIT.md` — external download/executable trust boundaries.
+- `ROADMAP.md` — current product state and remaining validation work.
 
-When there is a conflict, current experimental evidence takes priority over assumptions recorded in older documentation. External tool compatibility should be revalidated when Deadlock, Reduced CSDK, DeadlockTools, Wall Worm, or ValveResourceFormat changes.
+When documents disagree, confirmed current implementation and reproducible evidence take
+priority over older observations. Compatibility claims must be revalidated after
+relevant Deadlock or toolchain updates.
 
-Powered in part by [Source 2 Viewer](https://s2v.app) ([ValveResourceFormat](https://github.com/ValveResourceFormat/ValveResourceFormat)).
+Powered in part by [Source 2 Viewer](https://s2v.app)
+([ValveResourceFormat](https://github.com/ValveResourceFormat/ValveResourceFormat)).
