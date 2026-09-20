@@ -380,14 +380,13 @@ public sealed partial class HeroExtractionService
             cancellationToken.ThrowIfCancellationRequested();
             var destination = SafePath.ResolveUnderRoot(
                 portraitsRoot,
-                Path.GetRelativePath(sourceFolder, source),
+                Path.GetFileName(source),
                 "Authoring portrait copy");
             if (File.Exists(destination))
             {
                 continue;
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
             File.Copy(source, destination);
         }
     }
