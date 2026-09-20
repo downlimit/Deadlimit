@@ -62,6 +62,10 @@ Actions that perform validation, network checks, installs or updates must provid
 Changing language or theme must not require the user to manually relaunch Deadlimit Manager.
 
 - Theme preview may apply immediately while Settings is open.
-- `APPLY` / `ПРИМЕНИТЬ` commits language/theme changes and rebuilds the main UI in-process.
+- The supported UI languages are English (`en`), Russian (`ru`), Simplified Chinese (`zh-CN`) and Brazilian Portuguese (`pt-BR`).
+- `APPLY` / the localized equivalent commits language/theme changes and rebuilds the main UI in-process.
+- Keep product names, file formats, engine/tool identifiers and literal workflow identifiers when translation would make them harder to match with the actual asset/tool: Deadlock, Deadlimit Manager, Reduced CSDK, DeadlockTools, Source 2, DMX, FBX, glTF/GLB, VPK/VPCF/VSNAP, VMAT/VMDL/VMAP, AG2/NmSkeleton, ModelDoc, Material Editor, Vertex Color, MAXScript, Wall Worm, Release ID, LIVE SYNC and Build & Test. Source 2 / Steam asset terms such as `addon`, `prefab` and `depot` may remain when they identify the actual external concept.
+- Translate ordinary actions, states, warnings and explanatory prose. Do not keep generic English software words such as `output`, `build`, `source`, `runtime`, `helper`, `updater`, `generation`, `rebuild` or `reset` merely to sound technical.
+- Paths, filenames, command names, Git refs and labels the user must match literally in another program remain verbatim.
 - Tool/workspace paths persist immediately when installed or selected and do not depend on `APPLY`.
 - Do not use `Application.Restart()` for normal language/theme changes.

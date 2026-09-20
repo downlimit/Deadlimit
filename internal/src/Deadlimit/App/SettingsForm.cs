@@ -80,9 +80,17 @@ internal sealed class SettingsForm : Form
         _retailDeadlockRootText.Text = settings.RetailDeadlockRoot;
         _projectsRootText.Text = settings.ProjectsRoot;
 
-        _languageCombo.Items.Add(new LanguageItem("en", "English"));
-        _languageCombo.Items.Add(new LanguageItem("ru", "Русский"));
-        _languageCombo.SelectedIndex = string.Equals(settings.UiLanguage, "ru", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+        var languageItems = new[]
+        {
+            new LanguageItem("en", "English"),
+            new LanguageItem("ru", "Русский"),
+            new LanguageItem("zh-CN", "简体中文"),
+            new LanguageItem("pt-BR", "Português (Brasil)"),
+        };
+        _languageCombo.Items.AddRange(languageItems);
+        _languageCombo.SelectedItem = languageItems.FirstOrDefault(item =>
+            string.Equals(item.Code, settings.UiLanguage, StringComparison.OrdinalIgnoreCase))
+            ?? languageItems[0];
 
         _themeCombo.Items.Add(new ThemeItem("system", UiText.T("System", "Системная")));
         _themeCombo.Items.Add(new ThemeItem("light", UiText.T("Light", "Светлая")));
@@ -1324,11 +1332,14 @@ internal sealed class SettingsForm : Form
         var folder = path.Trim();
         if (!Directory.Exists(folder))
         {
+            var folderMessage = string.IsNullOrWhiteSpace(folder)
+                ? UiText.T("No folder is currently selected.", "Папка пока не выбрана.")
+                : UiText.T(
+                    $"The selected folder does not exist:\n{folder}",
+                    $"Выбранная папка не существует:\n{folder}");
             MessageBox.Show(
                 this,
-                UiText.T(
-                    string.IsNullOrWhiteSpace(folder) ? "No folder is currently selected." : $"The selected folder does not exist:\n{folder}",
-                    string.IsNullOrWhiteSpace(folder) ? "Папка пока не выбрана." : $"Выбранная папка не существует:\n{folder}"),
+                folderMessage,
                 UiText.T("Folder unavailable", "Папка недоступна"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);

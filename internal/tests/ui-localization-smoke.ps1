@@ -38,6 +38,12 @@ foreach ($path in @(
     }
 }
 Assert-NotContains 'internal/src/Deadlimit/App/SettingsForm.cs' 'Text = "📂 CSDK Fast Startup Fix"'
+Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'new LanguageItem("zh-CN", "简体中文")'
+Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'new LanguageItem("pt-BR", "Português (Brasil)")'
+Assert-Contains 'internal/src/Deadlimit/Core/ProjectStore.cs' '"zh-cn" => "zh-CN"'
+Assert-Contains 'internal/src/Deadlimit/Core/ProjectStore.cs' '"pt-br" => "pt-BR"'
+Assert-Contains 'internal/src/Deadlimit/Deadlimit.csproj' 'Localization\zh-CN.json'
+Assert-Contains 'internal/src/Deadlimit/Deadlimit.csproj' 'Localization\pt-BR.json'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'UiText.T("APPLY", "ПРИМЕНИТЬ")'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'UiText.T("CLOSE", "ЗАКРЫТЬ")'
 Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'UiText.T("CANCEL", "ОТМЕНА")'
@@ -96,6 +102,14 @@ foreach ($file in $appTooltipFiles) {
 $assemblyPath = Resolve-Path 'internal/src/Deadlimit/bin/Release/net10.0-windows/DeadlimitManager.dll'
 $assembly = [Reflection.Assembly]::LoadFrom($assemblyPath)
 $flags = [Reflection.BindingFlags]::Static -bor [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Public
+$catalogType = $assembly.GetType('Deadlimit.Core.LocalizedTextCatalog', $true)
+$catalogSmokeMethod = $catalogType.GetMethod('RunSmoke', $flags)
+if ($null -eq $catalogSmokeMethod) { throw 'LocalizedTextCatalog.RunSmoke was not found.' }
+$catalogSmokeResult = [int]$catalogSmokeMethod.Invoke($null, @())
+if ($catalogSmokeResult -ne 0) {
+    throw "Localization catalog smoke failed with code $catalogSmokeResult."
+}
+
 $fixupsType = $assembly.GetType('Deadlimit.App.TooltipCopyPolicyFixups', $true)
 $policyType = $assembly.GetType('Deadlimit.App.TooltipCopyPolicy', $true)
 $beforeMethod = $fixupsType.GetMethod('BeforeRewrite', $flags)

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Deadlimit.Core;
 
 namespace Deadlimit.App;
@@ -10,8 +11,11 @@ internal static class UiText
 
     public static bool IsRussian => LocalizedText.IsRussian;
 
-    public static string T(string english, string russian) =>
-        NormalizeProductNames(LocalizedText.T(english, russian));
+    public static string T(
+        string english,
+        string russian,
+        [CallerArgumentExpression(nameof(english))] string? englishExpression = null) =>
+        NormalizeProductNames(LocalizedText.T(english, russian, englishExpression));
 
     public static string NormalizeProductNames(string value) =>
         value

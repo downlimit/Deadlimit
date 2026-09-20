@@ -943,9 +943,10 @@ public sealed class MainForm : Form
             var sourcePath = Path.Combine(folder, _loadedManifest?.SourceDumpFolderName ?? "0source");
             if (_loadedManifest?.LastSourceExtractionUtc is not null)
             {
+                var unknownMainModel = UiText.T("unknown", "неизвестно");
                 _sourceFolderLabel.Text = UiText.T(
-                    $"Hero source: {sourcePath} | {_loadedManifest.ExtractedSourceFileCount ?? 0} files | main: {_loadedManifest.RetailMainModel ?? "unknown"}",
-                    $"Исходники героя: {sourcePath} | файлов: {_loadedManifest.ExtractedSourceFileCount ?? 0} | main: {_loadedManifest.RetailMainModel ?? "неизвестно"}");
+                    $"Hero source: {sourcePath} | {_loadedManifest.ExtractedSourceFileCount ?? 0} files | main: {_loadedManifest.RetailMainModel ?? unknownMainModel}",
+                    $"Исходники героя: {sourcePath} | файлов: {_loadedManifest.ExtractedSourceFileCount ?? 0} | main: {_loadedManifest.RetailMainModel ?? unknownMainModel}");
             }
             else
             {
