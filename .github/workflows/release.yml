@@ -131,8 +131,7 @@ jobs:
       - name: Retire legacy release assets
         if: >-
           steps.freshness.outputs.current == 'true' &&
-          steps.version.outputs.tag == 'v0.1.0-beta.3' &&
-          steps.existing.outputs.exists != 'true'
+          steps.version.outputs.tag == 'v0.1.0-beta.3'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -176,20 +175,63 @@ jobs:
               fi
             done <<< "$asset_ids"
 
-            body="$(
-              gh api "repos/$GITHUB_REPOSITORY/releases/$release_id" \
-                --jq '.body // ""'
-            )"
-            if ! grep -Fq 'Archived source milestone' <<< "$body"; then
-              updated_body="$archive_notice"
-              if [[ -n "$body" ]]; then
-                updated_body+=$'\n\n'
-                updated_body+="$body"
-              fi
-              gh api --method PATCH \
-                "repos/$GITHUB_REPOSITORY/releases/$release_id" \
-                -f "body=$updated_body" >/dev/null
-            fi
+            case "$tag" in
+              v0.1.0-beta.1)
+                history='Historical source milestone published on 2026-09-05. Its original portable installer and ZIP assets were retired when Deadlimit moved to Git-based delivery.'
+                ;;
+              v0.1.0-beta.2)
+                history='Historical source milestone published on 2026-09-05. It established the canonical Deadlimit Manager / Deadlimit Scripts / Deadlimit Shade product naming. Its original portable installer and ZIP assets were retired when Deadlimit moved to Git-based delivery.'
+                ;;
+            esac
+            updated_body="$archive_notice"
+          done
+
+      - name: Prepare installer checksum
+        if: steps.freshness.outputs.current == 'true' && steps.existing.outputs.exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum Install-Deadlimit.cmd > Install-Deadlimit.cmd.sha256
+
+      - name: Publish numbered source milestone
+        if: steps.freshness.outputs.current == 'true' && steps.existing.outputs.exists != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TARGET_SHA: ${{ steps.target.outputs.sha }}
+        run: |
+          set -euo pipefail
+
+          notes="$RUNNER_TEMP/release-notes.md"
+          cat > "$notes" <<EOF
+          Deadlimit $VERSION is a source milestone for the Git-based distribution model.
+
+          **For artists:** use \`Install-Deadlimit.cmd\`. The installer installs and updates Deadlimit Manager from the current \`main\` branch. This tag records the source state at the $VERSION milestone; it is not a frozen binary package.
+
+          No Deadlimit binary ZIP is published. The only user-facing release assets are the installer and its SHA-256 checksum. GitHub's automatic **Source code** archives are source snapshots, not installer packages.
+
+          See \`CHANGELOG.md\` for the milestone changes.
+          EOF
+
+          prerelease=()
+          if [[ "$VERSION" == *-* ]]; then
+            prerelease+=(--prerelease)
+          fi
+
+          gh release create "$TAG" \
+            Install-Deadlimit.cmd \
+            Install-Deadlimit.cmd.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "Deadlimit $VERSION" \
+            --notes-file "$notes" \
+            "${prerelease[@]}"
+\n\n'"$history"
+            gh api --method PATCH \
+              "repos/$GITHUB_REPOSITORY/releases/$release_id" \
+              -f "body=$updated_body" >/dev/null
           done
 
       - name: Prepare installer checksum
