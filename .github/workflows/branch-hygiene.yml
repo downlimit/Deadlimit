@@ -3,17 +3,13 @@ name: Branch hygiene
 on:
   pull_request:
     types: [closed]
-  push:
-    branches: [main]
 
 permissions:
   contents: write
-  pull-requests: read
 
 jobs:
   delete-merged-pr-branch:
     if: >-
-      github.event_name == 'pull_request' &&
       github.event.pull_request.merged == true &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
@@ -30,54 +26,3 @@ jobs:
           if [[ -n "$HEAD_REF" && "$HEAD_REF" != "main" ]]; then
             git push origin --delete "$HEAD_REF" || true
           fi
-
-  bootstrap-existing-merged-branches:
-    if: >-
-      github.event_name == 'push' &&
-      contains(github.event.head_commit.message, 'bootstrap branch hygiene')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - name: Delete branches proven merged by PR and ancestry
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
-
-          mapfile -t merged_pr_heads < <(
-            gh api --paginate "repos/$GITHUB_REPOSITORY/pulls?state=closed&per_page=100"               --jq ".[] | select(.merged_at != null and .head.repo.full_name == \"$GITHUB_REPOSITORY\") | .head.ref" |
-            sort -u
-          )
-
-          mapfile -t open_pr_heads < <(
-            gh api --paginate "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100"               --jq ".[] | select(.head.repo.full_name == \"$GITHUB_REPOSITORY\") | .head.ref" |
-            sort -u
-          )
-
-          declare -A merged_by_pr=()
-          declare -A open_pr=()
-          for branch in "${merged_pr_heads[@]}"; do [[ -n "$branch" ]] && merged_by_pr["$branch"]=1; done
-          for branch in "${open_pr_heads[@]}"; do [[ -n "$branch" ]] && open_pr["$branch"]=1; done
-
-          mapfile -t merged_into_main < <(
-            git for-each-ref --merged=origin/main               --format='%(refname:strip=3)' refs/remotes/origin/ |
-            sort -u
-          )
-
-          deleted=0
-          for branch in "${merged_into_main[@]}"; do
-            [[ -z "$branch" || "$branch" == "HEAD" || "$branch" == "main" ]] && continue
-            [[ -z "${merged_by_pr[$branch]+x}" ]] && continue
-            [[ -n "${open_pr[$branch]+x}" ]] && continue
-
-            if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-              git push origin --delete "$branch"
-              ((deleted+=1))
-            fi
-          done
-
-          echo "Deleted merged PR branches: $deleted"
