@@ -27,7 +27,7 @@ Routine builds must never overwrite an existing authored custom VMAT.
 
 ### Extraction is a first-class module
 
-Deadlimit Manager should eventually be able to select a retail Deadlock hero and create a modding-ready source folder containing the model and relevant dependencies.
+Deadlimit Manager can select a Deadlock hero and create a modding-ready source tree containing the model and supported dependencies.
 
 Hero resource paths must be discovered from current retail data rather than assumed from a fixed template.
 
