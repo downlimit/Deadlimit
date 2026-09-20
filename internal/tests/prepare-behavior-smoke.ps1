@@ -528,17 +528,19 @@ foreach ($retired in @('ReleaseChannelPolicy', 'PortableToolchainNotice', '_allo
     }
 }
 
-# Russian and English ONLINE text must both activate the pulse feature.
+# LIVE SYNC is the only user-facing active-mode text that activates the pulse feature.
 $pulseType = $assembly.GetType('Deadlimit.App.OnlineCsdkPulseFeature', $true)
-$isOnline = $pulseType.GetMethod('IsOnlineText', $nonPublicStatic)
-if ($null -eq $isOnline) { throw 'OnlineCsdkPulseFeature.IsOnlineText was not found.' }
-foreach ($text in @('▶  ONLINE CSDK', '▶  CSDK ONLINE', '▶  CSDK ОНЛАЙН', 'CSDK ОНЛАЙН')) {
-    if (-not [bool]$isOnline.Invoke($null, @($text))) {
-        throw "ONLINE pulse detector rejected '$text'."
+$isLiveSync = $pulseType.GetMethod('IsLiveSyncText', $nonPublicStatic)
+if ($null -eq $isLiveSync) { throw 'OnlineCsdkPulseFeature.IsLiveSyncText was not found.' }
+foreach ($text in @('▶  LIVE SYNC', 'LIVE SYNC')) {
+    if (-not [bool]$isLiveSync.Invoke($null, @($text))) {
+        throw "LIVE SYNC pulse detector rejected '$text'."
     }
 }
-if ([bool]$isOnline.Invoke($null, @('▶  ЗАПУСК CSDK'))) {
-    throw 'Normal CSDK launch text must not activate the ONLINE pulse.'
+foreach ($text in @('▶  LAUNCH CSDK', '▶  ЗАПУСК CSDK', '▶  ONLINE CSDK', '▶  CSDK ОНЛАЙН')) {
+    if ([bool]$isLiveSync.Invoke($null, @($text))) {
+        throw "Non-LIVE-SYNC text must not activate the pulse: '$text'."
+    }
 }
 
 # Normal PREPARE parser must recognize the same practical texture naming used by exports.
