@@ -6,6 +6,8 @@ internal static class SteamStatusFeature
 {
     private const int StatusHeight = 40;
     private const int StatusTopGap = 8;
+    private const float SideZonePercent = 18F;
+    private const float CenterZonePercent = 64F;
     private static readonly Dictionary<MainForm, Action> ContextUpdaters = [];
 
     public static void Attach(MainForm form, string theme)
@@ -48,11 +50,11 @@ internal static class SteamStatusFeature
             Padding = Padding.Empty,
             BackColor = palette.Bar,
         };
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, SideZonePercent));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 1));
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, CenterZonePercent));
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 1));
-        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 28));
+        bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, SideZonePercent));
         bar.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
         var leftLabel = CreateZoneLabel(ContentAlignment.MiddleLeft, palette.StrongText);
