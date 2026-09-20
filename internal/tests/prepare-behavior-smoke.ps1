@@ -844,6 +844,8 @@ if ($retailPhysicsSource.Contains('name = "Retail ragdoll joints"')) {
 $inheritanceType = $assembly.GetType('Deadlimit.Core.RetailVmdlInheritance', $true)
 $capturePhysics = $inheritanceType.GetMethod('CaptureAuthoringPhysics')
 $restorePhysics = $inheritanceType.GetMethod('RestoreAuthoringPhysics')
+$captureAnimations = $inheritanceType.GetMethod('CaptureAuthoringAnimations')
+$restoreAnimations = $inheritanceType.GetMethod('RestoreAuthoringAnimations')
 $containsRootNode = $inheritanceType.GetMethod('ContainsRootNode')
 $physicsTemp = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-physics-$([Guid]::NewGuid().ToString('N')).vmdl"
 try {
@@ -856,13 +858,16 @@ rootNode =
         { _class = "Softbody" name = "artist cloth" },
         { _class = "PhysicsJointList" name = "artist joints" },
         { _class = "PhysicsShapeList" name = "artist bodies" },
+        { _class = "AnimationList" children = [ { _class = "AnimFile" name = "ui_hero_select" children = [ { _class = "AnimEvent" event_class = "AE_CL_CLOTH_STIFFEN" } ] } ] },
         { _class = "RenderMeshList" name = "artist mesh" },
     ]
 }
 '@
     [IO.File]::WriteAllText($physicsTemp, $artistVmdl)
     $snapshot = $capturePhysics.Invoke($null, [object[]]@([string]$physicsTemp))
+    $animationSnapshot = $captureAnimations.Invoke($null, [object[]]@([string]$physicsTemp))
     if ($snapshot.Nodes.Count -ne 4) { throw "Expected four artist physics nodes; found $($snapshot.Nodes.Count)." }
+    if ($animationSnapshot.Nodes.Count -ne 1) { throw "Expected one artist AnimationList; found $($animationSnapshot.Nodes.Count)." }
 
     $retailVmdl = @'
 rootNode =
@@ -870,15 +875,17 @@ rootNode =
     children =
     [
         { _class = "PhysicsShapeList" name = "retail bodies" },
+        { _class = "AnimationList" children = [ { _class = "AnimFile" name = "ui_hero_select" } ] },
         { _class = "RenderMeshList" name = "retail mesh" },
     ]
 }
 '@
     [IO.File]::WriteAllText($physicsTemp, $retailVmdl)
     $restorePhysics.Invoke($null, [object[]]@([string]$physicsTemp, $snapshot))
+    $restoreAnimations.Invoke($null, [object[]]@([string]$physicsTemp, $animationSnapshot))
     $restoredPhysics = [IO.File]::ReadAllText($physicsTemp)
-    foreach ($required in @('artist ears', 'artist cloth', 'artist joints', 'artist bodies', 'retail mesh')) {
-        if (-not $restoredPhysics.Contains($required)) { throw "Normal PREPARE physics preservation lost: $required" }
+    foreach ($required in @('artist ears', 'artist cloth', 'artist joints', 'artist bodies', 'retail mesh', 'AE_CL_CLOTH_STIFFEN')) {
+        if (-not $restoredPhysics.Contains($required)) { throw "Normal PREPARE authoring preservation lost: $required" }
     }
     if (-not [bool]$containsRootNode.Invoke($null, [object[]]@([string]$physicsTemp, [string]'PhysicsJointList'))) {
         throw 'Restored VMDL is missing PhysicsJointList.'

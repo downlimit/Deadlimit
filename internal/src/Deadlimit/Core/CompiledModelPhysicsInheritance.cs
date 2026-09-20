@@ -13,7 +13,8 @@ internal sealed record CompiledPhysicsInheritanceResult(
     int RetailNodeCount,
     int CustomJiggleCount,
     int MergedNodeCount,
-    int RetailRigidBodyCount,
+    int RigidBodyCount,
+    bool RestoredRetailRigidBodies,
     bool PreservedAuthoredCloth);
 
 internal static class CompiledModelPhysicsInheritance
@@ -81,35 +82,50 @@ internal static class CompiledModelPhysicsInheritance
         ArgumentNullException.ThrowIfNull(manifest);
         ArgumentException.ThrowIfNullOrWhiteSpace(compiledModelPath);
 
-        if (string.IsNullOrWhiteSpace(manifest.RetailSourceVpk) || !File.Exists(manifest.RetailSourceVpk))
-        {
-            throw new FileNotFoundException(
-                "The retail VPK recorded by hero extraction was not found. Refresh hero source before building.",
-                manifest.RetailSourceVpk);
-        }
         if (string.IsNullOrWhiteSpace(manifest.RetailMainModel))
         {
             throw new InvalidOperationException("The retail main model is unknown.");
         }
 
         var resourcePath = NormalizeResourcePath(manifest.RetailMainModel);
-        var retailBytes = ReadRetailResource(manifest.RetailSourceVpk, resourcePath);
         var compiledBytes = File.ReadAllBytes(compiledModelPath);
 
-        using var retailStream = new MemoryStream(retailBytes, writable: false);
         using var compiledStream = new MemoryStream(compiledBytes, writable: false);
-        using var retailResource = ReadModel(retailStream, resourcePath);
         using var compiledResource = ReadModel(compiledStream, resourcePath);
 
-        var retailPhysics = GetPhysics(retailResource, "Retail");
         var compiledPhysics = GetPhysics(compiledResource, "Compiled");
-        var retailFe = GetFeModel(retailPhysics, "Retail");
         var compiledFe = GetFeModel(compiledPhysics, "Compiled");
         var preserveAuthoredCloth = HasAuthoredClothTopology(compiledFe);
-        var merge = preserveAuthoredCloth
-            ? PreserveCompiledFe(compiledFe)
-            : Merge(retailFe, compiledFe);
+        if (preserveAuthoredCloth)
+        {
+            // A complete authored cloth graph proves that ResourceCompiler consumed
+            // the prepared physics successfully. Keep the entire compiled PHYS block
+            // intact: its rigid bodies and joints may also contain artist edits.
+            var authored = PreserveCompiledFe(compiledFe);
+            Verify(compiledBytes, resourcePath, authored);
+            return new CompiledPhysicsInheritanceResult(
+                0,
+                authored.CustomNames.Count,
+                authored.MergedNodeCount,
+                GetArray(compiledPhysics.Data, "m_parts").Count,
+                RestoredRetailRigidBodies: false,
+                PreservedAuthoredCloth: true);
+        }
 
+        // Older/incomplete source models retain the original retail compatibility
+        // fallback. Only this path needs to open the retail model.
+        if (string.IsNullOrWhiteSpace(manifest.RetailSourceVpk) || !File.Exists(manifest.RetailSourceVpk))
+        {
+            throw new FileNotFoundException(
+                "The retail VPK recorded by hero extraction was not found. Refresh hero source before building.",
+                manifest.RetailSourceVpk);
+        }
+        var retailBytes = ReadRetailResource(manifest.RetailSourceVpk, resourcePath);
+        using var retailStream = new MemoryStream(retailBytes, writable: false);
+        using var retailResource = ReadModel(retailStream, resourcePath);
+        var retailPhysics = GetPhysics(retailResource, "Retail");
+        var retailFe = GetFeModel(retailPhysics, "Retail");
+        var merge = Merge(retailFe, compiledFe);
         RestoreRetailRigidBodies(retailPhysics, compiledPhysics);
         compiledPhysics.Data[FeModelField] = merge.Model;
         using var physicsOutput = new MemoryStream();
@@ -118,7 +134,6 @@ internal static class CompiledModelPhysicsInheritance
             compiledBytes,
             "PHYS",
             physicsOutput.ToArray());
-
         Verify(repairedBytes, resourcePath, merge);
         WriteAtomically(compiledModelPath, repairedBytes);
         return new CompiledPhysicsInheritanceResult(
@@ -126,7 +141,8 @@ internal static class CompiledModelPhysicsInheritance
             merge.CustomNames.Count,
             merge.MergedNodeCount,
             GetArray(retailPhysics.Data, "m_parts").Count,
-            preserveAuthoredCloth);
+            RestoredRetailRigidBodies: true,
+            PreservedAuthoredCloth: false);
     }
 
     internal static KVObject MergeFeModelsForSmoke(KVObject retail, KVObject compiled) =>
@@ -140,11 +156,15 @@ internal static class CompiledModelPhysicsInheritance
             ? PreserveCompiledFe(compiled)
             : Merge(retail, compiled)).Model;
 
-    internal static KVObject RestoreRetailRigidBodiesForSmoke(
+    internal static KVObject FinalizeRigidBodiesForSmoke(
         KVObject retailPhysics,
-        KVObject compiledPhysics)
+        KVObject compiledPhysics,
+        bool preserveAuthoredCloth)
     {
-        RestoreRetailRigidBodies(retailPhysics, compiledPhysics);
+        if (!preserveAuthoredCloth)
+        {
+            RestoreRetailRigidBodies(retailPhysics, compiledPhysics);
+        }
         return compiledPhysics;
     }
 
@@ -712,7 +732,7 @@ internal static class CompiledModelPhysicsInheritance
             || names.Length != expected.MergedNodeCount
             || expected.CustomNames.Any(name => !names.Contains(name, StringComparer.OrdinalIgnoreCase)))
         {
-            throw new InvalidDataException("Serialized PHYS verification did not preserve retail FE physics and custom jiggles.");
+            throw new InvalidDataException("Compiled PHYS verification did not preserve the expected FE graph.");
         }
     }
 
