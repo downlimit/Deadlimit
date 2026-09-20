@@ -1,8 +1,7 @@
 # Deadlimit Shade — Engineering Plan
 
 Date: 2026-09-13
-Branch: `codex/deadlock-shader-profiles`
-Owner role: ChatGPT = engineering lead / reasoning and validation. Codex = bounded local executor.
+Scope: evidence-driven implementation and validation plan.
 
 ## Product target
 
@@ -19,7 +18,7 @@ Use the project labels consistently:
 - **calibrated approximation** — chosen for Painter preview or inferred by calibration;
 - **blocked/unresolved** — required input/transformation is unknown or Painter does not expose it.
 
-Never upgrade evidence class from Codex prose alone. Require reproducible trace/data/test evidence.
+Never upgrade an evidence class from a report or implementation note alone. Require reproducible trace, data, or test evidence.
 
 ## Working protocol
 
@@ -28,14 +27,14 @@ Every iteration follows:
 1. one technical boundary;
 2. one explicit hypothesis/question;
 3. minimum data needed to resolve it;
-4. Codex performs only the bounded extraction/edit/test task;
+4. perform only the bounded extraction, edit, or test task needed to answer that question;
 5. inspect returned evidence and diff;
 6. classify the result;
 7. decide the next boundary.
 
-Do not give Codex open-ended instructions such as "continue the shader", "make it match" or "investigate everything".
+Do not use open-ended tasks such as "continue the shader", "make it match" or "investigate everything".
 
-Codex must not tune visual coefficients, rotate the environment, invent substitute lights or reinterpret flags without evidence. It may implement only after the required producer/input chain is identified. Local Valve assets, RenderDoc captures, decoded textures, SPP/FBX/DMX and `.scratch` data remain out of git.
+Implementation must not tune visual coefficients, rotate the environment, invent substitute lights, or reinterpret flags without evidence. Implement only after the required producer/input chain is identified. Local Valve assets, RenderDoc captures, decoded textures, SPP/FBX/DMX and `.scratch` data remain out of git.
 
 ## Protected baseline
 
@@ -179,7 +178,7 @@ Only after the common opaque path passes the controlled comparison:
 
 SSS, special eye and hair paths remain deferred until the common opaque path is accepted.
 
-## Immediate next task for Codex
+## Immediate next research task
 
 Do **not** change visual coefficients or shader structure yet.
 
