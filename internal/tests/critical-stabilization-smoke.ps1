@@ -75,7 +75,13 @@ foreach ($required in @(
     'ToAuthoringDisplayPath(file)',
     'ProjectAuthoringLayout.AuthoringFolderName + "/"',
     'CreateFileColumn("PNG / TGA / PSD", textureList',
-    'textureList.Items.Add(ToAuthoringDisplayPath(file))'
+    'textureList.Items.Add(ToAuthoringDisplayPath(file))',
+    'dmxList.MouseDoubleClick',
+    'textureList.MouseDoubleClick',
+    'AttachBackgroundSelectionClear(form, ClearFileSelection)',
+    'IndexFromPoint(eventArgs.Location) < 0',
+    'ResolveAuthoringFilePath(projectFolder, displayPath)',
+    'Arguments = $"/select,\"{filePath}\""'
 )) {
     Assert-Contains $projectFilesUi $required 'Authoring file-list display'
 }

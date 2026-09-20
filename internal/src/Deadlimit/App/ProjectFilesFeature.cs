@@ -99,6 +99,32 @@ internal static class ProjectFilesFeature
         fileColumns.Controls.Add(dmxColumn);
         fileColumns.Controls.Add(textureColumn);
 
+        void ClearFileSelection()
+        {
+            dmxList.ClearSelected();
+            textureList.ClearSelected();
+        }
+
+        dmxList.MouseDown += (_, eventArgs) =>
+        {
+            if (dmxList.IndexFromPoint(eventArgs.Location) < 0)
+            {
+                ClearFileSelection();
+            }
+        };
+        textureList.MouseDown += (_, eventArgs) =>
+        {
+            if (textureList.IndexFromPoint(eventArgs.Location) < 0)
+            {
+                ClearFileSelection();
+            }
+        };
+        dmxList.MouseDoubleClick += (_, eventArgs) =>
+            OpenClickedAuthoringFile(form, folderText.Text, dmxList, eventArgs.Location);
+        textureList.MouseDoubleClick += (_, eventArgs) =>
+            OpenClickedAuthoringFile(form, folderText.Text, textureList, eventArgs.Location);
+        AttachBackgroundSelectionClear(form, ClearFileSelection);
+
         void ResizeColumns()
         {
             var width = Math.Max(120, (fileColumns.ClientSize.Width - 12) / 2);
@@ -247,6 +273,86 @@ internal static class ProjectFilesFeature
         return normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
             ? normalized[prefix.Length..]
             : normalized;
+    }
+
+    private static void OpenClickedAuthoringFile(
+        Form owner,
+        string projectFolder,
+        ListBox list,
+        Point location)
+    {
+        var itemIndex = list.IndexFromPoint(location);
+        if (itemIndex < 0 || itemIndex >= list.Items.Count)
+        {
+            return;
+        }
+
+        var displayPath = list.Items[itemIndex]?.ToString();
+        if (string.IsNullOrWhiteSpace(displayPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var filePath = ResolveAuthoringFilePath(projectFolder, displayPath);
+            if (!File.Exists(filePath))
+            {
+                throw new FileNotFoundException(
+                    UiText.T("The selected project file no longer exists.", "Выбранный файл проекта больше не существует."),
+                    filePath);
+            }
+
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{filePath}\"",
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex) when (ex is IOException
+            or UnauthorizedAccessException
+            or ArgumentException
+            or NotSupportedException
+            or InvalidOperationException
+            or System.ComponentModel.Win32Exception)
+        {
+            MessageBox.Show(
+                owner,
+                ex.Message,
+                UiText.T("Could not show project file", "Не удалось показать файл проекта"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+    }
+
+    private static string ResolveAuthoringFilePath(string projectFolder, string displayPath)
+    {
+        var authoringRoot = Path.Combine(
+            Path.GetFullPath(projectFolder.Trim()),
+            ProjectAuthoringLayout.AuthoringFolderName);
+        return SafePath.ResolveUnderRoot(
+            authoringRoot,
+            displayPath.Replace('/', Path.DirectorySeparatorChar),
+            "Project file selection");
+    }
+
+    private static void AttachBackgroundSelectionClear(Control root, Action clearSelection)
+    {
+        if (root is Form or Panel or GroupBox or Label)
+        {
+            root.MouseDown += (_, _) => clearSelection();
+        }
+
+        foreach (Control child in root.Controls)
+        {
+            if (child is ListBox)
+            {
+                continue;
+            }
+
+            AttachBackgroundSelectionClear(child, clearSelection);
+        }
     }
 
     private static Control CreateFileColumn(string title, ListBox list, Padding margin)
