@@ -7,8 +7,9 @@ $feedbackPath = Join-Path $repoRoot 'internal\src\Deadlimit\App\SettingsFeedback
 $factoryPath = Join-Path $repoRoot 'internal\src\Deadlimit\App\SettingsUiFactory.cs'
 $mainFormPath = Join-Path $repoRoot 'internal\src\Deadlimit\App\MainForm.cs'
 $projectIdentityPath = Join-Path $repoRoot 'internal\src\Deadlimit\App\ProjectIdentityFeature.cs'
+$steamStatusPath = Join-Path $repoRoot 'internal\src\Deadlimit\App\SteamStatusFeature.cs'
 
-foreach ($path in @($agentsPath, $guidelinesPath, $feedbackPath, $factoryPath, $mainFormPath, $projectIdentityPath)) {
+foreach ($path in @($agentsPath, $guidelinesPath, $feedbackPath, $factoryPath, $mainFormPath, $projectIdentityPath, $steamStatusPath)) {
     if (-not (Test-Path -LiteralPath $path)) {
         throw "Required UI contract file is missing: $path"
     }
@@ -88,6 +89,17 @@ foreach ($required in @(
 if ($projectIdentity.Contains('string.Equals(button.Text, "EXTRACT HERO SOURCE"') -or
     $projectIdentity.Contains('string.Equals(button.Text, "ИЗВЛЕЧЬ ИСХОДНИКИ ГЕРОЯ"')) {
     throw 'ProjectIdentityFeature must not locate extraction by localized button copy.'
+}
+
+$steamStatus = Get-Content -LiteralPath $steamStatusPath -Raw
+foreach ($required in @(
+    'SideZonePercent = 18F',
+    'CenterZonePercent = 64F',
+    'new ColumnStyle(SizeType.Percent, CenterZonePercent)'
+)) {
+    if (-not $steamStatus.Contains($required)) {
+        throw "Status footer width contract lost required token: $required"
+    }
 }
 
 Write-Host 'UI agent contract smoke passed.'
