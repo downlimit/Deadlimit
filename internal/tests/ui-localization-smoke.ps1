@@ -62,7 +62,7 @@ Assert-Contains 'internal/src/Deadlimit/App/SettingsForm.cs' 'v{GetFriendlyVersi
 Assert-NotContains 'internal/src/Deadlimit/App/SettingsForm.cs' 'Tool status is checked when this window opens.'
 Assert-NotContains 'internal/src/Deadlimit/App/SettingsForm.cs' 'Состояние инструментов проверяется при открытии окна.'
 Assert-Contains 'internal/src/Deadlimit/App/DeadlimitRelocationService.cs' 'Rewrite-Shortcut'
-Assert-Contains 'internal/src/Deadlimit/Deadlimit.csproj' '<Version>0.1.0-beta.2</Version>'
+Assert-Contains 'internal/src/Deadlimit/Deadlimit.csproj' '<Version>0.1.0-beta.3</Version>'
 Assert-NotContains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'UiText.T("UPDATE DEADLIMIT", "ОБНОВИТЬ DEADLIMIT")'
 
 # BUILD FOR TEST must disable LAUNCH GAME and show the active blue BUILDING state.
