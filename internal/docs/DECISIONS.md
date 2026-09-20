@@ -176,11 +176,11 @@ Deadlimit does not publish a routine ZIP/package channel. CI validates source
 and behavior only; it does not upload routine diagnostic artifacts or publish
 large per-merge release packages.
 
-Numbered GitHub releases are immutable source milestones rather than frozen
-binary distributions. The artist installer still installs and updates from
-`main`. A numbered release may publish only `Install-Deadlimit.cmd` and its
-SHA-256 checksum as convenience assets; Deadlimit binary ZIPs and rolling
-`latest-main` releases are not part of the supported delivery model.
+Numbered GitHub releases are source milestones rather than frozen binary
+distributions. The artist installer still installs and updates from `main`.
+A numbered release may publish only `Install-Deadlimit.cmd` and its SHA-256
+checksum as convenience assets. Packaged Deadlimit binaries are not part of the
+supported delivery model.
 
 ## Documentation continuity
 
