@@ -1,0 +1,31 @@
+name: One-time Actions artifact cleanup
+
+on:
+  push:
+    branches:
+      - codex/clone-only-install-cleanup
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    if: github.repository == 'downlimit/Deadlimit'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete all stored Actions artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t artifact_ids < <(
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/actions/artifacts?per_page=100" \
+              --jq '.artifacts[].id'
+          )
+          echo "Found ${#artifact_ids[@]} stored Actions artifacts."
+          for artifact_id in "${artifact_ids[@]}"; do
+            gh api --method DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}"
+          done
+          echo "Deleted ${#artifact_ids[@]} Actions artifacts."

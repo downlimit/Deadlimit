@@ -19,14 +19,122 @@ $localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalA
 $installRoot = Join-Path $localAppData 'Programs\Deadlimit'
 $userDataRoot = Join-Path $localAppData 'Deadlimit'
 
-function Require-Command([string]$Name, [string]$Message) {
-    $command = Get-Command $Name -ErrorAction SilentlyContinue
-    if ($null -eq $command) { throw $Message }
-    return $command
+function Refresh-ProcessPath {
+    $machinePath = [Environment]::GetEnvironmentVariable('Path', [EnvironmentVariableTarget]::Machine)
+    $userPath = [Environment]::GetEnvironmentVariable('Path', [EnvironmentVariableTarget]::User)
+    $env:Path = (@($machinePath, $userPath) |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ';'
+}
+
+function Find-Executable([string]$CommandName, [string[]]$CandidatePaths) {
+    $command = Get-Command $CommandName -ErrorAction SilentlyContinue
+    if ($null -ne $command -and -not [string]::IsNullOrWhiteSpace($command.Source)) {
+        return [IO.Path]::GetFullPath($command.Source)
+    }
+
+    foreach ($candidate in $CandidatePaths | Select-Object -Unique) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate) -and
+            (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            return [IO.Path]::GetFullPath($candidate)
+        }
+    }
+
+    return $null
+}
+
+function Find-Git {
+    $candidates = @(
+        (Join-Path $env:ProgramFiles 'Git\cmd\git.exe'),
+        $(if (${env:ProgramFiles(x86)}) { Join-Path ${env:ProgramFiles(x86)} 'Git\cmd\git.exe' }),
+        (Join-Path $env:LOCALAPPDATA 'Programs\Git\cmd\git.exe')
+    )
+    return Find-Executable 'git.exe' $candidates
+}
+
+function Has-DotNet10Sdk([string]$DotNetPath) {
+    if ([string]::IsNullOrWhiteSpace($DotNetPath) -or
+        -not (Test-Path -LiteralPath $DotNetPath -PathType Leaf)) {
+        return $false
+    }
+
+    $sdkList = @(& $DotNetPath --list-sdks 2>$null)
+    return $LASTEXITCODE -eq 0 -and
+        $null -ne ($sdkList | Where-Object { $_ -match '^10\.0\.' } | Select-Object -First 1)
+}
+
+function Find-DotNet10Sdk {
+    $command = Get-Command 'dotnet.exe' -ErrorAction SilentlyContinue
+    $candidates = @(
+        $(if ($null -ne $command) { $command.Source }),
+        (Join-Path $env:ProgramFiles 'dotnet\dotnet.exe'),
+        $(if (${env:ProgramFiles(x86)}) { Join-Path ${env:ProgramFiles(x86)} 'dotnet\dotnet.exe' }),
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\dotnet\dotnet.exe')
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+
+    foreach ($candidate in $candidates) {
+        if (Has-DotNet10Sdk $candidate) {
+            return [IO.Path]::GetFullPath($candidate)
+        }
+    }
+
+    return $null
+}
+
+function Find-WinGet {
+    $candidates = @(
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\winget.exe')
+    )
+    return Find-Executable 'winget.exe' $candidates
+}
+
+function Confirm-DependencyInstall([string[]]$MissingDependencies) {
+    Add-Type -AssemblyName System.Windows.Forms
+
+    $isRussian = [Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq 'ru'
+    $list = ($MissingDependencies | ForEach-Object { "• $_" }) -join [Environment]::NewLine
+    if ($isRussian) {
+        $title = 'Установка Deadlimit'
+        $message = @"
+Для Deadlimit не хватает:
+
+$list
+
+Установить автоматически через Windows Package Manager (WinGet)?
+Windows может показать системный запрос UAC.
+"@
+    }
+    else {
+        $title = 'Deadlimit installation'
+        $message = @"
+Deadlimit is missing:
+
+$list
+
+Install automatically with Windows Package Manager (WinGet)?
+Windows may show a system UAC prompt.
+"@
+    }
+
+    $answer = [System.Windows.Forms.MessageBox]::Show(
+        $message,
+        $title,
+        [System.Windows.Forms.MessageBoxButtons]::YesNo,
+        [System.Windows.Forms.MessageBoxIcon]::Question,
+        [System.Windows.Forms.MessageBoxDefaultButton]::Button1)
+
+    return $answer -eq [System.Windows.Forms.DialogResult]::Yes
+}
+
+function Install-WinGetPackage([string]$WingetPath, [string]$PackageId, [string]$DisplayName) {
+    Write-Host "Installing $DisplayName through WinGet..."
+    & $WingetPath install --id $PackageId --exact --source winget --accept-source-agreements --accept-package-agreements
+    if ($LASTEXITCODE -ne 0) {
+        throw "WinGet could not install $DisplayName (exit code $LASTEXITCODE)."
+    }
 }
 
 function Invoke-Git([string[]]$Arguments) {
-    & $git.Source @Arguments
+    & $gitPath @Arguments
     if ($LASTEXITCODE -ne 0) { throw "Git failed: git $($Arguments -join ' ')" }
 }
 
@@ -53,17 +161,57 @@ function Publish-Shortcuts([string]$Root) {
     Copy-Item -LiteralPath $updaterShortcut -Destination (Join-Path $startFolder 'Deadlimit Updater.lnk') -Force
 }
 
-$git = Require-Command 'git.exe' 'Git for Windows is required to install Deadlimit. Install Git, then run Install-Deadlimit.cmd again.'
-$dotnet = Require-Command 'dotnet.exe' '.NET 10 SDK is required to install Deadlimit. Install the .NET 10 SDK, then run Install-Deadlimit.cmd again.'
-$sdkList = @(& $dotnet.Source --list-sdks)
-if ($LASTEXITCODE -ne 0 -or -not ($sdkList | Where-Object { $_ -match '^10\.0\.' })) {
-    throw '.NET 10 SDK was not found. Install the .NET 10 SDK, then run Install-Deadlimit.cmd again.'
+Refresh-ProcessPath
+$gitPath = Find-Git
+$dotnetPath = Find-DotNet10Sdk
+$missingDependencies = @()
+if ([string]::IsNullOrWhiteSpace($gitPath)) {
+    $missingDependencies += 'Git for Windows'
 }
+if ([string]::IsNullOrWhiteSpace($dotnetPath)) {
+    $missingDependencies += '.NET 10 SDK'
+}
+
+if ($missingDependencies.Count -gt 0) {
+    if (-not (Confirm-DependencyInstall $missingDependencies)) {
+        Write-Host 'Deadlimit installation cancelled by the user.'
+        exit 0
+    }
+
+    $wingetPath = Find-WinGet
+    if ([string]::IsNullOrWhiteSpace($wingetPath)) {
+        throw 'Windows Package Manager (WinGet) was not found. Install Microsoft App Installer / WinGet, then run Install-Deadlimit.cmd again.'
+    }
+
+    if ([string]::IsNullOrWhiteSpace($gitPath)) {
+        Install-WinGetPackage $wingetPath 'Git.Git' 'Git for Windows'
+    }
+    if ([string]::IsNullOrWhiteSpace($dotnetPath)) {
+        Install-WinGetPackage $wingetPath 'Microsoft.DotNet.SDK.10' '.NET 10 SDK'
+    }
+
+    Refresh-ProcessPath
+    $gitPath = Find-Git
+    $dotnetPath = Find-DotNet10Sdk
+
+    if ([string]::IsNullOrWhiteSpace($gitPath)) {
+        throw 'Git for Windows was installed but git.exe could not be located. Restart Windows and run Install-Deadlimit.cmd again.'
+    }
+    if ([string]::IsNullOrWhiteSpace($dotnetPath)) {
+        throw '.NET 10 SDK installation finished, but SDK 10.x could not be located. Restart Windows and run Install-Deadlimit.cmd again.'
+    }
+}
+
+$toolPaths = @(
+    [IO.Path]::GetDirectoryName($gitPath),
+    [IO.Path]::GetDirectoryName($dotnetPath)
+) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+$env:Path = (($toolPaths + @($env:Path)) -join ';')
 
 [IO.Directory]::CreateDirectory((Split-Path -Parent $installRoot)) | Out-Null
 
 if (Test-Path -LiteralPath (Join-Path $installRoot '.git') -PathType Container) {
-    $origin = (& $git.Source -C $installRoot remote get-url origin).Trim()
+    $origin = (& $gitPath -C $installRoot remote get-url origin).Trim()
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($origin)) {
         throw "The existing Deadlimit checkout has no readable origin remote: $installRoot"
     }
