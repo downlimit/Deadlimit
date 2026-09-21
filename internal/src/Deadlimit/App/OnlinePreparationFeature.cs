@@ -8,7 +8,6 @@ internal static class OnlinePreparationFeature
     private static string LiveSyncButtonText => UiText.T("▶  LIVE SYNC", "▶  LIVE SYNC");
 
     private static OnlinePreparationSession? _session;
-    private static ToolTip? _toolTip;
     private static Button? _prepareButton;
     private static Button? _buildButton;
     private static Button? _launchButton;
@@ -34,14 +33,6 @@ internal static class OnlinePreparationFeature
         _prepareButton = prepareButton;
         _buildButton = buildButton;
         _launchButton = launchButton;
-        _toolTip = new ToolTip
-        {
-            AutoPopDelay = 16000,
-            InitialDelay = 450,
-            ReshowDelay = 100,
-            ShowAlways = true,
-        };
-
         prepareButton.Click += (_, _) =>
         {
             if (_session is not null)
@@ -538,8 +529,6 @@ internal static class OnlinePreparationFeature
     {
         StopSession();
 
-        _toolTip?.Dispose();
-        _toolTip = null;
         _prepareButton = null;
         _buildButton = null;
         _launchButton = null;
@@ -548,9 +537,9 @@ internal static class OnlinePreparationFeature
 
     private static void UpdateToolTip(string text)
     {
-        if (_toolTip is not null && _launchButton is not null && !_launchButton.IsDisposed)
+        if (_launchButton is not null && !_launchButton.IsDisposed)
         {
-            _toolTip.SetToolTip(_launchButton, text);
+            _ = RichToolTip.TrySetToolTip(_launchButton, text);
         }
     }
 
