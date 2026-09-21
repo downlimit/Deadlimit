@@ -51,7 +51,9 @@ internal static class ProjectHeaderFeature
         }
 
         var projectGrid = projectGroup.Controls.OfType<TableLayoutPanel>().FirstOrDefault();
-        var folderText = projectGrid?.GetControlFromPosition(1, 0) as TextBox;
+        var folderText = projectGrid?.Controls
+            .OfType<TextBox>()
+            .FirstOrDefault(textBox => textBox.Name == UiControlNames.ProjectFolder);
         if (folderText is null)
         {
             throw new InvalidOperationException("The current project folder control is missing.");

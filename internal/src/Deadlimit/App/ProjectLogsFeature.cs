@@ -20,8 +20,15 @@ internal static class ProjectLogsFeature
             return;
         }
 
-        var folderText = grid.GetControlFromPosition(1, 0) as TextBox;
-        var heroActions = grid.GetControlFromPosition(2, 2) as FlowLayoutPanel;
+        var folderText = grid.Controls
+            .OfType<TextBox>()
+            .FirstOrDefault(textBox => textBox.Name == UiControlNames.ProjectFolder);
+        var heroCombo = grid.Controls
+            .OfType<ComboBox>()
+            .FirstOrDefault(combo => combo.Name == UiControlNames.Hero);
+        var heroActions = heroCombo is null
+            ? null
+            : grid.GetControlFromPosition(2, grid.GetRow(heroCombo)) as FlowLayoutPanel;
         var saveButton = grid.Controls
             .OfType<Button>()
             .FirstOrDefault(button => button.Name == UiControlNames.SaveProjectButton);
