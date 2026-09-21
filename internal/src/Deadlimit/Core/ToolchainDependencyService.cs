@@ -64,6 +64,8 @@ public sealed class ToolchainDependencyService
     private const string DepotDownloaderWindowsSha256 = "41C9E9F0DF54B3AD02E67A11726756E5C73283BD7C2E1B04ACFA5AE4C2ED3767";
     private const string CsdkMarkerFileName = ".deadlimit-csdk.json";
     private const string CsdkSetupMarkerFileName = ".deadlimit-csdk-setup.json";
+    private const string CsdkArchiveCacheFileName = "csdk.zip";
+    private const string CsdkArchiveCacheMarkerFileName = ".deadlimit-csdk-cache.json";
     private const string DeadlockToolsMarkerFileName = ".deadlimit-deadlocktools.json";
     private const string DepotDownloaderMarkerFileName = ".deadlimit-depotdownloader.json";
 
@@ -149,6 +151,49 @@ public sealed class ToolchainDependencyService
             || !providerError.Contains("Too many users", StringComparison.Ordinal))
         {
             return 5;
+        }
+
+        var cacheSmokeRoot = Path.Combine(
+            Path.GetTempPath(),
+            "Deadlimit-Csdl-Cache-Smoke",
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(cacheSmokeRoot);
+            var archive = Path.Combine(cacheSmokeRoot, CsdkArchiveCacheFileName);
+            using (var zip = ZipFile.Open(archive, ZipArchiveMode.Create))
+            {
+                var entry = zip.CreateEntry("csdkcfg.exe");
+                using var writer = new StreamWriter(entry.Open());
+                writer.Write("smoke");
+            }
+
+            var smokeCatalog = new CsdkCatalog(
+                PinnedCsdkGeneration,
+                new Uri(CsdkPinnedPage),
+                new Uri("https://example.invalid/csdk.zip"),
+                Array.Empty<DepotManifest>(),
+                null);
+            WriteCsdkArchiveCacheMarker(
+                cacheSmokeRoot,
+                archive,
+                smokeCatalog,
+                ComputeFileSha256(archive));
+
+            if (!IsTrustedCsdkArchiveCache(cacheSmokeRoot, archive, smokeCatalog))
+            {
+                return 6;
+            }
+
+            File.AppendAllText(archive, "corrupt");
+            if (IsTrustedCsdkArchiveCache(cacheSmokeRoot, archive, smokeCatalog))
+            {
+                return 7;
+            }
+        }
+        finally
+        {
+            TryDeleteDirectory(cacheSmokeRoot);
         }
 
         return 0;
@@ -700,24 +745,21 @@ public sealed class ToolchainDependencyService
         int endPercent)
     {
         var workRoot = CreateTempFolder("csdk");
-        var archive = Path.Combine(workRoot, "csdk.zip");
         var extract = Path.Combine(workRoot, "extract");
         Directory.CreateDirectory(extract);
         try
         {
             var downloadEnd = Math.Max(startPercent + 1, endPercent - 18);
-            await DownloadFileAsync(
-                catalog.DownloadUri,
-                archive,
+            var archive = await EnsureCsdkArchiveAsync(
+                catalog,
                 operation,
                 progress,
-                ProgressText($"Downloading CSDK {catalog.Generation}", $"Загрузка CSDK {catalog.Generation}"),
                 startPercent,
                 downloadEnd).ConfigureAwait(false);
             Report(operation, progress, ProgressText("Extracting CSDK archive…", "Распаковка архива CSDK…"), downloadEnd + 1);
             await ExtractZipAsync(archive, extract, true, operation.Token, operation, progress, downloadEnd + 1, endPercent - 8).ConfigureAwait(false);
             var launcher = Directory.EnumerateFiles(extract, "csdkcfg.exe", SearchOption.AllDirectories).FirstOrDefault()
-                ?? throw new InvalidDataException("The downloaded CSDK archive does not contain csdkcfg.exe.");
+                ?? throw new InvalidDataException("The cached CSDK archive does not contain csdkcfg.exe.");
             Report(operation, progress, ProgressText("Applying CSDK files…", "Применение файлов CSDK…"), endPercent - 7);
             if (overwrite)
             {
@@ -746,6 +788,132 @@ public sealed class ToolchainDependencyService
         finally
         {
             TryDeleteDirectory(workRoot);
+        }
+    }
+
+    private async Task<string> EnsureCsdkArchiveAsync(
+        CsdkCatalog catalog,
+        ToolchainOperationHub.OperationScope operation,
+        IProgress<string>? progress,
+        int startPercent,
+        int endPercent)
+    {
+        var cacheRoot = GetCsdkArchiveCacheRoot(catalog);
+        var archive = Path.Combine(cacheRoot, CsdkArchiveCacheFileName);
+        if (IsTrustedCsdkArchiveCache(cacheRoot, archive, catalog))
+        {
+            Report(
+                operation,
+                progress,
+                ProgressText(
+                    $"Using cached CSDK {catalog.Generation} archive.",
+                    $"Используется кэшированный архив CSDK {catalog.Generation}."),
+                endPercent);
+            return archive;
+        }
+
+        if (Directory.Exists(cacheRoot))
+        {
+            TryDeleteDirectory(cacheRoot);
+        }
+        Directory.CreateDirectory(cacheRoot);
+
+        var temporaryArchive = Path.Combine(cacheRoot, $"csdk-{Guid.NewGuid():N}.download");
+        try
+        {
+            await DownloadFileAsync(
+                catalog.DownloadUri,
+                temporaryArchive,
+                operation,
+                progress,
+                ProgressText($"Downloading CSDK {catalog.Generation}", $"Загрузка CSDK {catalog.Generation}"),
+                startPercent,
+                endPercent).ConfigureAwait(false);
+
+            ValidateCsdkArchive(temporaryArchive);
+            var archiveSha256 = ComputeFileSha256(temporaryArchive);
+            File.Move(temporaryArchive, archive, overwrite: true);
+            WriteCsdkArchiveCacheMarker(cacheRoot, archive, catalog, archiveSha256);
+            return archive;
+        }
+        finally
+        {
+            if (File.Exists(temporaryArchive))
+            {
+                File.Delete(temporaryArchive);
+            }
+        }
+    }
+
+    private static string GetCsdkArchiveCacheRoot(CsdkCatalog catalog) =>
+        UserDataPaths.Combine(
+            "cache",
+            "csdk",
+            catalog.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    private static void ValidateCsdkArchive(string archive)
+    {
+        using var zip = ZipFile.OpenRead(archive);
+        if (!zip.Entries.Any(entry =>
+                string.Equals(entry.Name, "csdkcfg.exe", StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidDataException("The downloaded CSDK archive does not contain csdkcfg.exe.");
+        }
+    }
+
+    private static void WriteCsdkArchiveCacheMarker(
+        string cacheRoot,
+        string archive,
+        CsdkCatalog catalog,
+        string archiveSha256)
+    {
+        var marker = JsonSerializer.Serialize(new
+        {
+            generation = catalog.Generation,
+            source = catalog.DownloadUri.ToString(),
+            archiveSha256,
+            archiveSize = new FileInfo(archive).Length,
+            cachedUtc = DateTimeOffset.UtcNow,
+        }, new JsonSerializerOptions { WriteIndented = true });
+        AtomicFile.WriteAllText(Path.Combine(cacheRoot, CsdkArchiveCacheMarkerFileName), marker);
+    }
+
+    private static bool IsTrustedCsdkArchiveCache(
+        string cacheRoot,
+        string archive,
+        CsdkCatalog catalog)
+    {
+        var markerPath = Path.Combine(cacheRoot, CsdkArchiveCacheMarkerFileName);
+        if (!File.Exists(markerPath) || !File.Exists(archive))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(File.ReadAllText(markerPath));
+            var marker = document.RootElement;
+            if (!marker.TryGetProperty("generation", out var generation)
+                || !generation.TryGetInt32(out var parsedGeneration)
+                || parsedGeneration != catalog.Generation
+                || !marker.TryGetProperty("source", out var source)
+                || !string.Equals(source.GetString(), catalog.DownloadUri.ToString(), StringComparison.Ordinal)
+                || !marker.TryGetProperty("archiveSize", out var archiveSize)
+                || !archiveSize.TryGetInt64(out var expectedSize)
+                || new FileInfo(archive).Length != expectedSize
+                || !marker.TryGetProperty("archiveSha256", out var archiveHash))
+            {
+                return false;
+            }
+
+            return string.Equals(
+                archiveHash.GetString(),
+                ComputeFileSha256(archive),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            return false;
         }
     }
 
