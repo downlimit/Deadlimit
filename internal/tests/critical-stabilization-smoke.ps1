@@ -16,7 +16,15 @@ function Assert-NotContains([string]$Text, [string]$Pattern, [string]$Label) {
 $toolchain = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ToolchainDependencyService.cs' -Raw
 foreach ($required in @(
     'PinnedCsdkGeneration = 12',
+    'CsdkInstallFolderName = "Reduced_CSDK_12"',
     'CsdkPinnedDriveId = "1-Z-4CszWQNudzwzs6e6abPsp5RGFOURS"',
+    'https://drive.google.com/uc?export=download&id=',
+    'ResolveCsdkInstallRoot(',
+    'OpenDownloadResponseAsync(',
+    'TryGetGoogleDriveConfirmationUri(',
+    'download-form',
+    '"downloadUrl"',
+    'Google Drive did not provide a downloadable file.',
     'DeadlockToolsPinnedTag = "v1.1.0"',
     'DeadlockToolsWindowsSha256 = "7E4668DA796E4CA67B1EE684CF03270E07FECEBECCF66D04DDF1F3A3E7409DCF"',
     'DepotDownloaderPinnedTag = "DepotDownloader_3.4.0"',
@@ -33,6 +41,17 @@ Assert-NotContains $toolchain 'repos/dotryen/DeadlockTools/releases/latest' 'Too
 Assert-NotContains $toolchain 'repos/SteamRE/DepotDownloader/releases/latest' 'Toolchain hardening'
 Assert-NotContains $toolchain 'ReadCsdkPageAsync' 'Toolchain hardening'
 Assert-NotContains $toolchain 'CsdkGenerationRegex' 'Toolchain hardening'
+
+$settingsForm = Get-Content -LiteralPath 'internal/src/Deadlimit/App/SettingsForm.cs' -Raw
+foreach ($required in @(
+    'Choose the parent folder where Reduced_CSDK_12 will be created',
+    'Выберите родительскую папку, внутри которой будет создана Reduced_CSDK_12',
+    'string.Equals(new DirectoryInfo(current).Name, "Reduced_CSDK_12"',
+    'creates **Reduced_CSDK_12** inside it'
+)) {
+    Assert-Contains $settingsForm $required 'CSDK parent-folder install'
+}
+Assert-NotContains $settingsForm 'Choose the folder that will become the Reduced CSDK root' 'CSDK parent-folder install'
 
 $vpk = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/VpkSlotOwnershipService.cs' -Raw
 foreach ($required in @(
