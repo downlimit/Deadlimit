@@ -380,8 +380,8 @@ internal sealed class SettingsForm : Form
         _toolTip.SetToolTip(
             _csdkPrimaryButton,
             UiText.T(
-                    "**INSTALL…** selects an empty folder and downloads the current Reduced CSDK.\n\n**UPDATE…** overlays the current distribution onto the configured CSDK folder.\n\n**CHECK** validates the installation and checks the latest published CSDK generation.",
-                    "**УСТАНОВИТЬ…** выбирает пустую папку и скачивает актуальный Reduced CSDK.\n\n**ОБНОВИТЬ…** накладывает актуальный дистрибутив поверх настроенной папки CSDK.\n\n**ПРОВЕРИТЬ** валидирует установку и проверяет последнее опубликованное поколение CSDK."));
+                    "**INSTALL…** selects a parent folder, creates **Reduced_CSDK_12** inside it, and downloads the current Reduced CSDK.\n\n**UPDATE…** overlays the current distribution onto the configured CSDK folder.\n\n**CHECK** validates the installation and checks the latest published CSDK generation.",
+                    "**УСТАНОВИТЬ…** выбирает родительскую папку, создаёт внутри неё **Reduced_CSDK_12** и скачивает актуальный Reduced CSDK.\n\n**ОБНОВИТЬ…** накладывает актуальный дистрибутив поверх настроенной папки CSDK.\n\n**ПРОВЕРИТЬ** валидирует установку и проверяет последнее опубликованное поколение CSDK."));
         _toolTip.SetToolTip(
             _csdkSetupButton,
             UiText.T(
@@ -906,9 +906,16 @@ internal sealed class SettingsForm : Form
 
         if (_csdkStatus.Kind is ToolchainStatusKind.NotSpecified or ToolchainStatusKind.InvalidPath)
         {
+            var current = _csdkRootText.Text.Trim();
+            var initialDirectory = Directory.Exists(current)
+                && string.Equals(new DirectoryInfo(current).Name, "Reduced_CSDK_12", StringComparison.OrdinalIgnoreCase)
+                    ? Directory.GetParent(current)?.FullName ?? current
+                    : current;
             var destination = ChooseFolder(
-                UiText.T("Choose the folder that will become the Reduced CSDK root", "Выберите папку, которая станет корнем Reduced CSDK"),
-                _csdkRootText.Text,
+                UiText.T(
+                    "Choose the parent folder where Reduced_CSDK_12 will be created",
+                    "Выберите родительскую папку, внутри которой будет создана Reduced_CSDK_12"),
+                initialDirectory,
                 showNewFolderButton: true,
                 fallbackInitialDirectory: DeadlimitPaths.DefaultWorkspaceRoot);
             if (destination is null)

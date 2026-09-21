@@ -35,6 +35,7 @@ public sealed record ToolchainInstallResult(string RootPath, ToolchainStatus Sta
 public sealed class ToolchainDependencyService
 {
     private const int PinnedCsdkGeneration = 12;
+    private const string CsdkInstallFolderName = "Reduced_CSDK_12";
     private const string CsdkPinnedPage = "https://deadlockmodding.pages.dev/modding-tools/csdk-12";
     private const string CsdkPinnedDriveId = "1-Z-4CszWQNudzwzs6e6abPsp5RGFOURS";
     private const string CsdkPinnedManifestArchiveUrl = "https://deadlockmodding.pages.dev/attachments/csdk12/DepotDownloaderManifests.zip";
@@ -64,6 +65,79 @@ public sealed class ToolchainDependencyService
     public ToolchainDependencyService()
     {
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("DeadlimitManager/1.0");
+    }
+
+    internal static int RunCsdkInstallDownloadSmoke()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "Deadlimit-Smoke-Parent");
+        var expectedRoot = Path.Combine(Path.GetFullPath(parent), CsdkInstallFolderName);
+        if (!string.Equals(
+                ResolveCsdkInstallRoot(parent),
+                expectedRoot,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return 1;
+        }
+
+        const string formHtml = """
+            <html><body>
+            <form id="download-form" action="https://drive.usercontent.google.com/download">
+              <input type="hidden" name="id" value="file-id">
+              <input type="hidden" name="export" value="download">
+              <input type="hidden" name="confirm" value="t">
+              <input type="hidden" name="uuid" value="test-uuid">
+            </form>
+            </body></html>
+            """;
+        var formUri = TryGetGoogleDriveConfirmationUri(
+            formHtml,
+            new Uri("https://drive.google.com/uc?export=download&id=file-id"));
+        if (formUri is null
+            || !string.Equals(formUri.Host, "drive.usercontent.google.com", StringComparison.OrdinalIgnoreCase)
+            || !formUri.Query.Contains("id=file-id", StringComparison.Ordinal)
+            || !formUri.Query.Contains("confirm=t", StringComparison.Ordinal)
+            || !formUri.Query.Contains("uuid=test-uuid", StringComparison.Ordinal))
+        {
+            return 2;
+        }
+
+        const string hrefHtml = """
+            <a href="/uc?export=download&amp;id=file-id&amp;confirm=t">Download</a>
+            """;
+        var hrefUri = TryGetGoogleDriveConfirmationUri(
+            hrefHtml,
+            new Uri("https://drive.google.com/uc?id=file-id"));
+        if (hrefUri is null
+            || !string.Equals(hrefUri.Host, "docs.google.com", StringComparison.OrdinalIgnoreCase)
+            || !hrefUri.Query.Contains("confirm=t", StringComparison.Ordinal))
+        {
+            return 3;
+        }
+
+        const string jsonHtml = """
+            <script>{"downloadUrl":"https://drive.usercontent.google.com/download?id\u003dfile-id\u0026confirm\u003dt\u0026uuid\u003djson-uuid"}</script>
+            """;
+        var jsonUri = TryGetGoogleDriveConfirmationUri(
+            jsonHtml,
+            new Uri("https://drive.google.com/uc?id=file-id"));
+        if (jsonUri is null
+            || !string.Equals(jsonUri.Host, "drive.usercontent.google.com", StringComparison.OrdinalIgnoreCase)
+            || !jsonUri.Query.Contains("uuid=json-uuid", StringComparison.Ordinal))
+        {
+            return 4;
+        }
+
+        const string errorHtml = """
+            <p class="uc-error-subcaption">Too many users have viewed or downloaded this file recently.</p>
+            """;
+        var providerError = TryGetGoogleDriveError(errorHtml);
+        if (string.IsNullOrWhiteSpace(providerError)
+            || !providerError.Contains("Too many users", StringComparison.Ordinal))
+        {
+            return 5;
+        }
+
+        return 0;
     }
 
     public ToolchainStatus CheckRetailDeadlock(string root)
@@ -241,27 +315,28 @@ public sealed class ToolchainDependencyService
             ToolchainOperationTarget.Csdk,
             cancellationToken,
             ProgressText("Preparing Reduced CSDK installation…", "Подготовка установки Reduced CSDK…"));
-        var destinationExisted = Directory.Exists(destinationRoot);
+        var installRoot = ResolveCsdkInstallRoot(destinationRoot);
+        var installRootExisted = Directory.Exists(installRoot);
         try
         {
-            EnsureEmptyDestination(destinationRoot, "Reduced CSDK");
-            Directory.CreateDirectory(destinationRoot);
+            EnsureEmptyDestination(installRoot, "Reduced CSDK");
+            Directory.CreateDirectory(installRoot);
             Report(operation, progress, ProgressText("Checking current CSDK release…", "Проверка актуального релиза CSDK…"), 3);
             var catalog = await GetLatestCsdkCatalogAsync(operation.Token).ConfigureAwait(false);
             Report(operation, progress, ProgressText($"Downloading CSDK {catalog.Generation}…", $"Загрузка CSDK {catalog.Generation}…"), 7);
-            await InstallCsdkArchiveAsync(catalog, destinationRoot, false, operation, progress, 7, 96).ConfigureAwait(false);
-            WriteCsdkMarker(destinationRoot, catalog, setup: false);
+            await InstallCsdkArchiveAsync(catalog, installRoot, false, operation, progress, 7, 96).ConfigureAwait(false);
+            WriteCsdkMarker(installRoot, catalog, setup: false);
             var complete = ProgressText($"CSDK {catalog.Generation} installed.", $"CSDK {catalog.Generation} установлен.");
             ToolchainOperationHub.Complete(operation, complete);
             return new(
-                Path.GetFullPath(destinationRoot),
+                Path.GetFullPath(installRoot),
                 new(ToolchainStatusKind.UpToDate, $"Installed CSDK generation: {catalog.Generation}.", true, catalog.Generation, catalog.Generation));
         }
         catch (OperationCanceledException)
         {
-            if (!destinationExisted)
+            if (!installRootExisted)
             {
-                TryDeleteDirectory(destinationRoot);
+                TryDeleteDirectory(installRoot);
             }
             var cancelled = ProgressText("CSDK installation cancelled.", "Установка CSDK отменена.");
             ToolchainOperationHub.Cancelled(operation, cancelled);
@@ -562,7 +637,7 @@ public sealed class ToolchainDependencyService
     {
         cancellationToken.ThrowIfCancellationRequested();
         var downloadUri = new Uri(
-            $"https://drive.usercontent.google.com/download?id={Uri.EscapeDataString(CsdkPinnedDriveId)}&export=download&confirm=t");
+            $"https://drive.google.com/uc?export=download&id={Uri.EscapeDataString(CsdkPinnedDriveId)}");
         var depots = new[]
         {
             new DepotManifest("1422450", "1422451", "2639812037154209539"),
@@ -815,6 +890,207 @@ public sealed class ToolchainDependencyService
                 "DepotDownloader extraction completed, but integrity verification metadata is not valid.");
     }
 
+    private async Task<HttpResponseMessage> OpenDownloadResponseAsync(
+        Uri uri,
+        CancellationToken cancellationToken)
+    {
+        var currentUri = uri;
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var response = await _http.GetAsync(
+                currentUri,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken).ConfigureAwait(false);
+            try
+            {
+                response.EnsureSuccessStatusCode();
+                if (!IsGoogleDriveUri(currentUri)
+                    || !IsHtmlResponse(response)
+                    || response.Content.Headers.ContentDisposition is not null)
+                {
+                    return response;
+                }
+
+                var html = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                var responseUri = response.RequestMessage?.RequestUri ?? currentUri;
+                var confirmationUri = TryGetGoogleDriveConfirmationUri(html, responseUri);
+                if (confirmationUri is null)
+                {
+                    var providerError = TryGetGoogleDriveError(html);
+                    throw new InvalidOperationException(
+                        providerError is null
+                            ? "Google Drive did not provide a downloadable file. The file may be unavailable, no longer public, or temporarily rate-limited."
+                            : $"Google Drive refused the download: {providerError}");
+                }
+
+                currentUri = confirmationUri;
+            }
+            catch
+            {
+                response.Dispose();
+                throw;
+            }
+
+            response.Dispose();
+        }
+
+        throw new InvalidOperationException(
+            "Google Drive returned too many confirmation pages while resolving the CSDK archive.");
+    }
+
+    private static bool IsGoogleDriveUri(Uri uri) =>
+        uri.Host.EndsWith("google.com", StringComparison.OrdinalIgnoreCase)
+        || uri.Host.EndsWith("googleusercontent.com", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsHtmlResponse(HttpResponseMessage response) =>
+        string.Equals(
+            response.Content.Headers.ContentType?.MediaType,
+            "text/html",
+            StringComparison.OrdinalIgnoreCase);
+
+    private static Uri? TryGetGoogleDriveConfirmationUri(string html, Uri responseUri)
+    {
+        foreach (Match formMatch in Regex.Matches(
+                     html,
+                     @"<form\b(?<attrs>[^>]*)>(?<body>.*?)</form>",
+                     RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant))
+        {
+            var attributes = formMatch.Groups["attrs"].Value;
+            if (!string.Equals(
+                    TryGetHtmlAttribute(attributes, "id"),
+                    "download-form",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var action = TryGetHtmlAttribute(attributes, "action");
+            if (string.IsNullOrWhiteSpace(action))
+            {
+                continue;
+            }
+
+            var actionUri = Uri.TryCreate(action, UriKind.Absolute, out var absolute)
+                ? absolute
+                : new Uri(responseUri, action);
+            var parameters = ParseQuery(actionUri.Query);
+            foreach (Match inputMatch in Regex.Matches(
+                         formMatch.Groups["body"].Value,
+                         @"<input\b(?<attrs>[^>]*)>",
+                         RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant))
+            {
+                var inputAttributes = inputMatch.Groups["attrs"].Value;
+                var type = TryGetHtmlAttribute(inputAttributes, "type");
+                if (!string.Equals(type, "hidden", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                var name = TryGetHtmlAttribute(inputAttributes, "name");
+                var value = TryGetHtmlAttribute(inputAttributes, "value");
+                if (!string.IsNullOrWhiteSpace(name) && value is not null)
+                {
+                    parameters[name] = value;
+                }
+            }
+
+            return BuildUriWithQuery(actionUri, parameters);
+        }
+
+        var hrefMatch = Regex.Match(
+            html,
+            @"href\s*=\s*[""'](?<url>/uc\?export=download[^""']+)[""']",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (hrefMatch.Success)
+        {
+            var relative = System.Net.WebUtility.HtmlDecode(hrefMatch.Groups["url"].Value);
+            return new Uri(new Uri("https://docs.google.com"), relative);
+        }
+
+        var downloadUrlMatch = Regex.Match(
+            html,
+            @"""downloadUrl""\s*:\s*""(?<url>(?:\\.|[^""])*)""",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (downloadUrlMatch.Success)
+        {
+            var encoded = downloadUrlMatch.Groups["url"].Value;
+            var decoded = encoded
+                .Replace(@"\u003d", "=", StringComparison.OrdinalIgnoreCase)
+                .Replace(@"\u0026", "&", StringComparison.OrdinalIgnoreCase)
+                .Replace(@"\/", "/", StringComparison.Ordinal);
+            if (Uri.TryCreate(decoded, UriKind.Absolute, out var downloadUri))
+            {
+                return downloadUri;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? TryGetGoogleDriveError(string html)
+    {
+        var match = Regex.Match(
+            html,
+            @"<p\b[^>]*class\s*=\s*[""'][^""']*uc-error-subcaption[^""']*[""'][^>]*>(?<message>.*?)</p>",
+            RegexOptions.IgnoreCase | RegexOptions.Singleline | RegexOptions.CultureInvariant);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var withoutTags = Regex.Replace(match.Groups["message"].Value, "<[^>]+>", string.Empty);
+        var decoded = System.Net.WebUtility.HtmlDecode(withoutTags).Trim();
+        return string.IsNullOrWhiteSpace(decoded) ? null : decoded;
+    }
+
+    private static string? TryGetHtmlAttribute(string attributes, string attributeName)
+    {
+        var match = Regex.Match(
+            attributes,
+            $@"\b{Regex.Escape(attributeName)}\s*=\s*(?:""(?<double>[^""]*)""|'(?<single>[^']*)'|(?<bare>[^\s>]+))",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var value = match.Groups["double"].Success
+            ? match.Groups["double"].Value
+            : match.Groups["single"].Success
+                ? match.Groups["single"].Value
+                : match.Groups["bare"].Value;
+        return System.Net.WebUtility.HtmlDecode(value);
+    }
+
+    private static Dictionary<string, string> ParseQuery(string query)
+    {
+        var parameters = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var part in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var separator = part.IndexOf('=');
+            var key = separator >= 0 ? part[..separator] : part;
+            var value = separator >= 0 ? part[(separator + 1)..] : string.Empty;
+            parameters[DecodeQueryComponent(key)] = DecodeQueryComponent(value);
+        }
+
+        return parameters;
+    }
+
+    private static string DecodeQueryComponent(string value) =>
+        Uri.UnescapeDataString(value.Replace("+", " ", StringComparison.Ordinal));
+
+    private static Uri BuildUriWithQuery(Uri uri, IReadOnlyDictionary<string, string> parameters)
+    {
+        var builder = new UriBuilder(uri)
+        {
+            Query = string.Join(
+                "&",
+                parameters.Select(pair =>
+                    $"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}")),
+        };
+        return builder.Uri;
+    }
+
     private async Task DownloadFileAsync(
         Uri uri,
         string destination,
@@ -826,9 +1102,8 @@ public sealed class ToolchainDependencyService
         string? expectedSha256 = null)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-        using var response = await _http.GetAsync(uri, HttpCompletionOption.ResponseHeadersRead, operation.Token).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        if (string.Equals(response.Content.Headers.ContentType?.MediaType, "text/html", StringComparison.OrdinalIgnoreCase))
+        using var response = await OpenDownloadResponseAsync(uri, operation.Token).ConfigureAwait(false);
+        if (IsHtmlResponse(response) && response.Content.Headers.ContentDisposition is null)
         {
             throw new InvalidOperationException("The download provider returned an HTML page instead of an archive.");
         }
@@ -1430,6 +1705,18 @@ public sealed class ToolchainDependencyService
             1024 * 128,
             FileOptions.SequentialScan);
         return Convert.ToHexString(SHA256.HashData(stream));
+    }
+
+    private static string ResolveCsdkInstallRoot(string selectedParent)
+    {
+        if (string.IsNullOrWhiteSpace(selectedParent))
+        {
+            throw new ArgumentException("Reduced CSDK installation location is empty.", nameof(selectedParent));
+        }
+
+        var parent = Path.GetFullPath(selectedParent.Trim())
+            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return Path.Combine(parent, CsdkInstallFolderName);
     }
 
     private static void EnsureEmptyDestination(string path, string toolName)
