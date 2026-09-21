@@ -13,6 +13,17 @@ function Assert-NotContains([string]$Text, [string]$Pattern, [string]$Label) {
     }
 }
 
+$csdkWatcherCompatibility = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/CsdkAssetWatcherCompatibility.cs' -Raw
+foreach ($required in @(
+    '"citadel"',
+    '"addons"',
+    '"luaunlocker"',
+    'Directory.CreateDirectory(contentAddon)',
+    'Directory.Exists(gameAddon)'
+)) {
+    Assert-Contains $csdkWatcherCompatibility $required 'CSDK luaunlocker asset-watcher compatibility'
+}
+
 $toolchain = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ToolchainDependencyService.cs' -Raw
 foreach ($required in @(
     'PinnedCsdkGeneration = 12',
@@ -39,6 +50,9 @@ foreach ($required in @(
 )) {
     Assert-Contains $toolchain $required 'Toolchain hardening'
 }
+Assert-Contains $toolchain 'CsdkAssetWatcherCompatibility.EnsureLuaUnlockerContentMirror(installRoot);' 'CSDK install watcher repair'
+Assert-Contains $toolchain 'CsdkAssetWatcherCompatibility.EnsureLuaUnlockerContentMirror(root);' 'CSDK update watcher repair'
+Assert-Contains $toolchain 'CsdkAssetWatcherCompatibility.EnsureLuaUnlockerContentMirror(csdkRoot);' 'CSDK setup watcher repair'
 Assert-NotContains $toolchain 'repos/dotryen/DeadlockTools/releases/latest' 'Toolchain hardening'
 Assert-NotContains $toolchain 'repos/SteamRE/DepotDownloader/releases/latest' 'Toolchain hardening'
 Assert-NotContains $toolchain 'ReadCsdkPageAsync' 'Toolchain hardening'

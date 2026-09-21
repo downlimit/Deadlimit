@@ -1059,6 +1059,7 @@ internal static class BuildFeature
 
         try
         {
+            CsdkAssetWatcherCompatibility.EnsureLuaUnlockerContentMirror(paths.CsdkRoot);
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
                 FileName = paths.CsdkLauncherPath,
@@ -1066,7 +1067,10 @@ internal static class BuildFeature
                 UseShellExecute = true,
             });
         }
-        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+        catch (Exception ex) when (ex is InvalidOperationException
+                                   or System.ComponentModel.Win32Exception
+                                   or IOException
+                                   or UnauthorizedAccessException)
         {
             MessageBox.Show(
                 form,
