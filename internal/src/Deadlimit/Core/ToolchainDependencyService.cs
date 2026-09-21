@@ -67,6 +67,79 @@ public sealed class ToolchainDependencyService
         _http.DefaultRequestHeaders.UserAgent.ParseAdd("DeadlimitManager/1.0");
     }
 
+    internal static int RunCsdkInstallDownloadSmoke()
+    {
+        var parent = Path.Combine(Path.GetTempPath(), "Deadlimit-Smoke-Parent");
+        var expectedRoot = Path.Combine(Path.GetFullPath(parent), CsdkInstallFolderName);
+        if (!string.Equals(
+                ResolveCsdkInstallRoot(parent),
+                expectedRoot,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return 1;
+        }
+
+        const string formHtml = """
+            <html><body>
+            <form id="download-form" action="https://drive.usercontent.google.com/download">
+              <input type="hidden" name="id" value="file-id">
+              <input type="hidden" name="export" value="download">
+              <input type="hidden" name="confirm" value="t">
+              <input type="hidden" name="uuid" value="test-uuid">
+            </form>
+            </body></html>
+            """;
+        var formUri = TryGetGoogleDriveConfirmationUri(
+            formHtml,
+            new Uri("https://drive.google.com/uc?export=download&id=file-id"));
+        if (formUri is null
+            || !string.Equals(formUri.Host, "drive.usercontent.google.com", StringComparison.OrdinalIgnoreCase)
+            || !formUri.Query.Contains("id=file-id", StringComparison.Ordinal)
+            || !formUri.Query.Contains("confirm=t", StringComparison.Ordinal)
+            || !formUri.Query.Contains("uuid=test-uuid", StringComparison.Ordinal))
+        {
+            return 2;
+        }
+
+        const string hrefHtml = """
+            <a href="/uc?export=download&amp;id=file-id&amp;confirm=t">Download</a>
+            """;
+        var hrefUri = TryGetGoogleDriveConfirmationUri(
+            hrefHtml,
+            new Uri("https://drive.google.com/uc?id=file-id"));
+        if (hrefUri is null
+            || !string.Equals(hrefUri.Host, "docs.google.com", StringComparison.OrdinalIgnoreCase)
+            || !hrefUri.Query.Contains("confirm=t", StringComparison.Ordinal))
+        {
+            return 3;
+        }
+
+        const string jsonHtml = """
+            <script>{"downloadUrl":"https://drive.usercontent.google.com/download?id\u003dfile-id\u0026confirm\u003dt\u0026uuid\u003djson-uuid"}</script>
+            """;
+        var jsonUri = TryGetGoogleDriveConfirmationUri(
+            jsonHtml,
+            new Uri("https://drive.google.com/uc?id=file-id"));
+        if (jsonUri is null
+            || !string.Equals(jsonUri.Host, "drive.usercontent.google.com", StringComparison.OrdinalIgnoreCase)
+            || !jsonUri.Query.Contains("uuid=json-uuid", StringComparison.Ordinal))
+        {
+            return 4;
+        }
+
+        const string errorHtml = """
+            <p class="uc-error-subcaption">Too many users have viewed or downloaded this file recently.</p>
+            """;
+        var providerError = TryGetGoogleDriveError(errorHtml);
+        if (string.IsNullOrWhiteSpace(providerError)
+            || !providerError.Contains("Too many users", StringComparison.Ordinal))
+        {
+            return 5;
+        }
+
+        return 0;
+    }
+
     public ToolchainStatus CheckRetailDeadlock(string root)
     {
         if (string.IsNullOrWhiteSpace(root))
@@ -1030,7 +1103,7 @@ public sealed class ToolchainDependencyService
     {
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         using var response = await OpenDownloadResponseAsync(uri, operation.Token).ConfigureAwait(false);
-        if (IsHtmlResponse(response))
+        if (IsHtmlResponse(response) && response.Content.Headers.ContentDisposition is null)
         {
             throw new InvalidOperationException("The download provider returned an HTML page instead of an archive.");
         }
