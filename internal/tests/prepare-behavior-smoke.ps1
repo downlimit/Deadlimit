@@ -481,7 +481,10 @@ if ($toolchainSource.Contains('ReleaseChannelPolicy', [StringComparison]::Ordina
 }
 foreach ($required in @(
     'IsCsdkSetupCurrent(csdkRoot, catalog.Generation, depotKeys)',
-    'DepotArguments(depot, stagingRoot)',
+    'DownloadRequiredDepotsAsync(',
+    'arguments.AddRange(depots.Select(depot => depot.DepotId));',
+    'arguments.Add("-qr");',
+    'arguments.Add("-remember-password");',
     'InstallCsdkArchiveAsync(catalog, stagedCsdkRoot',
     'CopyDirectory(stagedGameRoot, Path.Combine(csdkRoot, "game")')) {
     if (-not $toolchainSource.Contains($required, [StringComparison]::Ordinal)) {
