@@ -629,7 +629,7 @@ public sealed class MainForm : Form
         }
     }
 
-    private void ShowSettings()
+    internal void ShowSettings()
     {
         if (ApplicationMutationCoordinator.IsBusy)
         {

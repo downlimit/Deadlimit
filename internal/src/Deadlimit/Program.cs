@@ -149,6 +149,12 @@ internal static class Program
                 return 20 + settingsLayoutResult;
             }
 
+            var settingsStartupResult = SettingsStartupFeature.RunSmoke();
+            if (settingsStartupResult != 0)
+            {
+                return 25 + settingsStartupResult;
+            }
+
             var mainFrameLayoutResult = MainForm.RunFrameAlignmentSmoke();
             if (mainFrameLayoutResult != 0)
             {
@@ -331,6 +337,19 @@ internal static class Program
                     _startup.UpdateProgress(100, UiText.T("Ready", "Готово"));
                     _startup.Close();
                     _startup = null;
+                }
+
+                if (initial
+                    && !_startupSmoke
+                    && SettingsStartupFeature.RequiresSetup(ProjectStore.GetToolPathSettings()))
+                {
+                    form.BeginInvoke((Action)(() =>
+                    {
+                        if (!form.IsDisposed)
+                        {
+                            form.ShowSettings();
+                        }
+                    }));
                 }
             };
 
