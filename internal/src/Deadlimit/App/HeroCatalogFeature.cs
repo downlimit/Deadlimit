@@ -15,16 +15,24 @@ internal static class HeroCatalogFeature
         }
 
         var grid = projectGroup.Controls.OfType<TableLayoutPanel>().FirstOrDefault();
-        if (grid?.GetControlFromPosition(1, 2) is not TextBox backingHeroText)
+        if (grid is null)
         {
             return;
         }
 
-        var folderText = grid.GetControlFromPosition(1, 0) as TextBox;
-        if (folderText is null)
+        var backingHeroText = grid.Controls
+            .OfType<TextBox>()
+            .FirstOrDefault(textBox => textBox.Name == UiControlNames.Hero);
+        var folderText = grid.Controls
+            .OfType<TextBox>()
+            .FirstOrDefault(textBox => textBox.Name == UiControlNames.ProjectFolder);
+        if (backingHeroText is null || folderText is null)
         {
             return;
         }
+
+        var heroRow = grid.GetRow(backingHeroText);
+        var folderRow = grid.GetRow(folderText);
 
         var combo = new HeroComboBox
         {
@@ -67,10 +75,10 @@ internal static class HeroCatalogFeature
         heroActions.Controls.Add(refreshButton);
 
         grid.Controls.Remove(backingHeroText);
-        grid.Controls.Add(combo, 1, 2);
-        grid.Controls.Add(heroActions, 2, 2);
+        grid.Controls.Add(combo, 1, heroRow);
+        grid.Controls.Add(heroActions, 2, heroRow);
 
-        var actionColumnWidth = grid.GetControlFromPosition(2, 0)?.PreferredSize.Width ?? 0;
+        var actionColumnWidth = grid.GetControlFromPosition(2, folderRow)?.PreferredSize.Width ?? 0;
         if (actionColumnWidth > 0)
         {
             heroActions.AutoSize = false;

@@ -44,7 +44,7 @@ internal static class ProjectIdentityFeature
 
         HideRow(grid, projectNameRow);
         ConfigureFolderAndExtractionActions(form, grid);
-        MoveSaveButtonUnderHeroRefresh(grid);
+        MoveSaveButtonToReleaseRow(grid);
         ReplaceReleaseIdWithNumericControl(grid);
     }
 
@@ -62,6 +62,14 @@ internal static class ProjectIdentityFeature
         {
             return;
         }
+
+        var folderText = FindProjectFolderText(grid);
+        if (folderText is null)
+        {
+            return;
+        }
+
+        var folderRow = grid.GetRow(folderText);
 
         grid.Controls.Remove(openFolderButton);
         extractButton.Parent?.Controls.Remove(extractButton);
@@ -97,7 +105,7 @@ internal static class ProjectIdentityFeature
         };
         actions.Controls.Add(openFolderButton);
         actions.Controls.Add(extractButton);
-        grid.Controls.Add(actions, 2, 0);
+        grid.Controls.Add(actions, 2, folderRow);
 
         var toolTip = CreateToolTip();
         toolTip.SetToolTip(
@@ -112,21 +120,25 @@ internal static class ProjectIdentityFeature
                 "Открыть параметры извлечения выбранного героя, затем извлечь выбранные актуальные retail-ресурсы в 0source.\n\nВ диалоге можно выбрать текстуры, способности / VFX, портреты и UI, а также сохранять ли backup при обновлении существующего 0source."));
     }
 
-    private static void MoveSaveButtonUnderHeroRefresh(TableLayoutPanel grid)
+    private static void MoveSaveButtonToReleaseRow(TableLayoutPanel grid)
     {
         var saveButton = grid.Controls
             .OfType<Button>()
             .FirstOrDefault(button => button.Name == UiControlNames.SaveProjectButton);
-        if (saveButton is null)
+        var releaseText = grid.Controls
+            .OfType<TextBox>()
+            .FirstOrDefault(textBox => textBox.Name == UiControlNames.ReleaseIdBacking);
+        if (saveButton is null || releaseText is null)
         {
             return;
         }
 
         var oldRow = grid.GetRow(saveButton);
+        var releaseRow = grid.GetRow(releaseText);
         grid.Controls.Remove(saveButton);
         saveButton.Anchor = AnchorStyles.Left;
         saveButton.Margin = new Padding(0, 4, 0, 4);
-        grid.Controls.Add(saveButton, 2, 3);
+        grid.Controls.Add(saveButton, 2, releaseRow);
         HideRow(grid, oldRow);
 
         var toolTip = CreateToolTip();

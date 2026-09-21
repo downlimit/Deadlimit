@@ -317,7 +317,9 @@ public sealed class MainForm : Form
         projectGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         projectGrid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
 
-        AddField(projectGrid, 0, UiText.T("Folder", "Папка"), _projectFolderText);
+        AddField(projectGrid, 0, UiText.T("Hero", "Герой"), _heroText);
+        AddField(projectGrid, 1, "Release ID", _releaseTargetText);
+        AddField(projectGrid, 2, UiText.T("Folder", "Папка"), _projectFolderText);
 
         var openFolderButton = new Button
         {
@@ -327,11 +329,9 @@ public sealed class MainForm : Form
             Anchor = AnchorStyles.Left,
         };
         openFolderButton.Click += (_, _) => OpenProjectFolder();
-        projectGrid.Controls.Add(openFolderButton, 2, 0);
+        projectGrid.Controls.Add(openFolderButton, 2, 2);
 
-        AddField(projectGrid, 1, UiText.T("Project name", "Имя проекта"), _projectNameText);
-        AddField(projectGrid, 2, UiText.T("Hero", "Герой"), _heroText);
-        AddField(projectGrid, 3, "Release ID", _releaseTargetText);
+        AddField(projectGrid, 3, UiText.T("Project name", "Имя проекта"), _projectNameText);
 
         var saveButton = new Button
         {
