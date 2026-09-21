@@ -26,10 +26,15 @@ internal static partial class AsciiFbxVertexColorReader
 {
     public static IReadOnlyList<FbxVertexColorMesh> Read(string path)
     {
+        if (BinaryFbxVertexColorReader.IsBinary(path))
+        {
+            return BinaryFbxVertexColorReader.Read(path);
+        }
+
         var text = File.ReadAllText(path);
         if (!text.StartsWith("; FBX", StringComparison.Ordinal))
         {
-            throw new InvalidDataException("Vertex-color FBX must use Autodesk ASCII FBX format.");
+            throw new InvalidDataException("Vertex-color FBX must use Autodesk ASCII or Binary FBX format.");
         }
 
         var models = ParseModels(text);

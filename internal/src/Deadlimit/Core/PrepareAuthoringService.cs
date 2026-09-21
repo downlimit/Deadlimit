@@ -160,6 +160,8 @@ public sealed class PrepareAuthoringService
                     $"material={state.UsesVertexColorMaterial} | embedded={state.HasEmbeddedVertexColor} | " +
                     $"sidecarExists={state.SidecarExists} | sidecarCurrent={state.SidecarCurrent} | {state.Message}");
             }
+            log.AppendLine("Vertex Color sidecar policy: *_vertexcolor.fbx is required only for DMX meshes that use a Vertex Color material but do not contain a validated embedded color stream.");
+            log.AppendLine("Primary FBX policy: a normal artist FBX is self-contained; materials whose names contain 'vertexcolor' do not require a separate *_vertexcolor.fbx pair and never block PREPARE for that reason.");
             log.AppendLine("Vertex Color FBX policy: *_vertexcolor.fbx is a persistent project source file. PREPARE never deletes it.");
             log.AppendLine();
 
