@@ -645,19 +645,27 @@ public sealed class MainForm : Form
         }
 
         using var dialog = new SettingsForm();
-        if (dialog.ShowDialog(this) == DialogResult.OK)
+        SettingsAttentionPulseFeature.SettingsOpened();
+        try
         {
-            if (dialog.RestartRequired)
+            if (dialog.ShowDialog(this) == DialogResult.OK)
             {
-                Application.Restart();
-                Close();
-                return;
-            }
+                if (dialog.RestartRequired)
+                {
+                    Application.Restart();
+                    Close();
+                    return;
+                }
 
-            RefreshProjectLibrary(preserveSelection: true, rescanSelected: true);
-            SetStatus(UiText.T(
-                "Settings saved. Project library and tool paths refreshed.",
-                "Настройки сохранены. Библиотека проектов и пути к инструментам обновлены."));
+                RefreshProjectLibrary(preserveSelection: true, rescanSelected: true);
+                SetStatus(UiText.T(
+                    "Settings saved. Project library and tool paths refreshed.",
+                    "Настройки сохранены. Библиотека проектов и пути к инструментам обновлены."));
+            }
+        }
+        finally
+        {
+            SettingsAttentionPulseFeature.SettingsClosed();
         }
     }
 

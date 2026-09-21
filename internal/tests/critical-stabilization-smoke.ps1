@@ -108,6 +108,27 @@ foreach ($required in @(
 }
 Assert-Contains $mainForm 'internal void ShowSettings()' 'Startup settings prompt'
 
+$settingsPulse = Get-Content -LiteralPath 'internal/src/Deadlimit/App/SettingsAttentionPulseFeature.cs' -Raw
+foreach ($required in @(
+    'PulsePeriodSeconds = 1.4',
+    'Color.FromArgb(244, 67, 54)',
+    'Color.White',
+    'SettingsStartupFeature.RequiresSetup(ProjectStore.GetToolPathSettings())',
+    'SettingsOpened()',
+    'SettingsClosed()',
+    'button.ForeColor = Blend(PulseBaseColor, AlertColor, mix)',
+    'button.ForeColor = _restingColor'
+)) {
+    Assert-Contains $settingsPulse $required 'Settings attention pulse'
+}
+foreach ($required in @(
+    'SettingsAttentionPulseFeature.SettingsOpened();',
+    'SettingsAttentionPulseFeature.SettingsClosed();'
+)) {
+    Assert-Contains $mainForm $required 'Settings attention pulse'
+}
+Assert-Contains $program 'SettingsAttentionPulseFeature.Attach(form);' 'Settings attention pulse'
+
 $projectFilesUi = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ProjectFilesFeature.cs' -Raw
 foreach ($required in @(
     'ToAuthoringDisplayPath(file)',
