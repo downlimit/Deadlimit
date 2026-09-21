@@ -380,15 +380,15 @@ public static class VertexColorSidecarService
             return false;
         }
 
-        if (targetPolygons.Count != source.Polygons.Count)
-        {
-            mismatchReason =
-                $"Polygon count differs for mesh '{target.Name}': DMX {targetPolygons.Count}, FBX {source.Polygons.Count}.";
-            return false;
-        }
-
         if (!source.HasColors)
         {
+            if (targetPolygons.Count != source.Polygons.Count)
+            {
+                mismatchReason =
+                    $"Polygon count differs for mesh '{target.Name}': DMX {targetPolygons.Count}, FBX {source.Polygons.Count}.";
+                return false;
+            }
+
             if (targetPolygons.Zip(source.Polygons).Any(pair =>
                     pair.First.ControlPoints.Count != pair.Second.ControlPoints.Count))
             {
@@ -540,13 +540,6 @@ public static class VertexColorSidecarService
         out IReadOnlyList<DmxColor> colors,
         out string mismatchReason)
     {
-        if (targets.Count != sources.Count)
-        {
-            colors = Array.Empty<DmxColor>();
-            mismatchReason = $"Polygon count differs for mesh '{meshName}'.";
-            return false;
-        }
-
         if (sources.Any(polygon =>
                 polygon.Colors is null
                 || polygon.Colors.Count != polygon.ControlPoints.Count))
@@ -560,10 +553,10 @@ public static class VertexColorSidecarService
         var sourceCornerColors = sources
             .SelectMany(polygon => polygon.Colors!)
             .ToArray();
-        if (targetCornerCount != sourceCornerColors.Length || sourceCornerColors.Length == 0)
+        if (targetCornerCount == 0 || sourceCornerColors.Length == 0)
         {
             colors = Array.Empty<DmxColor>();
-            mismatchReason = $"Polygon corner count differs for mesh '{meshName}'.";
+            mismatchReason = $"Mesh '{meshName}' has no polygon corners available for Vertex Color transfer.";
             return false;
         }
 
@@ -586,7 +579,8 @@ public static class VertexColorSidecarService
         // vertices between the DMX and Vertex Color FBX exports. When both exporters
         // retained the same control-point numbering and polygon connectivity, that
         // connectivity is a stronger ownership proof than absolute positions.
-        if (targetControlPoints.Count == sourceControlPoints.Count)
+        if (targets.Count == sources.Count
+            && targetControlPoints.Count == sourceControlPoints.Count)
         {
             var identityControlPointMap = Enumerable.Range(0, targetControlPoints.Count).ToArray();
             polygonsMatched = TryMatchPolygonsFromControlPointMap(
@@ -599,9 +593,10 @@ public static class VertexColorSidecarService
                 out polygonMismatchReason);
         }
 
-        // Position-based matching remains the fallback for exporters that renumber
-        // control points while keeping the same geometric surface.
-        if (!polygonsMatched)
+        // Exact polygon matching requires equal polygon counts. If ModelDoc/DMX
+        // triangulated quads or ngons from the FBX, skip these exact-polygon paths
+        // and fall through to control-point color correspondence below.
+        if (!polygonsMatched && targets.Count == sources.Count)
         {
             polygonsMatched = TryMatchPolygonsByPositions(
                 meshName,
@@ -614,7 +609,7 @@ public static class VertexColorSidecarService
                 out polygonMismatchReason);
         }
 
-        if (!polygonsMatched)
+        if (!polygonsMatched && targets.Count == sources.Count)
         {
             polygonsMatched = TryMatchSplitControlPointPolygons(
                 meshName,
@@ -658,9 +653,12 @@ public static class VertexColorSidecarService
         }
 
         colors = Array.Empty<DmxColor>();
+        var polygonCountContext = targets.Count == sources.Count
+            ? $"Geometry polygon match: {polygonMismatchReason} "
+            : $"Polygon topology differs because DMX may be triangulated: DMX {targets.Count}, FBX {sources.Count}. ";
         mismatchReason =
             $"Vertex Color correspondence is ambiguous for multi-color mesh '{meshName}'. " +
-            $"Geometry polygon match: {polygonMismatchReason} " +
+            polygonCountContext +
             $"Position/color match: {positionColorMismatchReason} " +
             "UV-only transfer is intentionally disabled because it cannot prove polygon ownership.";
         return false;

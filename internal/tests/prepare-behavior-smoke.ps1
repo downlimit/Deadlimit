@@ -1199,6 +1199,67 @@ $elementArrayType = $datamodelAssembly.GetType('Datamodel.ElementArray', $true)
 $elementConstructor = $elementType.GetConstructors() |
     Where-Object { $_.GetParameters().Count -eq 4 } |
     Select-Object -First 1
+# A source FBX may preserve a quad/ngon while the DMX exporter triangulates it.
+# Vertex Color transfer must accept that count difference only when control-point
+# correspondence proves every target corner's source color.
+$sidecarType = $assembly.GetType('Deadlimit.Core.VertexColorSidecarService', $true)
+$matchPolygonColors = $sidecarType.GetMethod('TryMatchPolygonColors', $nonPublicStatic)
+$targetPolygonType = $sidecarType.GetNestedType('TargetPolygon', [Reflection.BindingFlags]::NonPublic)
+$fbxPolygonType = $assembly.GetType('Deadlimit.Core.FbxVertexColorPolygon', $true)
+$dmxColorType = $datamodelAssembly.GetType('Datamodel.Color', $true)
+if ($null -eq $matchPolygonColors -or $null -eq $targetPolygonType -or $null -eq $fbxPolygonType) {
+    throw 'Triangulated Vertex Color transfer test types were not found.'
+}
+$targetPolygonsForTriangulation = [Array]::CreateInstance($targetPolygonType, 2)
+$targetPolygonsForTriangulation.SetValue(
+    [Activator]::CreateInstance($targetPolygonType, [object[]]@([int[]]@(0,1,2), [int[]]@(0,1,2))),
+    0)
+$targetPolygonsForTriangulation.SetValue(
+    [Activator]::CreateInstance($targetPolygonType, [object[]]@([int[]]@(3,4,5), [int[]]@(0,2,3))),
+    1)
+$red = [Activator]::CreateInstance($dmxColorType, [object[]]@([byte]255,[byte]0,[byte]0,[byte]255))
+$green = [Activator]::CreateInstance($dmxColorType, [object[]]@([byte]0,[byte]255,[byte]0,[byte]255))
+$blue = [Activator]::CreateInstance($dmxColorType, [object[]]@([byte]0,[byte]0,[byte]255,[byte]255))
+$white = [Activator]::CreateInstance($dmxColorType, [object[]]@([byte]255,[byte]255,[byte]255,[byte]255))
+$sourceColors = [Array]::CreateInstance($dmxColorType, 4)
+$sourceColors.SetValue($red, 0)
+$sourceColors.SetValue($green, 1)
+$sourceColors.SetValue($blue, 2)
+$sourceColors.SetValue($white, 3)
+$sourcePolygonsForTriangulation = [Array]::CreateInstance($fbxPolygonType, 1)
+$sourcePolygonsForTriangulation.SetValue(
+    [Activator]::CreateInstance($fbxPolygonType, [object[]]@([int[]]@(0,1,2,3), $sourceColors, $null)),
+    0)
+[System.Numerics.Vector3[]]$quadPositions = @(
+    [System.Numerics.Vector3]::new(0,0,0),
+    [System.Numerics.Vector3]::new(1,0,0),
+    [System.Numerics.Vector3]::new(1,1,0),
+    [System.Numerics.Vector3]::new(0,1,0)
+)
+$triangulationArgs = [object[]]@(
+    'triangulated_quad',
+    $targetPolygonsForTriangulation,
+    $sourcePolygonsForTriangulation,
+    $null,
+    $quadPositions,
+    $quadPositions,
+    $null,
+    $null
+)
+if (-not [bool]$matchPolygonColors.Invoke($null, $triangulationArgs)) {
+    throw "Triangulated DMX quad was rejected: $($triangulationArgs[7])"
+}
+$triangulatedColors = $triangulationArgs[6]
+$expectedTriangulatedColors = @($red,$green,$blue,$red,$blue,$white)
+if ($triangulatedColors.Count -ne $expectedTriangulatedColors.Count) {
+    throw "Triangulated DMX color count mismatch: $($triangulatedColors.Count)"
+}
+for ($index = 0; $index -lt $expectedTriangulatedColors.Count; $index++) {
+    if (-not $triangulatedColors[$index].Equals($expectedTriangulatedColors[$index])) {
+        throw "Triangulated DMX color mismatch at corner $index."
+    }
+}
+
 $skeletonFilterType = $assembly.GetType('Deadlimit.Core.DmxSkeletonShapeFilter', $true)
 $findJointShapes = $skeletonFilterType.GetMethod(
     'FindJointShapeMeshIds',
