@@ -18,6 +18,8 @@ foreach ($required in @(
     'PinnedCsdkGeneration = 12',
     'CsdkInstallFolderName = "Reduced_CSDK_12"',
     'CsdkPinnedDriveId = "1-Z-4CszWQNudzwzs6e6abPsp5RGFOURS"',
+    'CsdkPinnedDrivePage = "https://drive.google.com/file/d/1-Z-4CszWQNudzwzs6e6abPsp5RGFOURS/view"',
+    'GoogleDriveDownloadUnavailableException',
     'https://drive.google.com/uc?export=download&id=',
     'ResolveCsdkInstallRoot(',
     'OpenDownloadResponseAsync(',
@@ -47,11 +49,18 @@ foreach ($required in @(
     'Choose the parent folder where Reduced_CSDK_12 will be created',
     'Выберите родительскую папку, внутри которой будет создана Reduced_CSDK_12',
     'string.Equals(new DirectoryInfo(current).Name, "Reduced_CSDK_12"',
-    'creates **Reduced_CSDK_12** inside it'
+    'creates **Reduced_CSDK_12** inside it',
+    'ShowGoogleDriveDownloadFallback(',
+    'OPEN GOOGLE DRIVE',
+    'DeadlimitDialogChoice.OpenGoogleDrive',
+    'UseShellExecute = true'
 )) {
     Assert-Contains $settingsForm $required 'CSDK parent-folder install'
 }
 Assert-NotContains $settingsForm 'Choose the folder that will become the Reduced CSDK root' 'CSDK parent-folder install'
+
+$messageBox = Get-Content -LiteralPath 'internal/src/Deadlimit/App/MessageBox.cs' -Raw
+Assert-Contains $messageBox 'OpenGoogleDrive' 'CSDK Google Drive fallback dialog'
 
 $vpk = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/VpkSlotOwnershipService.cs' -Raw
 foreach ($required in @(

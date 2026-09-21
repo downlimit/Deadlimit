@@ -15,6 +15,7 @@ internal enum DeadlimitDialogChoice
     TryAgain,
     Continue,
     YesWithoutBackup,
+    OpenGoogleDrive,
 }
 
 internal sealed record DeadlimitDialogButton(

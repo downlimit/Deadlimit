@@ -32,12 +32,26 @@ public sealed record ToolchainStatus(
 
 public sealed record ToolchainInstallResult(string RootPath, ToolchainStatus Status);
 
+public sealed class GoogleDriveDownloadUnavailableException : InvalidOperationException
+{
+    public GoogleDriveDownloadUnavailableException(string providerMessage, Uri browserUri)
+        : base($"Google Drive refused the download: {providerMessage}")
+    {
+        ProviderMessage = providerMessage;
+        BrowserUri = browserUri;
+    }
+
+    public string ProviderMessage { get; }
+    public Uri BrowserUri { get; }
+}
+
 public sealed class ToolchainDependencyService
 {
     private const int PinnedCsdkGeneration = 12;
     private const string CsdkInstallFolderName = "Reduced_CSDK_12";
     private const string CsdkPinnedPage = "https://deadlockmodding.pages.dev/modding-tools/csdk-12";
     private const string CsdkPinnedDriveId = "1-Z-4CszWQNudzwzs6e6abPsp5RGFOURS";
+    private const string CsdkPinnedDrivePage = "https://drive.google.com/file/d/1-Z-4CszWQNudzwzs6e6abPsp5RGFOURS/view";
     private const string CsdkPinnedManifestArchiveUrl = "https://deadlockmodding.pages.dev/attachments/csdk12/DepotDownloaderManifests.zip";
     private const string DeadlockToolsRepositoryUrl = "https://github.com/dotryen/DeadlockTools.git";
     private const string DeadlockToolsCommitApiUrl = "https://api.github.com/repos/dotryen/DeadlockTools/commits/master";
@@ -916,11 +930,11 @@ public sealed class ToolchainDependencyService
                 var confirmationUri = TryGetGoogleDriveConfirmationUri(html, responseUri);
                 if (confirmationUri is null)
                 {
-                    var providerError = TryGetGoogleDriveError(html);
-                    throw new InvalidOperationException(
-                        providerError is null
-                            ? "Google Drive did not provide a downloadable file. The file may be unavailable, no longer public, or temporarily rate-limited."
-                            : $"Google Drive refused the download: {providerError}");
+                    var providerError = TryGetGoogleDriveError(html)
+                        ?? "Google Drive did not provide a downloadable file. The file may be unavailable, no longer public, or temporarily rate-limited.";
+                    throw new GoogleDriveDownloadUnavailableException(
+                        providerError,
+                        new Uri(CsdkPinnedDrivePage));
                 }
 
                 currentUri = confirmationUri;
@@ -934,8 +948,9 @@ public sealed class ToolchainDependencyService
             response.Dispose();
         }
 
-        throw new InvalidOperationException(
-            "Google Drive returned too many confirmation pages while resolving the CSDK archive.");
+        throw new GoogleDriveDownloadUnavailableException(
+            "Google Drive returned too many confirmation pages while resolving the CSDK archive.",
+            new Uri(CsdkPinnedDrivePage));
     }
 
     private static bool IsGoogleDriveUri(Uri uri) =>
