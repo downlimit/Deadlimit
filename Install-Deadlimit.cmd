@@ -96,9 +96,17 @@ function Find-DotNet10Sdk {
 }
 
 function Find-WinGet {
+    $appInstaller = Get-AppxPackage -Name 'Microsoft.DesktopAppInstaller' -ErrorAction SilentlyContinue |
+        Sort-Object -Property Version -Descending |
+        Select-Object -First 1
+
     $candidates = @(
-        (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\winget.exe')
-    )
+        (Join-Path $env:LOCALAPPDATA 'Microsoft\WindowsApps\winget.exe'),
+        $(if ($null -ne $appInstaller -and -not [string]::IsNullOrWhiteSpace($appInstaller.InstallLocation)) {
+            Join-Path $appInstaller.InstallLocation 'winget.exe'
+        })
+    ) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+
     return Find-Executable 'winget.exe' $candidates
 }
 
@@ -114,7 +122,8 @@ function Confirm-DependencyInstall([string[]]$MissingDependencies) {
 
 $list
 
-Установить автоматически через Windows Package Manager (WinGet)?
+Установить автоматически?
+Если WinGet отсутствует, установщик сначала установит его из официального пакета Microsoft.
 Windows может показать системный запрос UAC.
 "@
     }
@@ -125,7 +134,8 @@ Deadlimit is missing:
 
 $list
 
-Install automatically with Windows Package Manager (WinGet)?
+Install automatically?
+If WinGet is missing, the installer will install it first from the official Microsoft package.
 Windows may show a system UAC prompt.
 "@
     }
@@ -145,6 +155,67 @@ function Install-WinGetPackage([string]$WingetPath, [string]$PackageId, [string]
     & $WingetPath install --id $PackageId --exact --source winget --accept-source-agreements --accept-package-agreements
     if ($LASTEXITCODE -ne 0) {
         throw "WinGet could not install $DisplayName (exit code $LASTEXITCODE)."
+    }
+}
+
+function Install-WinGet {
+    Write-Host 'Windows Package Manager (WinGet) was not found. Installing the official Microsoft package...'
+
+    $nativeArchitecture = if (-not [string]::IsNullOrWhiteSpace($env:PROCESSOR_ARCHITEW6432)) {
+        $env:PROCESSOR_ARCHITEW6432
+    }
+    else {
+        $env:PROCESSOR_ARCHITECTURE
+    }
+
+    $dependencyArchitecture = switch ($nativeArchitecture.ToUpperInvariant()) {
+        'AMD64' { 'x64' }
+        'ARM64' { 'arm64' }
+        'X86' { 'x86' }
+        default { throw "Unsupported Windows architecture for WinGet bootstrap: $nativeArchitecture" }
+    }
+
+    $tempRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-winget-$([Guid]::NewGuid().ToString('N'))"
+    $dependenciesArchive = Join-Path $tempRoot 'DesktopAppInstaller_Dependencies.zip'
+    $dependenciesRoot = Join-Path $tempRoot 'dependencies'
+    $appInstallerBundle = Join-Path $tempRoot 'Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle'
+    $releaseRoot = 'https://github.com/microsoft/winget-cli/releases/latest/download'
+
+    try {
+        [IO.Directory]::CreateDirectory($tempRoot) | Out-Null
+        Write-Host 'Downloading WinGet and its dependencies from Microsoft...'
+        Invoke-WebRequest -UseBasicParsing -Uri "$releaseRoot/DesktopAppInstaller_Dependencies.zip" -OutFile $dependenciesArchive
+        Invoke-WebRequest -UseBasicParsing -Uri "$releaseRoot/Microsoft.DesktopAppInstaller_8wekyb3d8bbwe.msixbundle" -OutFile $appInstallerBundle
+
+        Expand-Archive -LiteralPath $dependenciesArchive -DestinationPath $dependenciesRoot -Force
+        $architectureRoot = Join-Path $dependenciesRoot $dependencyArchitecture
+        if (-not (Test-Path -LiteralPath $architectureRoot -PathType Container)) {
+            throw "The WinGet dependency archive does not contain the expected $dependencyArchitecture package set."
+        }
+
+        $dependencyPackages = @(
+            Get-ChildItem -LiteralPath $architectureRoot -File |
+                Where-Object { $_.Extension -in @('.appx', '.msix') }
+        )
+        if ($dependencyPackages.Count -eq 0) {
+            throw "The WinGet dependency archive contains no installable packages for $dependencyArchitecture."
+        }
+
+        Write-Host 'Installing Windows Package Manager (WinGet)...'
+        Add-AppxPackage -Path $appInstallerBundle -DependencyPath @($dependencyPackages.FullName) -ForceApplicationShutdown -ErrorAction Stop
+
+        Refresh-ProcessPath
+        $installedWinget = Find-WinGet
+        if ([string]::IsNullOrWhiteSpace($installedWinget)) {
+            throw 'WinGet installation completed, but winget.exe could not be located.'
+        }
+
+        return $installedWinget
+    }
+    finally {
+        if (Test-Path -LiteralPath $tempRoot) {
+            Remove-Item -LiteralPath $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 
@@ -181,14 +252,19 @@ if ([string]::IsNullOrWhiteSpace($dotnetPath)) {
 }
 
 if ($missingDependencies.Count -gt 0) {
-    if (-not (Confirm-DependencyInstall $missingDependencies)) {
+    $wingetPath = Find-WinGet
+    $dependenciesToConfirm = @($missingDependencies)
+    if ([string]::IsNullOrWhiteSpace($wingetPath)) {
+        $dependenciesToConfirm = @('Windows Package Manager (WinGet)') + $dependenciesToConfirm
+    }
+
+    if (-not (Confirm-DependencyInstall $dependenciesToConfirm)) {
         Write-Host 'Deadlimit installation cancelled by the user.'
         exit 0
     }
 
-    $wingetPath = Find-WinGet
     if ([string]::IsNullOrWhiteSpace($wingetPath)) {
-        throw 'Windows Package Manager (WinGet) was not found. Install Microsoft App Installer / WinGet, then run Install-Deadlimit.cmd again.'
+        $wingetPath = Install-WinGet
     }
 
     if ([string]::IsNullOrWhiteSpace($gitPath)) {
