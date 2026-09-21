@@ -1030,7 +1030,15 @@ internal sealed class SettingsForm : Form
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            MessageBox.Show(this, exception.Message, errorTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            if (exception is GoogleDriveDownloadUnavailableException driveException)
+            {
+                ShowGoogleDriveDownloadFallback(driveException, errorTitle);
+            }
+            else
+            {
+                MessageBox.Show(this, exception.Message, errorTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+
             if (_csdkStatus.Kind == ToolchainStatusKind.Working)
             {
                 await RefreshCsdkStatusAsync();
@@ -1046,6 +1054,53 @@ internal sealed class SettingsForm : Form
             UseWaitCursor = false;
             _busy = false;
             UpdateActionAvailability();
+        }
+    }
+
+    private void ShowGoogleDriveDownloadFallback(
+        GoogleDriveDownloadUnavailableException exception,
+        string errorTitle)
+    {
+        var text = UiText.T(
+            $"Google Drive temporarily refused the automatic Reduced CSDK download.\n\nYou can open the archive page in your browser and download it manually.\n\nDetails:\n{exception.ProviderMessage}",
+            $"Google Drive временно отказал в автоматическом скачивании Reduced CSDK.\n\nМожно открыть страницу архива в браузере и скачать его вручную.\n\nПодробности:\n{exception.ProviderMessage}");
+
+        var choice = MessageBox.ShowCustom(
+            this,
+            text,
+            errorTitle,
+            new DeadlimitDialogButton(
+                "OK",
+                DeadlimitDialogChoice.Ok,
+                IsDefault: true,
+                IsCancel: true),
+            new DeadlimitDialogButton(
+                UiText.T("OPEN GOOGLE DRIVE", "ОТКРЫТЬ GOOGLE DRIVE"),
+                DeadlimitDialogChoice.OpenGoogleDrive));
+
+        if (choice != DeadlimitDialogChoice.OpenGoogleDrive)
+        {
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = exception.BrowserUri.AbsoluteUri,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception openException) when (openException is not OutOfMemoryException)
+        {
+            MessageBox.Show(
+                this,
+                UiText.T(
+                    $"Could not open Google Drive in the browser.\n\n{exception.BrowserUri}\n\nDetails:\n{openException.Message}",
+                    $"Не удалось открыть Google Drive в браузере.\n\n{exception.BrowserUri}\n\nПодробности:\n{openException.Message}"),
+                UiText.T("Could not open Google Drive", "Не удалось открыть Google Drive"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
         }
     }
 
