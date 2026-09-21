@@ -487,6 +487,26 @@ public sealed class PrepareAuthoringService
                 .OrderBy(remap => remap.From, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
+            // MaterialGroup remaps belong to the parent VMDL. When ModelDoc opens a
+            // RenderMeshFile DMX directly, those remaps are unavailable, so rewrite
+            // only the staged DMX copy to the same resolved VMAT targets.
+            var directDmxRemaps = existingRemapsBeforePatch
+                .Concat(generatedRemaps)
+                .GroupBy(remap => remap.From, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First())
+                .ToArray();
+            var directDmxMaterialRewriteCount = 0;
+            foreach (var overlay in replacedRenderMeshes)
+            {
+                var rewritten = PreparedDmxMaterialRemapService.Apply(
+                    overlay.PreparedDmxPath,
+                    directDmxRemaps);
+                directDmxMaterialRewriteCount += rewritten;
+                log.AppendLine(
+                    $"Prepared DMX direct material paths: {Path.GetFileName(overlay.PreparedDmxPath)} | rewritten material elements={rewritten}");
+            }
+
+            log.AppendLine($"Prepared DMX direct material elements rewritten: {directDmxMaterialRewriteCount}");
             log.AppendLine($"Compatibility material remaps generated: {compatibilityRemaps.Count}");
             log.AppendLine($"Custom material remaps generated: {customMaterials.Remaps.Count}");
             log.AppendLine($"Exact custom DMX/glTF material remaps generated: {exactCustomMaterialRemaps.Count}");
@@ -517,6 +537,7 @@ public sealed class PrepareAuthoringService
             log.AppendLine("Material policy: preserve retail reuse, generate narrow compatibility repairs, and route unresolved custom slots from DMX, FBX and glTF to addon-owned VMAT files.");
             log.AppendLine("Material policy: FBX slot names are paired with materials/<name> authoring aliases; both the raw FBX slot and the normalized alias remap to the same addon-owned VMAT.");
             log.AppendLine("Material policy: direct materials/<name>.vmat references from Wall Worm are paired with an extensionless authoring alias, so spaces and the explicit .vmat suffix survive into the final VMDL remap.");
+            log.AppendLine("Material policy: prepared DMX copies rewrite resolved material references to final VMAT targets so RenderMeshFile preview works without relying on parent-VMDL MaterialGroup remaps; artist source DMX files are never changed.");
             log.AppendLine("Material policy: ordinary PREPARE leaves every existing addon-owned VMAT byte-for-byte unchanged and only synchronizes project texture source files. Shift+PREPARE may regenerate or migrate VMAT files only when Materials is explicitly checked.");
             log.AppendLine("Render-mesh policy: preserve retail RenderMeshList/bodygroups/LODs; overlay root DMX directly, reference root FBX directly, and adapt root glTF/GLB through its extracted DMX companion.");
             log.AppendLine("glTF policy: preserve primitive/material separation, COLOR_0 and skin streams; retain the retail skeleton and animation bindings for CSDK compilation.");

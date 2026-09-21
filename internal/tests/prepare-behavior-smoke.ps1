@@ -243,6 +243,81 @@ finally {
     if (Test-Path -LiteralPath $binaryVertexRoot) { Remove-Item -LiteralPath $binaryVertexRoot -Recurse -Force }
 }
 
+# Prepared DMX files must resolve material paths themselves because opening a
+# RenderMeshFile directly in ModelDoc does not apply the parent VMDL MaterialGroup remaps.
+$preparedDmxRemapType = $assembly.GetType('Deadlimit.Core.PreparedDmxMaterialRemapService', $true)
+$preparedDmxApply = $preparedDmxRemapType.GetMethod('Apply', $publicStatic)
+$vmdlRemapType = $assembly.GetType('Deadlimit.Core.VmdlMaterialRemap', $true)
+if ($null -eq $preparedDmxApply -or $null -eq $vmdlRemapType) {
+    throw 'Prepared DMX direct-material remap service was not found.'
+}
+$dmxMaterialRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-dmx-material-remap-$([Guid]::NewGuid().ToString('N'))"
+try {
+    [IO.Directory]::CreateDirectory($dmxMaterialRoot) | Out-Null
+    $dmxMaterialPath = Join-Path $dmxMaterialRoot 'preview.dmx'
+    $dmxMaterialText = @'
+<!-- dmx encoding keyvalues2 1 format model 22 -->
+"DmeModel"
+{
+    "id" "elementid" "11111111-1111-1111-1111-111111111111"
+    "name" "string" "root"
+    "retailMaterial" "DmeMaterial"
+    {
+        "id" "elementid" "22222222-2222-2222-2222-222222222222"
+        "name" "string" "materials/models/heroes_wip/dynamo/materials/dynamo_body.vmat"
+        "mtlName" "string" "materials/models/heroes_wip/dynamo/materials/dynamo_body.vmat"
+    }
+    "customMaterial" "DmeMaterial"
+    {
+        "id" "elementid" "33333333-3333-3333-3333-333333333333"
+        "name" "string" "materials/hotpot_head_vertexcolor_metalness.vmat"
+        "mtlName" "string" "materials/hotpot_head_vertexcolor_metalness.vmat"
+    }
+}
+'@
+    [IO.File]::WriteAllText($dmxMaterialPath, $dmxMaterialText)
+
+    $directRemaps = [Array]::CreateInstance($vmdlRemapType, 2)
+    $directRemaps.SetValue(
+        [Activator]::CreateInstance($vmdlRemapType, [object[]]@(
+            'materials/models/heroes_wip/dynamo/materials/dynamo_body.vmat',
+            'models/heroes_wip/dynamo/materials/dynamo_body.vmat')),
+        0)
+    $directRemaps.SetValue(
+        [Activator]::CreateInstance($vmdlRemapType, [object[]]@(
+            'materials/hotpot_head_vertexcolor_metalness',
+            'materials/hotpotdynamo/hotpot_head_vertexcolor_metalness.vmat')),
+        1)
+
+    $rewrittenMaterialCount = [int]$preparedDmxApply.Invoke(
+        $null,
+        [object[]]@([string]$dmxMaterialPath, $directRemaps))
+    if ($rewrittenMaterialCount -ne 2) {
+        throw "Prepared DMX direct-material remap rewrote $rewrittenMaterialCount material elements instead of 2."
+    }
+
+    $rewrittenDmxText = [IO.File]::ReadAllText($dmxMaterialPath)
+    foreach ($expected in @(
+        'models/heroes_wip/dynamo/materials/dynamo_body.vmat',
+        'materials/hotpotdynamo/hotpot_head_vertexcolor_metalness.vmat')) {
+        if (-not $rewrittenDmxText.Contains($expected)) {
+            throw "Prepared DMX direct-material remap did not write expected target: $expected"
+        }
+    }
+    foreach ($stale in @(
+        'materials/models/heroes_wip/dynamo/materials/dynamo_body.vmat',
+        'materials/hotpot_head_vertexcolor_metalness.vmat')) {
+        if ($rewrittenDmxText.Contains($stale)) {
+            throw "Prepared DMX direct-material remap left stale source path: $stale"
+        }
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $dmxMaterialRoot) {
+        Remove-Item -LiteralPath $dmxMaterialRoot -Recurse -Force
+    }
+}
+
 $atomicFileType = $assembly.GetType('Deadlimit.Core.AtomicFile', $true)
 $atomicWriteAllText = $atomicFileType.GetMethod(
     'WriteAllText',
@@ -1330,6 +1405,21 @@ if (-not [bool]$hasOrderedTopology.Invoke($null, [object[]]@($targetPolygons, $m
 if ([bool]$hasOrderedTopology.Invoke($null, [object[]]@($targetPolygons, $reorderedSourcePolygons))) {
     throw 'Ordered split-topology correspondence accepted reordered polygon ownership.'
 }
+$preparedDmxRemapSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/PreparedDmxMaterialRemapService.cs' -Raw
+foreach ($required in @(
+    'Datamodel.Datamodel.Load',
+    'DmeMaterial',
+    'material.Name = remappedName',
+    'material["mtlName"] = remappedMtlName')) {
+    if (-not $preparedDmxRemapSource.Contains($required)) {
+        throw "Prepared DMX direct-material remap contract is missing: $required"
+    }
+}
+if ((-not $prepareSource.Contains('PreparedDmxMaterialRemapService.Apply(')) -or
+    (-not $prepareSource.Contains('overlay.PreparedDmxPath'))) {
+    throw 'PREPARE does not apply resolved material targets to staged DMX files.'
+}
+
 $guardSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/VertexColorSourceGuard.cs' -Raw
 if (([regex]::Matches($guardSource, 'VertexColorTransferService\.TryApply\(')).Count -ne 2) {
     throw 'PREPARE validation and staged transfer must both use the safe Vertex Color transfer wrapper.'
