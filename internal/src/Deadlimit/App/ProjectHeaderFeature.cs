@@ -15,7 +15,15 @@ internal static class ProjectHeaderFeature
     private const string HeaderFileName = "project-header.png";
     private const string DeadlockSteamAppId = "1422450";
     private const string DeadlockSteamUri = "steam://rungameid/" + DeadlockSteamAppId;
-    private const string CameraLockCommand = "cl_lock_camera true";
+    private const string HudHiddenCommand = "citadel_hud_visible 0";
+    private const string CameraLockCommand = "cl_lock_camera 1";
+    private const string CreateTenguCommand = "citadel_create_unit hero_tengu";
+    private const string BotMimicTargetCommand = "bot_mimic_target";
+    private const string AllConsoleCommands =
+        HudHiddenCommand + "; "
+        + CameraLockCommand + "; "
+        + CreateTenguCommand + "; "
+        + BotMimicTargetCommand;
     private static readonly TimeSpan GameLaunchPendingTimeout = TimeSpan.FromMinutes(2);
 
     private static readonly Color DefaultHeaderColor = Color.FromArgb(36, 39, 43);
@@ -133,9 +141,10 @@ internal static class ProjectHeaderFeature
 
         launchGameButton.Click += async (_, _) =>
         {
-            if ((Control.ModifierKeys & Keys.Shift) == Keys.Shift)
+            var consoleCommand = ResolveLaunchGameConsoleCommand(Control.ModifierKeys);
+            if (consoleCommand is not null)
             {
-                TryCopyCameraLockCommand(form);
+                TryCopyConsoleCommand(form, consoleCommand);
                 return;
             }
 
@@ -253,9 +262,7 @@ internal static class ProjectHeaderFeature
                 "Скомпилировать текущий проект и установить его VPK в игровой клиент Deadlock.\n\nЭта кнопка не запускает игру. Удерживайте SHIFT при клике для полной чистой пересборки."));
         toolTip.SetToolTip(
             launchGameButton,
-            UiText.T(
-                $"Launch Deadlock game client through Steam.\n\nHold SHIFT while clicking to copy '{CameraLockCommand}' to the clipboard without launching the game.",
-                $"Запустить Deadlock через Steam.\n\nУдерживайте SHIFT при клике, чтобы скопировать '{CameraLockCommand}' в буфер обмена без запуска игры."));
+            BuildLaunchGameToolTip(gameIsRunning: false));
 
         void ApplyGameButtonState()
         {
@@ -292,16 +299,12 @@ internal static class ProjectHeaderFeature
                         "The mod is being built. Deadlock launch is available after the VPK deployment completes.",
                         "Идёт сборка мода. Запуск Deadlock станет доступен после завершения установки VPK.")
                     : gameIsRunning
-                    ? UiText.T(
-                        "Deadlock is running. Click to close the game.\n\nHold SHIFT while clicking to copy the camera-lock command instead.",
-                        "Deadlock запущен. Нажмите, чтобы закрыть игру.\n\nУдерживайте SHIFT при клике, чтобы вместо этого скопировать команду блокировки камеры.")
-                    : launchPending
-                        ? UiText.T(
-                            "The launch request was sent to Steam. Deadlimit is waiting for the Deadlock process to appear.",
-                            "Запрос на запуск отправлен Steam. Deadlimit ждёт появления процесса Deadlock.")
-                        : UiText.T(
-                            $"Launch Deadlock game client through Steam.\n\nHold SHIFT while clicking to copy '{CameraLockCommand}' to the clipboard without launching the game.",
-                            $"Запустить Deadlock через Steam.\n\nУдерживайте SHIFT при клике, чтобы скопировать '{CameraLockCommand}' в буфер обмена без запуска игры."));
+                        ? BuildLaunchGameToolTip(gameIsRunning: true)
+                        : launchPending
+                            ? UiText.T(
+                                "The launch request was sent to Steam. Deadlimit is waiting for the Deadlock process to appear.",
+                                "Запрос на запуск отправлен Steam. Deadlimit ждёт появления процесса Deadlock.")
+                            : BuildLaunchGameToolTip(gameIsRunning: false));
 
             launchGameButton.Invalidate();
         }
@@ -691,18 +694,60 @@ internal static class ProjectHeaderFeature
             (int)Math.Round((b + m) * 255));
     }
 
-    private static void TryCopyCameraLockCommand(MainForm form)
+    private static string? ResolveLaunchGameConsoleCommand(Keys modifierKeys)
+    {
+        var modifiers = modifierKeys & (Keys.Shift | Keys.Control | Keys.Alt);
+        return modifiers switch
+        {
+            Keys.Shift => HudHiddenCommand,
+            Keys.Control => CameraLockCommand,
+            Keys.Alt => CreateTenguCommand,
+            Keys.Control | Keys.Alt => BotMimicTargetCommand,
+            Keys.Control | Keys.Shift | Keys.Alt => AllConsoleCommands,
+            _ => null,
+        };
+    }
+
+    private static string BuildLaunchGameToolTip(bool gameIsRunning)
+    {
+        var englishAction = gameIsRunning
+            ? "**CLOSE** shuts down the running Deadlock game.\n\nA normal click closes the game."
+            : "**LAUNCH GAME** opens Deadlock through Steam.\n\nA normal click launches the game.";
+        var russianAction = gameIsRunning
+            ? "**ЗАКРЫТЬ** завершает запущенный Deadlock.\n\nОбычный клик закрывает игру."
+            : "**ЗАПУСК ИГРЫ** открывает Deadlock через Steam.\n\nОбычный клик запускает игру.";
+
+        return UiText.T(
+            englishAction
+            + "\n\nModifier clicks copy Deadlock console commands to the clipboard instead:"
+            + "\n\n**SHIFT + CLICK**\n" + HudHiddenCommand
+            + "\n\n**CTRL + CLICK**\n" + CameraLockCommand
+            + "\n\n**ALT + CLICK**\n" + CreateTenguCommand
+            + "\n\n**ALT + CTRL + CLICK**\n" + BotMimicTargetCommand
+            + "\n\n**CTRL + SHIFT + ALT + CLICK**\nCopies all four commands in one executable line separated by ;.",
+            russianAction
+            + "\n\nКлики с модификаторами вместо этого копируют консольные команды Deadlock в буфер обмена:"
+            + "\n\n**SHIFT + КЛИК**\n" + HudHiddenCommand
+            + "\n\n**CTRL + КЛИК**\n" + CameraLockCommand
+            + "\n\n**ALT + КЛИК**\n" + CreateTenguCommand
+            + "\n\n**ALT + CTRL + КЛИК**\n" + BotMimicTargetCommand
+            + "\n\n**CTRL + SHIFT + ALT + КЛИК**\nКопирует все четыре команды одной исполняемой строкой, разделяя их символом ;.");
+    }
+
+    private static void TryCopyConsoleCommand(MainForm form, string command)
     {
         try
         {
-            Clipboard.SetText(CameraLockCommand);
+            Clipboard.SetText(command);
         }
         catch (System.Runtime.InteropServices.ExternalException ex)
         {
             MessageBox.Show(
                 form,
                 ex.Message,
-                UiText.T("Could not copy camera command", "Не удалось скопировать команду камеры"),
+                UiText.T(
+                    "Could not copy console command",
+                    "Не удалось скопировать консольную команду"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
         }
