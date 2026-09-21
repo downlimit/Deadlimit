@@ -60,6 +60,24 @@ Material: 101, "Material::lashter_head", "" {
         ($binaryRefs[0].AuthoringReference -ne 'materials/lashter_head')) {
         throw 'Binary FBX material slot was not normalized to the authoring material reference.'
     }
+
+    # Autodesk FBX 7300 commonly stores the namespace in binary form as
+    # "name\0\x01Material" instead of the older "Material::name" spelling.
+    $binary7300Path = Join-Path $fbxMaterialRoot 'binary-7300.fbx'
+    $payload7300 = [Text.Encoding]::UTF8.GetBytes("lashtester_head`0$([char]1)Material")
+    $bytes7300 = [Collections.Generic.List[byte]]::new()
+    $bytes7300.AddRange([Text.Encoding]::ASCII.GetBytes('Kaydara FBX Binary  '))
+    $bytes7300.AddRange([byte[]]@(0, 26, 0))
+    $bytes7300.Add([byte][char]'S')
+    $bytes7300.AddRange([BitConverter]::GetBytes([uint32]$payload7300.Length))
+    $bytes7300.AddRange($payload7300)
+    [IO.File]::WriteAllBytes($binary7300Path, $bytes7300.ToArray())
+    $binary7300Refs = @($fbxMaterialRead.Invoke($null, @([string]$binary7300Path)))
+    if (($binary7300Refs.Count -ne 1) -or
+        ($binary7300Refs[0].SourceName -ne 'lashtester_head') -or
+        ($binary7300Refs[0].AuthoringReference -ne 'materials/lashtester_head')) {
+        throw 'FBX 7300 binary namespace material slot was not normalized to the authoring material reference.'
+    }
 }
 finally {
     if (Test-Path -LiteralPath $fbxMaterialRoot) {

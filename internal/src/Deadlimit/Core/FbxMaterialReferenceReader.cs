@@ -11,13 +11,11 @@ internal sealed record FbxMaterialReference(
 internal static class FbxMaterialReferenceReader
 {
     private const string MaterialNamespacePrefix = "Material::";
+    private const string BinaryMaterialNamespaceSuffix = "\0\u0001Material";
     private const int MaxMaterialNameBytes = 16 * 1024;
 
     private static readonly byte[] BinaryHeader =
         Encoding.ASCII.GetBytes("Kaydara FBX Binary  \0\u001a\0");
-
-    private static readonly byte[] BinaryMaterialPrefix =
-        Encoding.ASCII.GetBytes(MaterialNamespacePrefix);
 
     private static readonly Regex AsciiMaterialRegex = new(
         @"\bMaterial\s*:\s*-?\d+\s*,\s*""Material::(?<name>[^""]+)""",
@@ -69,25 +67,30 @@ internal static class FbxMaterialReferenceReader
     private static IReadOnlyList<string> ReadBinaryNames(byte[] raw)
     {
         var names = new List<string>();
-        var cursor = 0;
-
-        while (cursor <= raw.Length - BinaryMaterialPrefix.Length)
+        for (var cursor = 0; cursor <= raw.Length - 5; cursor++)
         {
-            var relative = raw.AsSpan(cursor).IndexOf(BinaryMaterialPrefix);
-            if (relative < 0)
+            if (raw[cursor] != (byte)'S')
             {
-                break;
+                continue;
             }
 
-            var prefixOffset = cursor + relative;
-            if (TryReadBinaryStringProperty(raw, prefixOffset, out var value)
-                && value.StartsWith(MaterialNamespacePrefix, StringComparison.Ordinal)
+            if (!TryReadBinaryStringProperty(raw, cursor, out var value, out var payloadLength))
+            {
+                continue;
+            }
+
+            if (value.StartsWith(MaterialNamespacePrefix, StringComparison.Ordinal)
                 && value.Length > MaterialNamespacePrefix.Length)
             {
                 names.Add(value[MaterialNamespacePrefix.Length..]);
             }
+            else if (value.EndsWith(BinaryMaterialNamespaceSuffix, StringComparison.Ordinal)
+                     && value.Length > BinaryMaterialNamespaceSuffix.Length)
+            {
+                names.Add(value[..^BinaryMaterialNamespaceSuffix.Length]);
+            }
 
-            cursor = prefixOffset + BinaryMaterialPrefix.Length;
+            cursor += 4 + payloadLength;
         }
 
         return names;
@@ -95,29 +98,35 @@ internal static class FbxMaterialReferenceReader
 
     private static bool TryReadBinaryStringProperty(
         byte[] raw,
-        int valueOffset,
-        out string value)
+        int typeOffset,
+        out string value,
+        out int payloadLength)
     {
         value = string.Empty;
+        payloadLength = 0;
 
         // Scalar FBX strings are encoded as:
         // 'S' + UInt32 byte length + UTF-8 payload.
-        if (valueOffset < 5 || raw[valueOffset - 5] != (byte)'S')
+        if (typeOffset < 0
+            || typeOffset > raw.Length - 5
+            || raw[typeOffset] != (byte)'S')
         {
             return false;
         }
 
         var byteLength = BinaryPrimitives.ReadUInt32LittleEndian(
-            raw.AsSpan(valueOffset - 4, 4));
+            raw.AsSpan(typeOffset + 1, 4));
+        var valueOffset = typeOffset + 5;
 
-        if (byteLength < BinaryMaterialPrefix.Length
+        if (byteLength == 0
             || byteLength > MaxMaterialNameBytes
             || byteLength > raw.Length - valueOffset)
         {
             return false;
         }
 
-        value = Encoding.UTF8.GetString(raw, valueOffset, checked((int)byteLength));
+        payloadLength = checked((int)byteLength);
+        value = Encoding.UTF8.GetString(raw, valueOffset, payloadLength);
         return true;
     }
 
