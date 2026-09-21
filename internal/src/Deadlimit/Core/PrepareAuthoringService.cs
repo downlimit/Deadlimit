@@ -312,6 +312,14 @@ public sealed class PrepareAuthoringService
             {
                 log.AppendLine($"  replace {overlay.ResourcePath} from {Path.GetFileName(overlay.ArtistFbxPath)}");
             }
+
+            var fbxMaterials = FbxMaterialReferenceReader.ReadMany(rootFbxFiles);
+            log.AppendLine($"FBX material slots detected: {fbxMaterials.Count}");
+            foreach (var material in fbxMaterials)
+            {
+                log.AppendLine($"  FBX material {material.SourceName} -> {material.AuthoringReference}");
+            }
+
             log.AppendLine(
                 $"Artist glTF overlays: files={gltfOverlay.GltfFileCount}, primitives={gltfOverlay.PrimitiveCount}, preparedDMX={gltfOverlay.PreparedDmxCount}");
 
@@ -357,7 +365,12 @@ public sealed class PrepareAuthoringService
                     string.Join("\n", vertexColorWarnings));
             }
 
+            var fbxMaterialReferences = fbxMaterials
+                .Select(material => material.AuthoringReference)
+                .ToArray();
+
             var allMaterialReferences = dmxMaterialReferences
+                .Concat(fbxMaterialReferences)
                 .Concat(gltfOverlay.MaterialReferences)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
@@ -458,10 +471,15 @@ public sealed class PrepareAuthoringService
                 allMaterialReferences,
                 customMaterials.Remaps,
                 log);
+            var exactFbxMaterialRemaps = ResolveExactFbxCustomMaterialRemaps(
+                fbxMaterials,
+                customMaterials.Remaps,
+                log);
 
             var generatedRemaps = compatibilityRemaps
                 .Concat(customMaterials.Remaps)
                 .Concat(exactCustomMaterialRemaps)
+                .Concat(exactFbxMaterialRemaps)
                 .GroupBy(remap => remap.From, StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First())
                 .OrderBy(remap => remap.From, StringComparer.OrdinalIgnoreCase)
@@ -469,7 +487,8 @@ public sealed class PrepareAuthoringService
 
             log.AppendLine($"Compatibility material remaps generated: {compatibilityRemaps.Count}");
             log.AppendLine($"Custom material remaps generated: {customMaterials.Remaps.Count}");
-            log.AppendLine($"Exact custom DMX material remaps generated: {exactCustomMaterialRemaps.Count}");
+            log.AppendLine($"Exact custom DMX/glTF material remaps generated: {exactCustomMaterialRemaps.Count}");
+            log.AppendLine($"Exact custom FBX material remaps generated: {exactFbxMaterialRemaps.Count}");
 
             cancellationToken.ThrowIfCancellationRequested();
             progress?.Report(new PrepareAuthoringProgress(LocalizedText.T("Applying narrow CSDK compatibility patches to retail VMDL...", "Применение необходимых CSDK-патчей совместимости к retail VMDL...")));
@@ -492,8 +511,9 @@ public sealed class PrepareAuthoringService
             }
 
             log.AppendLine("VMDL policy: preserve the extracted retail document/header/order and patch only proven incompatible or project-owned data.");
-            log.AppendLine("Material policy: DMX material-reference count is diagnostic only; VMDL remaps are a separate concept.");
-            log.AppendLine("Material policy: preserve retail reuse, generate narrow compatibility repairs, and route unresolved Wall Worm custom slots to addon-owned VMAT files.");
+            log.AppendLine("Material policy: authoring material-reference counts are diagnostic only; VMDL remaps are a separate concept.");
+            log.AppendLine("Material policy: preserve retail reuse, generate narrow compatibility repairs, and route unresolved custom slots from DMX, FBX and glTF to addon-owned VMAT files.");
+            log.AppendLine("Material policy: FBX slot names are paired with materials/<name> authoring aliases; both the raw FBX slot and the normalized alias remap to the same addon-owned VMAT.");
             log.AppendLine("Material policy: direct materials/<name>.vmat references from Wall Worm are paired with an extensionless authoring alias, so spaces and the explicit .vmat suffix survive into the final VMDL remap.");
             log.AppendLine("Material policy: ordinary PREPARE leaves every existing addon-owned VMAT byte-for-byte unchanged and only synchronizes project texture source files. Shift+PREPARE may regenerate or migrate VMAT files only when Materials is explicitly checked.");
             log.AppendLine("Render-mesh policy: preserve retail RenderMeshList/bodygroups/LODs; overlay root DMX directly, reference root FBX directly, and adapt root glTF/GLB through its extracted DMX companion.");
@@ -831,6 +851,55 @@ public sealed class PrepareAuthoringService
         }
 
         return result;
+    }
+
+    private static IReadOnlyList<VmdlMaterialRemap> ResolveExactFbxCustomMaterialRemaps(
+        IReadOnlyList<FbxMaterialReference> fbxMaterials,
+        IReadOnlyList<VmdlMaterialRemap> customRemaps,
+        StringBuilder log)
+    {
+        var customByReference = customRemaps
+            .GroupBy(remap => remap.From, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+        var result = new List<VmdlMaterialRemap>();
+        foreach (var material in fbxMaterials)
+        {
+            if (!customByReference.TryGetValue(material.AuthoringReference, out var customRemap))
+            {
+                continue;
+            }
+
+            var sourceAliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                material.SourceName,
+            };
+            if (string.IsNullOrEmpty(Path.GetExtension(material.SourceName)))
+            {
+                // ModelDoc's FBX importer may expose a bare material name as <name>.vmat
+                // when resolving MaterialGroup remaps. Cover both source spellings.
+                sourceAliases.Add(material.SourceName + ".vmat");
+            }
+
+            foreach (var sourceAlias in sourceAliases)
+            {
+                if (string.Equals(sourceAlias, customRemap.From, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                result.Add(new VmdlMaterialRemap(sourceAlias, customRemap.To));
+                log.AppendLine(
+                    $"Exact FBX custom material remap: {sourceAlias} -> {customRemap.To} " +
+                    $"(source slot {material.SourceName}, authoring alias {material.AuthoringReference})");
+            }
+        }
+
+        return result
+            .GroupBy(remap => remap.From, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderBy(remap => remap.From, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private static bool TryGetDirectRootVmatAlias(string reference, out string alias)

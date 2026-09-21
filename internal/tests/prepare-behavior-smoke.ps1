@@ -22,6 +22,51 @@ finally {
     }
 }
 
+# Normal authoring FBX files must contribute their material slot names to PREPARE.
+# Cover both Autodesk ASCII and the default binary FBX string-property encoding.
+$fbxMaterialReaderType = $assembly.GetType('Deadlimit.Core.FbxMaterialReferenceReader', $true)
+$fbxMaterialRead = $fbxMaterialReaderType.GetMethod('Read', $publicStatic)
+if ($null -eq $fbxMaterialRead) { throw 'FbxMaterialReferenceReader.Read was not found.' }
+$fbxMaterialRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-fbx-material-$([Guid]::NewGuid().ToString('N'))"
+try {
+    [IO.Directory]::CreateDirectory($fbxMaterialRoot) | Out-Null
+
+    $asciiPath = Join-Path $fbxMaterialRoot 'ascii.fbx'
+    $asciiText = @'
+; FBX 7.4.0 project file
+Material: 101, "Material::lashter_head", "" {
+}
+'@
+    [IO.File]::WriteAllText($asciiPath, $asciiText)
+    $asciiRefs = @($fbxMaterialRead.Invoke($null, @([string]$asciiPath)))
+    if (($asciiRefs.Count -ne 1) -or
+        ($asciiRefs[0].SourceName -ne 'lashter_head') -or
+        ($asciiRefs[0].AuthoringReference -ne 'materials/lashter_head')) {
+        throw 'ASCII FBX material slot was not normalized to the authoring material reference.'
+    }
+
+    $binaryPath = Join-Path $fbxMaterialRoot 'binary.fbx'
+    $payload = [Text.Encoding]::UTF8.GetBytes('Material::lashter_head')
+    $bytes = [Collections.Generic.List[byte]]::new()
+    $bytes.AddRange([Text.Encoding]::ASCII.GetBytes('Kaydara FBX Binary  '))
+    $bytes.AddRange([byte[]]@(0, 26, 0))
+    $bytes.Add([byte][char]'S')
+    $bytes.AddRange([BitConverter]::GetBytes([uint32]$payload.Length))
+    $bytes.AddRange($payload)
+    [IO.File]::WriteAllBytes($binaryPath, $bytes.ToArray())
+    $binaryRefs = @($fbxMaterialRead.Invoke($null, @([string]$binaryPath)))
+    if (($binaryRefs.Count -ne 1) -or
+        ($binaryRefs[0].SourceName -ne 'lashter_head') -or
+        ($binaryRefs[0].AuthoringReference -ne 'materials/lashter_head')) {
+        throw 'Binary FBX material slot was not normalized to the authoring material reference.'
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $fbxMaterialRoot) {
+        Remove-Item -LiteralPath $fbxMaterialRoot -Recurse -Force
+    }
+}
+
 $atomicFileType = $assembly.GetType('Deadlimit.Core.AtomicFile', $true)
 $atomicWriteAllText = $atomicFileType.GetMethod(
     'WriteAllText',
@@ -683,6 +728,10 @@ foreach ($required in @(
     'var cleanGameOutput = options.ResetSections != PrepareResetSections.None',
     'if (options.PrepareHeroSelectScene)',
     'new HeroSelectScenePreparationService(_paths).Prepare(',
+    'FbxMaterialReferenceReader.ReadMany(rootFbxFiles)',
+    '.Concat(fbxMaterialReferences)',
+    'ResolveExactFbxCustomMaterialRemaps(',
+    'material.SourceName + ".vmat"',
     'Ordinary PREPARE preserved addon runtime output for incremental BUILD & TEST')) {
     if (-not $prepareSource.Contains($required)) {
         throw "Ordinary PREPARE byte-preservation contract is missing: $required"
