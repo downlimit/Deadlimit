@@ -5,9 +5,21 @@ namespace Deadlimit.Core;
 
 public static class DeadlockInstallLocator
 {
+    private const string DeadlockAppId = "1422450";
+
     private static readonly Regex SteamLibraryPathRegex = new(
         "\\\"path\\\"\\s+\\\"(?<path>[^\\\"]+)\\\"",
         RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly Regex SteamInstallDirRegex = new(
+        "\\\"installdir\\\"\\s+\\\"(?<installDir>[^\\\"]+)\\\"",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    private static readonly string[] KnownInstallDirectoryNames =
+    [
+        "Deadlock",
+        "Project8Staging",
+    ];
 
     private static readonly string[] CommonSteamRoots =
     [
@@ -52,10 +64,12 @@ public static class DeadlockInstallLocator
         {
             foreach (var libraryRoot in EnumerateSteamLibraries(steamRoot))
             {
-                var candidate = Path.Combine(libraryRoot, "steamapps", "common", "Project8Staging");
-                if (seen.Add(candidate))
+                foreach (var candidate in EnumerateLibraryCandidates(libraryRoot))
                 {
-                    yield return candidate;
+                    if (seen.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
                 }
             }
         }
@@ -64,13 +78,72 @@ public static class DeadlockInstallLocator
         {
             foreach (var relativeSteamRoot in CommonSteamRoots)
             {
-                var candidate = Path.Combine(drive, relativeSteamRoot, "steamapps", "common", "Project8Staging");
-                if (seen.Add(candidate))
+                foreach (var installDirectoryName in KnownInstallDirectoryNames)
                 {
-                    yield return candidate;
+                    var candidate = Path.Combine(
+                        drive,
+                        relativeSteamRoot,
+                        "steamapps",
+                        "common",
+                        installDirectoryName);
+                    if (seen.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
                 }
             }
         }
+    }
+
+    private static IEnumerable<string> EnumerateLibraryCandidates(string libraryRoot)
+    {
+        var steamAppsRoot = Path.Combine(libraryRoot, "steamapps");
+        var installDirectory = TryReadInstallDirectory(
+            Path.Combine(steamAppsRoot, $"appmanifest_{DeadlockAppId}.acf"));
+        if (!string.IsNullOrWhiteSpace(installDirectory))
+        {
+            yield return Path.Combine(steamAppsRoot, "common", installDirectory);
+        }
+
+        foreach (var installDirectoryName in KnownInstallDirectoryNames)
+        {
+            yield return Path.Combine(steamAppsRoot, "common", installDirectoryName);
+        }
+    }
+
+    private static string? TryReadInstallDirectory(string manifestPath)
+    {
+        if (!File.Exists(manifestPath))
+        {
+            return null;
+        }
+
+        string text;
+        try
+        {
+            text = File.ReadAllText(manifestPath);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+
+        var match = SteamInstallDirRegex.Match(text);
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var installDirectory = match.Groups["installDir"].Value.Trim();
+        if (string.IsNullOrWhiteSpace(installDirectory)
+            || installDirectory is "." or ".."
+            || installDirectory.Contains(Path.DirectorySeparatorChar)
+            || installDirectory.Contains(Path.AltDirectorySeparatorChar))
+        {
+            return null;
+        }
+
+        return installDirectory;
     }
 
     private static IEnumerable<string> EnumerateSteamRoots()
