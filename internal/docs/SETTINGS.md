@@ -42,7 +42,7 @@ Deadlock client
 Projects folder
 ```
 
-`Deadlock client` is the user-facing name for the installed Steam copy of Deadlock (`Project8Staging`). Internal code/settings may still use the historical `RetailDeadlockRoot` identifier so existing configuration remains compatible.
+`Deadlock client` is the user-facing name for the installed Steam copy of Deadlock. The Steam app manifest is authoritative for the installation directory; current installs may use `Deadlock`, while legacy `Project8Staging` remains supported. Internal code/settings may still use the historical `RetailDeadlockRoot` identifier so existing configuration remains compatible.
 
 Each row presents the dependency name, current status, context-sensitive actions, a read-only path, an Explorer button and `BROWSE…` for selecting an existing installation/folder.
 
@@ -159,7 +159,7 @@ Deadlimit also performs a guarded one-time migration for its own previous manage
 
 ## Deadlock client
 
-This row means the actual installed game that the user launches through Steam. In the current Steam layout its root folder is `Project8Staging`.
+This row means the actual installed game that the user launches through Steam. Automatic discovery reads `steamapps\\appmanifest_1422450.acf` and uses its `installdir` value. If the manifest is missing or unreadable, Deadlimit also probes both `Deadlock` and legacy `Project8Staging` under known Steam libraries and common Steam locations.
 
 Deadlimit Manager does not install or update the Steam game from Settings. `BROWSE…` selects the existing client root and `CHECK` validates that it contains `game\citadel`. A selected client path is persisted immediately.
 
