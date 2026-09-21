@@ -85,6 +85,164 @@ finally {
     }
 }
 
+# The DMX Vertex Color sidecar reader must parse binary FBX node records,
+# including compressed arrays and both pre-7500 and 7500+ record layouts.
+function New-TestFbxProperty([char]$Type, $Value, [bool]$Compressed = $false) {
+    [pscustomobject]@{ Type = $Type; Value = $Value; Compressed = $Compressed }
+}
+function New-TestFbxNode([string]$Name, [object[]]$Properties = @(), [object[]]$Children = @()) {
+    [pscustomobject]@{ Name = $Name; Properties = $Properties; Children = $Children }
+}
+function Write-TestFbxProperty([IO.BinaryWriter]$Writer, $Property) {
+    $Writer.Write([byte][char]$Property.Type)
+    switch ([char]$Property.Type) {
+        'L' { $Writer.Write([int64]$Property.Value); return }
+        'S' {
+            $payload = [Text.Encoding]::UTF8.GetBytes([string]$Property.Value)
+            $Writer.Write([uint32]$payload.Length)
+            $Writer.Write($payload)
+            return
+        }
+        { $_ -eq 'd' -or $_ -eq 'i' } {
+            $rawStream = [IO.MemoryStream]::new()
+            try {
+                $rawWriter = [IO.BinaryWriter]::new($rawStream)
+                try {
+                    foreach ($value in @($Property.Value)) {
+                        if ($Property.Type -eq 'd') { $rawWriter.Write([double]$value) }
+                        else { $rawWriter.Write([int32]$value) }
+                    }
+                    $rawWriter.Flush()
+                    $raw = $rawStream.ToArray()
+                }
+                finally { $rawWriter.Dispose() }
+            }
+            finally { $rawStream.Dispose() }
+
+            $stored = $raw
+            $encoding = [uint32]0
+            if ($Property.Compressed) {
+                $compressedStream = [IO.MemoryStream]::new()
+                try {
+                    $zlib = [IO.Compression.ZLibStream]::new($compressedStream, [IO.Compression.CompressionLevel]::Optimal, $true)
+                    try { $zlib.Write($raw, 0, $raw.Length) }
+                    finally { $zlib.Dispose() }
+                    $stored = $compressedStream.ToArray()
+                    $encoding = [uint32]1
+                }
+                finally { $compressedStream.Dispose() }
+            }
+
+            $Writer.Write([uint32]@($Property.Value).Count)
+            $Writer.Write($encoding)
+            $Writer.Write([uint32]$stored.Length)
+            $Writer.Write([byte[]]$stored)
+            return
+        }
+        default { throw "Unsupported test FBX property type: $($Property.Type)" }
+    }
+}
+function Write-TestFbxNode([IO.BinaryWriter]$Writer, $Node, [bool]$Wide) {
+    $start = $Writer.BaseStream.Position
+    if ($Wide) {
+        $Writer.Write([uint64]0); $Writer.Write([uint64]0); $Writer.Write([uint64]0)
+    }
+    else {
+        $Writer.Write([uint32]0); $Writer.Write([uint32]0); $Writer.Write([uint32]0)
+    }
+
+    $nameBytes = [Text.Encoding]::UTF8.GetBytes([string]$Node.Name)
+    $Writer.Write([byte]$nameBytes.Length)
+    $Writer.Write($nameBytes)
+    $propertyStart = $Writer.BaseStream.Position
+    foreach ($property in @($Node.Properties)) { Write-TestFbxProperty $Writer $property }
+    $propertyEnd = $Writer.BaseStream.Position
+
+    foreach ($child in @($Node.Children)) { Write-TestFbxNode $Writer $child $Wide }
+    if (@($Node.Children).Count -gt 0) {
+        $Writer.Write([byte[]]::new($(if ($Wide) { 25 } else { 13 })))
+    }
+
+    $end = $Writer.BaseStream.Position
+    $Writer.BaseStream.Position = $start
+    if ($Wide) {
+        $Writer.Write([uint64]$end)
+        $Writer.Write([uint64]@($Node.Properties).Count)
+        $Writer.Write([uint64]($propertyEnd - $propertyStart))
+    }
+    else {
+        $Writer.Write([uint32]$end)
+        $Writer.Write([uint32]@($Node.Properties).Count)
+        $Writer.Write([uint32]($propertyEnd - $propertyStart))
+    }
+    $Writer.BaseStream.Position = $end
+}
+function Write-TestBinaryVertexColorFbx([string]$Path, [uint32]$Version) {
+    $wide = $Version -ge 7500
+    $model = New-TestFbxNode 'Model' @(
+        (New-TestFbxProperty 'L' ([int64]100)),
+        (New-TestFbxProperty 'S' 'Model::dynamo_body'),
+        (New-TestFbxProperty 'S' 'Mesh')
+    )
+    $colorLayer = New-TestFbxNode 'LayerElementColor' @() @(
+        (New-TestFbxNode 'MappingInformationType' @((New-TestFbxProperty 'S' 'ByPolygonVertex'))),
+        (New-TestFbxNode 'ReferenceInformationType' @((New-TestFbxProperty 'S' 'Direct'))),
+        (New-TestFbxNode 'Colors' @((New-TestFbxProperty 'd' ([double[]]@(1,0,0,1, 0,1,0,1, 0,0,1,1)) $true)))
+    )
+    $geometry = New-TestFbxNode 'Geometry' @(
+        (New-TestFbxProperty 'L' ([int64]200)),
+        (New-TestFbxProperty 'S' 'Geometry::dynamo_body'),
+        (New-TestFbxProperty 'S' 'Mesh')
+    ) @(
+        (New-TestFbxNode 'Vertices' @((New-TestFbxProperty 'd' ([double[]]@(0,0,0, 1,0,0, 0,1,0)) $true))),
+        (New-TestFbxNode 'PolygonVertexIndex' @((New-TestFbxProperty 'i' ([int[]]@(0,1,-3)) $true))),
+        $colorLayer
+    )
+    $objects = New-TestFbxNode 'Objects' @() @($model, $geometry)
+    $connections = New-TestFbxNode 'Connections' @() @(
+        (New-TestFbxNode 'C' @(
+            (New-TestFbxProperty 'S' 'OO'),
+            (New-TestFbxProperty 'L' ([int64]200)),
+            (New-TestFbxProperty 'L' ([int64]100))
+        ))
+    )
+
+    $stream = [IO.File]::Open($Path, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    try {
+        $writer = [IO.BinaryWriter]::new($stream)
+        try {
+            $writer.Write([Text.Encoding]::ASCII.GetBytes('Kaydara FBX Binary  '))
+            $writer.Write([byte[]]@(0, 26, 0))
+            $writer.Write($Version)
+            Write-TestFbxNode $writer $objects $wide
+            Write-TestFbxNode $writer $connections $wide
+            $writer.Write([byte[]]::new($(if ($wide) { 25 } else { 13 })))
+            $writer.Flush()
+        }
+        finally { $writer.Dispose() }
+    }
+    finally { $stream.Dispose() }
+}
+
+$vertexFbxReaderType = $assembly.GetType('Deadlimit.Core.AsciiFbxVertexColorReader', $true)
+$vertexFbxRead = $vertexFbxReaderType.GetMethod('Read', $publicStatic)
+if ($null -eq $vertexFbxRead) { throw 'AsciiFbxVertexColorReader.Read was not found.' }
+$binaryVertexRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-binary-vertexcolor-$([Guid]::NewGuid().ToString('N'))"
+try {
+    [IO.Directory]::CreateDirectory($binaryVertexRoot) | Out-Null
+    foreach ($version in [uint32[]]@(7400, 7500)) {
+        $fixture = Join-Path $binaryVertexRoot "vertexcolor-$version.fbx"
+        Write-TestBinaryVertexColorFbx $fixture $version
+        $meshes = @($vertexFbxRead.Invoke($null, @([string]$fixture)))
+        if (($meshes.Count -ne 1) -or ($meshes[0].Name -ne 'dynamo_body') -or (-not $meshes[0].HasColors) -or ($meshes[0].ControlPoints.Count -ne 3) -or ($meshes[0].Polygons.Count -ne 1) -or ($meshes[0].Polygons[0].Colors.Count -ne 3)) {
+            throw "Binary FBX $version Vertex Color fixture was not parsed correctly."
+        }
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $binaryVertexRoot) { Remove-Item -LiteralPath $binaryVertexRoot -Recurse -Force }
+}
+
 $atomicFileType = $assembly.GetType('Deadlimit.Core.AtomicFile', $true)
 $atomicWriteAllText = $atomicFileType.GetMethod(
     'WriteAllText',
@@ -1111,6 +1269,39 @@ if ([bool]$hasOrderedTopology.Invoke($null, [object[]]@($targetPolygons, $reorde
 $guardSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/VertexColorSourceGuard.cs' -Raw
 if (([regex]::Matches($guardSource, 'VertexColorTransferService\.TryApply\(')).Count -ne 2) {
     throw 'PREPARE validation and staged transfer must both use the safe Vertex Color transfer wrapper.'
+}
+
+# Primary FBX files carry their own vertex-color streams. Only DMX inputs may require
+# a *_vertexcolor.fbx sidecar, and the sidecar reader must accept Autodesk ASCII or Binary FBX.
+if (-not $prepareSource.Contains('VertexColorSourceGuard.ValidateForPrepare(')) {
+    throw 'DMX Vertex Color preflight is missing.'
+}
+if (-not $prepareSource.Contains('rootDmxFiles')) {
+    throw 'DMX Vertex Color preflight no longer receives rootDmxFiles.'
+}
+if ($prepareSource.Contains('VertexColorSourceGuard.ValidateForPrepare(rootFbxFiles')) {
+    throw 'Primary FBX must never be gated by the DMX Vertex Color sidecar preflight.'
+}
+$asciiFbxSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/AsciiFbxVertexColorReader.cs' -Raw
+$binaryFbxSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/BinaryFbxVertexColorReader.cs' -Raw
+foreach ($required in @(
+    'BinaryFbxVertexColorReader.IsBinary(path)',
+    'BinaryFbxVertexColorReader.Read(path)',
+    'Autodesk ASCII or Binary FBX format')) {
+    if (-not $asciiFbxSource.Contains($required)) {
+        throw "Binary FBX dispatch contract is missing: $required"
+    }
+}
+foreach ($required in @(
+    'Kaydara FBX Binary',
+    'ZLibStream',
+    'LayerElementColor',
+    'PolygonVertexIndex',
+    'MappingInformationType',
+    'IndexToDirect')) {
+    if (-not $binaryFbxSource.Contains($required)) {
+        throw "Binary FBX Vertex Color reader contract is missing: $required"
+    }
 }
 
 & (Join-Path $PSScriptRoot 'hero-extraction-dependency-path-smoke.ps1')
