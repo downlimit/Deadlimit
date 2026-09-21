@@ -31,26 +31,6 @@ internal static class TooltipCopyPolicyFixups
             return "**ЗАПУСК CSDK** открывает настроенный CSDK.\n\nИспользуйте его для работы с моделью и материалами проекта.\n\nУдерживайте **SHIFT**, чтобы сначала подготовить проект и включить **ОНЛАЙН-ПОДГОТОВКУ**. В этом режиме изменённые файлы модели и текстуры автоматически обновляются в CSDK. Повторный SHIFT-клик выключит режим.";
         }
 
-        if (text.StartsWith("Launch Deadlock game client through Steam.", StringComparison.Ordinal))
-        {
-            return "**LAUNCH GAME** opens Deadlock through Steam.\n\nUse it to test the current mod in the game.\n\nHold **SHIFT** to copy the camera-lock text instead of launching Deadlock.";
-        }
-
-        if (text.StartsWith("Запустить Deadlock через Steam.", StringComparison.Ordinal))
-        {
-            return "**ЗАПУСК ИГРЫ** открывает Deadlock через Steam.\n\nИспользуйте для проверки текущей версии мода в игре.\n\nУдерживайте **SHIFT**, чтобы вместо запуска скопировать текст для блокировки камеры.";
-        }
-
-        if (text.StartsWith("Deadlock is running. Click to close the game.", StringComparison.Ordinal))
-        {
-            return "**CLOSE** shuts down the running Deadlock game.\n\nUse it when you need to rebuild or replace the mod.\n\nHold **SHIFT** to copy the camera-lock text instead.";
-        }
-
-        if (text.StartsWith("Deadlock запущен. Нажмите, чтобы закрыть игру.", StringComparison.Ordinal))
-        {
-            return "**ЗАКРЫТЬ** завершает запущенный Deadlock.\n\nИспользуйте, когда нужно пересобрать или заменить мод.\n\nУдерживайте **SHIFT**, чтобы вместо закрытия скопировать текст для блокировки камеры.";
-        }
-
         if (text.StartsWith("Run the optional CSDK fine-tuning from the current installation guide.", StringComparison.Ordinal))
         {
             return "Prepare the additional Deadlock files that CSDK may need.\n\nUse this if some game files or tools are missing after a normal **Reduced CSDK** installation. Completed fine-tuning is detected and a normal repeat does not download or change files.\n\nHold **SHIFT** to force a complete repair download. Files are staged before they are applied. Steam may ask you to sign in with a QR code in a separate window. Your installed **Deadlock** files are **never changed**.";
@@ -189,14 +169,6 @@ internal static class TooltipCopyPolicyFixups
         }
 
         return text
-            .Replace("Hold **SHIFT** to copy the camera-lock command instead of launching Deadlock: cl_lock_camera true.",
-                "Hold **SHIFT** to copy the camera-lock text instead of launching Deadlock.",
-                StringComparison.Ordinal)
-            .Replace("Удерживайте **SHIFT**, чтобы вместо запуска скопировать команду блокировки камеры: cl_lock_camera true.",
-                "Удерживайте **SHIFT**, чтобы вместо запуска скопировать текст для блокировки камеры.",
-                StringComparison.Ordinal)
-            .Replace("camera-lock command", "camera-lock text", StringComparison.Ordinal)
-            .Replace("команду блокировки камеры", "текст для блокировки камеры", StringComparison.Ordinal)
             .Replace("Installed DeadlockTools release:", "**DeadlockTools** version:", StringComparison.Ordinal)
             .Replace("Установленный релиз DeadlockTools:", "Версия **DeadlockTools**:", StringComparison.Ordinal)
             .Replace("The tool is installed, but Deadlimit could not check for updates because the network source is unavailable.",

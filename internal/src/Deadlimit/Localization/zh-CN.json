@@ -468,5 +468,8 @@
   "incremental": "增量",
   "yes": "是",
   "not needed": "不需要",
-  "unknown": "未知"
+  "unknown": "未知",
+  "Could not copy console command": "无法复制控制台命令",
+  "**LAUNCH GAME** opens Deadlock through Steam.\n\nA normal click launches the game.\n\nModifier clicks copy Deadlock console commands to the clipboard instead:\n\n**SHIFT + CLICK**\ncitadel_hud_visible 0\n\n**CTRL + CLICK**\ncl_lock_camera 1\n\n**ALT + CLICK**\ncitadel_create_unit hero_tengu\n\n**ALT + CTRL + CLICK**\nbot_mimic_target\n\n**CTRL + SHIFT + ALT + CLICK**\nCopies all four commands in one executable line separated by ;.": "**启动游戏** 通过 Steam 打开 Deadlock。\n\n普通点击会启动游戏。\n\n带修饰键的点击会改为把 Deadlock 控制台命令复制到剪贴板：\n\n**SHIFT + 点击**\ncitadel_hud_visible 0\n\n**CTRL + 点击**\ncl_lock_camera 1\n\n**ALT + 点击**\ncitadel_create_unit hero_tengu\n\n**ALT + CTRL + 点击**\nbot_mimic_target\n\n**CTRL + SHIFT + ALT + 点击**\n将四条命令复制为一行可执行命令，并用 ; 分隔。",
+  "**CLOSE** shuts down the running Deadlock game.\n\nA normal click closes the game.\n\nModifier clicks copy Deadlock console commands to the clipboard instead:\n\n**SHIFT + CLICK**\ncitadel_hud_visible 0\n\n**CTRL + CLICK**\ncl_lock_camera 1\n\n**ALT + CLICK**\ncitadel_create_unit hero_tengu\n\n**ALT + CTRL + CLICK**\nbot_mimic_target\n\n**CTRL + SHIFT + ALT + CLICK**\nCopies all four commands in one executable line separated by ;.": "**关闭** 正在运行的 Deadlock。\n\n普通点击会关闭游戏。\n\n带修饰键的点击会改为把 Deadlock 控制台命令复制到剪贴板：\n\n**SHIFT + 点击**\ncitadel_hud_visible 0\n\n**CTRL + 点击**\ncl_lock_camera 1\n\n**ALT + 点击**\ncitadel_create_unit hero_tengu\n\n**ALT + CTRL + 点击**\nbot_mimic_target\n\n**CTRL + SHIFT + ALT + 点击**\n将四条命令复制为一行可执行命令，并用 ; 分隔。"
 }

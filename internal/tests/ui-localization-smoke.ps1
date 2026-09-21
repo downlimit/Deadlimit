@@ -226,9 +226,9 @@ Assert-TooltipPlain 'apply-ru' `
     @('неуказанными', 'внешним инструментам')
 
 Assert-TooltipPlain 'launch-game-en' `
-    "Launch Deadlock game client through Steam.\n\nHold SHIFT while clicking to copy 'cl_lock_camera true' to the clipboard without launching the game." `
-    @('**LAUNCH GAME**', '**SHIFT**') `
-    @('cl_lock_camera', 'command')
+    "**LAUNCH GAME** opens Deadlock through Steam.\n\nA normal click launches the game.\n\nModifier clicks copy Deadlock console commands to the clipboard instead:\n\n**SHIFT + CLICK**\ncitadel_hud_visible 0\n\n**CTRL + CLICK**\ncl_lock_camera 1\n\n**ALT + CLICK**\ncitadel_create_unit hero_tengu\n\n**ALT + CTRL + CLICK**\nbot_mimic_target\n\n**CTRL + SHIFT + ALT + CLICK**\nCopies all four commands in one executable line separated by ;." `
+    @('**LAUNCH GAME**', '**SHIFT + CLICK**', '**CTRL + CLICK**', '**ALT + CLICK**', '**ALT + CTRL + CLICK**', '**CTRL + SHIFT + ALT + CLICK**', 'citadel_hud_visible 0', 'cl_lock_camera 1', 'citadel_create_unit hero_tengu', 'bot_mimic_target', 'console commands') `
+    @('camera-lock text', 'cl_lock_camera true')
 
 # Verify the concrete missing-Vertex-Color-FBX message remains understandable in Russian.
 $messageBoxType = $assembly.GetType('Deadlimit.App.MessageBox', $true)

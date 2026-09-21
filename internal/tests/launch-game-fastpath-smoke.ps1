@@ -33,7 +33,25 @@ $requiredHeader = @(
     'DateTime.UtcNow + GameLaunchPendingTimeout',
     '? 1000',
     '? 250',
-    ': 2000'
+    ': 2000',
+    'HudHiddenCommand = "citadel_hud_visible 0"',
+    'CameraLockCommand = "cl_lock_camera 1"',
+    'CreateTenguCommand = "citadel_create_unit hero_tengu"',
+    'BotMimicTargetCommand = "bot_mimic_target"',
+    'HudHiddenCommand + "; "',
+    'ResolveLaunchGameConsoleCommand(Control.ModifierKeys)',
+    'Keys.Shift => HudHiddenCommand',
+    'Keys.Control => CameraLockCommand',
+    'Keys.Alt => CreateTenguCommand',
+    'Keys.Control | Keys.Alt => BotMimicTargetCommand',
+    'Keys.Control | Keys.Shift | Keys.Alt => AllConsoleCommands',
+    '**SHIFT + CLICK**',
+    '**CTRL + CLICK**',
+    '**ALT + CLICK**',
+    '**ALT + CTRL + CLICK**',
+    '**CTRL + SHIFT + ALT + CLICK**',
+    'console commands',
+    'консольные команды'
 )
 foreach ($pattern in $requiredHeader) {
     if (-not $header.Contains($pattern)) {
@@ -42,6 +60,16 @@ foreach ($pattern in $requiredHeader) {
 }
 if ($header.Contains('DeadlockProcessService.IsRunning()')) {
     throw 'ProjectHeaderFeature must not enumerate Deadlock processes on the UI thread.'
+}
+foreach ($forbidden in @(
+    'cl_lock_camera true',
+    'TryCopyCameraLockCommand',
+    'camera-lock text',
+    'текст для блокировки камеры'
+)) {
+    if ($header.Contains($forbidden)) {
+        throw "Obsolete launch-game shortcut text remains: $forbidden"
+    }
 }
 
 $directLaunchIndex = $header.IndexOf('Task.Run(TryLaunchDeadlockExecutable)', [StringComparison]::Ordinal)

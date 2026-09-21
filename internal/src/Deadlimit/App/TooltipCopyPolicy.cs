@@ -29,14 +29,6 @@ internal static class TooltipCopyPolicy
                 "Open **Deadlimit Manager Settings**.\n\nUse them to choose the projects folder, tool locations, interface language and theme.",
             ["Открыть настройки Deadlimit Manager.\n\nЗдесь задаются папка проектов, пути к инструментам, язык и тема интерфейса."] =
                 "Открыть **настройки Deadlimit Manager**.\n\nЗдесь можно выбрать папку проектов, расположение инструментов, язык и тему интерфейса.",
-            ["Launch Deadlock game client through Steam.\n\nHold SHIFT while clicking to copy 'cl_lock_camera true' to the clipboard without launching the game."] =
-                "**LAUNCH GAME** opens Deadlock through Steam.\n\nUse it to test the current mod in the game.\n\nHold **SHIFT** to copy the camera-lock command instead of launching Deadlock: cl_lock_camera true.",
-            ["Запустить Deadlock через Steam.\n\nУдерживайте SHIFT при клике, чтобы скопировать 'cl_lock_camera true' в буфер обмена без запуска игры."] =
-                "**ЗАПУСК ИГРЫ** открывает Deadlock через Steam.\n\nИспользуйте для проверки текущей версии мода в игре.\n\nУдерживайте **SHIFT**, чтобы вместо запуска скопировать команду блокировки камеры: cl_lock_camera true.",
-            ["Deadlock is running. Click to close the game.\n\nHold SHIFT while clicking to copy the camera-lock command instead."] =
-                "**CLOSE** shuts down the running Deadlock game.\n\nUse it when you need to rebuild or replace the mod.\n\nHold **SHIFT** to copy the camera-lock command instead.",
-            ["Deadlock запущен. Нажмите, чтобы закрыть игру.\n\nУдерживайте SHIFT при клике, чтобы вместо этого скопировать команду блокировки камеры."] =
-                "**ЗАКРЫТЬ** завершает запущенный Deadlock.\n\nИспользуйте, когда нужно пересобрать или заменить мод.\n\nУдерживайте **SHIFT**, чтобы вместо закрытия скопировать команду блокировки камеры.",
             ["The launch request was sent to Steam. Deadlimit is waiting for the Deadlock process to appear."] =
                 "Steam is starting **Deadlock**.\n\nDeadlimit is waiting for the game to open.",
             ["Запрос на запуск отправлен Steam. Deadlimit ждёт появления процесса Deadlock."] =
