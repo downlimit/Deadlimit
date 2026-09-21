@@ -39,9 +39,9 @@ Material: 101, "Material::lashter_head", "" {
 '@
     [IO.File]::WriteAllText($asciiPath, $asciiText)
     $asciiRefs = @($fbxMaterialRead.Invoke($null, @([string]$asciiPath)))
-    if ($asciiRefs.Count -ne 1
-        -or $asciiRefs[0].SourceName -ne 'lashter_head'
-        -or $asciiRefs[0].AuthoringReference -ne 'materials/lashter_head') {
+    if (($asciiRefs.Count -ne 1) -or
+        ($asciiRefs[0].SourceName -ne 'lashter_head') -or
+        ($asciiRefs[0].AuthoringReference -ne 'materials/lashter_head')) {
         throw 'ASCII FBX material slot was not normalized to the authoring material reference.'
     }
 
@@ -55,9 +55,9 @@ Material: 101, "Material::lashter_head", "" {
     $bytes.AddRange($payload)
     [IO.File]::WriteAllBytes($binaryPath, $bytes.ToArray())
     $binaryRefs = @($fbxMaterialRead.Invoke($null, @([string]$binaryPath)))
-    if ($binaryRefs.Count -ne 1
-        -or $binaryRefs[0].SourceName -ne 'lashter_head'
-        -or $binaryRefs[0].AuthoringReference -ne 'materials/lashter_head') {
+    if (($binaryRefs.Count -ne 1) -or
+        ($binaryRefs[0].SourceName -ne 'lashter_head') -or
+        ($binaryRefs[0].AuthoringReference -ne 'materials/lashter_head')) {
         throw 'Binary FBX material slot was not normalized to the authoring material reference.'
     }
 }
