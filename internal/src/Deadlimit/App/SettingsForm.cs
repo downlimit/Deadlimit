@@ -1096,8 +1096,8 @@ internal sealed class SettingsForm : Form
             MessageBox.Show(
                 this,
                 UiText.T(
-                    $"Could not open Google Drive in the browser.\n\n{exception.BrowserUri}",
-                    $"Не удалось открыть Google Drive в браузере.\n\n{exception.BrowserUri}"),
+                    $"Could not open Google Drive in the browser.\n\n{exception.BrowserUri}\n\nDetails:\n{openException.Message}",
+                    $"Не удалось открыть Google Drive в браузере.\n\n{exception.BrowserUri}\n\nПодробности:\n{openException.Message}"),
                 UiText.T("Could not open Google Drive", "Не удалось открыть Google Drive"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
