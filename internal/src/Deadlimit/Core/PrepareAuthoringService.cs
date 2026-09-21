@@ -865,16 +865,34 @@ public sealed class PrepareAuthoringService
         var result = new List<VmdlMaterialRemap>();
         foreach (var material in fbxMaterials)
         {
-            if (!customByReference.TryGetValue(material.AuthoringReference, out var customRemap)
-                || string.Equals(material.SourceName, customRemap.From, StringComparison.OrdinalIgnoreCase))
+            if (!customByReference.TryGetValue(material.AuthoringReference, out var customRemap))
             {
                 continue;
             }
 
-            result.Add(new VmdlMaterialRemap(material.SourceName, customRemap.To));
-            log.AppendLine(
-                $"Exact FBX custom material remap: {material.SourceName} -> {customRemap.To} " +
-                $"(authoring alias {material.AuthoringReference})");
+            var sourceAliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                material.SourceName,
+            };
+            if (string.IsNullOrEmpty(Path.GetExtension(material.SourceName)))
+            {
+                // ModelDoc's FBX importer may expose a bare material name as <name>.vmat
+                // when resolving MaterialGroup remaps. Cover both source spellings.
+                sourceAliases.Add(material.SourceName + ".vmat");
+            }
+
+            foreach (var sourceAlias in sourceAliases)
+            {
+                if (string.Equals(sourceAlias, customRemap.From, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                result.Add(new VmdlMaterialRemap(sourceAlias, customRemap.To));
+                log.AppendLine(
+                    $"Exact FBX custom material remap: {sourceAlias} -> {customRemap.To} " +
+                    $"(source slot {material.SourceName}, authoring alias {material.AuthoringReference})");
+            }
         }
 
         return result
