@@ -69,6 +69,7 @@ try {
     $deadlockExe = Join-Path $csdkRoot "game\bin\win64\deadlock.exe"
     $gameInfoPath = Join-Path $csdkRoot "game\citadel\gameinfo.gi"
     $cacheFolder = Join-Path $csdkRoot "game\citadel\addons\luaunlocker"
+    $contentCacheFolder = Join-Path $csdkRoot "content\citadel\addons\luaunlocker"
     $consoleLogPath = Join-Path $csdkRoot "game\citadel\console.log"
     $readonlyCachePath = Join-Path $cacheFolder "readonly_tools_asset_info.bin"
     $writableCachePath = Join-Path $cacheFolder "tools_asset_info.bin"
@@ -82,6 +83,9 @@ try {
     }
     if (-not (Test-Path -LiteralPath $cacheFolder -PathType Container)) {
         throw "CSDK luaunlocker folder was not found: '$cacheFolder'. The Reduced CSDK12 installation is incomplete."
+    }
+    if (-not (Test-Path -LiteralPath $contentCacheFolder -PathType Container)) {
+        New-Item -ItemType Directory -Path $contentCacheFolder -Force | Out-Null
     }
 
     $rootPrefix = $csdkRoot + [IO.Path]::DirectorySeparatorChar

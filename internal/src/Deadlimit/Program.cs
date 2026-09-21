@@ -101,6 +101,12 @@ internal static class Program
                 return 5 + mutationCoordinatorResult;
             }
 
+            var csdkAssetWatcherResult = CsdkAssetWatcherCompatibility.RunSmoke();
+            if (csdkAssetWatcherResult != 0)
+            {
+                return 7 + csdkAssetWatcherResult;
+            }
+
             var vpkOwnershipResult = VpkSlotOwnershipSmoke.Run();
             if (vpkOwnershipResult != 0)
             {

@@ -384,6 +384,7 @@ public sealed class ToolchainDependencyService
             var catalog = await GetLatestCsdkCatalogAsync(operation.Token).ConfigureAwait(false);
             Report(operation, progress, ProgressText($"Downloading CSDK {catalog.Generation}…", $"Загрузка CSDK {catalog.Generation}…"), 7);
             await InstallCsdkArchiveAsync(catalog, installRoot, false, operation, progress, 7, 96).ConfigureAwait(false);
+            CsdkAssetWatcherCompatibility.EnsureLuaUnlockerContentMirror(installRoot);
             WriteCsdkMarker(installRoot, catalog, setup: false);
             var complete = ProgressText($"CSDK {catalog.Generation} installed.", $"CSDK {catalog.Generation} установлен.");
             ToolchainOperationHub.Complete(operation, complete);
@@ -425,6 +426,7 @@ public sealed class ToolchainDependencyService
             catalog = await GetLatestCsdkCatalogAsync(operation.Token).ConfigureAwait(false);
             Report(operation, progress, ProgressText($"Downloading CSDK {catalog.Generation}…", $"Загрузка CSDK {catalog.Generation}…"), 7);
             await InstallCsdkArchiveAsync(catalog, root, true, operation, progress, 7, 96).ConfigureAwait(false);
+            CsdkAssetWatcherCompatibility.EnsureLuaUnlockerContentMirror(root);
             WriteCsdkMarker(root, catalog, setup: false);
             var complete = ProgressText($"CSDK {catalog.Generation} updated.", $"CSDK {catalog.Generation} обновлён.");
             ToolchainOperationHub.Complete(operation, complete);
@@ -674,6 +676,7 @@ public sealed class ToolchainDependencyService
                 TryDeleteDirectory(stagingRoot);
             }
 
+            CsdkAssetWatcherCompatibility.EnsureLuaUnlockerContentMirror(csdkRoot);
             WriteCsdkMarker(csdkRoot, catalog, setup: true);
             var complete = ProgressText("CSDK fine-tuning complete.", "Донастройка CSDK завершена.");
             progress?.Report(complete);

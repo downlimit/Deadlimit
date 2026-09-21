@@ -750,6 +750,8 @@ public sealed class PrepareAuthoringService
         {
             throw new DirectoryNotFoundException($"CSDK game root was not found: {_paths.CsdkGameRoot}");
         }
+
+        CsdkAssetWatcherCompatibility.EnsureLuaUnlockerContentMirror(_paths.CsdkRoot);
     }
 
     private static IReadOnlyList<string> DiscoverDmxMaterialReferences(IEnumerable<string> dmxFiles)
