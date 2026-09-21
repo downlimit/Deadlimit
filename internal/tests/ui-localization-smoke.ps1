@@ -95,7 +95,8 @@ Assert-NotContains 'internal/src/Deadlimit/App/SettingsVersionFeature.cs' 'UiTex
 # BUILD FOR TEST must disable LAUNCH GAME and show the active blue BUILDING state.
 Assert-Contains 'internal/src/Deadlimit/App/GameLaunchInterlockFeature.cs' 'SetLaunchEnabled(_buildRunning ? false : _desiredLaunchEnabled);'
 Assert-Contains 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs' 'UiText.T("BUILDING...", "ИДЁТ СБОРКА")'
-Assert-Contains 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs' 'gameButtonUsesActivePalette = buildForTestRunning'
+Assert-Contains 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs' 'var desiredActivePalette = buildForTestRunning || gameIsRunning || launchPending'
+Assert-Contains 'internal/src/Deadlimit/App/ProjectHeaderFeature.cs' 'gameButtonUsesActivePalette = desiredActivePalette'
 Assert-Contains 'internal/src/Deadlimit/App/GameLaunchInterlockFeature.cs' 'ProjectHeaderFeature.SetBuildForTestState'
 
 # Long PREPARE and BUILD operations expose their own cancellation action.
@@ -111,6 +112,12 @@ Assert-Contains 'internal/src/Deadlimit/App/MessageBox.cs' 'Подробност
 # Every app tooltip uses the RichToolTip alias, so width, wrapping and emphasis rules apply consistently.
 Assert-Contains 'internal/src/Deadlimit/App/GlobalToolTipAlias.cs' 'global using ToolTip = Deadlimit.App.RichToolTip;'
 Assert-Contains 'internal/src/Deadlimit/App/RichToolTip.cs' 'private const int MaxContentWidth = 440;'
+Assert-Contains 'internal/src/Deadlimit/App/RichToolTip.cs' 'string.Equals(current, normalized, StringComparison.Ordinal)'
+Assert-Contains 'internal/src/Deadlimit/App/RichToolTip.cs' 'existingOwner.SetToolTip(control, text);'
+Assert-Contains 'internal/src/Deadlimit/App/RichToolTip.cs' 'internal static bool TrySetToolTip(Control control, string text)'
+Assert-Contains 'internal/src/Deadlimit/App/OnlinePreparationFeature.cs' 'RichToolTip.TrySetToolTip(_launchButton, text)'
+Assert-NotContains 'internal/src/Deadlimit/App/OnlinePreparationFeature.cs' 'new ToolTip'
+Assert-Contains 'internal/src/Deadlimit/App/BuildFeature.cs' 'launchCsdkButton.Text.Contains("LIVE SYNC", StringComparison.OrdinalIgnoreCase)'
 $appTooltipFiles = Get-ChildItem 'internal/src/Deadlimit/App' -Filter *.cs -File |
     Where-Object { $_.Name -ne 'RichToolTip.cs' }
 foreach ($file in $appTooltipFiles) {

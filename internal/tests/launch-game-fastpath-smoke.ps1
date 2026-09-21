@@ -51,7 +51,9 @@ $requiredHeader = @(
     '**ALT + CTRL + CLICK**',
     '**CTRL + SHIFT + ALT + CLICK**',
     'console commands',
-    'консольные команды'
+    'консольные команды',
+    'var visualChanged = gameButtonUsesActivePalette != desiredActivePalette',
+    'if (visualChanged)'
 )
 foreach ($pattern in $requiredHeader) {
     if (-not $header.Contains($pattern)) {
@@ -115,7 +117,8 @@ foreach ($pattern in $requiredInterlock) {
 }
 
 $requiredBuildVisualState = @(
-    'gameButtonUsesActivePalette = buildForTestRunning',
+    'var desiredActivePalette = buildForTestRunning || gameIsRunning || launchPending',
+    'gameButtonUsesActivePalette = desiredActivePalette',
     'UiText.T("BUILDING...", "ИДЁТ СБОРКА")',
     'internal static void SetBuildForTestState(MainForm form, bool running)'
 )
@@ -130,12 +133,16 @@ $requiredOnline = @(
     '_session = null;',
     'DisposeSessionAfterGameLaunchAsync(session)',
     'await Task.Run(session.Dispose);',
+    'RichToolTip.TrySetToolTip(_launchButton, text)',
     'return true;'
 )
 foreach ($pattern in $requiredOnline) {
     if (-not $online.Contains($pattern)) {
         throw "Missing online-stop contract: $pattern"
     }
+}
+if ($online.Contains('new ToolTip')) {
+    throw 'OnlinePreparationFeature must reuse the existing LAUNCH CSDK tooltip owner.'
 }
 
 $processServicePath = 'internal/src/Deadlimit/App/DeadlockProcessService.cs'

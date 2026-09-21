@@ -105,7 +105,20 @@ internal sealed class RichToolTip : IDisposable
 
     public void SetToolTip(Control control, string text)
     {
+        if (KeepAlive.TryGetValue(control, out var existingOwner)
+            && !ReferenceEquals(existingOwner, this))
+        {
+            existingOwner.SetToolTip(control, text);
+            return;
+        }
+
         var normalized = Normalize(text);
+        if (_texts.TryGetValue(control, out var current)
+            && string.Equals(current, normalized, StringComparison.Ordinal))
+        {
+            return;
+        }
+
         if (normalized.Length == 0)
         {
             KeepAlive.Remove(control);
@@ -115,9 +128,22 @@ internal sealed class RichToolTip : IDisposable
         }
 
         _texts[control] = normalized;
-        KeepAlive.Remove(control);
-        KeepAlive.Add(control, this);
+        if (!KeepAlive.TryGetValue(control, out _))
+        {
+            KeepAlive.Add(control, this);
+        }
         _toolTip.SetToolTip(control, normalized);
+    }
+
+    internal static bool TrySetToolTip(Control control, string text)
+    {
+        if (!KeepAlive.TryGetValue(control, out var owner))
+        {
+            return false;
+        }
+
+        owner.SetToolTip(control, text);
+        return true;
     }
 
     internal static bool TryAppendToolTip(Control control, string text)

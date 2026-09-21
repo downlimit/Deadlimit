@@ -95,9 +95,10 @@ internal static class BuildFeature
         }
 
         bool IsOnlineCsdkState() =>
-            launchCsdkButton.Text.Contains("CSDK", StringComparison.OrdinalIgnoreCase)
-            && (launchCsdkButton.Text.Contains("ONLINE", StringComparison.OrdinalIgnoreCase)
-                || launchCsdkButton.Text.Contains("ОНЛАЙН", StringComparison.OrdinalIgnoreCase));
+            launchCsdkButton.Text.Contains("LIVE SYNC", StringComparison.OrdinalIgnoreCase)
+            || (launchCsdkButton.Text.Contains("CSDK", StringComparison.OrdinalIgnoreCase)
+                && (launchCsdkButton.Text.Contains("ONLINE", StringComparison.OrdinalIgnoreCase)
+                    || launchCsdkButton.Text.Contains("ОНЛАЙН", StringComparison.OrdinalIgnoreCase)));
 
         void ApplyCsdkButtonState()
         {
@@ -106,9 +107,17 @@ internal static class BuildFeature
                 return;
             }
 
-            launchCsdkButton.Text = csdkIsRunning
+            var desiredText = csdkIsRunning
                 ? UiText.T("CSDK RUNNING", "CSDK ЗАПУЩЕН")
                 : UiText.T("▶  LAUNCH CSDK", "▶  ЗАПУСК CSDK");
+            var textChanged = !string.Equals(
+                launchCsdkButton.Text,
+                desiredText,
+                StringComparison.Ordinal);
+            if (textChanged)
+            {
+                launchCsdkButton.Text = desiredText;
+            }
 
             toolTip.SetToolTip(
                 launchCsdkButton,
@@ -120,7 +129,10 @@ internal static class BuildFeature
                         "Launch the configured Reduced CSDK12 environment.\n\nHold SHIFT while clicking to prepare once, enable ONLINE PREPARATION and launch CSDK. Repeat SHIFT+click to stop online synchronization without launching another CSDK instance.",
                         "Запустить настроенное окружение Reduced CSDK12.\n\nУдерживайте SHIFT при клике, чтобы выполнить подготовку, включить ОНЛАЙН-ПОДГОТОВКУ и запустить CSDK. Повторный SHIFT+клик остановит онлайн-синхронизацию без запуска ещё одного CSDK."));
 
-            launchCsdkButton.Invalidate();
+            if (textChanged)
+            {
+                launchCsdkButton.Invalidate();
+            }
         }
 
         async Task RefreshCsdkButtonStateAsync()
@@ -320,6 +332,7 @@ internal static class BuildFeature
         {
             csdkStateTimer.Stop();
             csdkStateTimer.Dispose();
+            toolTip.Dispose();
         };
 
         topBar.Controls.Add(prepareButton);

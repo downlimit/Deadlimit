@@ -277,14 +277,21 @@ internal static class ProjectHeaderFeature
                 gameLaunchPendingUntilUtc = DateTime.MinValue;
             }
 
-            gameButtonUsesActivePalette = buildForTestRunning || gameIsRunning || launchPending;
-            launchGameButton.Text = buildForTestRunning
+            var desiredActivePalette = buildForTestRunning || gameIsRunning || launchPending;
+            var desiredText = buildForTestRunning
                 ? UiText.T("BUILDING...", "ИДЁТ СБОРКА")
                 : gameIsRunning
                     ? UiText.T("✕  CLOSE", "✕  ЗАКРЫТЬ")
                     : launchPending
                         ? UiText.T("GAME IS LAUNCHING", "ИГРА ЗАПУСКАЕТСЯ")
                         : UiText.T("▶  LAUNCH GAME", "▶  ЗАПУСК ИГРЫ");
+            var visualChanged = gameButtonUsesActivePalette != desiredActivePalette
+                || !string.Equals(launchGameButton.Text, desiredText, StringComparison.Ordinal);
+            gameButtonUsesActivePalette = desiredActivePalette;
+            if (!string.Equals(launchGameButton.Text, desiredText, StringComparison.Ordinal))
+            {
+                launchGameButton.Text = desiredText;
+            }
 
             gameStateTimer.Interval = gameIsRunning
                 ? 1000
@@ -306,7 +313,10 @@ internal static class ProjectHeaderFeature
                                 "Запрос на запуск отправлен Steam. Deadlimit ждёт появления процесса Deadlock.")
                             : BuildLaunchGameToolTip(gameIsRunning: false));
 
-            launchGameButton.Invalidate();
+            if (visualChanged)
+            {
+                launchGameButton.Invalidate();
+            }
         }
 
         async Task RefreshGameButtonStateAsync()
