@@ -3,9 +3,9 @@ namespace Deadlimit.App;
 internal static class TooltipCopyPolicyFixups
 {
     private const string EnglishStructureSuffix =
-        "A structural change was detected. ONLINE PREPARATION is rebuilding the full PREPARE baseline automatically.";
+        "A structural change was detected. LIVE SYNC is rebuilding the full PREPARE baseline automatically.";
     private const string RussianStructureSuffix =
-        "Обнаружено структурное изменение. ОНЛАЙН-ПОДГОТОВКА автоматически перестраивает полную базовую версию PREPARE.";
+        "Обнаружено структурное изменение. LIVE SYNC автоматически перестраивает полную базовую версию PREPARE.";
 
     internal static string BeforeRewrite(string text)
     {
@@ -23,12 +23,12 @@ internal static class TooltipCopyPolicyFixups
 
         if (text.StartsWith("Launch the configured Reduced CSDK environment.", StringComparison.Ordinal))
         {
-            return "**LAUNCH CSDK** opens the configured CSDK.\n\nUse it to work with the project's model and materials.\n\nHold **SHIFT** to prepare the project first and enable **ONLINE PREPARATION**. In this mode, changed model and texture files update in CSDK automatically. Repeat SHIFT-click to turn it off.";
+            return "**LAUNCH CSDK** opens the configured CSDK.\n\nUse it to work with the project's model and materials.\n\nHold **SHIFT** to prepare the project first and enable **LIVE SYNC**. In this mode, changed model and texture files update in CSDK automatically. Repeat SHIFT-click to turn LIVE SYNC off.";
         }
 
         if (text.StartsWith("Запустить настроенное окружение Reduced CSDK.", StringComparison.Ordinal))
         {
-            return "**ЗАПУСК CSDK** открывает настроенный CSDK.\n\nИспользуйте его для работы с моделью и материалами проекта.\n\nУдерживайте **SHIFT**, чтобы сначала подготовить проект и включить **ОНЛАЙН-ПОДГОТОВКУ**. В этом режиме изменённые файлы модели и текстуры автоматически обновляются в CSDK. Повторный SHIFT-клик выключит режим.";
+            return "**ЗАПУСК CSDK** открывает настроенный CSDK.\n\nИспользуйте его для работы с моделью и материалами проекта.\n\nУдерживайте **SHIFT**, чтобы сначала подготовить проект и включить **LIVE SYNC**. В этом режиме изменённые файлы модели и текстуры автоматически обновляются в CSDK. Повторный SHIFT-клик выключит LIVE SYNC.";
         }
 
         if (text.StartsWith("Run the optional CSDK fine-tuning from the current installation guide.", StringComparison.Ordinal))

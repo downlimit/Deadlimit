@@ -132,6 +132,24 @@ Assert-Contains 'internal/src/Deadlimit/App/RichToolTip.cs' 'internal static boo
 Assert-Contains 'internal/src/Deadlimit/App/OnlinePreparationFeature.cs' 'RichToolTip.TrySetToolTip(_launchButton, text)'
 Assert-NotContains 'internal/src/Deadlimit/App/OnlinePreparationFeature.cs' 'new ToolTip'
 Assert-Contains 'internal/src/Deadlimit/App/BuildFeature.cs' 'launchCsdkButton.Text.Contains("LIVE SYNC", StringComparison.OrdinalIgnoreCase)'
+foreach ($path in @(
+    'internal/src/Deadlimit/App/TooltipCopyPolicy.cs',
+    'internal/src/Deadlimit/App/TooltipCopyPolicyFixups.cs',
+    'internal/src/Deadlimit/App/RichToolTip.cs'
+)) {
+    foreach ($legacy in @(
+        'ONLINE PREPARATION',
+        'ОНЛАЙН-ПОДГОТОВ',
+        'online preparation',
+        'онлайн-подготов',
+        'online synchronization',
+        'онлайн-синхрон'
+    )) {
+        Assert-NotContains $path $legacy
+    }
+}
+Assert-Contains 'internal/src/Deadlimit/App/TooltipCopyPolicyFixups.cs' '**LIVE SYNC**'
+Assert-Contains 'internal/src/Deadlimit/App/RichToolTip.cs' '"LIVE SYNC"'
 Assert-NotContains 'internal/src/Deadlimit/App/BuildFeature.cs' 'ONLINE PREPARATION'
 Assert-NotContains 'internal/src/Deadlimit/App/BuildFeature.cs' 'ОНЛАЙН-ПОДГОТОВ'
 Assert-NotContains 'internal/src/Deadlimit/App/BuildFeature.cs' 'online synchronization'
@@ -217,6 +235,16 @@ Assert-TooltipPlain 'prepare-ru' `
     'Подготовить рабочие файлы выбранного проекта для Reduced CSDK.\n\nОбычный клик сохраняет ручную настройку VMAT и синхронизирует совпавшие текстуры проекта. Удерживайте SHIFT, чтобы пересоздать custom-материалы; в окне подтверждения можно выбрать, создавать ли резервную копию.' `
     @('**ПОДГОТОВИТЬ ДЛЯ CSDK**', '**SHIFT**') `
     @('VMAT', 'custom-материалы', 'ModelDoc')
+
+Assert-TooltipPlain 'launch-csdk-en' `
+    'Launch the configured Reduced CSDK environment.\n\nHold SHIFT while clicking to prepare once, enable LIVE SYNC and launch CSDK. Repeat SHIFT+click to stop LIVE SYNC without launching another CSDK instance.' `
+    @('**LAUNCH CSDK**', '**SHIFT**', '**LIVE SYNC**') `
+    @('ONLINE PREPARATION', 'online preparation', 'online synchronization')
+
+Assert-TooltipPlain 'launch-csdk-ru' `
+    'Запустить настроенное окружение Reduced CSDK.\n\nУдерживайте SHIFT при клике, чтобы выполнить подготовку, включить LIVE SYNC и запустить CSDK. Повторный SHIFT+клик отключит LIVE SYNC без запуска ещё одного CSDK.' `
+    @('**ЗАПУСК CSDK**', '**SHIFT**', '**LIVE SYNC**') `
+    @('ОНЛАЙН-ПОДГОТОВ', 'онлайн-подготов', 'онлайн-синхрон')
 
 Assert-TooltipPlain 'release-en' `
     "Game-client VPK release slot: 01-99. Type the number directly or change it with the arrows by ±1.\n\nThe slot becomes part of the deployed VPK filename, for example Release ID 07 → pak07_dir.vpk." `
