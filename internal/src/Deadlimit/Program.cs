@@ -233,6 +233,7 @@ internal static class Program
 
         UpdateStartup(startup, 90, applyingInterfaceText);
         UiTheme.ApplyCustomPalette(form, settings.UiTheme);
+        SettingsAttentionPulseFeature.Attach(form);
         WindowProgressFeature.Attach(form);
         SteamStatusFeature.Attach(form, settings.UiTheme);
 
