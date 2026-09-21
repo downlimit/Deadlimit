@@ -22,9 +22,9 @@ internal static class TooltipCopyPolicy
             ["Скомпилировать текущий проект и установить его VPK в игровой клиент Deadlock.\n\nЭта кнопка не запускает игру. Удерживайте SHIFT при клике для полной чистой пересборки."] =
                 "**СОБРАТЬ ДЛЯ ТЕСТА** подготовит проект, соберёт мод и установит его в Deadlock для проверки.\n\nИспользуйте, когда хотите проверить текущую версию мода в игре. Сама игра не запускается.\n\nУдерживайте **SHIFT** для полной пересборки.",
             ["Launch the configured Reduced CSDK12 environment.\n\nHold SHIFT while clicking to prepare once, enable LIVE SYNC and launch CSDK. Repeat SHIFT+click to stop LIVE SYNC without launching another CSDK instance."] =
-                "**LAUNCH CSDK** opens the configured CSDK.\n\nUse it to work with the project's model and materials.\n\nHold **SHIFT** to prepare the project first and enable **LIVE SYNC**. In this mode, changed model and texture files update in CSDK automatically. Repeat SHIFT-click to turn it off.",
+                "**LAUNCH CSDK** opens the configured CSDK.\n\nUse it to work with the project's model and materials.\n\nHold **SHIFT** to prepare the project first and enable **LIVE SYNC**. In this mode, changed model and texture files update in CSDK automatically. Repeat SHIFT-click to turn LIVE SYNC off.",
             ["Запустить настроенное окружение Reduced CSDK12.\n\nУдерживайте SHIFT при клике, чтобы выполнить подготовку, включить LIVE SYNC и запустить CSDK. Повторный SHIFT+клик отключит LIVE SYNC без запуска ещё одного CSDK."] =
-                "**ЗАПУСК CSDK** открывает настроенный CSDK.\n\nИспользуйте его для работы с моделью и материалами проекта.\n\nУдерживайте **SHIFT**, чтобы сначала подготовить проект и включить **LIVE SYNC**. В этом режиме изменённые файлы модели и текстуры автоматически обновляются в CSDK. Повторный SHIFT-клик выключит режим.",
+                "**ЗАПУСК CSDK** открывает настроенный CSDK.\n\nИспользуйте его для работы с моделью и материалами проекта.\n\nУдерживайте **SHIFT**, чтобы сначала подготовить проект и включить **LIVE SYNC**. В этом режиме изменённые файлы модели и текстуры автоматически обновляются в CSDK. Повторный SHIFT-клик выключит LIVE SYNC.",
             ["Open Deadlimit Manager settings.\n\nConfigure the projects folder, tool locations, interface language and theme."] =
                 "Open **Deadlimit Manager Settings**.\n\nUse them to choose the projects folder, tool locations, interface language and theme.",
             ["Открыть настройки Deadlimit Manager.\n\nЗдесь задаются папка проектов, пути к инструментам, язык и тема интерфейса."] =
@@ -141,11 +141,11 @@ internal static class TooltipCopyPolicy
     {
         if (text.StartsWith("LIVE SYNC is off.", StringComparison.Ordinal))
         {
-            return "**LIVE SYNC** is off.\n\nHold **SHIFT** and click **LAUNCH CSDK** to prepare the project, open CSDK and keep changed model and texture files updating automatically.\n\nUse the same SHIFT-click again to turn it off.";
+            return "**LIVE SYNC** is off.\n\nHold **SHIFT** and click **LAUNCH CSDK** to prepare the project, open CSDK and keep changed model and texture files updating automatically.\n\nUse the same SHIFT-click again to turn LIVE SYNC off.";
         }
         if (text.StartsWith("Режим LIVE SYNC выключен.", StringComparison.Ordinal))
         {
-            return "**LIVE SYNC** выключен.\n\nУдерживайте **SHIFT** и нажмите **ЗАПУСК CSDK**, чтобы подготовить проект, открыть CSDK и автоматически обновлять изменённые файлы модели и текстуры.\n\nПовторите тот же SHIFT-клик, чтобы выключить режим.";
+            return "**LIVE SYNC** выключен.\n\nУдерживайте **SHIFT** и нажмите **ЗАПУСК CSDK**, чтобы подготовить проект, открыть CSDK и автоматически обновлять изменённые файлы модели и текстуры.\n\nПовторите тот же SHIFT-клик, чтобы выключить LIVE SYNC.";
         }
         if (text.StartsWith("LIVE SYNC is active.", StringComparison.Ordinal))
         {
@@ -158,8 +158,8 @@ internal static class TooltipCopyPolicy
         {
             var alreadyOpen = text.Contains("Уже запущенный CSDK", StringComparison.OrdinalIgnoreCase);
             return alreadyOpen
-                ? "**LIVE SYNC** включён.\n\nИзменённые файлы модели и текстуры автоматически передаются в CSDK во время работы.\n\nCSDK уже открыт, поэтому Deadlimit не будет запускать ещё одну копию. Повторный SHIFT-клик выключит режим."
-                : "**LIVE SYNC** включён.\n\nИзменённые файлы модели и текстуры автоматически передаются в CSDK во время работы.\n\nCSDK сейчас откроется. Повторный SHIFT-клик выключит режим.";
+                ? "**LIVE SYNC** включён.\n\nИзменённые файлы модели и текстуры автоматически передаются в CSDK во время работы.\n\nCSDK уже открыт, поэтому Deadlimit не будет запускать ещё одну копию. Повторный SHIFT-клик выключит LIVE SYNC."
+                : "**LIVE SYNC** включён.\n\nИзменённые файлы модели и текстуры автоматически передаются в CSDK во время работы.\n\nCSDK сейчас откроется. Повторный SHIFT-клик выключит LIVE SYNC.";
         }
 
         if (TryRewriteActionResult(text, out var actionResult))
