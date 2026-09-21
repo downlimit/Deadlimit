@@ -112,6 +112,18 @@ foreach ($required in @(
     Assert-Contains $mainForm $required 'Project migration and extraction shutdown'
 }
 
+$deadlockInstallLocator = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/DeadlockInstallLocator.cs' -Raw
+foreach ($required in @(
+    'DeadlockAppId = "1422450"',
+    'appmanifest_{DeadlockAppId}.acf',
+    'SteamInstallDirRegex',
+    '"Deadlock"',
+    '"Project8Staging"',
+    'EnumerateLibraryCandidates(libraryRoot)'
+)) {
+    Assert-Contains $deadlockInstallLocator $required 'Deadlock Steam install discovery'
+}
+
 $settingsStartup = Get-Content -LiteralPath 'internal/src/Deadlimit/App/SettingsStartupFeature.cs' -Raw
 foreach ($required in @(
     'string.IsNullOrWhiteSpace(settings.ProjectsRoot)',
