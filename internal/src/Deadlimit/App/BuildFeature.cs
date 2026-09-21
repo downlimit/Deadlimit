@@ -65,8 +65,8 @@ internal static class BuildFeature
         toolTip.SetToolTip(
             launchCsdkButton,
             UiText.T(
-                "Launch the configured Reduced CSDK12 environment.\n\nHold SHIFT while clicking to prepare once, enable ONLINE PREPARATION and launch CSDK. Repeat SHIFT+click to stop online synchronization without launching another CSDK instance.",
-                "Запустить настроенное окружение Reduced CSDK12.\n\nУдерживайте SHIFT при клике, чтобы выполнить подготовку, включить ОНЛАЙН-ПОДГОТОВКУ и запустить CSDK. Повторный SHIFT+клик остановит онлайн-синхронизацию без запуска ещё одного CSDK."));
+                "Launch the configured Reduced CSDK12 environment.\n\nHold SHIFT while clicking to prepare once, enable LIVE SYNC and launch CSDK. Repeat SHIFT+click to stop LIVE SYNC without launching another CSDK instance.",
+                "Запустить настроенное окружение Reduced CSDK12.\n\nУдерживайте SHIFT при клике, чтобы выполнить подготовку, включить LIVE SYNC и запустить CSDK. Повторный SHIFT+клик отключит LIVE SYNC без запуска ещё одного CSDK."));
 
         var buildProgressBar = AddBuildProgressBar(form);
         var actionButtons = new[] { prepareButton, buildAndTestButton, launchCsdkButton };
@@ -123,11 +123,11 @@ internal static class BuildFeature
                 launchCsdkButton,
                 csdkIsRunning
                     ? UiText.T(
-                        "Reduced CSDK12 is already running. Click to bring its most recently active visible window to the foreground.\n\nHold SHIFT to keep using the ONLINE PREPARATION shortcut.",
-                        "Reduced CSDK12 уже запущен. Нажмите, чтобы вывести его последнее активное видимое окно на передний план.\n\nУдерживайте SHIFT, чтобы использовать действие ОНЛАЙН-ПОДГОТОВКИ.")
+                        "Reduced CSDK12 is already running. Click to bring its most recently active visible window to the foreground.\n\nHold SHIFT to keep using the LIVE SYNC shortcut.",
+                        "Reduced CSDK12 уже запущен. Нажмите, чтобы вывести его последнее активное видимое окно на передний план.\n\nУдерживайте SHIFT, чтобы использовать LIVE SYNC.")
                     : UiText.T(
-                        "Launch the configured Reduced CSDK12 environment.\n\nHold SHIFT while clicking to prepare once, enable ONLINE PREPARATION and launch CSDK. Repeat SHIFT+click to stop online synchronization without launching another CSDK instance.",
-                        "Запустить настроенное окружение Reduced CSDK12.\n\nУдерживайте SHIFT при клике, чтобы выполнить подготовку, включить ОНЛАЙН-ПОДГОТОВКУ и запустить CSDK. Повторный SHIFT+клик остановит онлайн-синхронизацию без запуска ещё одного CSDK."));
+                        "Launch the configured Reduced CSDK12 environment.\n\nHold SHIFT while clicking to prepare once, enable LIVE SYNC and launch CSDK. Repeat SHIFT+click to stop LIVE SYNC without launching another CSDK instance.",
+                        "Запустить настроенное окружение Reduced CSDK12.\n\nУдерживайте SHIFT при клике, чтобы выполнить подготовку, включить LIVE SYNC и запустить CSDK. Повторный SHIFT+клик отключит LIVE SYNC без запуска ещё одного CSDK."));
 
             if (textChanged)
             {

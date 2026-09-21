@@ -123,6 +123,13 @@ Assert-Contains 'internal/src/Deadlimit/App/RichToolTip.cs' 'internal static boo
 Assert-Contains 'internal/src/Deadlimit/App/OnlinePreparationFeature.cs' 'RichToolTip.TrySetToolTip(_launchButton, text)'
 Assert-NotContains 'internal/src/Deadlimit/App/OnlinePreparationFeature.cs' 'new ToolTip'
 Assert-Contains 'internal/src/Deadlimit/App/BuildFeature.cs' 'launchCsdkButton.Text.Contains("LIVE SYNC", StringComparison.OrdinalIgnoreCase)'
+Assert-NotContains 'internal/src/Deadlimit/App/BuildFeature.cs' 'ONLINE PREPARATION'
+Assert-NotContains 'internal/src/Deadlimit/App/BuildFeature.cs' 'ОНЛАЙН-ПОДГОТОВ'
+Assert-NotContains 'internal/src/Deadlimit/App/BuildFeature.cs' 'online synchronization'
+Assert-NotContains 'internal/src/Deadlimit/Localization/pt-BR.json' 'ONLINE PREPARATION'
+Assert-NotContains 'internal/src/Deadlimit/Localization/pt-BR.json' 'online synchronization'
+Assert-NotContains 'internal/src/Deadlimit/Localization/zh-CN.json' 'ONLINE PREPARATION'
+Assert-NotContains 'internal/src/Deadlimit/Localization/zh-CN.json' 'online synchronization'
 $appTooltipFiles = Get-ChildItem 'internal/src/Deadlimit/App' -Filter *.cs -File |
     Where-Object { $_.Name -ne 'RichToolTip.cs' }
 foreach ($file in $appTooltipFiles) {
