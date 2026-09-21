@@ -132,6 +132,24 @@ Assert-Contains 'internal/src/Deadlimit/App/RichToolTip.cs' 'internal static boo
 Assert-Contains 'internal/src/Deadlimit/App/OnlinePreparationFeature.cs' 'RichToolTip.TrySetToolTip(_launchButton, text)'
 Assert-NotContains 'internal/src/Deadlimit/App/OnlinePreparationFeature.cs' 'new ToolTip'
 Assert-Contains 'internal/src/Deadlimit/App/BuildFeature.cs' 'launchCsdkButton.Text.Contains("LIVE SYNC", StringComparison.OrdinalIgnoreCase)'
+foreach ($path in @(
+    'internal/src/Deadlimit/App/TooltipCopyPolicy.cs',
+    'internal/src/Deadlimit/App/TooltipCopyPolicyFixups.cs',
+    'internal/src/Deadlimit/App/RichToolTip.cs'
+)) {
+    foreach ($legacy in @(
+        'ONLINE PREPARATION',
+        'ОНЛАЙН-ПОДГОТОВ',
+        'online preparation',
+        'онлайн-подготов',
+        'online synchronization',
+        'онлайн-синхрон'
+    )) {
+        Assert-NotContains $path $legacy
+    }
+}
+Assert-Contains 'internal/src/Deadlimit/App/TooltipCopyPolicyFixups.cs' '**LIVE SYNC**'
+Assert-Contains 'internal/src/Deadlimit/App/RichToolTip.cs' '"LIVE SYNC"'
 Assert-NotContains 'internal/src/Deadlimit/App/BuildFeature.cs' 'ONLINE PREPARATION'
 Assert-NotContains 'internal/src/Deadlimit/App/BuildFeature.cs' 'ОНЛАЙН-ПОДГОТОВ'
 Assert-NotContains 'internal/src/Deadlimit/App/BuildFeature.cs' 'online synchronization'

@@ -21,10 +21,10 @@ internal static class TooltipCopyPolicy
                 "**BUILD FOR TEST** prepares the project, builds the mod and puts it into Deadlock so it is ready for testing.\n\nUse it when you want to check the current version in the game. The game itself is not launched.\n\nHold **SHIFT** for a full rebuild.",
             ["Скомпилировать текущий проект и установить его VPK в игровой клиент Deadlock.\n\nЭта кнопка не запускает игру. Удерживайте SHIFT при клике для полной чистой пересборки."] =
                 "**СОБРАТЬ ДЛЯ ТЕСТА** подготовит проект, соберёт мод и установит его в Deadlock для проверки.\n\nИспользуйте, когда хотите проверить текущую версию мода в игре. Сама игра не запускается.\n\nУдерживайте **SHIFT** для полной пересборки.",
-            ["Launch the configured Reduced CSDK12 environment.\n\nHold SHIFT while clicking to prepare once, enable ONLINE PREPARATION and launch CSDK. Repeat SHIFT+click to stop online synchronization without launching another CSDK instance."] =
-                "**LAUNCH CSDK** opens the configured CSDK.\n\nUse it to work with the project's model and materials.\n\nHold **SHIFT** to prepare the project first and enable **ONLINE PREPARATION**. In this mode, changed model and texture files update in CSDK automatically. Repeat SHIFT-click to turn it off.",
-            ["Запустить настроенное окружение Reduced CSDK12.\n\nУдерживайте SHIFT при клике, чтобы выполнить подготовку, включить ОНЛАЙН-ПОДГОТОВКУ и запустить CSDK. Повторный SHIFT+клик остановит онлайн-синхронизацию без запуска ещё одного CSDK."] =
-                "**ЗАПУСК CSDK** открывает настроенный CSDK.\n\nИспользуйте его для работы с моделью и материалами проекта.\n\nУдерживайте **SHIFT**, чтобы сначала подготовить проект и включить **ОНЛАЙН-ПОДГОТОВКУ**. В этом режиме изменённые файлы модели и текстуры автоматически обновляются в CSDK. Повторный SHIFT-клик выключит режим.",
+            ["Launch the configured Reduced CSDK12 environment.\n\nHold SHIFT while clicking to prepare once, enable LIVE SYNC and launch CSDK. Repeat SHIFT+click to stop LIVE SYNC without launching another CSDK instance."] =
+                "**LAUNCH CSDK** opens the configured CSDK.\n\nUse it to work with the project's model and materials.\n\nHold **SHIFT** to prepare the project first and enable **LIVE SYNC**. In this mode, changed model and texture files update in CSDK automatically. Repeat SHIFT-click to turn it off.",
+            ["Запустить настроенное окружение Reduced CSDK12.\n\nУдерживайте SHIFT при клике, чтобы выполнить подготовку, включить LIVE SYNC и запустить CSDK. Повторный SHIFT+клик отключит LIVE SYNC без запуска ещё одного CSDK."] =
+                "**ЗАПУСК CSDK** открывает настроенный CSDK.\n\nИспользуйте его для работы с моделью и материалами проекта.\n\nУдерживайте **SHIFT**, чтобы сначала подготовить проект и включить **LIVE SYNC**. В этом режиме изменённые файлы модели и текстуры автоматически обновляются в CSDK. Повторный SHIFT-клик выключит режим.",
             ["Open Deadlimit Manager settings.\n\nConfigure the projects folder, tool locations, interface language and theme."] =
                 "Open **Deadlimit Manager Settings**.\n\nUse them to choose the projects folder, tool locations, interface language and theme.",
             ["Открыть настройки Deadlimit Manager.\n\nЗдесь задаются папка проектов, пути к инструментам, язык и тема интерфейса."] =
@@ -139,27 +139,27 @@ internal static class TooltipCopyPolicy
 
     private static string RewriteDynamic(string text)
     {
-        if (text.StartsWith("ONLINE PREPARATION is off.", StringComparison.Ordinal))
+        if (text.StartsWith("LIVE SYNC is off.", StringComparison.Ordinal))
         {
-            return "**ONLINE PREPARATION** is off.\n\nHold **SHIFT** and click **LAUNCH CSDK** to prepare the project, open CSDK and keep changed model and texture files updating automatically.\n\nUse the same SHIFT-click again to turn it off.";
+            return "**LIVE SYNC** is off.\n\nHold **SHIFT** and click **LAUNCH CSDK** to prepare the project, open CSDK and keep changed model and texture files updating automatically.\n\nUse the same SHIFT-click again to turn it off.";
         }
-        if (text.StartsWith("ОНЛАЙН-ПОДГОТОВКА выключена.", StringComparison.Ordinal))
+        if (text.StartsWith("Режим LIVE SYNC выключен.", StringComparison.Ordinal))
         {
-            return "**ОНЛАЙН-ПОДГОТОВКА** выключена.\n\nУдерживайте **SHIFT** и нажмите **ЗАПУСК CSDK**, чтобы подготовить проект, открыть CSDK и автоматически обновлять изменённые файлы модели и текстуры.\n\nПовторите тот же SHIFT-клик, чтобы выключить режим.";
+            return "**LIVE SYNC** выключен.\n\nУдерживайте **SHIFT** и нажмите **ЗАПУСК CSDK**, чтобы подготовить проект, открыть CSDK и автоматически обновлять изменённые файлы модели и текстуры.\n\nПовторите тот же SHIFT-клик, чтобы выключить режим.";
         }
-        if (text.StartsWith("ONLINE PREPARATION is active.", StringComparison.Ordinal))
+        if (text.StartsWith("LIVE SYNC is active.", StringComparison.Ordinal))
         {
             var alreadyOpen = text.Contains("existing CSDK", StringComparison.OrdinalIgnoreCase);
             return alreadyOpen
-                ? "**ONLINE PREPARATION** is on.\n\nChanged model and texture files are sent to CSDK automatically while you work.\n\nCSDK is already open, so Deadlimit will not open another copy. SHIFT-click again to turn online preparation off."
-                : "**ONLINE PREPARATION** is on.\n\nChanged model and texture files are sent to CSDK automatically while you work.\n\nCSDK will open now. SHIFT-click again to turn online preparation off.";
+                ? "**LIVE SYNC** is on.\n\nChanged model and texture files are sent to CSDK automatically while you work.\n\nCSDK is already open, so Deadlimit will not open another copy. SHIFT-click again to turn LIVE SYNC off."
+                : "**LIVE SYNC** is on.\n\nChanged model and texture files are sent to CSDK automatically while you work.\n\nCSDK will open now. SHIFT-click again to turn LIVE SYNC off.";
         }
-        if (text.StartsWith("ОНЛАЙН-ПОДГОТОВКА активна.", StringComparison.Ordinal))
+        if (text.StartsWith("Режим LIVE SYNC активен.", StringComparison.Ordinal))
         {
             var alreadyOpen = text.Contains("Уже запущенный CSDK", StringComparison.OrdinalIgnoreCase);
             return alreadyOpen
-                ? "**ОНЛАЙН-ПОДГОТОВКА** включена.\n\nИзменённые файлы модели и текстуры автоматически передаются в CSDK во время работы.\n\nCSDK уже открыт, поэтому Deadlimit не будет запускать ещё одну копию. Повторный SHIFT-клик выключит режим."
-                : "**ОНЛАЙН-ПОДГОТОВКА** включена.\n\nИзменённые файлы модели и текстуры автоматически передаются в CSDK во время работы.\n\nCSDK сейчас откроется. Повторный SHIFT-клик выключит режим.";
+                ? "**LIVE SYNC** включён.\n\nИзменённые файлы модели и текстуры автоматически передаются в CSDK во время работы.\n\nCSDK уже открыт, поэтому Deadlimit не будет запускать ещё одну копию. Повторный SHIFT-клик выключит режим."
+                : "**LIVE SYNC** включён.\n\nИзменённые файлы модели и текстуры автоматически передаются в CSDK во время работы.\n\nCSDK сейчас откроется. Повторный SHIFT-клик выключит режим.";
         }
 
         if (TryRewriteActionResult(text, out var actionResult))
@@ -169,12 +169,12 @@ internal static class TooltipCopyPolicy
 
         if (text.Contains("watcher error", StringComparison.OrdinalIgnoreCase)
             || text.Contains("sync failed", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("Ошибка наблюдения за файлами ОНЛАЙН-ПОДГОТОВКИ", StringComparison.OrdinalIgnoreCase)
-            || text.Contains("Ошибка онлайн-синхронизации", StringComparison.OrdinalIgnoreCase))
+            || text.Contains("Ошибка наблюдения за файлами LIVE SYNC", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("Ошибка LIVE SYNC", StringComparison.OrdinalIgnoreCase))
         {
             return UiText.IsRussian
-                ? "**ОНЛАЙН-ПОДГОТОВКА** не смогла продолжить автоматическое обновление файлов.\n\nВыполните **ПОДГОТОВИТЬ ДЛЯ CSDK** один раз, затем снова включите онлайн-подготовку."
-                : "**ONLINE PREPARATION** could not continue updating files automatically.\n\nRun **PREPARE FOR CSDK** once, then turn online preparation on again.";
+                ? "Не удалось продолжить автоматическое обновление файлов через **LIVE SYNC**.\n\nВыполните **ПОДГОТОВИТЬ ДЛЯ CSDK** один раз, затем снова включите **LIVE SYNC**."
+                : "**LIVE SYNC** could not continue updating files automatically.\n\nRun **PREPARE FOR CSDK** once, then turn **LIVE SYNC** on again.";
         }
         if (text.Contains("new, deleted, or renamed root DMX/texture file", StringComparison.OrdinalIgnoreCase)
             || text.Contains("новый, удалённый или переименованный DMX/файл текстуры", StringComparison.OrdinalIgnoreCase))
@@ -315,49 +315,49 @@ internal static class TooltipCopyPolicy
 
     private static bool TryRewriteActionResult(string text, out string rewritten)
     {
-        const string enFailedPrefix = "ONLINE PREPARATION kept its previous live-sync baseline because ";
+        const string enFailedPrefix = "LIVE SYNC kept its previous baseline because ";
         const string enFailedMarker = " did not finish a successful PREPARE transaction.";
         if (TryBetween(text, enFailedPrefix, enFailedMarker, out var enAction))
         {
-            rewritten = $"**ONLINE PREPARATION** kept the last successful CSDK version because **{enAction}** did not finish successfully.\n\nYour last working files were left unchanged.";
+            rewritten = $"**LIVE SYNC** kept the last successful CSDK version because **{enAction}** did not finish successfully.\n\nYour last working files were left unchanged.";
             return true;
         }
 
-        const string ruFailedPrefix = "ОНЛАЙН-ПОДГОТОВКА сохранила предыдущую базовую версию, потому что ";
+        const string ruFailedPrefix = "LIVE SYNC сохранил предыдущую базовую версию, потому что ";
         const string ruFailedMarker = " не завершилась успешной транзакцией PREPARE.";
         if (TryBetween(text, ruFailedPrefix, ruFailedMarker, out var ruAction))
         {
-            rewritten = $"**ОНЛАЙН-ПОДГОТОВКА** сохранила последнюю рабочую версию CSDK, потому что **{ruAction}** не завершилось успешно.\n\nПоследние рабочие файлы оставлены без изменений.";
+            rewritten = $"**LIVE SYNC** сохранил последнюю рабочую версию CSDK, потому что **{ruAction}** не завершилось успешно.\n\nПоследние рабочие файлы оставлены без изменений.";
             return true;
         }
 
-        const string enRefreshedPrefix = "ONLINE PREPARATION baseline refreshed after ";
+        const string enRefreshedPrefix = "LIVE SYNC baseline refreshed after ";
         if (TryBetween(text, enRefreshedPrefix, ".", out enAction))
         {
-            rewritten = $"**ONLINE PREPARATION** was refreshed after **{enAction}**.\n\nChanged model and texture files will continue to update in CSDK automatically.\n\nSHIFT-click **LAUNCH CSDK** to turn online preparation off.";
+            rewritten = $"**LIVE SYNC** was refreshed after **{enAction}**.\n\nChanged model and texture files will continue to update in CSDK automatically.\n\nSHIFT-click **LAUNCH CSDK** to turn LIVE SYNC off.";
             return true;
         }
 
-        const string ruRefreshedPrefix = "Базовая версия ОНЛАЙН-ПОДГОТОВКИ обновлена после ";
+        const string ruRefreshedPrefix = "Базовая версия LIVE SYNC обновлена после ";
         if (TryBetween(text, ruRefreshedPrefix, ".", out ruAction))
         {
-            rewritten = $"**ОНЛАЙН-ПОДГОТОВКА** обновлена после **{ruAction}**.\n\nИзменённые файлы модели и текстуры продолжат автоматически обновляться в CSDK.\n\nSHIFT-клик по **ЗАПУСК CSDK** выключит онлайн-подготовку.";
+            rewritten = $"**LIVE SYNC** обновлён после **{ruAction}**.\n\nИзменённые файлы модели и текстуры продолжат автоматически обновляться в CSDK.\n\nSHIFT-клик по **ЗАПУСК CSDK** выключит **LIVE SYNC**.";
             return true;
         }
 
-        const string enRefreshErrorPrefix = "ONLINE PREPARATION could not refresh its baseline after ";
+        const string enRefreshErrorPrefix = "LIVE SYNC could not refresh its baseline after ";
         if (text.StartsWith(enRefreshErrorPrefix, StringComparison.Ordinal))
         {
             var action = TakeUntil(text[enRefreshErrorPrefix.Length..], ':');
-            rewritten = $"**ONLINE PREPARATION** could not refresh after **{action}**.\n\nAutomatic updating is still using the previous successful project state.";
+            rewritten = $"**LIVE SYNC** could not refresh after **{action}**.\n\nAutomatic updating is still using the previous successful project state.";
             return true;
         }
 
-        const string ruRefreshErrorPrefix = "Не удалось обновить базовую версию ОНЛАЙН-ПОДГОТОВКИ после ";
+        const string ruRefreshErrorPrefix = "Не удалось обновить базовую версию LIVE SYNC после ";
         if (text.StartsWith(ruRefreshErrorPrefix, StringComparison.Ordinal))
         {
             var action = TakeUntil(text[ruRefreshErrorPrefix.Length..], '.');
-            rewritten = $"Не удалось обновить **ОНЛАЙН-ПОДГОТОВКУ** после **{action}**.\n\nАвтоматическое обновление продолжает использовать предыдущую рабочую версию проекта.";
+            rewritten = $"Не удалось обновить **LIVE SYNC** после **{action}**.\n\nАвтоматическое обновление продолжает использовать предыдущую рабочую версию проекта.";
             return true;
         }
 
