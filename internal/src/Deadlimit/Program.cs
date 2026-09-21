@@ -89,6 +89,12 @@ internal static class Program
                 return 2 + localizationResult;
             }
 
+            var csdkInstallDownloadResult = ToolchainDependencyService.RunCsdkInstallDownloadSmoke();
+            if (csdkInstallDownloadResult != 0)
+            {
+                return 100 + csdkInstallDownloadResult;
+            }
+
             var mutationCoordinatorResult = ApplicationMutationCoordinator.RunSmoke();
             if (mutationCoordinatorResult != 0)
             {
