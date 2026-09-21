@@ -731,6 +731,7 @@ foreach ($required in @(
     'FbxMaterialReferenceReader.ReadMany(rootFbxFiles)',
     '.Concat(fbxMaterialReferences)',
     'ResolveExactFbxCustomMaterialRemaps(',
+    'material.SourceName + ".vmat"',
     'Ordinary PREPARE preserved addon runtime output for incremental BUILD & TEST')) {
     if (-not $prepareSource.Contains($required)) {
         throw "Ordinary PREPARE byte-preservation contract is missing: $required"
