@@ -89,6 +89,25 @@ foreach ($required in @(
     Assert-Contains $mainForm $required 'Project migration and extraction shutdown'
 }
 
+$settingsStartup = Get-Content -LiteralPath 'internal/src/Deadlimit/App/SettingsStartupFeature.cs' -Raw
+foreach ($required in @(
+    'string.IsNullOrWhiteSpace(settings.ProjectsRoot)',
+    'string.IsNullOrWhiteSpace(settings.CsdkRoot)',
+    'string.IsNullOrWhiteSpace(settings.DeadlockToolsRoot)',
+    'string.IsNullOrWhiteSpace(settings.RetailDeadlockRoot)'
+)) {
+    Assert-Contains $settingsStartup $required 'Startup settings prompt'
+}
+$program = Get-Content -LiteralPath 'internal/src/Deadlimit/Program.cs' -Raw
+foreach ($required in @(
+    'SettingsStartupFeature.RequiresSetup(ProjectStore.GetToolPathSettings())',
+    'form.ShowSettings();',
+    '&& !_startupSmoke'
+)) {
+    Assert-Contains $program $required 'Startup settings prompt'
+}
+Assert-Contains $mainForm 'internal void ShowSettings()' 'Startup settings prompt'
+
 $projectFilesUi = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ProjectFilesFeature.cs' -Raw
 foreach ($required in @(
     'ToAuthoringDisplayPath(file)',

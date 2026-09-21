@@ -18,6 +18,19 @@ Language and theme are preference state. Settings exposes one `APPLY` / `ПРИ�
 
 There is no separate Settings `SAVE` / `CANCEL` pair.
 
+## Startup setup prompt
+
+On a normal application start, Deadlimit automatically opens Settings once when any of the four machine-local path rows is still empty:
+
+```text
+Projects folder
+Reduced CSDK
+DeadlockTools
+Deadlock client
+```
+
+This includes the first launch after installation, when no machine-local paths have been configured yet. Closing Settings does not immediately reopen it in the same application session; if required paths remain empty, the prompt appears again on the next Deadlimit launch. The check is based on missing values only. Normal validity/version checks remain the responsibility of the Settings rows themselves.
+
 ## Tool rows
 
 Rows are ordered by pipeline importance:
