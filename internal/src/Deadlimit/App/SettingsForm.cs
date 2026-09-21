@@ -1,9 +1,14 @@
+using System.Diagnostics;
 using Deadlimit.Core;
 
 namespace Deadlimit.App;
 
 internal sealed class SettingsForm : Form
 {
+    private const int CsdkSetupPulseIntervalMilliseconds = 33;
+    private const double CsdkSetupPulsePeriodSeconds = 1.4;
+    private static readonly Color CsdkSetupAlertColor = Color.FromArgb(255, 92, 92);
+
     private readonly TextBox _csdkRootText = CreatePathTextBox();
     private readonly TextBox _deadlockToolsRootText = CreatePathTextBox();
     private readonly TextBox _retailDeadlockRootText = CreatePathTextBox();
@@ -39,8 +44,12 @@ internal sealed class SettingsForm : Form
     private readonly RichToolTip _toolTip = new();
     private readonly ToolchainDependencyService _toolchain = new();
     private readonly List<Button> _pathButtons = [];
+    private readonly System.Windows.Forms.Timer _csdkSetupPulseTimer = new()
+    {
+        Interval = CsdkSetupPulseIntervalMilliseconds,
+    };
     private readonly string _initialProjectsRoot;
-    private readonly string _initialCsdkRoot;
+    private string _initialCsdkRoot;
     private readonly string _initialDeadlockToolsRoot;
     private readonly string _initialRetailDeadlockRoot;
     private readonly string _initialLanguage;
@@ -55,6 +64,9 @@ internal sealed class SettingsForm : Form
     private CancellationTokenSource? _csdkCheckCancellation;
     private CancellationTokenSource? _deadlockToolsCheckCancellation;
     private int _retailCheckGeneration;
+    private Color _csdkSetupPulseBaseColor;
+    private long _csdkSetupPulseStartedAt;
+    private bool _csdkSetupAttentionActive;
 
     public SettingsForm()
     {
@@ -105,9 +117,13 @@ internal sealed class SettingsForm : Form
         };
 
         BuildUi();
+        _csdkSetupPulseBaseColor = _csdkSetupButton.ForeColor;
+        _csdkSetupPulseTimer.Tick += (_, _) => PaintCsdkSetupPulseFrame();
         ApplyInitialStatuses();
         UiTheme.ApplyCustomPalette(this, settings.UiTheme);
         ReapplySemanticStatusColors();
+        _csdkSetupPulseBaseColor = _csdkSetupButton.ForeColor;
+        UpdateCsdkSetupAttentionState();
 
         _languageCombo.SelectedIndexChanged += (_, _) => UpdateSettingsActionState();
         _themeCombo.SelectedIndexChanged += (_, _) =>
@@ -146,6 +162,8 @@ internal sealed class SettingsForm : Form
             _csdkCheckCancellation?.Dispose();
             _deadlockToolsCheckCancellation?.Cancel();
             _deadlockToolsCheckCancellation?.Dispose();
+            _csdkSetupPulseTimer.Stop();
+            _csdkSetupPulseTimer.Dispose();
             _toolTip.Dispose();
         }
         base.Dispose(disposing);
@@ -373,7 +391,7 @@ internal sealed class SettingsForm : Form
             () => RefreshCsdkStatusAsync());
 
         _csdkPrimaryButton.Click += async (_, _) => await HandleCsdkPrimaryActionAsync();
-        _csdkSetupButton.AccessibleName = UiText.T("Full CSDK setup", "Полная настройка CSDK");
+        _csdkSetupButton.AccessibleName = UiText.T("CSDK fine-tuning", "Донастройка CSDK");
         _csdkSetupButton.Click += async (_, _) => await SetupCsdkAsync(
             (ModifierKeys & Keys.Shift) == Keys.Shift);
 
@@ -385,8 +403,8 @@ internal sealed class SettingsForm : Form
         _toolTip.SetToolTip(
             _csdkSetupButton,
             UiText.T(
-                "Run the optional full CSDK setup from the current installation guide.\n\nDeadlimit stages the required Deadlock depots, extracts the downloaded VPK as-is, removes the temporary pak01 VPK set, then re-applies Reduced CSDK. A normal repeat skips all downloads when the same guide setup is already complete.\n\nHold **SHIFT** to force a complete repair download. DepotDownloader may open a console for Steam QR authentication.\n\nThe configured Deadlock client folder is only validated and is **never modified**.",
-                "Выполнить дополнительную полную настройку CSDK по актуальной инструкции.\n\nDeadlimit скачивает нужные депо Deadlock во временную папку, извлекает VPK без декомпиляции, удаляет временный набор pak01 VPK и повторно накладывает Reduced CSDK. Повторный обычный запуск пропускает скачивание, если донастройка по той же инструкции уже завершена.\n\nУдерживайте **SHIFT**, чтобы принудительно скачать все заново для восстановления. DepotDownloader может открыть консоль для Steam-авторизации по QR.\n\nПапка игрового клиента Deadlock только проверяется и **никогда не изменяется**."));
+                "Run the recommended CSDK fine-tuning from the current installation guide.\n\nA pulsing red gear means the current Reduced CSDK installation has not completed this step. Deadlimit downloads the required Deadlock depots into staging, extracts the downloaded VPK as-is, removes the temporary pak01 VPK set, then re-applies Reduced CSDK.\n\nThe first required depot download uses one Steam QR login for all depots and asks DepotDownloader to remember that Steam session. Later downloads reuse it when available. Hold **SHIFT** to force a complete repair download.\n\nThe configured Deadlock game client folder is only validated and is **never modified**.",
+                "Выполнить рекомендуемую донастройку CSDK по актуальной инструкции.\n\nПульсирующая красная шестерёнка означает, что для текущей установки Reduced CSDK этот этап ещё не завершён. Deadlimit скачивает необходимые депо Deadlock во временную папку, извлекает VPK без декомпиляции, удаляет временный набор pak01 VPK и повторно накладывает Reduced CSDK.\n\nПри первой необходимой загрузке DepotDownloader использует один вход в Steam по QR для всех депо и сохраняет сессию. При следующих загрузках сохранённая сессия используется автоматически, если она доступна. Удерживайте **SHIFT**, чтобы принудительно скачать всё заново для восстановления.\n\nПапка игрового клиента Deadlock только проверяется и **никогда не изменяется**."));
         _toolTip.SetToolTip(
             browseButton,
             UiText.T(
@@ -808,6 +826,7 @@ internal sealed class SettingsForm : Form
         _csdkStatus = status;
         ApplyStatus(_csdkStatusLabel, status, StatusContext.Csdk);
         UpdateActionAvailability();
+        UpdateCsdkSetupAttentionState();
     }
 
     private void SetDeadlockToolsStatus(ToolchainStatus status)
@@ -923,15 +942,25 @@ internal sealed class SettingsForm : Form
                 return;
             }
 
+            var installed = false;
             await RunBusyOperationAsync(
                 async progress =>
                 {
                     SetCsdkStatus(new ToolchainStatus(ToolchainStatusKind.Working));
                     var result = await _toolchain.InstallCsdkAsync(destination, progress);
-                    _csdkRootText.Text = result.RootPath;
+                    if (!string.IsNullOrWhiteSpace(result.RootPath))
+                    {
+                        _csdkRootText.Text = result.RootPath;
+                        PersistInstalledCsdkPath(result.RootPath);
+                        installed = true;
+                    }
                     SetCsdkStatus(result.Status);
                 },
                 UiText.T("Could not install Reduced CSDK", "Не удалось установить Reduced CSDK"));
+            if (installed)
+            {
+                await OfferCsdkFineTuningAfterInstallAsync();
+            }
             return;
         }
 
@@ -988,6 +1017,124 @@ internal sealed class SettingsForm : Form
         }
 
         await RefreshDeadlockToolsStatusAsync();
+    }
+
+    private void PersistInstalledCsdkPath(string root)
+    {
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            return;
+        }
+
+        var settings = ProjectStore.GetToolPathSettings();
+        settings.CsdkRoot = root.Trim();
+        ProjectStore.SaveToolPathSettings(settings);
+        _initialCsdkRoot = settings.CsdkRoot;
+        UpdateSettingsActionState();
+    }
+
+    private async Task OfferCsdkFineTuningAfterInstallAsync()
+    {
+        UpdateCsdkSetupAttentionState();
+        var root = _csdkRootText.Text.Trim();
+        if (ToolchainDependencyService.IsCsdkSetupCurrentForCurrentGuide(root))
+        {
+            return;
+        }
+
+        var choice = MessageBox.ShowCustom(
+            this,
+            UiText.T(
+                "Reduced CSDK has been installed successfully.\n\nFor reliable work with Deadlock, complete the recommended CSDK fine-tuning. Deadlimit will download the required Deadlock depot data from Steam and add it to the CSDK installation. Your installed Deadlock game client is not modified.\n\nWithout this step, some CSDK tools and project workflows may be unavailable or behave incorrectly.",
+                "Reduced CSDK успешно установлен.\n\nДля корректной работы с Deadlock рекомендуется выполнить донастройку CSDK. Deadlimit скачает необходимые данные Deadlock из Steam-депо и добавит их в установку CSDK. Установленный игровой клиент Deadlock при этом не изменяется.\n\nБез этого этапа часть инструментов CSDK и операций с проектом может быть недоступна или работать некорректно."),
+            UiText.T("Reduced CSDK installed", "Reduced CSDK установлен"),
+            new DeadlimitDialogButton(
+                UiText.T("FINE-TUNE CSDK", "ДОНАСТРОИТЬ CSDK"),
+                DeadlimitDialogChoice.Yes,
+                IsDefault: true),
+            new DeadlimitDialogButton(
+                UiText.T("LATER", "ПОЗЖЕ"),
+                DeadlimitDialogChoice.Cancel,
+                IsCancel: true));
+
+        if (choice == DeadlimitDialogChoice.Yes)
+        {
+            await SetupCsdkAsync(force: false);
+        }
+        else
+        {
+            UpdateCsdkSetupAttentionState();
+        }
+    }
+
+    private void UpdateCsdkSetupAttentionState()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        var root = _csdkRootText.Text.Trim();
+        var csdkInstalled = Directory.Exists(root)
+            && File.Exists(Path.Combine(root, "csdkcfg.exe"));
+        var requiresAttention = csdkInstalled
+            && !ToolchainDependencyService.IsCsdkSetupCurrentForCurrentGuide(root);
+
+        if (requiresAttention)
+        {
+            StartCsdkSetupAttentionPulse();
+        }
+        else
+        {
+            StopCsdkSetupAttentionPulse();
+        }
+    }
+
+    private void StartCsdkSetupAttentionPulse()
+    {
+        if (!_csdkSetupAttentionActive)
+        {
+            _csdkSetupAttentionActive = true;
+            _csdkSetupPulseStartedAt = Stopwatch.GetTimestamp();
+            _csdkSetupPulseTimer.Start();
+        }
+
+        PaintCsdkSetupPulseFrame();
+    }
+
+    private void StopCsdkSetupAttentionPulse()
+    {
+        _csdkSetupAttentionActive = false;
+        _csdkSetupPulseTimer.Stop();
+        if (!_csdkSetupButton.IsDisposed)
+        {
+            _csdkSetupButton.ForeColor = _csdkSetupPulseBaseColor;
+            _csdkSetupButton.Invalidate();
+        }
+    }
+
+    private void PaintCsdkSetupPulseFrame()
+    {
+        if (!_csdkSetupAttentionActive || _csdkSetupButton.IsDisposed)
+        {
+            return;
+        }
+
+        var elapsedSeconds = Stopwatch.GetElapsedTime(_csdkSetupPulseStartedAt).TotalSeconds;
+        var phase = 2.0 * Math.PI * elapsedSeconds / CsdkSetupPulsePeriodSeconds;
+        var mix = (Math.Sin(phase) + 1.0) / 2.0;
+        _csdkSetupButton.ForeColor = BlendColor(_csdkSetupPulseBaseColor, CsdkSetupAlertColor, mix);
+        _csdkSetupButton.Invalidate();
+    }
+
+    private static Color BlendColor(Color from, Color to, double amount)
+    {
+        var clamped = Math.Clamp(amount, 0.0, 1.0);
+        return Color.FromArgb(
+            (int)Math.Round(from.A + (to.A - from.A) * clamped),
+            (int)Math.Round(from.R + (to.R - from.R) * clamped),
+            (int)Math.Round(from.G + (to.G - from.G) * clamped),
+            (int)Math.Round(from.B + (to.B - from.B) * clamped));
     }
 
     private async Task SetupCsdkAsync(bool force)
@@ -1282,6 +1429,12 @@ internal sealed class SettingsForm : Form
         }
         _themePreviewApplied = true;
         ReapplySemanticStatusColors();
+        _csdkSetupPulseBaseColor = _csdkSetupButton.ForeColor;
+        if (_csdkSetupAttentionActive)
+        {
+            _csdkSetupPulseStartedAt = Stopwatch.GetTimestamp();
+            PaintCsdkSetupPulseFrame();
+        }
         Invalidate(true);
     }
 

@@ -68,6 +68,17 @@ public sealed class ToolchainDependencyService
     private const string CsdkArchiveCacheMarkerFileName = ".deadlimit-csdk-cache.json";
     private const string DeadlockToolsMarkerFileName = ".deadlimit-deadlocktools.json";
     private const string DepotDownloaderMarkerFileName = ".deadlimit-depotdownloader.json";
+    private const string DepotDownloaderAccountMarkerFileName = ".deadlimit-steam-account.txt";
+
+    private static readonly DepotManifest[] PinnedCsdkDepots =
+    [
+        new("1422450", "1422451", "2639812037154209539"),
+        new("1422450", "1422456", "6378769520310560496"),
+    ];
+
+    private static readonly Regex DepotDownloaderAccountHintRegex = new(
+        @"-username\s+(?<account>[^\s]+)\s+-remember-password\s+instead\s+of\s+-qr",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static readonly Regex CsdkGenerationFromPathRegex = new(
         "(?:reduced[_\\s-]*)?csdk[_\\s-]*(?<generation>\\d+)",
@@ -194,6 +205,30 @@ public sealed class ToolchainDependencyService
         finally
         {
             TryDeleteDirectory(cacheSmokeRoot);
+        }
+
+        var qrArguments = DepotArguments(PinnedCsdkDepots, @"C:\Deadlimit\stage", rememberedAccount: null);
+        if (!qrArguments.Contains("-depot 1422451 1422456", StringComparison.Ordinal)
+            || !qrArguments.Contains("-manifest 2639812037154209539 6378769520310560496", StringComparison.Ordinal)
+            || !qrArguments.Contains("-qr", StringComparison.Ordinal)
+            || !qrArguments.Contains("-remember-password", StringComparison.Ordinal)
+            || CountOccurrences(qrArguments, "-depot") != 1)
+        {
+            return 8;
+        }
+
+        var rememberedArguments = DepotArguments(PinnedCsdkDepots, @"C:\Deadlimit\stage", "artist_account");
+        if (!rememberedArguments.Contains("-username artist_account -remember-password", StringComparison.Ordinal)
+            || rememberedArguments.Contains("-qr", StringComparison.Ordinal))
+        {
+            return 9;
+        }
+
+        var parsedAccount = TryParseDepotDownloaderAccount(
+            "Success! Next time you can login with -username artist_account -remember-password instead of -qr.");
+        if (!string.Equals(parsedAccount, "artist_account", StringComparison.Ordinal))
+        {
+            return 10;
         }
 
         return 0;
@@ -610,37 +645,12 @@ public sealed class ToolchainDependencyService
             var stagingRoot = CreateTempFolder("csdk-setup");
             try
             {
-                var fallbackApplied = false;
-                for (var depotIndex = 0; depotIndex < catalog.Depots.Count; depotIndex++)
-                {
-                    var depot = catalog.Depots[depotIndex];
-                    Report(
-                        operation,
-                        progress,
-                        ProgressText(
-                            $"Downloading Deadlock depot {depot.DepotId} ({depotIndex + 1}/{catalog.Depots.Count}) to staging…",
-                            $"Загрузка депо Deadlock {depot.DepotId} ({depotIndex + 1}/{catalog.Depots.Count}) во временную папку…"),
-                        null);
-                    try
-                    {
-                        await RunInteractiveAsync(
-                            depotDownloader,
-                            DepotArguments(depot, stagingRoot),
-                            Path.GetDirectoryName(depotDownloader)!,
-                            operation.Token).ConfigureAwait(false);
-                    }
-                    catch (InvalidOperationException) when (!fallbackApplied && catalog.ManifestArchiveUri is not null)
-                    {
-                        Report(operation, progress, ProgressText("Applying manifest fallback…", "Применение fallback-манифестов…"), 38);
-                        await ApplyManifestFallbackAsync(catalog.ManifestArchiveUri, stagingRoot, operation, progress).ConfigureAwait(false);
-                        fallbackApplied = true;
-                        await RunInteractiveAsync(
-                            depotDownloader,
-                            DepotArguments(depot, stagingRoot),
-                            Path.GetDirectoryName(depotDownloader)!,
-                            operation.Token).ConfigureAwait(false);
-                    }
-                }
+                await DownloadRequiredDepotsAsync(
+                    depotDownloader,
+                    catalog,
+                    stagingRoot,
+                    operation,
+                    progress).ConfigureAwait(false);
 
                 var stagedCitadelRoot = Path.Combine(stagingRoot, "game", "citadel");
                 var citadelVpk = Path.Combine(stagedCitadelRoot, "pak01_dir.vpk");
@@ -700,16 +710,11 @@ public sealed class ToolchainDependencyService
         cancellationToken.ThrowIfCancellationRequested();
         var downloadUri = new Uri(
             $"https://drive.google.com/uc?export=download&id={Uri.EscapeDataString(CsdkPinnedDriveId)}");
-        var depots = new[]
-        {
-            new DepotManifest("1422450", "1422451", "2639812037154209539"),
-            new DepotManifest("1422450", "1422456", "6378769520310560496"),
-        };
         return Task.FromResult(new CsdkCatalog(
             PinnedCsdkGeneration,
             new Uri(CsdkPinnedPage),
             downloadUri,
-            depots,
+            PinnedCsdkDepots,
             new Uri(CsdkPinnedManifestArchiveUrl)));
     }
 
@@ -1782,6 +1787,12 @@ public sealed class ToolchainDependencyService
         }
     }
 
+    internal static bool IsCsdkSetupCurrentForCurrentGuide(string root) =>
+        IsCsdkSetupCurrent(
+            root,
+            PinnedCsdkGeneration,
+            PinnedCsdkDepots.Select(GetDepotKey).ToArray());
+
     private static string GetDepotKey(DepotManifest depot) =>
         $"{depot.AppId}:{depot.DepotId}:{depot.ManifestId}";
 
@@ -1949,8 +1960,275 @@ public sealed class ToolchainDependencyService
         return Path.Combine(root, "DeadlockTools", "bin", "Release", "net10.0", "DeadlockTools.exe");
     }
 
-    private static string DepotArguments(DepotManifest depot, string csdkRoot) =>
-        $"-app {depot.AppId} -depot {depot.DepotId} -manifest {depot.ManifestId} -qr -dir {Quote(csdkRoot)}";
+    private async Task DownloadRequiredDepotsAsync(
+        string depotDownloader,
+        CsdkCatalog catalog,
+        string stagingRoot,
+        ToolchainOperationHub.OperationScope operation,
+        IProgress<string>? progress)
+    {
+        var rememberedAccount = TryReadDepotDownloaderAccount();
+        var qrUsed = false;
+        var fallbackApplied = false;
+
+        while (true)
+        {
+            Report(
+                operation,
+                progress,
+                ProgressText(
+                    $"Downloading {catalog.Depots.Count} required Deadlock depots to staging…",
+                    $"Загрузка {catalog.Depots.Count} необходимых депо Deadlock во временную папку…"),
+                null);
+
+            var attempt = await RunDepotDownloaderAttemptAsync(
+                depotDownloader,
+                catalog.Depots,
+                stagingRoot,
+                rememberedAccount,
+                operation.Token).ConfigureAwait(false);
+
+            if (attempt.UsedQr)
+            {
+                qrUsed = true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(attempt.DiscoveredAccount))
+            {
+                rememberedAccount = attempt.DiscoveredAccount;
+                WriteDepotDownloaderAccount(rememberedAccount);
+            }
+
+            if (attempt.Result.ExitCode == 0)
+            {
+                return;
+            }
+
+            if (!fallbackApplied
+                && catalog.ManifestArchiveUri is not null
+                && !string.IsNullOrWhiteSpace(rememberedAccount))
+            {
+                Report(
+                    operation,
+                    progress,
+                    ProgressText("Applying manifest fallback…", "Применение fallback-манифестов…"),
+                    38);
+                await ApplyManifestFallbackAsync(
+                    catalog.ManifestArchiveUri,
+                    stagingRoot,
+                    operation,
+                    progress).ConfigureAwait(false);
+                fallbackApplied = true;
+                continue;
+            }
+
+            if (!qrUsed && !string.IsNullOrWhiteSpace(rememberedAccount))
+            {
+                ClearDepotDownloaderAccount();
+                rememberedAccount = null;
+                continue;
+            }
+
+            throw new InvalidOperationException(
+                $"{Path.GetFileName(depotDownloader)} failed with exit code {attempt.Result.ExitCode}.");
+        }
+    }
+
+    private static async Task<DepotDownloadAttempt> RunDepotDownloaderAttemptAsync(
+        string depotDownloader,
+        IReadOnlyList<DepotManifest> depots,
+        string stagingRoot,
+        string? rememberedAccount,
+        CancellationToken cancellationToken)
+    {
+        var arguments = DepotArguments(depots, stagingRoot, rememberedAccount);
+        var workingDirectory = Path.GetDirectoryName(depotDownloader)!;
+        if (!string.IsNullOrWhiteSpace(rememberedAccount))
+        {
+            var result = await RunProcessAsync(
+                depotDownloader,
+                arguments,
+                workingDirectory,
+                true,
+                cancellationToken).ConfigureAwait(false);
+            return new DepotDownloadAttempt(result, UsedQr: false, DiscoveredAccount: null);
+        }
+
+        var transcriptPath = Path.Combine(stagingRoot, ".deadlimit-depotdownloader-auth.log");
+        var scriptPath = Path.Combine(stagingRoot, ".deadlimit-depotdownloader-auth.ps1");
+        TryDeleteFile(transcriptPath);
+        TryDeleteFile(scriptPath);
+
+        var argumentTokens = DepotArgumentTokens(depots, stagingRoot, rememberedAccount: null);
+        var script = BuildDepotDownloaderTranscriptScript(
+            depotDownloader,
+            argumentTokens,
+            transcriptPath);
+        File.WriteAllText(scriptPath, script);
+
+        var resultWithQr = await RunProcessAsync(
+            "powershell.exe",
+            $"-NoLogo -NoProfile -ExecutionPolicy Bypass -File {Quote(scriptPath)}",
+            workingDirectory,
+            true,
+            cancellationToken).ConfigureAwait(false);
+
+        var transcript = File.Exists(transcriptPath)
+            ? File.ReadAllText(transcriptPath)
+            : string.Empty;
+        var discoveredAccount = TryParseDepotDownloaderAccount(transcript);
+        return new DepotDownloadAttempt(resultWithQr, UsedQr: true, DiscoveredAccount: discoveredAccount);
+    }
+
+    private static string BuildDepotDownloaderTranscriptScript(
+        string depotDownloader,
+        IReadOnlyList<string> argumentTokens,
+        string transcriptPath)
+    {
+        var arguments = string.Join(
+            ", ",
+            argumentTokens.Select(token => PowerShellLiteral(token)));
+        return
+            "$ErrorActionPreference = 'Continue'" + Environment.NewLine
+            + $"$deadlimitArgs = @({arguments})" + Environment.NewLine
+            + $"& {PowerShellLiteral(depotDownloader)} @deadlimitArgs 2>&1 | Tee-Object -LiteralPath {PowerShellLiteral(transcriptPath)}" + Environment.NewLine
+            + "$deadlimitExitCode = $LASTEXITCODE" + Environment.NewLine
+            + "exit $deadlimitExitCode" + Environment.NewLine;
+    }
+
+    private static string DepotArguments(
+        IReadOnlyList<DepotManifest> depots,
+        string csdkRoot,
+        string? rememberedAccount) =>
+        string.Join(" ", DepotArgumentTokens(depots, csdkRoot, rememberedAccount).Select(FormatProcessArgument));
+
+    private static string FormatProcessArgument(string value) =>
+        value.Any(char.IsWhiteSpace) || value.Contains('"')
+            ? Quote(value)
+            : value;
+
+    private static IReadOnlyList<string> DepotArgumentTokens(
+        IReadOnlyList<DepotManifest> depots,
+        string csdkRoot,
+        string? rememberedAccount)
+    {
+        if (depots.Count == 0)
+        {
+            throw new ArgumentException("At least one depot is required.", nameof(depots));
+        }
+
+        var appId = depots[0].AppId;
+        if (depots.Any(depot => !string.Equals(depot.AppId, appId, StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException("All CSDK setup depots must belong to the same Steam app.");
+        }
+
+        var arguments = new List<string>
+        {
+            "-app",
+            appId,
+            "-depot",
+        };
+        arguments.AddRange(depots.Select(depot => depot.DepotId));
+        arguments.Add("-manifest");
+        arguments.AddRange(depots.Select(depot => depot.ManifestId));
+
+        if (string.IsNullOrWhiteSpace(rememberedAccount))
+        {
+            arguments.Add("-qr");
+            arguments.Add("-remember-password");
+        }
+        else
+        {
+            arguments.Add("-username");
+            arguments.Add(rememberedAccount);
+            arguments.Add("-remember-password");
+        }
+
+        arguments.Add("-dir");
+        arguments.Add(csdkRoot);
+        return arguments;
+    }
+
+    private static string? TryParseDepotDownloaderAccount(string output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+        {
+            return null;
+        }
+
+        var match = DepotDownloaderAccountHintRegex.Match(output);
+        return match.Success
+            ? match.Groups["account"].Value.Trim()
+            : null;
+    }
+
+    private static string? TryReadDepotDownloaderAccount()
+    {
+        var path = UserDataPaths.Combine("tools", "DepotDownloader", DepotDownloaderAccountMarkerFileName);
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return null;
+            }
+
+            var value = File.ReadAllText(path).Trim();
+            return string.IsNullOrWhiteSpace(value) || value.Any(char.IsWhiteSpace)
+                ? null
+                : value;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    private static void WriteDepotDownloaderAccount(string account)
+    {
+        if (string.IsNullOrWhiteSpace(account) || account.Any(char.IsWhiteSpace))
+        {
+            return;
+        }
+
+        var path = UserDataPaths.Combine("tools", "DepotDownloader", DepotDownloaderAccountMarkerFileName);
+        AtomicFile.WriteAllText(path, account.Trim());
+    }
+
+    private static void ClearDepotDownloaderAccount()
+    {
+        var path = UserDataPaths.Combine("tools", "DepotDownloader", DepotDownloaderAccountMarkerFileName);
+        TryDeleteFile(path);
+    }
+
+    private static int CountOccurrences(string value, string token)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = value.IndexOf(token, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += token.Length;
+        }
+        return count;
+    }
+
+    private static string PowerShellLiteral(string value) =>
+        "'" + value.Replace("'", "''", StringComparison.Ordinal) + "'";
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+        }
+    }
 
     private static string CreateTempFolder(string name)
     {
@@ -2031,6 +2309,7 @@ public sealed class ToolchainDependencyService
     private static string ShortSha(string value) => value.Length <= 8 ? value : value[..8];
 
     private sealed record ProcessResult(int ExitCode, string Output, string Error);
+    private sealed record DepotDownloadAttempt(ProcessResult Result, bool UsedQr, string? DiscoveredAccount);
     private sealed record DepotManifest(string AppId, string DepotId, string ManifestId);
     private sealed record DeadlockToolsRelease(string TagName, Uri PageUri, Uri DownloadUri);
     private sealed record CsdkCatalog(

@@ -475,5 +475,11 @@
   "OPEN GOOGLE DRIVE": "打开 GOOGLE DRIVE",
   "Google Drive temporarily refused the automatic Reduced CSDK download.\n\nYou can open the archive page in your browser and download it manually.\n\nDetails:\n{0}": "Google Drive 暂时拒绝自动下载 Reduced CSDK。\n\n可以在浏览器中打开归档页面并手动下载。\n\n详细信息：\n{0}",
   "Could not open Google Drive in the browser.\n\n{0}\n\nDetails:\n{1}": "无法在浏览器中打开 Google Drive。\n\n{0}\n\n详细信息：\n{1}",
-  "Could not open Google Drive": "无法打开 Google Drive"
+  "Could not open Google Drive": "无法打开 Google Drive",
+  "Run the recommended CSDK fine-tuning from the current installation guide.\n\nA pulsing red gear means the current Reduced CSDK installation has not completed this step. Deadlimit downloads the required Deadlock depots into staging, extracts the downloaded VPK as-is, removes the temporary pak01 VPK set, then re-applies Reduced CSDK.\n\nThe first required depot download uses one Steam QR login for all depots and asks DepotDownloader to remember that Steam session. Later downloads reuse it when available. Hold **SHIFT** to force a complete repair download.\n\nThe configured Deadlock game client folder is only validated and is **never modified**.": "按照当前安装指南执行推荐的 CSDK 完善配置。\n\n红色脉冲齿轮表示当前 Reduced CSDK 安装尚未完成此步骤。Deadlimit 会将所需的 Deadlock depot 下载到临时区域，按原样提取已下载的 VPK，移除临时 pak01 VPK 集，然后重新应用 Reduced CSDK。\n\n首次需要下载 depot 时，所有 depot 只进行一次 Steam 二维码登录，并让 DepotDownloader 记住该 Steam 会话。后续下载会在可用时复用该会话。按住 **SHIFT** 可强制执行完整修复下载。\n\n已配置的 Deadlock 游戏客户端文件夹仅用于验证，**绝不会被修改**。",
+  "Reduced CSDK has been installed successfully.\n\nFor reliable work with Deadlock, complete the recommended CSDK fine-tuning. Deadlimit will download the required Deadlock depot data from Steam and add it to the CSDK installation. Your installed Deadlock game client is not modified.\n\nWithout this step, some CSDK tools and project workflows may be unavailable or behave incorrectly.": "Reduced CSDK 已成功安装。\n\n为确保与 Deadlock 配合时稳定工作，请完成推荐的 CSDK 完善配置。Deadlimit 会从 Steam 下载所需的 Deadlock depot 数据并加入 CSDK 安装。已安装的 Deadlock 游戏客户端不会被修改。\n\n如果跳过此步骤，部分 CSDK 工具和项目流程可能不可用或工作异常。",
+  "Reduced CSDK installed": "Reduced CSDK 已安装",
+  "FINE-TUNE CSDK": "完善 CSDK 配置",
+  "LATER": "稍后",
+  "CSDK fine-tuning": "CSDK 完善配置"
 }
