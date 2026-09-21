@@ -153,7 +153,7 @@ public sealed class MainForm : Form
                 return 3;
             }
 
-            if (!form._statusLabel.Text.Contains("Saved.", StringComparison.Ordinal))
+            if (!(form._statusLabel.Text?.Contains("Saved.", StringComparison.Ordinal) ?? false))
             {
                 return 4;
             }
