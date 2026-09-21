@@ -96,6 +96,105 @@ public sealed class MainForm : Form
         return leftInset == rightInset ? 0 : 3;
     }
 
+    internal static int RunProjectSaveSmoke()
+    {
+        var settingsPath = UserDataPaths.Combine("settings.json");
+        byte[]? settingsBackup = null;
+        var hadSettings = File.Exists(settingsPath);
+        var tempRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"deadlimit-project-save-smoke-{Guid.NewGuid():N}");
+
+        try
+        {
+            if (hadSettings)
+            {
+                settingsBackup = File.ReadAllBytes(settingsPath);
+            }
+
+            var projectsRoot = Path.Combine(tempRoot, "projects");
+            var projectFolder = Path.Combine(projectsRoot, "SmokeProject");
+            var csdkInsideProject = Path.Combine(projectFolder, "Reduced_CSDK_12");
+            Directory.CreateDirectory(csdkInsideProject);
+
+            ProjectStore.SaveToolPathSettings(new ToolPathSettings
+            {
+                ProjectsRoot = projectsRoot,
+                CsdkRoot = csdkInsideProject,
+                DeadlockToolsRoot = Path.Combine(tempRoot, "DeadlockTools"),
+                RetailDeadlockRoot = Path.Combine(tempRoot, "Project8Staging"),
+                UiLanguage = "en",
+                UiTheme = "system",
+            });
+
+            using var form = new MainForm();
+            form.CreateControl();
+            form._projectFolderText.Text = projectFolder;
+            form._projectNameText.Text = "SmokeProject";
+            form._heroText.Text = "hero_smoke";
+            form._releaseTargetText.Text = "01";
+
+            form.SaveProject();
+
+            var persisted = ProjectStore.TryLoad(projectFolder);
+            if (persisted is null)
+            {
+                return 1;
+            }
+
+            if (form._loadedManifest is null
+                || !PathsEqual(form._loadedManifest.ProjectFolder, projectFolder))
+            {
+                return 2;
+            }
+
+            if (!PathsEqual(form._projectFolderText.Text, projectFolder))
+            {
+                return 3;
+            }
+
+            if (!(form._statusLabel.Text?.Contains("Saved.", StringComparison.Ordinal) ?? false))
+            {
+                return 4;
+            }
+
+            return 0;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return 5;
+        }
+        finally
+        {
+            try
+            {
+                if (hadSettings && settingsBackup is not null)
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
+                    File.WriteAllBytes(settingsPath, settingsBackup);
+                }
+                else if (File.Exists(settingsPath))
+                {
+                    File.Delete(settingsPath);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+            }
+
+            try
+            {
+                if (Directory.Exists(tempRoot))
+                {
+                    Directory.Delete(tempRoot, recursive: true);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
     private void BuildUi()
     {
         var root = new TableLayoutPanel
@@ -671,13 +770,22 @@ public sealed class MainForm : Form
 
     private void SaveProject()
     {
-        if (TrySaveProject())
+        if (!TrySaveProject() || _loadedManifest is not { } savedManifest)
         {
-            RefreshProjectLibrary(preserveSelection: true, rescanSelected: true);
-            SetStatus(UiText.T(
-                $"Saved. Models: {_loadedManifest!.DmxFiles.Count + _loadedManifest.FbxFiles.Count + _loadedManifest.GltfFiles.Count}; textures: {_loadedManifest.PngTextures.Count}.",
-                $"Сохранено. Моделей: {_loadedManifest!.DmxFiles.Count + _loadedManifest.FbxFiles.Count + _loadedManifest.GltfFiles.Count}; текстур: {_loadedManifest.PngTextures.Count}."));
+            return;
         }
+
+        // Saving changes project metadata and scan state, but it does not change the set
+        // of project folders. Re-enumerating the library here can clear the current view
+        // when a machine-local path temporarily filters that folder, leaving the
+        // post-save status path with no loaded manifest. Keep the successfully saved
+        // manifest authoritative and only repaint metadata-dependent library visuals.
+        _projectLibrary.Invalidate();
+        ProjectSaveStateFeature.Refresh(this);
+
+        SetStatus(UiText.T(
+            $"Saved. Models: {savedManifest.DmxFiles.Count + savedManifest.FbxFiles.Count + savedManifest.GltfFiles.Count}; textures: {savedManifest.PngTextures.Count}.",
+            $"Сохранено. Моделей: {savedManifest.DmxFiles.Count + savedManifest.FbxFiles.Count + savedManifest.GltfFiles.Count}; текстур: {savedManifest.PngTextures.Count}."));
     }
 
     private bool TrySaveProject()

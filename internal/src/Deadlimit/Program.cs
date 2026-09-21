@@ -161,6 +161,12 @@ internal static class Program
                 return 80 + mainFrameLayoutResult;
             }
 
+            var projectSaveResult = MainForm.RunProjectSaveSmoke();
+            if (projectSaveResult != 0)
+            {
+                return 85 + projectSaveResult;
+            }
+
             var detachedStatusResult = WindowProgressFeature.RunDetachedStatusSmoke();
             if (detachedStatusResult != 0)
             {
