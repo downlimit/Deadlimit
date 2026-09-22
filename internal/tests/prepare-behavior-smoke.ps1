@@ -184,6 +184,21 @@ function Write-TestBinaryVertexColorFbx([string]$Path, [uint32]$Version) {
         (New-TestFbxProperty 'S' 'Model::dynamo_body'),
         (New-TestFbxProperty 'S' 'Mesh')
     )
+    $limbJoint = New-TestFbxNode 'Model' @(
+        (New-TestFbxProperty 'L' ([int64]101)),
+        (New-TestFbxProperty 'S' 'Model::_cloth_binary'),
+        (New-TestFbxProperty 'S' 'LimbNode')
+    )
+    $clusterJoint = New-TestFbxNode 'Model' @(
+        (New-TestFbxProperty 'L' ([int64]102)),
+        (New-TestFbxProperty 'S' 'Model::_cloth_cluster_binary'),
+        (New-TestFbxProperty 'S' 'Null')
+    )
+    $cluster = New-TestFbxNode 'Deformer' @(
+        (New-TestFbxProperty 'L' ([int64]300)),
+        (New-TestFbxProperty 'S' 'Deformer::cloth_cluster'),
+        (New-TestFbxProperty 'S' 'Cluster')
+    )
     $colorLayer = New-TestFbxNode 'LayerElementColor' @() @(
         (New-TestFbxNode 'MappingInformationType' @((New-TestFbxProperty 'S' 'ByPolygonVertex'))),
         (New-TestFbxNode 'ReferenceInformationType' @((New-TestFbxProperty 'S' 'Direct'))),
@@ -198,12 +213,17 @@ function Write-TestBinaryVertexColorFbx([string]$Path, [uint32]$Version) {
         (New-TestFbxNode 'PolygonVertexIndex' @((New-TestFbxProperty 'i' ([int[]]@(0,1,-3)) $true))),
         $colorLayer
     )
-    $objects = New-TestFbxNode 'Objects' @() @($model, $geometry)
+    $objects = New-TestFbxNode 'Objects' @() @($model, $limbJoint, $clusterJoint, $cluster, $geometry)
     $connections = New-TestFbxNode 'Connections' @() @(
         (New-TestFbxNode 'C' @(
             (New-TestFbxProperty 'S' 'OO'),
             (New-TestFbxProperty 'L' ([int64]200)),
             (New-TestFbxProperty 'L' ([int64]100))
+        )),
+        (New-TestFbxNode 'C' @(
+            (New-TestFbxProperty 'S' 'OO'),
+            (New-TestFbxProperty 'L' ([int64]102)),
+            (New-TestFbxProperty 'L' ([int64]300))
         ))
     )
 
@@ -226,16 +246,51 @@ function Write-TestBinaryVertexColorFbx([string]$Path, [uint32]$Version) {
 
 $vertexFbxReaderType = $assembly.GetType('Deadlimit.Core.AsciiFbxVertexColorReader', $true)
 $vertexFbxRead = $vertexFbxReaderType.GetMethod('Read', $publicStatic)
-if ($null -eq $vertexFbxRead) { throw 'AsciiFbxVertexColorReader.Read was not found.' }
+$vertexFbxReadJoints = $vertexFbxReaderType.GetMethod('ReadJointNames', $publicStatic)
+if ($null -eq $vertexFbxRead -or $null -eq $vertexFbxReadJoints) {
+    throw 'AsciiFbxVertexColorReader FBX read methods were not found.'
+}
 $binaryVertexRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-binary-vertexcolor-$([Guid]::NewGuid().ToString('N'))"
 try {
     [IO.Directory]::CreateDirectory($binaryVertexRoot) | Out-Null
+
+    $asciiJointFixture = Join-Path $binaryVertexRoot 'skeleton-ascii.fbx'
+    $asciiJointText = @'
+; FBX 7.4.0 project file
+Objects: {
+    Model: 100, "Model::_cloth_ascii", "LimbNode" {
+    }
+    Model: 101, "Model::_cloth_cluster_ascii", "Null" {
+    }
+    Model: 102, "Model::render_mesh", "Mesh" {
+    }
+    Deformer: 300, "SubDeformer::cloth_cluster", "Cluster" {
+    }
+}
+Connections: {
+    C: "OO", 101, 300
+}
+'@
+    [IO.File]::WriteAllText($asciiJointFixture, $asciiJointText)
+    $asciiJointNames = $vertexFbxReadJoints.Invoke($null, @([string]$asciiJointFixture))
+    if ((-not $asciiJointNames.Contains('_cloth_ascii')) -or
+        (-not $asciiJointNames.Contains('_cloth_cluster_ascii')) -or
+        $asciiJointNames.Contains('render_mesh')) {
+        throw 'ASCII FBX skeleton joint discovery did not isolate LimbNode/skin-cluster models.'
+    }
+
     foreach ($version in [uint32[]]@(7400, 7500)) {
         $fixture = Join-Path $binaryVertexRoot "vertexcolor-$version.fbx"
         Write-TestBinaryVertexColorFbx $fixture $version
         $meshes = @($vertexFbxRead.Invoke($null, @([string]$fixture)))
         if (($meshes.Count -ne 1) -or ($meshes[0].Name -ne 'dynamo_body') -or (-not $meshes[0].HasColors) -or ($meshes[0].ControlPoints.Count -ne 3) -or ($meshes[0].Polygons.Count -ne 1) -or ($meshes[0].Polygons[0].Colors.Count -ne 3)) {
             throw "Binary FBX $version Vertex Color fixture was not parsed correctly."
+        }
+        $jointNames = $vertexFbxReadJoints.Invoke($null, @([string]$fixture))
+        if ((-not $jointNames.Contains('_cloth_binary')) -or
+            (-not $jointNames.Contains('_cloth_cluster_binary')) -or
+            $jointNames.Contains('dynamo_body')) {
+            throw "Binary FBX $version skeleton joint discovery did not isolate LimbNode/skin-cluster models."
         }
     }
 }
@@ -1286,7 +1341,9 @@ finally {
 
 foreach ($required in @(
     'ReconcileWallWormClothBoneNames(',
+    'ReadPreparedArtistJointNames(',
     'ReadArtistDmxJointNames(',
+    'AsciiFbxVertexColorReader.ReadJointNames(path)',
     'artistJointNames.Contains(retailName)',
     'var wallWormName = "_" + retailName[1..]',
     'unresolvedProceduralBones',
@@ -1303,10 +1360,18 @@ if (-not $prepareSource.Contains('Retail physics warning:')) {
     throw 'Retail physics warnings are not surfaced by clean prepare.'
 }
 if ((-not $prepareSource.Contains('ReconcileWallWormClothBoneNames(')) -or
+    (-not $prepareSource.Contains('replacedRenderMeshes.Select(overlay => overlay.PreparedDmxPath)')) -or
+    (-not $prepareSource.Contains('gltfOverlay.PreparedResources')) -or
+    (-not $prepareSource.Contains('replacedFbxMeshes.Select(overlay => overlay.PreparedFbxPath)')) -or
     (-not $prepareSource.Contains('cloth bone alias')) -or
     (-not $prepareSource.Contains('incompatible retail chains removed')) -or
     (-not $prepareSource.Contains('skipped incompatible retail ClothChain root'))) {
-    throw 'PREPARE does not reconcile Wall Worm _cloth_* names and reject incompatible retail $cloth_* chains.'
+    throw 'PREPARE does not reconcile Wall Worm _cloth_* names against effective DMX/FBX skeletons.'
+}
+$gltfOverlayIndex = $prepareSource.IndexOf('var gltfOverlay = GltfAuthoringAdapter.Overlay(', [StringComparison]::Ordinal)
+$clothReconcileIndex = $prepareSource.IndexOf('var clothBoneNames = RetailPhysicsAuthoringService.ReconcileWallWormClothBoneNames(', [StringComparison]::Ordinal)
+if ($gltfOverlayIndex -lt 0 -or $clothReconcileIndex -le $gltfOverlayIndex) {
+    throw 'Cloth bone reconciliation must run after glTF has produced its staged DMX resources.'
 }
 if ($retailPhysicsSource.Contains('name = "Retail ragdoll joints"')) {
     throw 'Physics joints must be direct PhysicsJointList children; a Folder causes ResourceCompiler to drop them.'
@@ -1726,6 +1791,8 @@ $binaryFbxSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/BinaryF
 foreach ($required in @(
     'BinaryFbxVertexColorReader.IsBinary(path)',
     'BinaryFbxVertexColorReader.Read(path)',
+    'BinaryFbxVertexColorReader.ReadJointNames(path)',
+    'ClusterDeformerRegex()',
     'Autodesk ASCII or Binary FBX format')) {
     if (-not $asciiFbxSource.Contains($required)) {
         throw "Binary FBX dispatch contract is missing: $required"
@@ -1733,6 +1800,9 @@ foreach ($required in @(
 }
 foreach ($required in @(
     'Kaydara FBX Binary',
+    'ReadJointNames(string path)',
+    '"LimbNode"',
+    '"Cluster"',
     'ZLibStream',
     'LayerElementColor',
     'PolygonVertexIndex',

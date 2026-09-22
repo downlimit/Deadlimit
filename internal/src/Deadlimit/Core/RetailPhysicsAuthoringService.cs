@@ -195,12 +195,14 @@ public static class RetailPhysicsAuthoringService
 
     public static ClothBoneNameReconciliationResult ReconcileWallWormClothBoneNames(
         string vmdlPath,
-        IEnumerable<string> artistDmxPaths)
+        IEnumerable<string> preparedDmxPaths,
+        IEnumerable<string> preparedFbxPaths)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(vmdlPath);
-        ArgumentNullException.ThrowIfNull(artistDmxPaths);
+        ArgumentNullException.ThrowIfNull(preparedDmxPaths);
+        ArgumentNullException.ThrowIfNull(preparedFbxPaths);
 
-        var artistJointNames = ReadArtistDmxJointNames(artistDmxPaths);
+        var artistJointNames = ReadPreparedArtistJointNames(preparedDmxPaths, preparedFbxPaths);
         return ReconcileWallWormClothBoneNamesFromJointNames(vmdlPath, artistJointNames);
     }
 
@@ -358,6 +360,25 @@ public static class RetailPhysicsAuthoringService
         }
 
         return (blockStart, endExclusive - blockStart);
+    }
+
+    private static HashSet<string> ReadPreparedArtistJointNames(
+        IEnumerable<string> preparedDmxPaths,
+        IEnumerable<string> preparedFbxPaths)
+    {
+        var names = ReadArtistDmxJointNames(preparedDmxPaths);
+        foreach (var path in preparedFbxPaths
+                     .Where(path => !string.IsNullOrWhiteSpace(path))
+                     .Select(Path.GetFullPath)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            foreach (var jointName in AsciiFbxVertexColorReader.ReadJointNames(path))
+            {
+                names.Add(jointName);
+            }
+        }
+
+        return names;
     }
 
     private static HashSet<string> ReadArtistDmxJointNames(IEnumerable<string> artistDmxPaths)

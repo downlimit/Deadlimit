@@ -259,22 +259,6 @@ public sealed class PrepareAuthoringService
                 sourceCopy.DestinationVmdlPath);
             log.AppendLine($"Invalid ClothChain parent anchors repaired: {repairedClothChains}");
 
-            var clothBoneNames = RetailPhysicsAuthoringService.ReconcileWallWormClothBoneNames(
-                sourceCopy.DestinationVmdlPath,
-                rootDmxFiles);
-            log.AppendLine(
-                $"Wall Worm cloth compatibility: artist joints={clothBoneNames.ArtistJointCount}; " +
-                $"rewritten references={clothBoneNames.RewrittenReferenceCount}; distinct aliases={clothBoneNames.BoneRemaps.Count}; " +
-                $"incompatible retail chains removed={clothBoneNames.RemovedIncompatibleChainCount}");
-            foreach (var remap in clothBoneNames.BoneRemaps.OrderBy(pair => pair.Key, StringComparer.Ordinal))
-            {
-                log.AppendLine($"  cloth bone alias {remap.Key} -> {remap.Value}");
-            }
-            foreach (var root in clothBoneNames.RemovedIncompatibleChainRoots)
-            {
-                log.AppendLine($"  skipped incompatible retail ClothChain root {root}");
-            }
-
             if (options.Resets(PrepareResetSections.Effects))
             {
                 ResetExistingParticleEffects(manifest, addonContentRoot, log, cancellationToken);
@@ -315,6 +299,30 @@ public sealed class PrepareAuthoringService
                 throw new InvalidOperationException(
                     "More than one 1authoring model source replaces the same retail render mesh. Keep one authoring format per target:\n" +
                     string.Join("\n", duplicateTargets));
+            }
+
+            var gltfPreparedDmxPaths = gltfOverlay.PreparedResources
+                .Select(resourcePath => SafePath.ResolveUnderRoot(
+                    addonContentRoot,
+                    resourcePath.Replace('/', Path.DirectorySeparatorChar),
+                    "Prepared glTF DMX skeleton"))
+                .ToArray();
+            var clothBoneNames = RetailPhysicsAuthoringService.ReconcileWallWormClothBoneNames(
+                sourceCopy.DestinationVmdlPath,
+                replacedRenderMeshes.Select(overlay => overlay.PreparedDmxPath)
+                    .Concat(gltfPreparedDmxPaths),
+                replacedFbxMeshes.Select(overlay => overlay.PreparedFbxPath));
+            log.AppendLine(
+                $"Wall Worm cloth compatibility: effective authoring joints={clothBoneNames.ArtistJointCount}; " +
+                $"rewritten references={clothBoneNames.RewrittenReferenceCount}; distinct aliases={clothBoneNames.BoneRemaps.Count}; " +
+                $"incompatible retail chains removed={clothBoneNames.RemovedIncompatibleChainCount}");
+            foreach (var remap in clothBoneNames.BoneRemaps.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            {
+                log.AppendLine($"  cloth bone alias {remap.Key} -> {remap.Value}");
+            }
+            foreach (var root in clothBoneNames.RemovedIncompatibleChainRoots)
+            {
+                log.AppendLine($"  skipped incompatible retail ClothChain root {root}");
             }
 
             log.AppendLine($"Artist DMX overlays: {replacedRenderMeshes.Count}");
