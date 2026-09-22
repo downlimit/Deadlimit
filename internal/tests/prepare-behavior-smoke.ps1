@@ -1002,12 +1002,56 @@ foreach ($required in @(
     'Prepared hero-select runtime resource',
     'package.ReadEntry(entry, out byte[] rawData)',
     'RuntimeCreatedCount',
+    'RemoveLegacyLooseCompiledMaps(addonContentRoot, addonGameRoot)',
+    'IsLooseCompiledMapResource(resourcePath)',
     'if (File.Exists(outputPath))',
     'File.Move(temporaryPath, outputPath, overwrite: false)')) {
     if (-not $heroSelectSource.Contains($required)) {
         throw "Hero-select scene preparation contract is missing: $required"
     }
 }
+$heroSelectType = $assembly.GetType('Deadlimit.Core.HeroSelectScenePreparationService', $true)
+$removeLegacyLooseMaps = $heroSelectType.GetMethods($nonPublicStatic) |
+    Where-Object {
+        $_.Name -eq 'RemoveLegacyLooseCompiledMaps' -and
+        $_.GetParameters().Count -eq 2 -and
+        $_.GetParameters()[0].ParameterType -eq [string]
+    } |
+    Select-Object -First 1
+if ($null -eq $removeLegacyLooseMaps) {
+    throw 'Legacy loose hero-select VMAP cleanup helper was not found.'
+}
+$heroSelectCleanupRoot = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-hero-select-cleanup-$([Guid]::NewGuid().ToString('N'))"
+try {
+    $contentRoot = Join-Path $heroSelectCleanupRoot 'content'
+    $gameRoot = Join-Path $heroSelectCleanupRoot 'game'
+    $contentScenes = Join-Path $contentRoot 'maps/ui/hero_prefabs'
+    $gameScenes = Join-Path $gameRoot 'maps/ui/hero_prefabs'
+    [IO.Directory]::CreateDirectory($contentScenes) | Out-Null
+    [IO.Directory]::CreateDirectory($gameScenes) | Out-Null
+
+    [IO.File]::WriteAllText((Join-Path $contentScenes 'prof_smoke.vmap'), 'editable map')
+    [IO.File]::WriteAllBytes((Join-Path $gameScenes 'prof_smoke.vmap_c'), [byte[]]@(1,2,3,4))
+    [IO.File]::WriteAllBytes((Join-Path $gameScenes 'unrelated.vmap_c'), [byte[]]@(5,6,7,8))
+
+    $removedLooseMaps = [int]$removeLegacyLooseMaps.Invoke(
+        $null,
+        [object[]]@([string]$contentRoot, [string]$gameRoot))
+    if ($removedLooseMaps -ne 1 -or
+        (Test-Path -LiteralPath (Join-Path $gameScenes 'prof_smoke.vmap_c')) -or
+        -not (Test-Path -LiteralPath (Join-Path $gameScenes 'unrelated.vmap_c'))) {
+        throw 'Legacy hero-select loose vmap_c cleanup did not remove only the compiled counterpart of an editable VMAP.'
+    }
+}
+finally {
+    Remove-Item -LiteralPath $heroSelectCleanupRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+$buildFeatureSource = Get-Content -LiteralPath 'internal/src/Deadlimit/App/BuildFeature.cs' -Raw
+if (-not $buildFeatureSource.Contains('HeroSelectScenePreparationService.RemoveLegacyLooseCompiledMaps(manifest, paths)')) {
+    throw 'CSDK launch does not self-heal legacy loose hero-select vmap_c files.'
+}
+
 $buildPipelineSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/BuildAndTestService.cs' -Raw
 foreach ($required in @(
     'FindDirectDependents(',

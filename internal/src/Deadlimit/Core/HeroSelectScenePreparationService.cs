@@ -158,12 +158,24 @@ public sealed class HeroSelectScenePreparationService
                 ref authoringResourcePreserved);
         }
 
+        // A compiled Source 2 map is delivered as a VPK package. Its internal
+        // *.vmap_c directory entry must not be published as a loose game file:
+        // the tools treat that path as a packed-map store and report it as a
+        // corrupt VPK directory. Remove files created by the older PREPARE
+        // behavior before publishing the remaining runtime support resources.
+        RemoveLegacyLooseCompiledMaps(addonContentRoot, addonGameRoot);
+
         var runtimeCreated = 0;
         var runtimePreserved = 0;
         var runtimeResourcePaths = new List<string>(packageFiles.Length);
         foreach (var (entry, resourcePath) in packageFiles)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (IsLooseCompiledMapResource(resourcePath))
+            {
+                continue;
+            }
+
             var outputPath = SafePath.ResolveUnderRoot(
                 addonGameRoot,
                 resourcePath.Replace('/', Path.DirectorySeparatorChar),
@@ -199,6 +211,69 @@ public sealed class HeroSelectScenePreparationService
             runtimeCreated,
             runtimePreserved);
     }
+
+    internal static int RemoveLegacyLooseCompiledMaps(
+        ProjectManifest manifest,
+        DeadlimitPaths paths)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        ArgumentNullException.ThrowIfNull(paths);
+
+        if (manifest.Mode == ProjectMode.ImportedVpk)
+        {
+            return 0;
+        }
+
+        var addonId = AddonIdentityService.ResolveInitialAddonId(manifest, manifest.ProjectName);
+        var addonContentRoot = Path.Combine(paths.CsdkContentRoot, "citadel_addons", addonId);
+        var addonGameRoot = Path.Combine(paths.CsdkGameRoot, "citadel_addons", addonId);
+        return RemoveLegacyLooseCompiledMaps(addonContentRoot, addonGameRoot);
+    }
+
+    internal static int RemoveLegacyLooseCompiledMaps(
+        string addonContentRoot,
+        string addonGameRoot)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(addonContentRoot);
+        ArgumentException.ThrowIfNullOrWhiteSpace(addonGameRoot);
+
+        var sceneFolder = Path.Combine(
+            addonContentRoot,
+            HeroPrefabContentFolder.Replace('/', Path.DirectorySeparatorChar));
+        if (!Directory.Exists(sceneFolder))
+        {
+            return 0;
+        }
+
+        var removed = 0;
+        foreach (var scenePath in Directory.EnumerateFiles(
+                     sceneFolder,
+                     "*.vmap",
+                     SearchOption.TopDirectoryOnly))
+        {
+            var sceneId = Path.GetFileNameWithoutExtension(scenePath);
+            var looseCompiledPath = SafePath.ResolveUnderRoot(
+                addonGameRoot,
+                Path.Combine(
+                    HeroPrefabContentFolder.Replace('/', Path.DirectorySeparatorChar),
+                    sceneId + ".vmap_c"),
+                "Legacy loose hero-select compiled map");
+            if (!File.Exists(looseCompiledPath))
+            {
+                continue;
+            }
+
+            File.Delete(looseCompiledPath);
+            removed++;
+        }
+
+        return removed;
+    }
+
+    private static bool IsLooseCompiledMapResource(string resourcePath) =>
+        NormalizeResourcePath(resourcePath).EndsWith(
+            ".vmap_c",
+            StringComparison.OrdinalIgnoreCase);
 
     private static (string HeroPrefabId, string VpkPath) ResolveHeroPrefabVpk(
         ProjectManifest manifest,

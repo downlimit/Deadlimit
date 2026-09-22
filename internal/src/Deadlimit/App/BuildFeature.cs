@@ -1059,6 +1059,12 @@ internal static class BuildFeature
 
         try
         {
+            var manifest = ProjectStore.TryLoadLastProject();
+            if (manifest is not null)
+            {
+                HeroSelectScenePreparationService.RemoveLegacyLooseCompiledMaps(manifest, paths);
+            }
+
             CsdkAssetWatcherCompatibility.EnsureLuaUnlockerContentMirror(paths.CsdkRoot);
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
             {
