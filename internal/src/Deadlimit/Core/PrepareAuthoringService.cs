@@ -259,6 +259,17 @@ public sealed class PrepareAuthoringService
                 sourceCopy.DestinationVmdlPath);
             log.AppendLine($"Invalid ClothChain parent anchors repaired: {repairedClothChains}");
 
+            var clothBoneNames = RetailPhysicsAuthoringService.ReconcileWallWormClothBoneNames(
+                sourceCopy.DestinationVmdlPath,
+                rootDmxFiles);
+            log.AppendLine(
+                $"Wall Worm cloth bone-name reconciliation: artist joints={clothBoneNames.ArtistJointCount}; " +
+                $"rewritten references={clothBoneNames.RewrittenReferenceCount}; distinct aliases={clothBoneNames.BoneRemaps.Count}");
+            foreach (var remap in clothBoneNames.BoneRemaps.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+            {
+                log.AppendLine($"  cloth bone alias {remap.Key} -> {remap.Value}");
+            }
+
             if (options.Resets(PrepareResetSections.Effects))
             {
                 ResetExistingParticleEffects(manifest, addonContentRoot, log, cancellationToken);

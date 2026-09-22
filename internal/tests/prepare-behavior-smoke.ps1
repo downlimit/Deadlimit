@@ -1148,7 +1148,87 @@ rootNode =
 finally {
     Remove-Item -LiteralPath $clothRepairTemp -Force -ErrorAction SilentlyContinue
 }
+
+# Wall Worm DCC import/export can sanitize retail $cloth_* bones to _cloth_*.
+# Reconcile only when the artist skeleton proves the underscore bone exists and
+# the original dollar-prefixed bone does not.
+$reconcileClothNames = $retailPhysicsType.GetMethod(
+    'ReconcileWallWormClothBoneNamesFromJointNames',
+    $nonPublicStatic)
+if ($null -eq $reconcileClothNames) {
+    throw 'Wall Worm cloth bone-name reconciliation helper was not found.'
+}
+$clothNameTemp = Join-Path ([IO.Path]::GetTempPath()) "deadlimit-cloth-name-$([Guid]::NewGuid().ToString('N')).vmdl"
+try {
+    $clothNameVmdl = @'
+rootNode =
+{
+    children =
+    [
+        {
+            _class = "Softbody"
+            children =
+            [
+                {
+                    _class = "ClothChain"
+                    root_bone = "$cloth_m0p130"
+                    chain =
+                    {
+                        joints =
+                        [
+                            { joint_name = "$cloth_m0p130" simulate = false },
+                            { joint_name = "$cloth_m0p62" joint_parent = "$cloth_m0p130" },
+                            { joint_name = "$cloth_keep" },
+                        ]
+                    }
+                },
+            ]
+        },
+    ]
+}
+'@
+    [IO.File]::WriteAllText($clothNameTemp, $clothNameVmdl)
+
+    $artistJoints = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    [void]$artistJoints.Add('_cloth_m0p130')
+    [void]$artistJoints.Add('_cloth_m0p62')
+    [void]$artistJoints.Add('_cloth_keep')
+    [void]$artistJoints.Add('$cloth_keep')
+
+    $clothNameResult = $reconcileClothNames.Invoke(
+        $null,
+        [object[]]@([string]$clothNameTemp, $artistJoints))
+    $clothNameText = [IO.File]::ReadAllText($clothNameTemp)
+    if (($clothNameResult.BoneRemaps.Count -ne 2) -or
+        ($clothNameResult.RewrittenReferenceCount -ne 4) -or
+        $clothNameText.Contains('$cloth_m0p130') -or
+        $clothNameText.Contains('$cloth_m0p62') -or
+        (-not $clothNameText.Contains('_cloth_m0p130')) -or
+        (-not $clothNameText.Contains('_cloth_m0p62'))) {
+        throw "Wall Worm cloth bone aliases were not reconciled safely.\n$clothNameText"
+    }
+    if (-not $clothNameText.Contains('$cloth_keep')) {
+        throw 'A valid retail $cloth_* bone was rewritten even though the artist skeleton still contains it.'
+    }
+
+    $stableClothNameText = $clothNameText
+    $stableClothNameResult = $reconcileClothNames.Invoke(
+        $null,
+        [object[]]@([string]$clothNameTemp, $artistJoints))
+    if (($stableClothNameResult.RewrittenReferenceCount -ne 0) -or
+        ([IO.File]::ReadAllText($clothNameTemp) -ne $stableClothNameText)) {
+        throw 'Wall Worm cloth bone-name reconciliation is not idempotent.'
+    }
+}
+finally {
+    Remove-Item -LiteralPath $clothNameTemp -Force -ErrorAction SilentlyContinue
+}
+
 foreach ($required in @(
+    'ReconcileWallWormClothBoneNames(',
+    'ReadArtistDmxJointNames(',
+    'artistJointNames.Contains(retailName)',
+    'var wallWormName = "_" + retailName[1..]',
     'RetailClothReadResult.Empty',
     'FindLossyClothFeatures')) {
     if (-not $retailPhysicsSource.Contains($required)) {
@@ -1158,6 +1238,10 @@ foreach ($required in @(
 $prepareSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/PrepareAuthoringService.cs' -Raw
 if (-not $prepareSource.Contains('Retail physics warning:')) {
     throw 'Retail physics warnings are not surfaced by clean prepare.'
+}
+if ((-not $prepareSource.Contains('ReconcileWallWormClothBoneNames(')) -or
+    (-not $prepareSource.Contains('cloth bone alias'))) {
+    throw 'PREPARE does not reconcile Wall Worm _cloth_* names against retail $cloth_* ClothChain references.'
 }
 if ($retailPhysicsSource.Contains('name = "Retail ragdoll joints"')) {
     throw 'Physics joints must be direct PhysicsJointList children; a Folder causes ResourceCompiler to drop them.'
