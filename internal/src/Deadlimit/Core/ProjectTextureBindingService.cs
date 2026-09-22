@@ -482,14 +482,24 @@ internal static class ProjectTextureBindingService
                 return match.Value;
             }
 
+            var currentValue = match.Groups["value"].Value;
+            if (!LooksLikeLocalTextureSource(currentValue))
+            {
+                // Source 2 texture parameters may legally store inline vector constants
+                // (for example TextureMetalness1 "[0.800000 0.800000 0.800000 0.000000]").
+                // Project texture synchronization must not reinterpret those constants as
+                // missing texture bindings and replace them with neutral fallbacks.
+                return match.Value;
+            }
+
             var fallback = GetTextureFallback(key, vertexColorMode);
-            if (string.Equals(match.Groups["value"].Value, fallback, StringComparison.Ordinal))
+            if (string.Equals(currentValue, fallback, StringComparison.Ordinal))
             {
                 return match.Value;
             }
 
             localNeutralizedCount++;
-            log.AppendLine($"Custom VMAT untextured standard slot neutralized {key}: {match.Groups["value"].Value} -> {fallback}");
+            log.AppendLine($"Custom VMAT untextured standard slot neutralized {key}: {currentValue} -> {fallback}");
             return match.Groups["prefix"].Value + fallback + match.Groups["suffix"].Value;
         });
 
