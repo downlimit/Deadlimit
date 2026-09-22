@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Numerics;
 using System.Text;
 using System.Text.RegularExpressions;
+using Datamodel;
+using Datamodel.Codecs;
 using SteamDatabase.ValvePak;
 using ValveKeyValue;
 using ValveResourceFormat;
@@ -14,6 +16,11 @@ public sealed record RetailPhysicsInitializationResult(
     int ClothChainCount,
     bool Added,
     IReadOnlyList<string> Warnings);
+
+public sealed record ClothBoneNameReconciliationResult(
+    int ArtistJointCount,
+    int RewrittenReferenceCount,
+    IReadOnlyDictionary<string, string> BoneRemaps);
 
 public static class RetailPhysicsAuthoringService
 {
@@ -33,6 +40,9 @@ public static class RetailPhysicsAuthoringService
         RegexOptions.Compiled);
     private static readonly Regex ClothJointsArrayRegex = new(
         "(?m)^(?<indent>[ \\t]*)joints\\s*=\\s*\\[",
+        RegexOptions.Compiled);
+    private static readonly Regex ClothBoneReferenceRegex = new(
+        "(?<prefix>\\b(?:root_bone|joint_name|joint_parent)\\s*=\\s*\\\")(?<name>\\$cloth_[^\\\"]+)(?<suffix>\\\")",
         RegexOptions.Compiled);
 
     public static RetailPhysicsInitializationResult EnsureRetailJoints(
@@ -178,6 +188,145 @@ public static class RetailPhysicsAuthoringService
         }
         File.WriteAllText(vmdlPath, patched.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         return repairs.Count;
+    }
+
+
+    public static ClothBoneNameReconciliationResult ReconcileWallWormClothBoneNames(
+        string vmdlPath,
+        IEnumerable<string> artistDmxPaths)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(vmdlPath);
+        ArgumentNullException.ThrowIfNull(artistDmxPaths);
+
+        var artistJointNames = ReadArtistDmxJointNames(artistDmxPaths);
+        return ReconcileWallWormClothBoneNamesFromJointNames(vmdlPath, artistJointNames);
+    }
+
+    internal static ClothBoneNameReconciliationResult ReconcileWallWormClothBoneNamesFromJointNames(
+        string vmdlPath,
+        IReadOnlySet<string> artistJointNames)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(vmdlPath);
+        ArgumentNullException.ThrowIfNull(artistJointNames);
+
+        if (artistJointNames.Count == 0)
+        {
+            return new ClothBoneNameReconciliationResult(
+                0,
+                0,
+                new Dictionary<string, string>(StringComparer.Ordinal));
+        }
+
+        var original = File.ReadAllText(vmdlPath);
+        var replacements = new List<(int Start, int Length, string Text)>();
+        var remaps = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (Match classMatch in ClothChainClassRegex.Matches(original))
+        {
+            var blockStart = original.LastIndexOf('{', classMatch.Index);
+            if (blockStart < 0)
+            {
+                continue;
+            }
+
+            var blockEnd = FindMatchingBrace(original, blockStart);
+            if (blockEnd < 0)
+            {
+                continue;
+            }
+
+            var block = original[blockStart..(blockEnd + 1)];
+            if (ClothChainClassRegex.Matches(block).Count != 1)
+            {
+                continue;
+            }
+
+            var rewritten = ClothBoneReferenceRegex.Replace(
+                block,
+                match =>
+                {
+                    var retailName = match.Groups["name"].Value;
+                    if (artistJointNames.Contains(retailName))
+                    {
+                        return match.Value;
+                    }
+
+                    var wallWormName = "_" + retailName[1..];
+                    if (!artistJointNames.Contains(wallWormName))
+                    {
+                        return match.Value;
+                    }
+
+                    remaps.TryAdd(retailName, wallWormName);
+                    return match.Groups["prefix"].Value
+                           + wallWormName
+                           + match.Groups["suffix"].Value;
+                });
+
+            if (!string.Equals(block, rewritten, StringComparison.Ordinal))
+            {
+                replacements.Add((blockStart, block.Length, rewritten));
+            }
+        }
+
+        if (replacements.Count == 0)
+        {
+            return new ClothBoneNameReconciliationResult(
+                artistJointNames.Count,
+                0,
+                remaps);
+        }
+
+        var patched = new StringBuilder(original);
+        foreach (var replacement in replacements.OrderByDescending(item => item.Start))
+        {
+            patched.Remove(replacement.Start, replacement.Length);
+            patched.Insert(replacement.Start, replacement.Text);
+        }
+
+        File.WriteAllText(
+            vmdlPath,
+            patched.ToString(),
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+        var rewrittenReferenceCount = ClothBoneReferenceRegex.Matches(original)
+            .Count(match => remaps.ContainsKey(match.Groups["name"].Value));
+
+        return new ClothBoneNameReconciliationResult(
+            artistJointNames.Count,
+            rewrittenReferenceCount,
+            remaps);
+    }
+
+    private static HashSet<string> ReadArtistDmxJointNames(IEnumerable<string> artistDmxPaths)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var path in artistDmxPaths
+                     .Where(path => !string.IsNullOrWhiteSpace(path))
+                     .Select(Path.GetFullPath)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            using var document = Datamodel.Datamodel.Load(path, DeferredMode.Disabled);
+            foreach (var model in document.AllElements.Where(element =>
+                         string.Equals(element.ClassName, "DmeModel", StringComparison.Ordinal)
+                         && element.ContainsKey("jointList")))
+            {
+                var joints = model.GetArray<Element>("jointList");
+                if (joints is null)
+                {
+                    continue;
+                }
+
+                foreach (var joint in joints.Where(element =>
+                             string.Equals(element.ClassName, "DmeJoint", StringComparison.Ordinal)
+                             && !string.IsNullOrWhiteSpace(element.Name)))
+                {
+                    names.Add(joint.Name!);
+                }
+            }
+        }
+
+        return names;
     }
 
     private static string InsertFixedAnchorsIntoClothChain(
