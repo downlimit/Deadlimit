@@ -639,6 +639,21 @@ public static class VertexColorSidecarService
             return true;
         }
 
+        // UV/color correspondence is invariant under object-space transforms and
+        // remains valid when the DMX triangulates FBX quads/ngons. Use it only when
+        // each UV resolves to one unambiguous color across the whole source surface.
+        if (TryMatchColorsByTexcoords(
+                meshName,
+                targets,
+                sources,
+                targetTexcoords,
+                out colors,
+                out var uvColorMismatchReason))
+        {
+            mismatchReason = string.Empty;
+            return true;
+        }
+
         if (TryMatchColorsByControlPoints(
                 meshName,
                 targets,
@@ -659,8 +674,8 @@ public static class VertexColorSidecarService
         mismatchReason =
             $"Vertex Color correspondence is ambiguous for multi-color mesh '{meshName}'. " +
             polygonCountContext +
-            $"Position/color match: {positionColorMismatchReason} " +
-            "UV-only transfer is intentionally disabled because it cannot prove polygon ownership.";
+            $"UV/color match: {uvColorMismatchReason} " +
+            $"Position/color match: {positionColorMismatchReason}";
         return false;
     }
 

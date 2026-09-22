@@ -1419,6 +1419,86 @@ for ($index = 0; $index -lt $expectedTriangulatedColors.Count; $index++) {
     }
 }
 
+# Non-uniform object-space transforms must not block a safe Vertex Color transfer
+# when the FBX quad and triangulated DMX share an unambiguous UV/color surface.
+$streamColumnType = $sidecarType.GetNestedType('StreamColumn', [Reflection.BindingFlags]::NonPublic)
+if ($null -eq $streamColumnType) {
+    throw 'Vertex Color StreamColumn test type was not found.'
+}
+[System.Numerics.Vector2[]]$quadUvs = @(
+    [System.Numerics.Vector2]::new(0,0),
+    [System.Numerics.Vector2]::new(1,0),
+    [System.Numerics.Vector2]::new(1,1),
+    [System.Numerics.Vector2]::new(0,1)
+)
+$targetUvValues = [object[]]@($quadUvs[0], $quadUvs[1], $quadUvs[2], $quadUvs[3])
+$targetTexcoords = [Activator]::CreateInstance(
+    $streamColumnType,
+    [object[]]@(
+        [type][System.Numerics.Vector2[]],
+        $targetUvValues,
+        [int[]]@(0,1,2,0,2,3),
+        $true))
+$sourcePolygonsWithUvs = [Array]::CreateInstance($fbxPolygonType, 1)
+$sourcePolygonsWithUvs.SetValue(
+    [Activator]::CreateInstance(
+        $fbxPolygonType,
+        [object[]]@([int[]]@(0,1,2,3), $sourceColors, $quadUvs)),
+    0)
+[System.Numerics.Vector3[]]$nonUniformDmxPositions = @(
+    [System.Numerics.Vector3]::new(0,0,0),
+    [System.Numerics.Vector3]::new(2,0,0),
+    [System.Numerics.Vector3]::new(2,3,0),
+    [System.Numerics.Vector3]::new(0,3,0)
+)
+$uvFallbackArgs = [object[]]@(
+    'triangulated_nonuniform_quad',
+    $targetPolygonsForTriangulation,
+    $sourcePolygonsWithUvs,
+    $targetTexcoords,
+    $nonUniformDmxPositions,
+    $quadPositions,
+    $null,
+    $null
+)
+if (-not [bool]$matchPolygonColors.Invoke($null, $uvFallbackArgs)) {
+    throw "UV Vertex Color fallback rejected a transformed triangulated surface: $($uvFallbackArgs[7])"
+}
+$uvFallbackColors = $uvFallbackArgs[6]
+for ($index = 0; $index -lt $expectedTriangulatedColors.Count; $index++) {
+    if (-not $uvFallbackColors[$index].Equals($expectedTriangulatedColors[$index])) {
+        throw "UV Vertex Color fallback mismatch at corner $index."
+    }
+}
+
+# Overlapping UVs are safe only when they resolve to one color. A conflicting
+# UV/color pair must still fail instead of silently assigning the wrong paint.
+[System.Numerics.Vector2[]]$ambiguousUvs = @(
+    [System.Numerics.Vector2]::new(0,0),
+    [System.Numerics.Vector2]::new(0,0),
+    [System.Numerics.Vector2]::new(1,1),
+    [System.Numerics.Vector2]::new(0,1)
+)
+$ambiguousSourcePolygons = [Array]::CreateInstance($fbxPolygonType, 1)
+$ambiguousSourcePolygons.SetValue(
+    [Activator]::CreateInstance(
+        $fbxPolygonType,
+        [object[]]@([int[]]@(0,1,2,3), $sourceColors, $ambiguousUvs)),
+    0)
+$ambiguousUvArgs = [object[]]@(
+    'ambiguous_uv_quad',
+    $targetPolygonsForTriangulation,
+    $ambiguousSourcePolygons,
+    $targetTexcoords,
+    $nonUniformDmxPositions,
+    $quadPositions,
+    $null,
+    $null
+)
+if ([bool]$matchPolygonColors.Invoke($null, $ambiguousUvArgs)) {
+    throw 'UV Vertex Color fallback accepted one UV mapped to conflicting source colors.'
+}
+
 $skeletonFilterType = $assembly.GetType('Deadlimit.Core.DmxSkeletonShapeFilter', $true)
 $findJointShapes = $skeletonFilterType.GetMethod(
     'FindJointShapeMeshIds',
