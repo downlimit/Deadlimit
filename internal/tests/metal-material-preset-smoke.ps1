@@ -237,4 +237,41 @@ finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+# Regression: the later project-texture synchronization pass must not erase inline
+# Source 2 vector constants written by the material-name modifier.
+$bindingType = $assembly.GetType('Deadlimit.Core.ProjectTextureBindingService', $true)
+$reconcileUnbound = $bindingType.GetMethod(
+    'ReconcileUnboundStandardTextureValues',
+    [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Static)
+if ($null -eq $reconcileUnbound) {
+    throw 'ProjectTextureBindingService.ReconcileUnboundStandardTextureValues was not found.'
+}
+$unboundSemantics = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$syncLog = [Text.StringBuilder]::new()
+$inlineVectorVmat = @'
+Layer0
+{
+    "TextureMetalness1" "[0.800000 0.800000 0.800000 0.000000]"
+}
+'@
+$inlineArgs = [object[]]@($inlineVectorVmat, $unboundSemantics, $true, $syncLog, 0)
+$inlineAfterSync = [string]$reconcileUnbound.Invoke($null, $inlineArgs)
+if ($inlineAfterSync -notmatch '"TextureMetalness1"\s+"\[0\.800000 0\.800000 0\.800000 0\.000000\]"' -or
+    [int]$inlineArgs[4] -ne 0) {
+    throw "Project texture sync erased an inline TextureMetalness1 vector constant.`n$inlineAfterSync"
+}
+
+$staleTextureVmat = @'
+Layer0
+{
+    "TextureMetalness1" "materials/test/missing_metalness.png"
+}
+'@
+$staleArgs = [object[]]@($staleTextureVmat, $unboundSemantics, $true, [Text.StringBuilder]::new(), 0)
+$staleAfterSync = [string]$reconcileUnbound.Invoke($null, $staleArgs)
+if ($staleAfterSync -notmatch '"TextureMetalness1"\s+"\[0\.000000 0\.000000 0\.000000 0\.000000\]"' -or
+    [int]$staleArgs[4] -ne 1) {
+    throw "Project texture sync stopped neutralizing an unbound texture path.`n$staleAfterSync"
+}
+
 Write-Host 'Metal material-name preset and lifecycle smoke passed.'
