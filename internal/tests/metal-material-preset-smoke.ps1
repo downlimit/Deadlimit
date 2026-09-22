@@ -22,7 +22,7 @@ $vertexColorSource = @'
 Layer0
 {
     "TextureRoughness1" "[0.800000 0.800000 0.800000 0.000000]"
-    "g_flMetalness" "0.000"
+    "TextureMetalness1" "[0.000000 0.000000 0.000000 0.000000]"
 }
 '@
 $vertexColorMetal = Invoke-MaterialPreset $vertexColorSource 'materials/test/armor_vertexcolor_metal.vmat' $true
@@ -32,8 +32,11 @@ if ($vertexColorMetal -notmatch '"TextureRoughness1"\s+"\[0\.501961 0\.501961 0\
 if (([regex]::Matches($vertexColorMetal, 'TextureRoughness1')).Count -ne 1 -or $vertexColorMetal -match 'TextureRoughness1[^\r\n]*0\.800000') {
     throw "Vertex-color metal preset left a duplicate/stale Roughness assignment.`n$vertexColorMetal"
 }
-if ($vertexColorMetal -notmatch '"g_flMetalness"\s+"0\.800"') {
-    throw "Vertex-color metal preset did not set Metalness to 0.800.`n$vertexColorMetal"
+if ($vertexColorMetal -notmatch '"TextureMetalness1"\s+"\[0\.800000 0\.800000 0\.800000 0\.000000\]"') {
+    throw "Vertex-color metal preset did not set TextureMetalness1 to 0.800.`n$vertexColorMetal"
+}
+if ($vertexColorMetal -match 'g_flMetalness') {
+    throw "Vertex-color metal preset still writes the obsolete g_flMetalness parameter.`n$vertexColorMetal"
 }
 if ($vertexColorMetal -match 'g_flGlossiness') {
     throw "Vertex-color metal preset still writes the obsolete glossiness parameter.`n$vertexColorMetal"
@@ -43,7 +46,7 @@ $standardSource = @'
 Layer0
 {
     TextureRoughness "[0.800000 0.800000 0.800000 0.000000]"
-    g_flMetalness "0.000"
+    TextureMetalness "[0.000000 0.000000 0.000000 0.000000]"
 }
 '@
 $standardMetal = Invoke-MaterialPreset $standardSource 'materials/test/armor_metal.vmat' $false
@@ -53,8 +56,26 @@ if ($standardMetal -notmatch 'TextureRoughness\s+"\[0\.501961 0\.501961 0\.50196
 if (([regex]::Matches($standardMetal, 'TextureRoughness')).Count -ne 1 -or $standardMetal -match 'TextureRoughness[^\r\n]*0\.800000') {
     throw "Standard metal preset left a duplicate/stale Roughness assignment.`n$standardMetal"
 }
-if ($standardMetal -notmatch 'g_flMetalness\s+"0\.800"') {
-    throw "Standard metal preset did not set Metalness to 0.800.`n$standardMetal"
+if ($standardMetal -notmatch 'TextureMetalness\s+"\[0\.800000 0\.800000 0\.800000 0\.000000\]"') {
+    throw "Standard metal preset did not set TextureMetalness to 0.800.`n$standardMetal"
+}
+if ($standardMetal -match 'g_flMetalness') {
+    throw "Standard metal preset still writes the obsolete g_flMetalness parameter.`n$standardMetal"
+}
+
+$materialEditorVertexColor = @'
+// THIS FILE IS AUTO-GENERATED
+Layer0
+{
+    shader "pbr.vfx"
+    F_VERTEX_COLOR 1
+    TextureMetalness1 "[1.000000 1.000000 1.000000 0.000000]"
+    TextureRoughness1 "[0.800000 0.800000 0.800000 0.000000]"
+}
+'@
+$materialEditorMetal = Invoke-MaterialPreset $materialEditorVertexColor 'materials/hotpot_head_vertexcolor_metalness' $true
+if ($materialEditorMetal -notmatch 'TextureMetalness1\s+"\[0\.800000 0\.800000 0\.800000 0\.000000\]"') {
+    throw "Material Editor-shaped vertex-color VMAT did not receive the metalness suffix preset.\n$materialEditorMetal"
 }
 
 $plain = Invoke-MaterialPreset $vertexColorSource 'materials/test/armor_vertexcolor.vmat' $true
@@ -92,7 +113,7 @@ try {
 Layer0
 {
     "TextureRoughness1" "[0.800000 0.800000 0.800000 0.000000]"
-    "g_flMetalness" "0.000"
+    "TextureMetalness1" "[0.000000 0.000000 0.000000 0.000000]"
 }
 '@
     Set-Content -LiteralPath $materialPath -Value $managedVmat -Encoding utf8NoBOM
@@ -114,7 +135,7 @@ Layer0
     [void]$saveRegistry.Invoke($null, [object[]]@($manifest, $ownershipArray))
 
     $migrated = Get-Content -LiteralPath $materialPath -Raw
-    if ($migrated -notmatch '"g_flMetalness"\s+"0\.800"') {
+    if ($migrated -notmatch '"TextureMetalness1"\s+"\[0\.800000 0\.800000 0\.800000 0\.000000\]"') {
         throw "Registry-owned managed VMAT did not receive the one-time Metalness preset.`n$migrated"
     }
     if ($migrated -notmatch '"TextureRoughness1"\s+"\[0\.501961 0\.501961 0\.501961 0\.000000\]"') {
@@ -122,7 +143,7 @@ Layer0
     }
 
     $loaded = $loadRegistry.Invoke($null, [object[]]@($manifest))
-    if ($loaded.Materials.Count -ne 1 -or $loaded.Materials[0].NameModifierRevision -ne 1) {
+    if ($loaded.Materials.Count -ne 1 -or $loaded.Materials[0].NameModifierRevision -ne 2) {
         throw 'One-time name-modifier migration revision was not persisted.'
     }
 
@@ -138,17 +159,17 @@ Layer0
     $currentArray = [Array]::CreateInstance($ownershipType, 1)
     $currentArray.SetValue($currentOwnership, 0)
     $merged = $mergeOwnership.Invoke($null, [object[]]@($loaded, $currentArray))
-    if ($merged.Count -ne 1 -or $merged[0].NameModifierRevision -ne 1) {
+    if ($merged.Count -ne 1 -or $merged[0].NameModifierRevision -ne 2) {
         throw 'Saved name-modifier revision was lost while merging current DMX ownership.'
     }
 
-    $manualVmat = $migrated -replace '"g_flMetalness"\s+"0\.800"', '"g_flMetalness" "0.000"'
+    $manualVmat = $migrated -replace '"TextureMetalness1"\s+"\[0\.800000 0\.800000 0\.800000 0\.000000\]"', '"TextureMetalness1" "[0.000000 0.000000 0.000000 0.000000]"'
     $manualVmat = $manualVmat -replace '"TextureRoughness1"\s+"\[0\.501961 0\.501961 0\.501961 0\.000000\]"', '"TextureRoughness1" "[0.900000 0.900000 0.900000 0.000000]"'
     Set-Content -LiteralPath $materialPath -Value $manualVmat -Encoding utf8NoBOM
     [void]$saveRegistry.Invoke($null, [object[]]@($manifest, $merged))
 
     $afterManual = Get-Content -LiteralPath $materialPath -Raw
-    if ($afterManual -notmatch '"g_flMetalness"\s+"0\.000"' -or
+    if ($afterManual -notmatch '"TextureMetalness1"\s+"\[0\.000000 0\.000000 0\.000000 0\.000000\]"' -or
         $afterManual -notmatch '"TextureRoughness1"\s+"\[0\.900000 0\.900000 0\.900000 0\.000000\]"') {
         throw "A completed name-modifier revision overwrote a later manual material edit.`n$afterManual"
     }
@@ -162,7 +183,7 @@ Layer0
 Layer0
 {
     "TextureRoughness1" "[0.900000 0.900000 0.900000 0.000000]"
-    "g_flMetalness" "0.000"
+    "TextureMetalness1" "[0.000000 0.000000 0.000000 0.000000]"
 }
 '@
     Set-Content -LiteralPath $materialPath -Value $legacyVertexColorVmat -Encoding utf8NoBOM
@@ -171,16 +192,16 @@ Layer0
     if (-not $promoted.StartsWith('// DEADLIMIT_MANAGED_CUSTOM_VMAT_V5_PENDING', [StringComparison]::Ordinal)) {
         throw "Registry-owned vertex-color VMAT was not promoted before custom-material reconcile.`n$promoted"
     }
-    if ($promoted -notmatch '"g_flMetalness"\s+"0\.000"' -or
+    if ($promoted -notmatch '"TextureMetalness1"\s+"\[0\.000000 0\.000000 0\.000000 0\.000000\]"' -or
         $promoted -notmatch '"TextureRoughness1"\s+"\[0\.900000 0\.900000 0\.900000 0\.000000\]"') {
         throw "Vertex-color marker promotion changed manual material parameters.`n$promoted"
     }
-    if ($loadedAfterLegacyMarker.Materials[0].NameModifierRevision -ne 1) {
+    if ($loadedAfterLegacyMarker.Materials[0].NameModifierRevision -ne 2) {
         throw 'Vertex-color marker promotion lost the completed name-modifier revision.'
     }
     [void]$saveRegistry.Invoke($null, [object[]]@($manifest, $merged))
     $afterPromotedSave = Get-Content -LiteralPath $materialPath -Raw
-    if ($afterPromotedSave -notmatch '"g_flMetalness"\s+"0\.000"' -or
+    if ($afterPromotedSave -notmatch '"TextureMetalness1"\s+"\[0\.000000 0\.000000 0\.000000 0\.000000\]"' -or
         $afterPromotedSave -notmatch '"TextureRoughness1"\s+"\[0\.900000 0\.900000 0\.900000 0\.000000\]"') {
         throw "A promoted vertex-color material lost its later manual parameter edits.`n$afterPromotedSave"
     }
@@ -192,7 +213,7 @@ Layer0
 Layer0
 {
     "TextureRoughness1" "[0.900000 0.900000 0.900000 0.000000]"
-    "g_flMetalness" "0.000"
+    "TextureMetalness1" "[0.000000 0.000000 0.000000 0.000000]"
 }
 '@
     Set-Content -LiteralPath $unmarkedPath -Value $unmarkedVmat -Encoding utf8NoBOM
@@ -207,7 +228,7 @@ Layer0
     $unmarkedArray.SetValue($unmarkedOwnership, 0)
     [void]$saveRegistry.Invoke($null, [object[]]@($manifest, $unmarkedArray))
     $unmarkedAfter = Get-Content -LiteralPath $unmarkedPath -Raw
-    if ($unmarkedAfter -notmatch '"g_flMetalness"\s+"0\.000"' -or
+    if ($unmarkedAfter -notmatch '"TextureMetalness1"\s+"\[0\.000000 0\.000000 0\.000000 0\.000000\]"' -or
         $unmarkedAfter -notmatch '"TextureRoughness1"\s+"\[0\.900000 0\.900000 0\.900000 0\.000000\]"') {
         throw 'Unmarked registry-owned VMAT was incorrectly treated as safe for automatic preset migration.'
     }

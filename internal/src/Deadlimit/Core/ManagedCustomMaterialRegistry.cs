@@ -308,9 +308,9 @@ internal static class ManagedCustomMaterialRegistryStore
 
 internal static class ManagedMaterialNameModifierPolicy
 {
-    internal const int CurrentRevision = 1;
+    internal const int CurrentRevision = 2;
 
-    private const string MetalPresetValue = "0.800";
+    private const string MetalPresetMetalness = "[0.800000 0.800000 0.800000 0.000000]";
     private const string MetalPresetRoughness = "[0.501961 0.501961 0.501961 0.000000]";
 
     private static readonly string[] DeadlimitOwnedMarkerPrefixes =
@@ -353,7 +353,10 @@ internal static class ManagedMaterialNameModifierPolicy
             return text;
         }
 
-        var patched = UpsertStringParameter(text, "g_flMetalness", MetalPresetValue);
+        var patched = UpsertTextureAssignment(
+            text,
+            vertexColor ? "TextureMetalness1" : "TextureMetalness",
+            MetalPresetMetalness);
         return UpsertTextureAssignment(
             patched,
             vertexColor ? "TextureRoughness1" : "TextureRoughness",
