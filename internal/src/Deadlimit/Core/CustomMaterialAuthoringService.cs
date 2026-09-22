@@ -22,7 +22,7 @@ public sealed class CustomMaterialAuthoringService
     private const string VertexColorGeneratedMarker = "// DEADLIMIT_VERTEXCOLOR_VMAT_V1";
     private const string VertexColorManagedComment = "// Deadlimit vertex-color material: mesh vertex color drives base color; project color textures are intentionally ignored.";
     private const string VertexColorTemplateMaterial = "materials/dev/vertcolor_pbr_basic.vmat";
-    private const string MetalPresetValue = "0.800";
+    private const string MetalPresetMetalness = "[0.800000 0.800000 0.800000 0.000000]";
     private const string MetalPresetRoughness = "[0.501961 0.501961 0.501961 0.000000]";
     private const string NeutralColor = "[0.500000 0.500000 0.500000 0.000000]";
     private const string NeutralWhite = "[1.000000 1.000000 1.000000 0.000000]";
@@ -1001,7 +1001,8 @@ public sealed class CustomMaterialAuthoringService
         return text;
     }
 
-    var patched = UpsertStringParameter(text, "g_flMetalness", MetalPresetValue);
+    var metalnessKey = vertexColorMode ? "TextureMetalness1" : "TextureMetalness";
+    var patched = UpsertTextureAssignment(text, metalnessKey, MetalPresetMetalness);
     var roughnessKey = vertexColorMode ? "TextureRoughness1" : "TextureRoughness";
     return UpsertTextureAssignment(patched, roughnessKey, MetalPresetRoughness);
 }
