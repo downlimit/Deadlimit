@@ -1226,6 +1226,17 @@ rootNode =
                         ]
                     }
                 },
+                {
+                    _class = "ClothChain"
+                    root_bone = "$cloth_missing"
+                    chain =
+                    {
+                        joints =
+                        [
+                            { joint_name = "$cloth_missing" simulate = false },
+                        ]
+                    }
+                },
             ]
         },
     ]
@@ -1245,11 +1256,15 @@ rootNode =
     $clothNameText = [IO.File]::ReadAllText($clothNameTemp)
     if (($clothNameResult.BoneRemaps.Count -ne 2) -or
         ($clothNameResult.RewrittenReferenceCount -ne 4) -or
+        ($clothNameResult.RemovedIncompatibleChainCount -ne 1) -or
+        ($clothNameResult.RemovedIncompatibleChainRoots.Count -ne 1) -or
+        ($clothNameResult.RemovedIncompatibleChainRoots[0] -ne '$cloth_missing') -or
         $clothNameText.Contains('$cloth_m0p130') -or
         $clothNameText.Contains('$cloth_m0p62') -or
+        $clothNameText.Contains('$cloth_missing') -or
         (-not $clothNameText.Contains('_cloth_m0p130')) -or
         (-not $clothNameText.Contains('_cloth_m0p62'))) {
-        throw "Wall Worm cloth bone aliases were not reconciled safely.\n$clothNameText"
+        throw "Wall Worm cloth compatibility was not reconciled safely.\n$clothNameText"
     }
     if (-not $clothNameText.Contains('$cloth_keep')) {
         throw 'A valid retail $cloth_* bone was rewritten even though the artist skeleton still contains it.'
@@ -1260,8 +1275,9 @@ rootNode =
         $null,
         [object[]]@([string]$clothNameTemp, $artistJoints))
     if (($stableClothNameResult.RewrittenReferenceCount -ne 0) -or
+        ($stableClothNameResult.RemovedIncompatibleChainCount -ne 0) -or
         ([IO.File]::ReadAllText($clothNameTemp) -ne $stableClothNameText)) {
-        throw 'Wall Worm cloth bone-name reconciliation is not idempotent.'
+        throw 'Wall Worm cloth compatibility reconciliation is not idempotent.'
     }
 }
 finally {
@@ -1273,6 +1289,9 @@ foreach ($required in @(
     'ReadArtistDmxJointNames(',
     'artistJointNames.Contains(retailName)',
     'var wallWormName = "_" + retailName[1..]',
+    'unresolvedProceduralBones',
+    'ExpandClothChainRemovalRange(',
+    'RemovedIncompatibleChainCount',
     'RetailClothReadResult.Empty',
     'FindLossyClothFeatures')) {
     if (-not $retailPhysicsSource.Contains($required)) {
@@ -1284,8 +1303,10 @@ if (-not $prepareSource.Contains('Retail physics warning:')) {
     throw 'Retail physics warnings are not surfaced by clean prepare.'
 }
 if ((-not $prepareSource.Contains('ReconcileWallWormClothBoneNames(')) -or
-    (-not $prepareSource.Contains('cloth bone alias'))) {
-    throw 'PREPARE does not reconcile Wall Worm _cloth_* names against retail $cloth_* ClothChain references.'
+    (-not $prepareSource.Contains('cloth bone alias')) -or
+    (-not $prepareSource.Contains('incompatible retail chains removed')) -or
+    (-not $prepareSource.Contains('skipped incompatible retail ClothChain root'))) {
+    throw 'PREPARE does not reconcile Wall Worm _cloth_* names and reject incompatible retail $cloth_* chains.'
 }
 if ($retailPhysicsSource.Contains('name = "Retail ragdoll joints"')) {
     throw 'Physics joints must be direct PhysicsJointList children; a Folder causes ResourceCompiler to drop them.'

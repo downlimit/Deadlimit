@@ -20,7 +20,9 @@ public sealed record RetailPhysicsInitializationResult(
 public sealed record ClothBoneNameReconciliationResult(
     int ArtistJointCount,
     int RewrittenReferenceCount,
-    IReadOnlyDictionary<string, string> BoneRemaps);
+    IReadOnlyDictionary<string, string> BoneRemaps,
+    int RemovedIncompatibleChainCount,
+    IReadOnlyList<string> RemovedIncompatibleChainRoots);
 
 public static class RetailPhysicsAuthoringService
 {
@@ -214,12 +216,16 @@ public static class RetailPhysicsAuthoringService
             return new ClothBoneNameReconciliationResult(
                 0,
                 0,
-                new Dictionary<string, string>(StringComparer.Ordinal));
+                new Dictionary<string, string>(StringComparer.Ordinal),
+                0,
+                Array.Empty<string>());
         }
 
         var original = File.ReadAllText(vmdlPath);
-        var replacements = new List<(int Start, int Length, string Text)>();
+        var edits = new List<(int Start, int Length, string Text)>();
         var remaps = new Dictionary<string, string>(StringComparer.Ordinal);
+        var removedChainRoots = new List<string>();
+        var rewrittenReferenceCount = 0;
 
         foreach (Match classMatch in ClothChainClassRegex.Matches(original))
         {
@@ -238,9 +244,12 @@ public static class RetailPhysicsAuthoringService
             var block = original[blockStart..(blockEnd + 1)];
             if (ClothChainClassRegex.Matches(block).Count != 1)
             {
+                // Parent ClothChain containers are handled through their leaf children.
                 continue;
             }
 
+            var chainRemaps = new Dictionary<string, string>(StringComparer.Ordinal);
+            var chainRewriteCount = 0;
             var rewritten = ClothBoneReferenceRegex.Replace(
                 block,
                 match =>
@@ -257,45 +266,98 @@ public static class RetailPhysicsAuthoringService
                         return match.Value;
                     }
 
-                    remaps.TryAdd(retailName, wallWormName);
+                    chainRemaps.TryAdd(retailName, wallWormName);
+                    chainRewriteCount++;
                     return match.Groups["prefix"].Value
                            + wallWormName
                            + match.Groups["suffix"].Value;
                 });
 
+            // VRF/Wall Worm source DMX uses _cloth_* for procedural cloth bones.
+            // If a retail ClothChain still contains $cloth_* after exact aliasing,
+            // the corresponding bone is absent from the artist skeleton and the
+            // chain cannot compile. Remove that incompatible chain rather than
+            // handing ResourceCompiler a guaranteed "Bone ... not found" failure.
+            var unresolvedProceduralBones = ClothBoneReferenceRegex.Matches(rewritten)
+                .Select(match => match.Groups["name"].Value)
+                .Where(name => !artistJointNames.Contains(name))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (unresolvedProceduralBones.Length > 0)
+            {
+                var rootMatch = ClothRootBoneRegex.Match(rewritten);
+                var rootName = rootMatch.Success
+                    ? rootMatch.Groups["name"].Value
+                    : unresolvedProceduralBones[0];
+                removedChainRoots.Add(rootName);
+
+                var removal = ExpandClothChainRemovalRange(original, blockStart, blockEnd);
+                edits.Add((removal.Start, removal.Length, string.Empty));
+                continue;
+            }
+
+            foreach (var remap in chainRemaps)
+            {
+                remaps.TryAdd(remap.Key, remap.Value);
+            }
+            rewrittenReferenceCount += chainRewriteCount;
+
             if (!string.Equals(block, rewritten, StringComparison.Ordinal))
             {
-                replacements.Add((blockStart, block.Length, rewritten));
+                edits.Add((blockStart, block.Length, rewritten));
             }
         }
 
-        if (replacements.Count == 0)
+        if (edits.Count > 0)
         {
-            return new ClothBoneNameReconciliationResult(
-                artistJointNames.Count,
-                0,
-                remaps);
+            var patched = new StringBuilder(original);
+            foreach (var edit in edits.OrderByDescending(item => item.Start))
+            {
+                patched.Remove(edit.Start, edit.Length);
+                patched.Insert(edit.Start, edit.Text);
+            }
+
+            File.WriteAllText(
+                vmdlPath,
+                patched.ToString(),
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         }
-
-        var patched = new StringBuilder(original);
-        foreach (var replacement in replacements.OrderByDescending(item => item.Start))
-        {
-            patched.Remove(replacement.Start, replacement.Length);
-            patched.Insert(replacement.Start, replacement.Text);
-        }
-
-        File.WriteAllText(
-            vmdlPath,
-            patched.ToString(),
-            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-
-        var rewrittenReferenceCount = ClothBoneReferenceRegex.Matches(original)
-            .Count(match => remaps.ContainsKey(match.Groups["name"].Value));
 
         return new ClothBoneNameReconciliationResult(
             artistJointNames.Count,
             rewrittenReferenceCount,
-            remaps);
+            remaps,
+            removedChainRoots.Count,
+            removedChainRoots);
+    }
+
+    private static (int Start, int Length) ExpandClothChainRemovalRange(
+        string text,
+        int blockStart,
+        int blockEnd)
+    {
+        var endExclusive = blockEnd + 1;
+        while (endExclusive < text.Length
+               && (text[endExclusive] == ' ' || text[endExclusive] == '\t'))
+        {
+            endExclusive++;
+        }
+
+        if (endExclusive < text.Length && text[endExclusive] == ',')
+        {
+            endExclusive++;
+        }
+
+        if (endExclusive < text.Length && text[endExclusive] == '\r')
+        {
+            endExclusive++;
+        }
+        if (endExclusive < text.Length && text[endExclusive] == '\n')
+        {
+            endExclusive++;
+        }
+
+        return (blockStart, endExclusive - blockStart);
     }
 
     private static HashSet<string> ReadArtistDmxJointNames(IEnumerable<string> artistDmxPaths)
