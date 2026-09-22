@@ -25,27 +25,7 @@ internal static class BinaryFbxVertexColorReader
 
     public static IReadOnlyList<FbxVertexColorMesh> Read(string path)
     {
-        using var stream = File.OpenRead(path);
-        using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
-
-        var header = reader.ReadBytes(Header.Length);
-        if (!header.AsSpan().SequenceEqual(Header))
-        {
-            throw new InvalidDataException("Vertex-color FBX is not an Autodesk Binary FBX file.");
-        }
-
-        var version = reader.ReadUInt32();
-        var roots = new List<FbxNode>();
-        while (stream.Position < stream.Length)
-        {
-            var node = ReadNode(reader, version);
-            if (node is null)
-            {
-                break;
-            }
-
-            roots.Add(node);
-        }
+        var roots = ReadRoots(path);
 
         var objects = roots.FirstOrDefault(node => node.Name == "Objects")
             ?? throw new InvalidDataException("Binary FBX has no Objects section.");
@@ -131,6 +111,97 @@ internal static class BinaryFbxVertexColorReader
         }
 
         return result;
+    }
+
+    public static IReadOnlySet<string> ReadJointNames(string path)
+    {
+        var roots = ReadRoots(path);
+        var objects = roots.FirstOrDefault(node => node.Name == "Objects")
+            ?? throw new InvalidDataException("Binary FBX has no Objects section.");
+        var connections = roots.FirstOrDefault(node => node.Name == "Connections");
+
+        var modelNodes = objects.Children
+            .Where(node => node.Name == "Model" && node.Properties.Count >= 3)
+            .ToArray();
+        var modelNamesById = modelNodes.ToDictionary(
+            node => ReadInt64(node.Properties[0], "model id"),
+            node => NormalizeObjectName(ReadString(node.Properties[1], "model name"), "Model::"));
+        var names = modelNodes
+            .Where(node =>
+            {
+                var modelType = ReadString(node.Properties[2], "model type");
+                return string.Equals(modelType, "LimbNode", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(modelType, "Root", StringComparison.OrdinalIgnoreCase);
+            })
+            .Select(node => NormalizeObjectName(ReadString(node.Properties[1], "model name"), "Model::"))
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.Ordinal);
+
+        if (connections is null)
+        {
+            return names;
+        }
+
+        var clusterIds = objects.Children
+            .Where(node => node.Name == "Deformer"
+                && node.Properties.Count >= 3
+                && string.Equals(
+                    ReadString(node.Properties[2], "deformer type"),
+                    "Cluster",
+                    StringComparison.OrdinalIgnoreCase))
+            .Select(node => ReadInt64(node.Properties[0], "cluster deformer id"))
+            .ToHashSet();
+        if (clusterIds.Count == 0)
+        {
+            return names;
+        }
+
+        foreach (var connection in connections.Children.Where(node =>
+                     node.Name == "C"
+                     && node.Properties.Count >= 3
+                     && string.Equals(
+                         ReadString(node.Properties[0], "connection type"),
+                         "OO",
+                         StringComparison.Ordinal)))
+        {
+            var child = ReadInt64(connection.Properties[1], "connection child id");
+            var parent = ReadInt64(connection.Properties[2], "connection parent id");
+            if (clusterIds.Contains(parent)
+                && modelNamesById.TryGetValue(child, out var modelName)
+                && !string.IsNullOrWhiteSpace(modelName))
+            {
+                names.Add(modelName);
+            }
+        }
+
+        return names;
+    }
+
+    private static IReadOnlyList<FbxNode> ReadRoots(string path)
+    {
+        using var stream = File.OpenRead(path);
+        using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
+
+        var header = reader.ReadBytes(Header.Length);
+        if (!header.AsSpan().SequenceEqual(Header))
+        {
+            throw new InvalidDataException("FBX is not an Autodesk Binary FBX file.");
+        }
+
+        var version = reader.ReadUInt32();
+        var roots = new List<FbxNode>();
+        while (stream.Position < stream.Length)
+        {
+            var node = ReadNode(reader, version);
+            if (node is null)
+            {
+                break;
+            }
+
+            roots.Add(node);
+        }
+
+        return roots;
     }
 
     private static FbxNode? ReadNode(BinaryReader reader, uint version)

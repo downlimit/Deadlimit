@@ -73,6 +73,55 @@ internal static partial class AsciiFbxVertexColorReader
         return result;
     }
 
+    public static IReadOnlySet<string> ReadJointNames(string path)
+    {
+        if (BinaryFbxVertexColorReader.IsBinary(path))
+        {
+            return BinaryFbxVertexColorReader.ReadJointNames(path);
+        }
+
+        var text = File.ReadAllText(path);
+        if (!text.StartsWith("; FBX", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("Skeleton FBX must use Autodesk ASCII or Binary FBX format.");
+        }
+
+        var modelMatches = ModelRegex().Matches(text).Cast<Match>().ToArray();
+        var modelNamesById = modelMatches.ToDictionary(
+            match => ParseInt64(match.Groups[1].Value, "model id"),
+            match => match.Groups[2].Value);
+        var names = modelMatches
+            .Where(match =>
+                string.Equals(match.Groups[3].Value, "LimbNode", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(match.Groups[3].Value, "Root", StringComparison.OrdinalIgnoreCase))
+            .Select(match => match.Groups[2].Value)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.Ordinal);
+
+        var clusterIds = ClusterDeformerRegex().Matches(text)
+            .Cast<Match>()
+            .Select(match => ParseInt64(match.Groups[1].Value, "cluster deformer id"))
+            .ToHashSet();
+        if (clusterIds.Count == 0)
+        {
+            return names;
+        }
+
+        foreach (Match connection in ObjectConnectionRegex().Matches(text))
+        {
+            var child = ParseInt64(connection.Groups[1].Value, "connection child id");
+            var parent = ParseInt64(connection.Groups[2].Value, "connection parent id");
+            if (clusterIds.Contains(parent)
+                && modelNamesById.TryGetValue(child, out var modelName)
+                && !string.IsNullOrWhiteSpace(modelName))
+            {
+                names.Add(modelName);
+            }
+        }
+
+        return names;
+    }
+
     private static Dictionary<long, FbxModel> ParseModels(string text)
     {
         var result = new Dictionary<long, FbxModel>();
@@ -581,9 +630,14 @@ internal static partial class AsciiFbxVertexColorReader
     private static partial Regex MeshModelRegex();
 
     [GeneratedRegex(
-        @"(?m)^\s*Model:\s*(-?\d+),\s*""Model::([^""]+)"",\s*""[^""]+""\s*\{",
+        @"(?m)^\s*Model:\s*(-?\d+),\s*""Model::([^""]+)"",\s*""([^""]+)""\s*\{",
         RegexOptions.CultureInvariant)]
     private static partial Regex ModelRegex();
+
+    [GeneratedRegex(
+        @"(?m)^\s*Deformer:\s*(-?\d+),\s*""(?:Deformer|SubDeformer)::[^""]*"",\s*""Cluster""\s*\{",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex ClusterDeformerRegex();
 
     [GeneratedRegex(
         @"(?m)^\s*C:\s*""OO"",\s*(-?\d+),\s*(-?\d+)\s*$",
