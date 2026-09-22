@@ -1499,6 +1499,62 @@ if ([bool]$matchPolygonColors.Invoke($null, $ambiguousUvArgs)) {
     throw 'UV Vertex Color fallback accepted one UV mapped to conflicting source colors.'
 }
 
+# Real Wall Worm pairs can have no usable UVs, split DMX control points, triangulated
+# FBX quads, and an exporter axis-frame mismatch at the same time. Prove the whole
+# point cloud under signed-axis permutation + independent axis scale before using
+# source control-point colors.
+$axisTargetPolygons = [Array]::CreateInstance($targetPolygonType, 2)
+$axisTargetPolygons.SetValue(
+    [Activator]::CreateInstance($targetPolygonType, [object[]]@([int[]]@(0,1,2), [int[]]@(0,1,2))),
+    0)
+$axisTargetPolygons.SetValue(
+    [Activator]::CreateInstance($targetPolygonType, [object[]]@([int[]]@(3,4,5), [int[]]@(3,4,5))),
+    1)
+[System.Numerics.Vector3[]]$axisTargetPositions = @(
+    [System.Numerics.Vector3]::new(0.0,0.0,0.0),
+    [System.Numerics.Vector3]::new(1.0,0.2,0.1),
+    [System.Numerics.Vector3]::new(1.1,2.0,0.4),
+    [System.Numerics.Vector3]::new(0.0,0.0,0.0),
+    [System.Numerics.Vector3]::new(1.1,2.0,0.4),
+    [System.Numerics.Vector3]::new(-0.1,1.8,-0.2)
+)
+[System.Numerics.Vector3[]]$axisSourcePositions = @(
+    [System.Numerics.Vector3]::new(5.0,10.0,-4.0),
+    [System.Numerics.Vector3]::new(5.2,7.0,-3.9),
+    [System.Numerics.Vector3]::new(5.8,6.7,-3.0),
+    [System.Numerics.Vector3]::new(4.6,10.3,-3.1)
+)
+$axisFallbackArgs = [object[]]@(
+    'axis_swizzled_split_quad',
+    $axisTargetPolygons,
+    $sourcePolygonsForTriangulation,
+    $null,
+    $axisTargetPositions,
+    $axisSourcePositions,
+    $null,
+    $null
+)
+if (-not [bool]$matchPolygonColors.Invoke($null, $axisFallbackArgs)) {
+    throw "Axis-aware Vertex Color fallback rejected a fully matching point cloud: $($axisFallbackArgs[7])"
+}
+$axisFallbackColors = $axisFallbackArgs[6]
+for ($index = 0; $index -lt $expectedTriangulatedColors.Count; $index++) {
+    if (-not $axisFallbackColors[$index].Equals($expectedTriangulatedColors[$index])) {
+        throw "Axis-aware Vertex Color fallback mismatch at corner $index."
+    }
+}
+
+$vertexColorSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/VertexColorSidecarService.cs' -Raw
+foreach ($required in @(
+    'TryMapAxisAwareSplitControlPoints(',
+    'signed-axis permutation',
+    'independent axis scale',
+    'More than one signed-axis/non-uniform transform produces a different exact point correspondence.')) {
+    if (-not $vertexColorSource.Contains($required)) {
+        throw "Axis-aware Vertex Color point-map safety contract is missing: $required"
+    }
+}
+
 $skeletonFilterType = $assembly.GetType('Deadlimit.Core.DmxSkeletonShapeFilter', $true)
 $findJointShapes = $skeletonFilterType.GetMethod(
     'FindJointShapeMeshIds',
