@@ -263,11 +263,16 @@ public sealed class PrepareAuthoringService
                 sourceCopy.DestinationVmdlPath,
                 rootDmxFiles);
             log.AppendLine(
-                $"Wall Worm cloth bone-name reconciliation: artist joints={clothBoneNames.ArtistJointCount}; " +
-                $"rewritten references={clothBoneNames.RewrittenReferenceCount}; distinct aliases={clothBoneNames.BoneRemaps.Count}");
+                $"Wall Worm cloth compatibility: artist joints={clothBoneNames.ArtistJointCount}; " +
+                $"rewritten references={clothBoneNames.RewrittenReferenceCount}; distinct aliases={clothBoneNames.BoneRemaps.Count}; " +
+                $"incompatible retail chains removed={clothBoneNames.RemovedIncompatibleChainCount}");
             foreach (var remap in clothBoneNames.BoneRemaps.OrderBy(pair => pair.Key, StringComparer.Ordinal))
             {
                 log.AppendLine($"  cloth bone alias {remap.Key} -> {remap.Value}");
+            }
+            foreach (var root in clothBoneNames.RemovedIncompatibleChainRoots)
+            {
+                log.AppendLine($"  skipped incompatible retail ClothChain root {root}");
             }
 
             if (options.Resets(PrepareResetSections.Effects))
