@@ -1311,6 +1311,37 @@ public static class VertexColorSidecarService
         out int[] targetToSource,
         out string mismatchReason)
     {
+        if (TryMapUniformSplitControlPoints(
+                targets,
+                sources,
+                out targetToSource,
+                out mismatchReason))
+        {
+            return true;
+        }
+
+        var uniformReason = mismatchReason;
+        if (TryMapAxisAwareSplitControlPoints(
+                targets,
+                sources,
+                out targetToSource,
+                out var axisReason))
+        {
+            mismatchReason = string.Empty;
+            return true;
+        }
+
+        targetToSource = Array.Empty<int>();
+        mismatchReason = uniformReason + " Axis-aware fallback: " + axisReason;
+        return false;
+    }
+
+    private static bool TryMapUniformSplitControlPoints(
+        IReadOnlyList<Vector3> targets,
+        IReadOnlyList<Vector3> sources,
+        out int[] targetToSource,
+        out string mismatchReason)
+    {
         targetToSource = Array.Empty<int>();
         if (targets.Count == 0 || sources.Count == 0)
         {
@@ -1360,17 +1391,165 @@ public static class VertexColorSidecarService
         }
 
         var translation = sourceMin - (targetMin * scale);
+        return TryMapTransformedPointCloud(
+            targets,
+            sources,
+            position => (position * scale) + translation,
+            out targetToSource,
+            out mismatchReason);
+    }
+
+    private static bool TryMapAxisAwareSplitControlPoints(
+        IReadOnlyList<Vector3> targets,
+        IReadOnlyList<Vector3> sources,
+        out int[] targetToSource,
+        out string mismatchReason)
+    {
+        targetToSource = Array.Empty<int>();
+        if (targets.Count == 0 || sources.Count == 0)
+        {
+            mismatchReason = "One position set is empty.";
+            return false;
+        }
+
+        var targetMin = GetBoundsMin(targets);
+        var targetMax = GetBoundsMax(targets);
+        var sourceMin = GetBoundsMin(sources);
+        var sourceMax = GetBoundsMax(sources);
+        var targetExtent = targetMax - targetMin;
+        var sourceExtent = sourceMax - sourceMin;
+
+        var permutations = new[]
+        {
+            new[] { 0, 1, 2 },
+            new[] { 0, 2, 1 },
+            new[] { 1, 0, 2 },
+            new[] { 1, 2, 0 },
+            new[] { 2, 0, 1 },
+            new[] { 2, 1, 0 },
+        };
+
+        var distinctMappings = new List<int[]>();
+        foreach (var permutation in permutations)
+        {
+            for (var signMask = 0; signMask < 8; signMask++)
+            {
+                var scales = new float[3];
+                var translations = new float[3];
+                var validTransform = true;
+                for (var sourceAxis = 0; sourceAxis < 3; sourceAxis++)
+                {
+                    var targetAxis = permutation[sourceAxis];
+                    var targetAxisExtent = GetAxisComponent(targetExtent, targetAxis);
+                    var sourceAxisExtent = GetAxisComponent(sourceExtent, sourceAxis);
+                    if (Math.Abs(targetAxisExtent) <= 0.000001f
+                        && Math.Abs(sourceAxisExtent) <= 0.000001f)
+                    {
+                        scales[sourceAxis] = 1f;
+                    }
+                    else if (Math.Abs(targetAxisExtent) <= 0.000001f
+                             || Math.Abs(sourceAxisExtent) <= 0.000001f)
+                    {
+                        validTransform = false;
+                        break;
+                    }
+                    else
+                    {
+                        scales[sourceAxis] = sourceAxisExtent / targetAxisExtent;
+                        if (!float.IsFinite(scales[sourceAxis]) || scales[sourceAxis] <= 0)
+                        {
+                            validTransform = false;
+                            break;
+                        }
+                    }
+
+                    var sign = (signMask & (1 << sourceAxis)) == 0 ? 1f : -1f;
+                    var targetLow = GetAxisComponent(targetMin, targetAxis);
+                    var targetHigh = GetAxisComponent(targetMax, targetAxis);
+                    var mappedLow = sign > 0
+                        ? targetLow * scales[sourceAxis]
+                        : -targetHigh * scales[sourceAxis];
+                    translations[sourceAxis] =
+                        GetAxisComponent(sourceMin, sourceAxis) - mappedLow;
+                }
+
+                if (!validTransform)
+                {
+                    continue;
+                }
+
+                Vector3 Transform(Vector3 position)
+                {
+                    var xSign = (signMask & 1) == 0 ? 1f : -1f;
+                    var ySign = (signMask & 2) == 0 ? 1f : -1f;
+                    var zSign = (signMask & 4) == 0 ? 1f : -1f;
+                    return new Vector3(
+                        (xSign * GetAxisComponent(position, permutation[0]) * scales[0]) + translations[0],
+                        (ySign * GetAxisComponent(position, permutation[1]) * scales[1]) + translations[1],
+                        (zSign * GetAxisComponent(position, permutation[2]) * scales[2]) + translations[2]);
+                }
+
+                if (!TryMapTransformedPointCloud(
+                        targets,
+                        sources,
+                        Transform,
+                        out var candidate,
+                        out _))
+                {
+                    continue;
+                }
+
+                if (distinctMappings.Any(existing => existing.SequenceEqual(candidate)))
+                {
+                    continue;
+                }
+
+                distinctMappings.Add(candidate);
+                if (distinctMappings.Count > 1)
+                {
+                    targetToSource = Array.Empty<int>();
+                    mismatchReason =
+                        "More than one signed-axis/non-uniform transform produces a different exact point correspondence.";
+                    return false;
+                }
+            }
+        }
+
+        if (distinctMappings.Count == 0)
+        {
+            mismatchReason =
+                "No signed-axis permutation with independent axis scale maps the DMX point cloud exactly onto the FBX point cloud.";
+            return false;
+        }
+
+        targetToSource = distinctMappings[0];
+        mismatchReason = string.Empty;
+        return true;
+    }
+
+    private static bool TryMapTransformedPointCloud(
+        IReadOnlyList<Vector3> targets,
+        IReadOnlyList<Vector3> sources,
+        Func<Vector3, Vector3> transform,
+        out int[] targetToSource,
+        out string mismatchReason)
+    {
+        targetToSource = Array.Empty<int>();
+        var sourceMin = GetBoundsMin(sources);
+        var sourceMax = GetBoundsMax(sources);
         var sourceDiagonal = Vector3.Distance(sourceMin, sourceMax);
         var tolerance = Math.Max(0.0002f, sourceDiagonal * 0.00002f);
-        var buckets = sources
+        var sourceBuckets = sources
             .Select((position, index) => (Key: QuantizePosition(position, tolerance), Index: index))
             .GroupBy(item => item.Key)
             .ToDictionary(group => group.Key, group => group.Select(item => item.Index).ToArray());
+
+        var transformedTargets = new Vector3[targets.Count];
         var mapping = new int[targets.Count];
-        var usedSources = new HashSet<int>();
         for (var targetIndex = 0; targetIndex < targets.Count; targetIndex++)
         {
-            var transformed = (targets[targetIndex] * scale) + translation;
+            var transformed = transform(targets[targetIndex]);
+            transformedTargets[targetIndex] = transformed;
             var key = QuantizePosition(transformed, tolerance);
             var bestSource = -1;
             var bestDistance = float.PositiveInfinity;
@@ -1378,7 +1557,7 @@ public static class VertexColorSidecarService
             for (var y = -1; y <= 1; y++)
             for (var z = -1; z <= 1; z++)
             {
-                if (!buckets.TryGetValue((key.X + x, key.Y + y, key.Z + z), out var candidates))
+                if (!sourceBuckets.TryGetValue((key.X + x, key.Y + y, key.Z + z), out var candidates))
                 {
                     continue;
                 }
@@ -1401,25 +1580,49 @@ public static class VertexColorSidecarService
             }
 
             mapping[targetIndex] = bestSource;
-            usedSources.Add(bestSource);
         }
 
-        var transformedTargets = targets
-            .Select(position => (position * scale) + translation)
-            .ToArray();
-        var unmatchedSourceCount = sources.Count(source =>
-            !transformedTargets.Any(target => Vector3.Distance(target, source) <= tolerance));
-        if (unmatchedSourceCount != 0)
+        var targetBuckets = transformedTargets
+            .Select((position, index) => (Key: QuantizePosition(position, tolerance), Index: index))
+            .GroupBy(item => item.Key)
+            .ToDictionary(group => group.Key, group => group.Select(item => item.Index).ToArray());
+        foreach (var source in sources)
         {
-            mismatchReason =
-                $"FBX has {unmatchedSourceCount} position(s) with no exact DMX match.";
-            return false;
+            var key = QuantizePosition(source, tolerance);
+            var covered = false;
+            for (var x = -1; x <= 1 && !covered; x++)
+            for (var y = -1; y <= 1 && !covered; y++)
+            for (var z = -1; z <= 1 && !covered; z++)
+            {
+                if (!targetBuckets.TryGetValue((key.X + x, key.Y + y, key.Z + z), out var candidates))
+                {
+                    continue;
+                }
+
+                covered = candidates.Any(index =>
+                    Vector3.Distance(source, transformedTargets[index]) <= tolerance);
+            }
+
+            if (!covered)
+            {
+                mismatchReason = "FBX has position(s) with no exact DMX point-cloud match.";
+                return false;
+            }
         }
 
         targetToSource = mapping;
         mismatchReason = string.Empty;
         return true;
     }
+
+    private static float GetAxisComponent(Vector3 value, int axis) =>
+        axis switch
+        {
+            0 => value.X,
+            1 => value.Y,
+            2 => value.Z,
+            _ => throw new ArgumentOutOfRangeException(nameof(axis)),
+        };
 
     private static Vector3 GetBoundsMin(IReadOnlyList<Vector3> positions) =>
         new(
