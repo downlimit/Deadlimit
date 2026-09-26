@@ -2,6 +2,36 @@
 
 This file records concrete local build results. Hero-specific observations remain scoped to the tested project until separately validated.
 
+## 2026-09-25 — Dynamo procedural cloth compatibility
+
+The extracted Dynamo render DMX contains 151 procedural jacket joints renamed by the VRF/Wall Worm path from `$cloth_*` to `_cloth_*`. Those joints are direct children of the DMX model because their physical parent relationships live in the retail `ClothChain` data rather than the render-skeleton DAG.
+
+Retail PHYS also contains 37 fixed, non-simulated controls that do not influence the render mesh and are consequently absent from the extracted DMX. Removing an entire `ClothChain` when one of those controls is absent discarded the jacket chains. PREPARE now materializes the missing fixed controls as hidden artist-compatible joints in each prepared cloth DMX. A conservative leaf-pruning fallback remains for old prepared input; structural or simulated missing controls still reject their individual incompatible chain.
+
+Dynamo's compiled FE model also contains 152 `m_NodeBases` entries. Each entry identifies one driven joint, two points for its X basis, two points for its Y basis, and the compiled quaternion adjustment. The earlier `ClothChain`-only reconstruction discarded this orientation graph and asked ResourceCompiler to infer bases from the render-skeleton hierarchy. That produced different neighbors and large quaternion differences, visible in ModelDoc as jacket chains rolling around their length as soon as simulation started.
+
+PREPARE now emits an explicit ModelDoc `ClothNode` alignment override for every recoverable `m_NodeBases` entry. The override uses ModelDoc's 2D Cross alignment and the four retail neighbor references; ResourceCompiler derives the original quaternion from the prepared bind pose. This preserves the existing chain simulation parameters while restoring the compiled orientation bases.
+
+`m_SourceElems` is not treated as a triangle list. A prototype that grouped it in threes produced disconnected starburst geometry, while ModelDoc and Valve's own tool help support both `ClothQuad` and `ClothTri` authoring nodes. Quads describe regular four-node cloth patches; tris cover three-node gaps or irregular boundaries. The compiled Dynamo resource does not retain enough authored polygon information to choose between them safely, so PREPARE does not fabricate either topology.
+
+Validated against HotPotDynamo:
+
+```text
+Retail ClothChain count: 10
+Retained ClothChain count: 10
+Missing fixed cloth helper joints materialized: 37
+Prepared DMX files updated with helpers: 4
+$cloth_* -> _cloth_* references rewritten: 188
+Missing fixed leaf controls pruned by fallback: 0
+Incompatible chains removed: 0
+ResourceCompiler: 1 compiled, 0 failed, exit code 0
+Retail node bases recovered: 152 / 152
+Retail node-base neighbor tuples matched after compile: 152 / 152
+Minimum absolute quaternion dot product versus retail: 0.9999999376
+```
+
+ResourceCompiler still reports the retail-derived chain-axis and eight-to-four skin-weight warnings for this model. The explicit node bases remove the orientation inference responsible for the visible cloth roll; the remaining warnings do not prevent compilation and do not alter the recovered bases.
+
 ## 2026-09-17 — compiled FE physics inheritance
 
 Current behavior: when ResourceCompiler produces a complete authored cloth FE graph, BUILD & TEST validates and preserves the compiled `PHYS` block byte-for-byte, including authored rigid bodies and joints. Retail rigid-body/secondary-motion restoration remains only as a compatibility fallback for compiled models without authored cloth topology.
