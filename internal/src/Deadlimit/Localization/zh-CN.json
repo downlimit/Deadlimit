@@ -115,7 +115,7 @@
   "Could not launch Deadlock": "无法启动 Deadlock",
   "Open the selected project's root folder in Explorer.\n\nDouble-clicking the project in the Library opens the same folder.": "在文件资源管理器中打开所选项目的根文件夹。\n\n在项目库中双击该项目也会打开同一文件夹。",
   "Open extraction options for the selected hero, then extract the chosen current retail resources into 0source.\n\nThe dialog lets you choose textures, abilities / VFX, portraits and UI, and whether an existing 0source refresh keeps a backup.": "打开所选英雄的提取选项，然后将选定的当前游戏资源提取到 0source。\n\n对话框可选择纹理、技能 / VFX、头像和 UI，并决定刷新现有 0source 时是否保留备份。",
-  "Save this project's metadata, hero, Release ID and current DMX/PNG file list.\n\nAfter a successful save, hero selection is locked again to protect the project from accidental changes.": "保存此项目的元数据、英雄、Release ID 以及当前 DMX/PNG 文件列表。\n\n保存成功后会重新锁定英雄选择，防止误改项目。",
+  "Save this project's selected hero and Release ID.\n\nAfter a successful save, hero selection is locked again to protect the project from accidental changes.": "保存此项目所选的英雄和 Release ID。\n\n保存成功后会重新锁定英雄选择，防止误改项目。",
   "Game-client VPK release slot: 01-99. Type the number directly or change it with the arrows by ±1.\n\nThe slot becomes part of the deployed VPK filename, for example Release ID 07 → pak07_dir.vpk.": "游戏客户端 VPK 发布槽位：01-99。可直接输入数字，或使用箭头按 ±1 调整。\n\n该槽位会成为部署后的 VPK 文件名的一部分，例如 Release ID 07 → pak07_dir.vpk。",
   "Library": "项目库",
   "JSON ERROR": "JSON 错误",

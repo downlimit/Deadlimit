@@ -121,6 +121,32 @@ $saveState = Get-Content -LiteralPath $saveStatePath -Raw
 if ($saveState.Contains('form.Activated +=', [StringComparison]::Ordinal)) {
     throw 'Project save-state scanning must not run from form activation.'
 }
+foreach ($forbidden in @(
+    'ProjectScanner.Scan(folder)',
+    'manifest.DmxFiles',
+    'manifest.FbxFiles',
+    'manifest.GltfFiles',
+    'manifest.PngTextures',
+    'SequenceEqualIgnoreCase('
+)) {
+    if ($saveState.Contains($forbidden, [StringComparison]::Ordinal)) {
+        throw "SAVE PROJECT must not become dirty from authoring-file changes: $forbidden"
+    }
+}
+foreach ($required in @(
+    'return hero.Length > 0',
+    'NormalizeReleaseId(manifest.ReleaseTarget)',
+    'Model and texture files are tracked automatically.'
+)) {
+    $source = if ($required -eq 'Model and texture files are tracked automatically.') {
+        Get-Content -LiteralPath (Join-Path $appDir 'TooltipCopyPolicy.cs') -Raw
+    } else {
+        $saveState
+    }
+    if (-not $source.Contains($required, [StringComparison]::Ordinal)) {
+        throw "SAVE PROJECT metadata-only dirty-state contract is missing: $required"
+    }
+}
 
 $header = Get-Content -LiteralPath $headerPath -Raw
 if ($header.Contains('form.Activated +=', [StringComparison]::Ordinal)) {
