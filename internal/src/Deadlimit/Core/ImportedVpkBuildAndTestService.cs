@@ -29,7 +29,7 @@ internal sealed class ImportedVpkBuildAndTestService
         log.AppendLine($"Project: {manifest.ProjectName}");
         log.AppendLine($"Hero: {manifest.Hero}");
         log.AppendLine($"Release slot: {manifest.ReleaseTarget}");
-        log.AppendLine("Mode: compiled payload (no CSDK authoring or ResourceCompiler)");
+        log.AppendLine("Mode: reconstructed 1authoring with byte-exact compiled baseline");
         log.AppendLine();
 
         try
@@ -45,7 +45,17 @@ internal sealed class ImportedVpkBuildAndTestService
             log.AppendLine($"Existing retail VPK owned by project: {slotCheck.OwnedByProject}");
 
             cancellationToken.ThrowIfCancellationRequested();
-            Report(progress, 15, LocalizedText.T(
+            Report(progress, 7, LocalizedText.T(
+                "Checking reconstructed 1authoring for imported-project changes...",
+                "Проверка изменений в восстановленном 1authoring импортированного проекта..."));
+            var authoringBuild = new ImportedVpkAuthoringBuildService(_paths)
+                .PrepareCompiledTree(manifest, log, progress, cancellationToken);
+            log.AppendLine($"Reconstructed authoring recompiled: {authoringBuild.Recompiled}");
+            log.AppendLine($"Reconstructed authoring files: {authoringBuild.SourceFileCount}");
+            log.AppendLine($"Compiled entries changed/added by authoring: {authoringBuild.ChangedCompiledEntryCount}");
+
+            cancellationToken.ThrowIfCancellationRequested();
+            Report(progress, 38, LocalizedText.T(
                 "Inspecting compiled model animation bindings against current retail Deadlock...",
                 "Проверка animation bindings compiled-моделей по актуальному retail Deadlock..."));
             var inspection = new ImportedVpkRepairInspectionService(_paths).InspectAndSave(manifest);
@@ -70,7 +80,7 @@ internal sealed class ImportedVpkBuildAndTestService
             if (eligible.Length > 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                Report(progress, 35, LocalizedText.T(
+                Report(progress, 52, LocalizedText.T(
                     $"Repairing current-retail animation bindings in {eligible.Length} compiled model(s)...",
                     $"Исправление animation bindings по retail в compiled-моделях: {eligible.Length}..."));
                 var repair = new ImportedVpkAnimationBindingRepairService(_paths).Repair(manifest);
@@ -85,28 +95,32 @@ internal sealed class ImportedVpkBuildAndTestService
             }
             else
             {
-                // A previous successful repair report is Stage 9 provenance for payload
-                // bytes that intentionally differ from the imported source. Do not
+                // A previous successful repair report is provenance for compiled bytes
+                // that intentionally differ from their authoring-build baseline. Do not
                 // overwrite that report with a no-op repair run.
                 log.AppendLine("No binding repair required; existing repair provenance was preserved unchanged.");
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            Report(progress, 58, LocalizedText.T(
-                "Verifying preserved payload and rebuilding the VPK...",
-                "Проверка сохранённого payload и пересборка VPK..."));
+            Report(progress, 70, LocalizedText.T(
+                "Verifying imported files and rebuilding the VPK...",
+                "Проверка импортированных файлов и пересборка VPK..."));
             var repack = new ImportedVpkRepackService().RebuildAndVerify(manifest, cancellationToken);
             log.AppendLine($"Repacked VPK: {repack.OutputVpkPath}");
             log.AppendLine($"VPK version: {repack.OutputVpkVersion}");
             log.AppendLine($"Payload entries: {repack.EntryCount}");
-            log.AppendLine($"Entries differing from imported source due to recorded repair: {repack.ChangedEntryCount}");
+            log.AppendLine($"Entries differing from imported source with verified provenance: {repack.ChangedEntryCount}");
+            foreach (var entry in repack.Entries.Where(entry => entry.Status == ImportedVpkRepackEntryStatus.RebuiltFromAuthoring))
+            {
+                log.AppendLine($"  rebuilt from 1authoring: {entry.InternalPath}");
+            }
             foreach (var entry in repack.Entries.Where(entry => entry.Status == ImportedVpkRepackEntryStatus.Repaired))
             {
                 log.AppendLine($"  repaired entry: {entry.InternalPath}");
             }
 
             cancellationToken.ThrowIfCancellationRequested();
-            Report(progress, 78, LocalizedText.T(
+            Report(progress, 86, LocalizedText.T(
                 "Deploying verified VPK into the adopted retail release slot...",
                 "Установка проверенного VPK в принятый retail release-слот..."));
             var deployedVpk = DeployVerifiedRepack(
@@ -131,14 +145,11 @@ internal sealed class ImportedVpkBuildAndTestService
             log.AppendLine($"VPK deployed: {deployedVpk}");
             File.WriteAllText(logPath, log.ToString());
 
-            // Keep the established BuildAndTestResult contract unchanged. Imported
-            // projects compile no authoring source; Ag2Applied indicates whether this
-            // run changed compiled model binding bytes.
             return new BuildAndTestResult(
                 manifest.ProjectName,
-                CompiledSourceCount: 0,
+                CompiledSourceCount: authoringBuild.Recompiled ? authoringBuild.SourceFileCount : 0,
                 RemovedCompiledOutputCount: 0,
-                FullRebuild: false,
+                FullRebuild: authoringBuild.Recompiled,
                 Ag2Applied: repairedCount > 0,
                 warnings,
                 deployedVpk,
@@ -188,10 +199,7 @@ internal sealed class ImportedVpkBuildAndTestService
         _ = ImportedVpkPayloadService.TryLoadSnapshot(manifest.ProjectFolder)
             ?? throw new InvalidOperationException(
                 "The imported project's original-vpk.json snapshot is missing or invalid.");
-        var payloadRoot = SafePath.ResolveUnderRoot(
-            manifest.ProjectFolder,
-            ImportedVpkPayloadService.PayloadFolderName,
-            "Imported VPK payload folder");
+        var payloadRoot = ImportedVpkPayloadService.ResolveCompiledFolder(manifest.ProjectFolder);
         if (!Directory.Exists(payloadRoot))
         {
             throw new DirectoryNotFoundException(payloadRoot);

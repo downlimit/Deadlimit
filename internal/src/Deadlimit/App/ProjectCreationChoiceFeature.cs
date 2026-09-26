@@ -164,12 +164,12 @@ internal static class ProjectCreationChoiceFeature
                 break;
 
             case ProjectEntryChoice.ImportVpk:
-                ContinueAfterChoice(() => SelectVpkImportSource(form));
+                ContinueAfterChoice(() => _ = SelectVpkImportSourceAsync(form, sender));
                 break;
         }
     }
 
-    private static void SelectVpkImportSource(MainForm form)
+    private static async Task SelectVpkImportSourceAsync(MainForm form, Button addButton)
     {
         var settings = ProjectStore.GetToolPathSettings();
         var retailAddons = Path.Combine(
@@ -202,23 +202,106 @@ internal static class ProjectCreationChoiceFeature
             return;
         }
 
+        addButton.Enabled = false;
         VpkImportCandidate candidate;
         VpkImportIdentity identity;
-        ImportedVpkProjectResult importedProject;
         try
         {
-            candidate = VpkImportSourceValidator.Validate(dialog.FileName);
-            identity = VpkImportIdentityService.Infer(candidate);
-            importedProject = ImportedVpkProjectService.Create(candidate, identity, settings.ProjectsRoot);
+            using var inspectionProgress = new VpkImportProgressPresenter(form);
+            inspectionProgress.Update(new ImportedVpkImportProgress(
+                UiText.T("Inspecting the selected VPK...", "Проверка выбранного VPK..."),
+                2));
+            (candidate, identity) = await Task.Run(() =>
+            {
+                var validated = VpkImportSourceValidator.Validate(dialog.FileName);
+                return (validated, VpkImportIdentityService.Infer(validated));
+            });
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
+            addButton.Enabled = true;
             MessageBox.Show(
                 form,
                 exception.Message,
                 UiText.T("Could not import VPK", "Не удалось импортировать VPK"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
+            return;
+        }
+
+        using var nameDialog = new ImportedVpkProjectNameDialog(
+            identity.SuggestedFolderName,
+            settings.UiTheme);
+        WindowProgressFeature.ReportStatus(
+            form,
+            UiText.T(
+                "VPK inspected. Enter the project name.",
+                "VPK проверен. Введите название проекта."));
+        if (nameDialog.ShowDialog(form) != DialogResult.OK)
+        {
+            addButton.Enabled = true;
+            WindowProgressFeature.ReportStatus(
+                form,
+                UiText.T("VPK import cancelled.", "Импорт VPK отменён."));
+            return;
+        }
+
+        ImportedVpkProjectResult importedProject;
+        using var cancellation = new CancellationTokenSource();
+        void CancelWhenClosed(object? _, FormClosedEventArgs __) => cancellation.Cancel();
+        form.FormClosed += CancelWhenClosed;
+        try
+        {
+            using var operation = ApplicationMutationCoordinator.Begin("IMPORT VPK");
+            using var importProgress = new VpkImportProgressPresenter(form);
+            var progress = new Progress<ImportedVpkImportProgress>(importProgress.Update);
+            importedProject = await Task.Run(
+                () => ImportedVpkProjectService.Create(
+                    candidate,
+                    identity,
+                    settings.ProjectsRoot,
+                    nameDialog.ProjectName,
+                    progress,
+                    cancellation.Token),
+                cancellation.Token);
+            importProgress.Update(new ImportedVpkImportProgress(
+                UiText.T("VPK project import complete.", "Импорт проекта из VPK завершён."),
+                100));
+        }
+        catch (OperationCanceledException)
+        {
+            if (!form.IsDisposed)
+            {
+                WindowProgressFeature.ReportStatus(
+                    form,
+                    UiText.T("VPK import cancelled.", "Импорт VPK отменён."));
+            }
+            return;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            if (!form.IsDisposed)
+            {
+                MessageBox.Show(
+                    form,
+                    exception.Message,
+                    UiText.T("Could not import VPK", "Не удалось импортировать VPK"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+            return;
+        }
+        finally
+        {
+            form.FormClosed -= CancelWhenClosed;
+            if (!addButton.IsDisposed)
+            {
+                addButton.Enabled = true;
+            }
+        }
+
+        if (form.IsDisposed)
+        {
             return;
         }
 
@@ -276,8 +359,8 @@ internal static class ProjectCreationChoiceFeature
         MessageBox.Show(
             form,
             UiText.T(
-                $"Imported VPK project created.\n\nProject: {manifest.ProjectName}\nHero: {hero}\nRelease ID: {releaseId}\nPrimary model: {primaryModel}\nPreserved files: {manifest.ImportedVpk!.SourceEntryCount}\nPayload: {importedProject.PayloadFolder}\nSHA-256: {manifest.ImportedVpk.OriginalVpkSha256}\n\nThe original VPK entry manifest is stored in .deadlimit/original-vpk.json.",
-                $"Проект из VPK создан.\n\nПроект: {manifest.ProjectName}\nГерой: {hero}\nRelease ID: {releaseId}\nОсновная модель: {primaryModel}\nСохранено файлов: {manifest.ImportedVpk!.SourceEntryCount}\nPayload: {importedProject.PayloadFolder}\nSHA-256: {manifest.ImportedVpk.OriginalVpkSha256}\n\nСписок исходных VPK-файлов и их хэшей сохранён в .deadlimit/original-vpk.json."),
+                $"Imported VPK project created.\n\nProject: {manifest.ProjectName}\nHero: {hero}\nRelease ID: {releaseId}\nPrimary model: {primaryModel}\nPreserved files: {manifest.ImportedVpk!.SourceEntryCount}\nWorking files: {importedProject.AuthoringFolder}\nSHA-256: {manifest.ImportedVpk.OriginalVpkSha256}\n\nThe original VPK entry manifest is stored in .deadlimit/original-vpk.json.",
+                $"Проект из VPK создан.\n\nПроект: {manifest.ProjectName}\nГерой: {hero}\nRelease ID: {releaseId}\nОсновная модель: {primaryModel}\nСохранено файлов: {manifest.ImportedVpk!.SourceEntryCount}\nРабочие файлы: {importedProject.AuthoringFolder}\nSHA-256: {manifest.ImportedVpk.OriginalVpkSha256}\n\nСписок исходных VPK-файлов и их хэшей сохранён в .deadlimit/original-vpk.json."),
             UiText.T("VPK project created", "Проект из VPK создан"),
             MessageBoxButtons.OK,
             MessageBoxIcon.Information);
@@ -393,5 +476,161 @@ internal static class ProjectCreationChoiceFeature
             Close();
         }
     }
-}
 
+    private sealed class ImportedVpkProjectNameDialog : Form
+    {
+        private readonly TextBox _nameText = new() { Dock = DockStyle.Fill };
+
+        public ImportedVpkProjectNameDialog(string suggestedName, string theme)
+        {
+            _nameText.Text = suggestedName;
+
+            Text = UiText.T("Import VPK project", "Импорт проекта из VPK");
+            StartPosition = FormStartPosition.CenterParent;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            ClientSize = new Size(470, 150);
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = true;
+            ShowIcon = false;
+
+            BuildUi();
+            UiTheme.ApplyCustomPalette(this, theme);
+            Shown += (_, _) =>
+            {
+                _nameText.Focus();
+                _nameText.SelectAll();
+            };
+        }
+
+        public string ProjectName { get; private set; } = string.Empty;
+
+        private void BuildUi()
+        {
+            var root = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 3,
+                Padding = new Padding(14),
+            };
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+            var label = new Label
+            {
+                Text = UiText.T(
+                    "Project name. This will also be the mod's working folder name.",
+                    "Название проекта. Оно также станет именем рабочей папки мода."),
+                AutoSize = true,
+                Margin = new Padding(0, 0, 0, 6),
+            };
+            _nameText.Margin = new Padding(0, 0, 0, 12);
+
+            var buttons = new FlowLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = true,
+                FlowDirection = FlowDirection.RightToLeft,
+                WrapContents = false,
+            };
+            var cancelButton = new Button
+            {
+                Text = UiText.T("CANCEL", "ОТМЕНА"),
+                AutoSize = true,
+                DialogResult = DialogResult.Cancel,
+            };
+            var importButton = new Button
+            {
+                Text = UiText.T("IMPORT", "ИМПОРТ"),
+                AutoSize = true,
+            };
+            importButton.Click += (_, _) => CompleteImport();
+
+            buttons.Controls.Add(cancelButton);
+            buttons.Controls.Add(importButton);
+            root.Controls.Add(label, 0, 0);
+            root.Controls.Add(_nameText, 0, 1);
+            root.Controls.Add(buttons, 0, 2);
+            Controls.Add(root);
+
+            AcceptButton = importButton;
+            CancelButton = cancelButton;
+        }
+
+        private void CompleteImport()
+        {
+            var name = _nameText.Text.Trim();
+            if (name.Length == 0
+                || Path.IsPathRooted(name)
+                || name.Contains(Path.DirectorySeparatorChar)
+                || name.Contains(Path.AltDirectorySeparatorChar)
+                || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+                || name.EndsWith(' ')
+                || name.EndsWith('.'))
+            {
+                MessageBox.Show(
+                    this,
+                    UiText.T(
+                        "Enter a valid project name without path separators or reserved filename characters.",
+                        "Введите корректное название проекта без разделителей пути и запрещённых символов имени файла."),
+                    UiText.T("Invalid project name", "Некорректное название проекта"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            ProjectName = name;
+            DialogResult = DialogResult.OK;
+            Close();
+        }
+    }
+
+    private sealed class VpkImportProgressPresenter : IDisposable
+    {
+        private readonly MainForm _form;
+        private readonly ToolStripProgressBar? _progressBar;
+        private bool _disposed;
+
+        public VpkImportProgressPresenter(MainForm form)
+        {
+            _form = form;
+            _progressBar = FindDescendants<StatusStrip>(form)
+                .FirstOrDefault()?
+                .Items
+                .OfType<ToolStripProgressBar>()
+                .FirstOrDefault();
+        }
+
+        public void Update(ImportedVpkImportProgress update)
+        {
+            if (_disposed || _form.IsDisposed)
+            {
+                return;
+            }
+
+            if (_progressBar is not null)
+            {
+                _progressBar.Value = Math.Clamp(update.Percent, 0, 100);
+                _progressBar.Visible = true;
+            }
+            WindowProgressFeature.ReportStatus(_form, update.Message);
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            if (_progressBar is not null && !_progressBar.IsDisposed)
+            {
+                _progressBar.Visible = false;
+                _progressBar.Value = 0;
+            }
+        }
+    }
+}

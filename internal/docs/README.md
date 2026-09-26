@@ -21,10 +21,12 @@ Deadlock resources
 → Deadlock
 ```
 
-Existing VPKs can instead be imported as compiled-payload projects. That path preserves
-the imported payload, inspects current model animation bindings against the current
-retail resources, repairs supported binding differences, verifies the rebuilt VPK, and
-deploys through the guarded VPK slot workflow.
+Existing VPKs can instead be imported as round-trip projects. That path reconstructs
+available artist-facing files in `1authoring` and preserves the byte-exact compiled resources
+under hidden project metadata. BUILD FOR TEST reuses the exact baseline when authoring is
+unchanged, or recompiles changed authoring into an isolated project-owned CSDK workspace.
+It then inspects model animation bindings against current retail resources, repairs supported
+binding differences, verifies the rebuilt VPK, and deploys through the guarded VPK slot workflow.
 
 ## Documentation map
 

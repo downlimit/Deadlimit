@@ -10,9 +10,12 @@ This path is deliberately separate from normal DMX/CSDK authoring.
 
 ```text
 Import existing pak##_dir.vpk
-→ preserve compiled payload
+→ preserve a hidden compiled snapshot
+→ reconstruct editable resources in 1authoring
 → identify project / hero / primary model
 → adopt the existing release slot safely
+→ reuse the original compiled snapshot when 1authoring is unchanged
+→ compile changed 1authoring resources into a project-owned CSDK workspace
 → inspect compiled character models
 → compare AG2 / NmSkeleton bindings with current retail resources
 → repair only missing or different bindings
@@ -51,25 +54,42 @@ Before creating a project, Deadlimit Manager:
 2. records its SHA-256 and entry count;
 3. derives the release slot from `pak##_dir.vpk` when possible;
 4. infers the most defensible hero/project identity from compiled model paths;
-5. revalidates the source VPK before extraction so a file changed during import is
+5. asks for the project/mod name, using the inferred identity as the initial value;
+6. revalidates the source VPK before extraction so a file changed during import is
    rejected instead of producing a partial project.
+
+Validation, extraction, and decompilation run outside the UI thread. The main-window
+status area shows the current stage and percentage.
 
 Imported projects use the explicit manifest mode `ImportedVpk`. Existing projects
 remain normal authoring projects.
 
-## Preserved payload
+## Project layout and preserved compiled snapshot
 
-The archive is extracted without decompiling or recompiling its contents:
+Every imported project receives the standard artist-folder layout. Decompiled resources
+are published into `1authoring`; the byte-exact compiled archive contents are kept under
+hidden project metadata for repair and deterministic repacking:
 
 ```text
 <Project>\
-  payload\
-    models\...
-    materials\...
-    ...
+  0source\
+  1authoring\
+    models\... reconstructed VMDL / DMX files
+    materials\... decoded textures and material sources
+  2concept\
+  3scene\
+  4texture\
+  5promo\
+  6temp\
   .deadlimit\
+    imported-compiled\
+      models\... original VMDL_C / mesh resources
+      materials\... original VTEX_C / VMAT_C resources
+    imported-build-compiled\... latest compiled overlay when 1authoring changed
     project.json
     original-vpk.json
+    imported-authoring-map.json
+    imported-authoring-build.json
     repair-inspection.json
     repair-report.json
     repack-report.json
@@ -78,16 +98,25 @@ The archive is extracted without decompiling or recompiling its contents:
 `original-vpk.json` records the original archive identity, VPK version, internal
 path set, per-entry SHA-256, and size.
 
-Extraction uses a staging directory and publishes the payload only after the complete
-entry set has been read successfully. Windows-path collisions and unsafe internal paths
-fail closed.
+`imported-authoring-map.json` records the compiled-to-decompiled correspondence and any
+resource that ValveResourceFormat could not reconstruct. Source 2 texture names such as
+`name_png_307d5341.vtex_c` are decoded as `name.png`. If several compiled variants collapse
+to the same artist-facing name, the first uses the clean name and the remaining lossless
+variants are retained under `_variants/<hash>/`.
+
+Compilation discards some source-authoring information. Reconstructed DMX, VMDL, and
+images are therefore editable representations; they cannot guarantee the exact original
+folder split, source filenames, or pre-compilation channel layout.
+
+Extraction uses staging directories and publishes both layers only after the complete
+entry set has been read. Windows-path collisions and unsafe internal paths fail closed.
 
 ## Release-slot adoption
 
 If the imported source is an existing `pak##_dir.vpk`, Deadlimit Manager may adopt
 that slot for the imported project.
 
-Adoption happens only after the raw payload snapshot exists. The current deployed VPK
+Adoption happens only after the raw compiled snapshot exists. The current deployed VPK
 must still match the imported source identity before ownership is recorded. Replacing
 the slot externally with unrelated bytes restores the normal ownership conflict instead
 of allowing a silent overwrite.
@@ -127,23 +156,25 @@ For each eligible model Deadlimit Manager:
 6. reinspects the result and requires the repaired target to compare as
    `BindingsAlreadyCurrent`.
 
-If verification fails, committed payload changes are rolled back. Models whose
+If verification fails, committed compiled-snapshot changes are rolled back. Models whose
 bindings already match retail are not serialized or rewritten.
 
 The repair report records the before/after SHA-256 and whether each target changed.
 
 ## Repack verification
 
-Repacking uses ValvePak and treats the original VPK snapshot as an invariant.
+Repacking uses ValvePak and treats the original VPK snapshot plus recorded authoring-build
+provenance as invariants.
 
 Before accepting an output Deadlimit Manager verifies that:
 
-- the payload contains the same internal path set as the imported archive;
-- an entry differs only when a recorded repair explains the change;
+- all original internal paths remain present;
+- additional paths come only from a recorded `1authoring` build;
+- an entry differs only when a recorded authoring build or binding repair explains the change;
 - unchanged entries retain their original bytes/hash;
 - the rebuilt archive exposes the expected path set;
 - VPK hashes/checksums verify;
-- bytes read back from the rebuilt archive match the verified payload;
+- bytes read back from the rebuilt archive match the verified compiled snapshot;
 - the original VPK version is preserved when supported.
 
 The verified rebuild is committed from a staging VPK family so an incomplete package
@@ -153,18 +184,30 @@ does not replace the accepted output.
 
 Imported projects use `ImportedVpkBuildAndTestService`.
 
-They **do not** run:
+They skip the normal hero-authoring stages:
 
 - normal authoring PREPARE;
 - DMX preparation;
 - ModelDoc generation;
-- ResourceCompiler recompilation of the imported mod.
+- normal hero template generation and Live Sync setup.
+
+`1authoring` is the editable input for imported-project BUILD FOR TEST. Deadlimit compares
+its current paths, sizes, and hashes with the baseline recorded during import. An unchanged
+tree reuses the byte-exact original compiled snapshot. A changed tree is copied into a
+project-owned CSDK addon and its Source 2 resources are rebuilt with ResourceCompiler over
+the original compiled baseline. This preserves compiled resources that could not be
+reconstructed while publishing changed and newly added authoring resources.
+
+The authoring-build report records every compiled path changed or added by this stage.
+Repacking rejects unexplained compiled mutations, missing original paths, stale build
+reports, and extra files without authoring provenance.
 
 The imported build path validates project/slot state, repairs eligible bindings,
 rebuilds and verifies the VPK, deploys transactionally to the adopted retail slot, and
 records deployment ownership.
 
-Authoring-only actions are disabled while an imported VPK project is selected.
+SAVE PROJECT, EXTRACT HERO SOURCE, and PREPARE FOR CSDK remain disabled while an imported
+VPK project is selected. BUILD FOR TEST remains available.
 
 ## Evidence and limits
 

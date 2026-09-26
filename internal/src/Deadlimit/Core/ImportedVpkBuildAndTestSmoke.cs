@@ -106,7 +106,7 @@ internal static class ImportedVpkBuildAndTestSmoke
             }
             var provenanceBeforeSecond = File.ReadAllBytes(repairReport);
             var payloadModelPath = SafePath.ResolveUnderRoot(
-                Path.Combine(projectFolder, ImportedVpkPayloadService.PayloadFolderName),
+                ImportedVpkPayloadService.ResolveCompiledFolder(projectFolder),
                 ResourcePath.Replace('/', Path.DirectorySeparatorChar),
                 "Imported Build smoke payload model");
             var payloadBeforeSecond = File.ReadAllBytes(payloadModelPath);

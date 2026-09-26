@@ -7,6 +7,7 @@ namespace Deadlimit.Core;
 public enum ImportedVpkRepackEntryStatus
 {
     Unchanged,
+    RebuiltFromAuthoring,
     Repaired,
 }
 
@@ -64,10 +65,7 @@ public sealed class ImportedVpkRepackService
         var original = ImportedVpkPayloadService.TryLoadSnapshot(manifest.ProjectFolder)
             ?? throw new InvalidOperationException(
                 "The imported VPK source snapshot is missing or invalid. Re-import the source VPK before rebuilding it.");
-        var payloadRoot = SafePath.ResolveUnderRoot(
-            manifest.ProjectFolder,
-            ImportedVpkPayloadService.PayloadFolderName,
-            "Imported VPK payload folder");
+        var payloadRoot = ImportedVpkPayloadService.ResolveCompiledFolder(manifest.ProjectFolder);
         if (!Directory.Exists(payloadRoot))
         {
             throw new DirectoryNotFoundException(payloadRoot);
@@ -76,8 +74,21 @@ public sealed class ImportedVpkRepackService
         var expected = original.Entries.ToDictionary(
             entry => NormalizeVpkPath(entry.InternalPath),
             StringComparer.Ordinal);
+        var authoringSnapshot = ImportedVpkAuthoringBuildService.TryLoadSnapshot(manifest.ProjectFolder);
+        var authoringByPath = (authoringSnapshot?.Entries ?? [])
+            .GroupBy(entry => NormalizeVpkPath(entry.InternalPath), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Last(),
+                StringComparer.OrdinalIgnoreCase);
+        var expectedPaths = expected.Keys
+            .Concat(authoringByPath.Values
+                .Where(entry => entry.OriginalSha256 is null)
+                .Select(entry => NormalizeVpkPath(entry.InternalPath)))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
         var payloadFiles = EnumeratePayload(payloadRoot, cancellationToken);
-        ValidatePathSet(expected.Keys, payloadFiles.Keys);
+        ValidatePathSet(expectedPaths, payloadFiles.Keys);
 
         var repairSnapshot = TryLoadRepairSnapshot(manifest.ProjectFolder);
         var repairedByPath = (repairSnapshot?.Entries ?? [])
@@ -88,7 +99,9 @@ public sealed class ImportedVpkRepackService
                 group => group.Last(),
                 StringComparer.OrdinalIgnoreCase);
 
-        var entries = new List<ImportedVpkRepackEntry>(expected.Count);
+        var entries = new List<ImportedVpkRepackEntry>(expectedPaths.Length);
+        var consumedAuthoringPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var consumedRepairPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var originalEntry in original.Entries.OrderBy(entry => entry.InternalPath, StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -110,48 +123,116 @@ public sealed class ImportedVpkRepackService
                 continue;
             }
 
-            if (!repairedByPath.TryGetValue(path, out var repair))
+            authoringByPath.TryGetValue(path, out var authoringEntry);
+            if (repairedByPath.TryGetValue(path, out var repair)
+                && string.Equals(repair.AfterSha256, payloadHash, StringComparison.OrdinalIgnoreCase)
+                && (string.Equals(repair.BeforeSha256, originalEntry.Sha256, StringComparison.OrdinalIgnoreCase)
+                    || (authoringEntry is not null
+                        && string.Equals(repair.BeforeSha256, authoringEntry.BuiltSha256, StringComparison.OrdinalIgnoreCase))))
             {
-                throw new InvalidOperationException(
-                    $"Imported payload entry changed without a recorded animation-binding repair: {path}. " +
-                    "Repack was blocked before any retail deployment.");
-            }
-            if (!path.EndsWith(".vmdl_c", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidDataException(
-                    $"Repair provenance unexpectedly points to a non-model payload entry: {path}");
-            }
-            if (!string.Equals(repair.BeforeSha256, originalEntry.Sha256, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidDataException(
-                    $"Repair provenance does not start from the imported source bytes: {path}");
-            }
-            if (!string.Equals(repair.AfterSha256, payloadHash, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidDataException(
-                    $"Payload bytes no longer match the recorded repair output: {path}");
+                if (!path.EndsWith(".vmdl_c", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidDataException(
+                        $"Repair provenance unexpectedly points to a non-model payload entry: {path}");
+                }
+                consumedRepairPaths.Add(path);
+                if (authoringEntry is not null
+                    && string.Equals(repair.BeforeSha256, authoringEntry.BuiltSha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    ValidateAuthoringEntry(authoringEntry, originalEntry.Sha256, path);
+                    consumedAuthoringPaths.Add(path);
+                }
+                entries.Add(new ImportedVpkRepackEntry(
+                    path,
+                    ImportedVpkRepackEntryStatus.Repaired,
+                    originalEntry.Sha256,
+                    payloadHash,
+                    payloadSize));
+                continue;
             }
 
+            if (authoringEntry is null)
+            {
+                throw new InvalidOperationException(
+                    $"Imported compiled entry changed without recorded authoring-build or repair provenance: {path}. " +
+                    "Repack was blocked before retail deployment.");
+            }
+            ValidateAuthoringEntry(authoringEntry, originalEntry.Sha256, path);
+            if (!string.Equals(authoringEntry.BuiltSha256, payloadHash, StringComparison.OrdinalIgnoreCase)
+                || authoringEntry.Size != payloadSize)
+            {
+                throw new InvalidDataException(
+                    $"Compiled bytes no longer match the recorded 1authoring build output: {path}");
+            }
+            consumedAuthoringPaths.Add(path);
             entries.Add(new ImportedVpkRepackEntry(
                 path,
-                ImportedVpkRepackEntryStatus.Repaired,
+                ImportedVpkRepackEntryStatus.RebuiltFromAuthoring,
                 originalEntry.Sha256,
                 payloadHash,
                 payloadSize));
         }
 
+        foreach (var authoringEntry in authoringByPath.Values
+                     .Where(entry => entry.OriginalSha256 is null)
+                     .OrderBy(entry => entry.InternalPath, StringComparer.Ordinal))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var path = NormalizeVpkPath(authoringEntry.InternalPath);
+            var payload = payloadFiles[path];
+            var payloadHash = ComputeSha256(payload.AbsolutePath);
+            var payloadSize = new FileInfo(payload.AbsolutePath).Length;
+            if (repairedByPath.TryGetValue(path, out var repair)
+                && path.EndsWith(".vmdl_c", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(repair.BeforeSha256, authoringEntry.BuiltSha256, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(repair.AfterSha256, payloadHash, StringComparison.OrdinalIgnoreCase))
+            {
+                consumedRepairPaths.Add(path);
+                consumedAuthoringPaths.Add(path);
+                entries.Add(new ImportedVpkRepackEntry(
+                    path,
+                    ImportedVpkRepackEntryStatus.Repaired,
+                    authoringEntry.BuiltSha256,
+                    payloadHash,
+                    payloadSize));
+                continue;
+            }
+            if (!string.Equals(authoringEntry.BuiltSha256, payloadHash, StringComparison.OrdinalIgnoreCase)
+                || authoringEntry.Size != payloadSize)
+            {
+                throw new InvalidDataException(
+                    $"New compiled file no longer matches the recorded 1authoring build output: {path}");
+            }
+            consumedAuthoringPaths.Add(path);
+            entries.Add(new ImportedVpkRepackEntry(
+                path,
+                ImportedVpkRepackEntryStatus.RebuiltFromAuthoring,
+                string.Empty,
+                payloadHash,
+                payloadSize));
+        }
+
         var changedPaths = entries
-            .Where(entry => entry.Status == ImportedVpkRepackEntryStatus.Repaired)
+            .Where(entry => entry.Status != ImportedVpkRepackEntryStatus.Unchanged)
             .Select(entry => entry.InternalPath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var staleRepairEntries = repairedByPath.Keys
-            .Where(path => !changedPaths.Contains(path))
+            .Where(path => !consumedRepairPaths.Contains(path))
             .ToArray();
         if (staleRepairEntries.Length > 0)
         {
             throw new InvalidDataException(
                 "Repair report contains modified entries that no longer match changed payload bytes: " +
                 string.Join(", ", staleRepairEntries.Take(4)));
+        }
+        var staleAuthoringEntries = authoringByPath.Keys
+            .Where(path => !consumedAuthoringPaths.Contains(path))
+            .ToArray();
+        if (staleAuthoringEntries.Length > 0)
+        {
+            throw new InvalidDataException(
+                "Authoring-build report contains entries that no longer match compiled output: " +
+                string.Join(", ", staleAuthoringEntries.Take(4)));
         }
 
         var outputVersion = original.SourceVpkVersion is 1 or 2
@@ -200,6 +281,18 @@ public sealed class ImportedVpkRepackService
             changedPaths.Count,
             entries,
             reportPath);
+    }
+
+    private static void ValidateAuthoringEntry(
+        ImportedVpkAuthoringBuildEntry entry,
+        string expectedOriginalSha256,
+        string path)
+    {
+        if (!string.Equals(entry.OriginalSha256, expectedOriginalSha256, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                $"Authoring-build provenance does not start from the imported source bytes: {path}");
+        }
     }
 
     private static Dictionary<string, PayloadFile> EnumeratePayload(
