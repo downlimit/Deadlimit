@@ -9,6 +9,7 @@ internal static class SteamStatusFeature
     private const float SideZonePercent = 18F;
     private const float CenterZonePercent = 64F;
     private static readonly Dictionary<MainForm, Action> ContextUpdaters = [];
+    private static readonly Dictionary<MainForm, Action<int?>> ProgressUpdaters = [];
 
     public static void Attach(MainForm form, string theme)
     {
@@ -110,6 +111,7 @@ internal static class SteamStatusFeature
             Margin = Padding.Empty,
             Visible = false,
         };
+        int? explicitProgress = null;
 
         centerTop.Controls.Add(centerLabel, 0, 0);
         centerTop.Controls.Add(percentLabel, 1, 0);
@@ -190,6 +192,14 @@ internal static class SteamStatusFeature
         {
             centerLabel.Text = statusSource.Text;
 
+            if (explicitProgress is int reportedPercent)
+            {
+                progress.Visible = true;
+                progress.SetValue(reportedPercent);
+                percentLabel.Text = $"{reportedPercent}%";
+                return;
+            }
+
             var progressVisible = progressSource is not null
                 && (progressSource.Available || progressSource.Visible);
             progress.Visible = progressVisible;
@@ -206,6 +216,11 @@ internal static class SteamStatusFeature
         }
 
         ContextUpdaters[form] = UpdateContext;
+        ProgressUpdaters[form] = percent =>
+        {
+            explicitProgress = percent is null ? null : Math.Clamp(percent.Value, 0, 100);
+            UpdateOperation();
+        };
 
         statusSource.TextChanged += (_, _) => UpdateOperation();
         if (folderText is not null)
@@ -228,6 +243,7 @@ internal static class SteamStatusFeature
         form.FormClosed += (_, _) =>
         {
             ContextUpdaters.Remove(form);
+            ProgressUpdaters.Remove(form);
             timer.Stop();
             timer.Dispose();
             statusStrip.Dispose();
@@ -242,6 +258,14 @@ internal static class SteamStatusFeature
         if (ContextUpdaters.TryGetValue(form, out var update))
         {
             update();
+        }
+    }
+
+    internal static void ReportProgress(MainForm form, int? percent)
+    {
+        if (ProgressUpdaters.TryGetValue(form, out var update))
+        {
+            update(percent);
         }
     }
 

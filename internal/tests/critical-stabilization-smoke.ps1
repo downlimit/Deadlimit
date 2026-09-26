@@ -237,6 +237,8 @@ foreach ($required in @(
     'ImportedVpkProjectNameDialog',
     'await Task.Run(',
     'VpkImportProgressPresenter',
+    'SteamStatusFeature.ReportProgress(_form, update.Percent)',
+    'SteamStatusFeature.ReportProgress(_form, null)',
     'ImportedVpkProjectService.Create('
 )) {
     Assert-Contains $projectEntry $required 'Responsive named VPK import flow'
