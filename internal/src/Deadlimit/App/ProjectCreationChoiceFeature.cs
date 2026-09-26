@@ -615,6 +615,7 @@ internal static class ProjectCreationChoiceFeature
                 _progressBar.Value = Math.Clamp(update.Percent, 0, 100);
                 _progressBar.Visible = true;
             }
+            SteamStatusFeature.ReportProgress(_form, update.Percent);
             WindowProgressFeature.ReportStatus(_form, update.Message);
         }
 
@@ -630,6 +631,10 @@ internal static class ProjectCreationChoiceFeature
             {
                 _progressBar.Visible = false;
                 _progressBar.Value = 0;
+            }
+            if (!_form.IsDisposed)
+            {
+                SteamStatusFeature.ReportProgress(_form, null);
             }
         }
     }
