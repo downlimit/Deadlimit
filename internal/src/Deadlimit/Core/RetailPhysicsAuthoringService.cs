@@ -17,10 +17,17 @@ public sealed record RetailPhysicsInitializationResult(
     bool Added,
     IReadOnlyList<string> Warnings);
 
+public sealed record FixedClothJointMaterializationResult(
+    int DistinctJointCount,
+    int UpdatedDmxCount,
+    IReadOnlyList<string> JointNames);
+
 public sealed record ClothBoneNameReconciliationResult(
     int ArtistJointCount,
     int RewrittenReferenceCount,
     IReadOnlyDictionary<string, string> BoneRemaps,
+    int PrunedMissingJointCount,
+    IReadOnlyList<string> PrunedMissingJointNames,
     int RemovedIncompatibleChainCount,
     IReadOnlyList<string> RemovedIncompatibleChainRoots);
 
@@ -45,6 +52,9 @@ public static class RetailPhysicsAuthoringService
         RegexOptions.Compiled);
     private static readonly Regex ClothBoneReferenceRegex = new(
         "(?<prefix>\\b(?:root_bone|joint_name|joint_parent)\\s*=\\s*\\\")(?<name>\\$cloth_[^\\\"]+)(?<suffix>\\\")",
+        RegexOptions.Compiled);
+    private static readonly Regex ClothAlignmentBoneReferenceRegex = new(
+        "(?<prefix>\\b(?:cloth_node_root_bone|node_base_x0|node_base_x1|node_base_y0|node_base_y1)\\s*=\\s*\\\")(?<name>\\$cloth_[^\\\"]+)(?<suffix>\\\")",
         RegexOptions.Compiled);
 
     public static RetailPhysicsInitializationResult EnsureRetailJoints(
@@ -122,7 +132,7 @@ public static class RetailPhysicsAuthoringService
             RetailVmdlInheritance.UpsertRootNode(
                 destinationVmdlPath,
                 SoftbodyClass,
-                CreateSoftbody(cloth.Chains));
+                CreateSoftbody(cloth.Chains, cloth.Alignments));
         }
 
         return new RetailPhysicsInitializationResult(
@@ -192,6 +202,106 @@ public static class RetailPhysicsAuthoringService
         return repairs.Count;
     }
 
+    public static FixedClothJointMaterializationResult MaterializeRetailFixedClothJoints(
+        ProjectManifest manifest,
+        IEnumerable<string> preparedDmxPaths)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        ArgumentNullException.ThrowIfNull(preparedDmxPaths);
+
+        var fixedJoints = ReadRetailFixedClothJoints(manifest);
+        if (fixedJoints.Count == 0)
+        {
+            return new FixedClothJointMaterializationResult(0, 0, Array.Empty<string>());
+        }
+
+        var insertedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var updatedDmxCount = 0;
+        foreach (var path in preparedDmxPaths
+                     .Where(path => !string.IsNullOrWhiteSpace(path))
+                     .Select(Path.GetFullPath)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            using var document = Datamodel.Datamodel.Load(path, DeferredMode.Disabled);
+            var changed = false;
+            foreach (var model in document.AllElements.Where(element =>
+                         string.Equals(element.ClassName, "DmeModel", StringComparison.Ordinal)
+                         && element.ContainsKey("jointList")
+                         && element.ContainsKey("children")).ToArray())
+            {
+                var jointList = model.GetArray<Element>("jointList");
+                var rootChildren = model.GetArray<Element>("children");
+                if (jointList is null || rootChildren is null
+                    || !jointList.Any(IsClothJoint))
+                {
+                    continue;
+                }
+
+                var existingNames = jointList
+                    .Where(joint => !string.IsNullOrWhiteSpace(joint.Name))
+                    .Select(joint => joint.Name!)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                foreach (var fixedJoint in fixedJoints)
+                {
+                    var compatibleName = GetArtistCompatibleClothBoneName(fixedJoint.Name);
+                    if (existingNames.Contains(fixedJoint.Name)
+                        || existingNames.Contains(compatibleName))
+                    {
+                        continue;
+                    }
+
+                    var transform = new Element(
+                        document,
+                        compatibleName,
+                        null,
+                        "DmeTransform");
+                    transform["position"] = fixedJoint.Position;
+                    transform["orientation"] = fixedJoint.Orientation;
+
+                    var joint = new Element(
+                        document,
+                        compatibleName,
+                        null,
+                        "DmeJoint");
+                    joint["transform"] = transform;
+                    joint["visible"] = false;
+                    joint["children"] = new ElementArray();
+
+                    jointList.Add(joint);
+                    rootChildren.Add(joint);
+                    existingNames.Add(compatibleName);
+                    insertedNames.Add(compatibleName);
+                    changed = true;
+                }
+            }
+
+            if (!changed)
+            {
+                continue;
+            }
+
+            var temporaryPath = path + $".deadlimit-{Guid.NewGuid():N}.tmp";
+            try
+            {
+                document.Save(temporaryPath, document.Encoding, document.EncodingVersion);
+                File.Move(temporaryPath, path, overwrite: true);
+                updatedDmxCount++;
+            }
+            finally
+            {
+                if (File.Exists(temporaryPath))
+                {
+                    File.Delete(temporaryPath);
+                }
+            }
+        }
+
+        return new FixedClothJointMaterializationResult(
+            insertedNames.Count,
+            updatedDmxCount,
+            insertedNames.OrderBy(name => name, StringComparer.OrdinalIgnoreCase).ToArray());
+    }
+
 
     public static ClothBoneNameReconciliationResult ReconcileWallWormClothBoneNames(
         string vmdlPath,
@@ -220,12 +330,15 @@ public static class RetailPhysicsAuthoringService
                 0,
                 new Dictionary<string, string>(StringComparer.Ordinal),
                 0,
+                Array.Empty<string>(),
+                0,
                 Array.Empty<string>());
         }
 
         var original = File.ReadAllText(vmdlPath);
         var edits = new List<(int Start, int Length, string Text)>();
         var remaps = new Dictionary<string, string>(StringComparer.Ordinal);
+        var prunedMissingJoints = new List<string>();
         var removedChainRoots = new List<string>();
         var rewrittenReferenceCount = 0;
 
@@ -251,7 +364,6 @@ public static class RetailPhysicsAuthoringService
             }
 
             var chainRemaps = new Dictionary<string, string>(StringComparer.Ordinal);
-            var chainRewriteCount = 0;
             var rewritten = ClothBoneReferenceRegex.Replace(
                 block,
                 match =>
@@ -269,22 +381,31 @@ public static class RetailPhysicsAuthoringService
                     }
 
                     chainRemaps.TryAdd(retailName, wallWormName);
-                    chainRewriteCount++;
                     return match.Groups["prefix"].Value
                            + wallWormName
                            + match.Groups["suffix"].Value;
                 });
 
-            // VRF/Wall Worm source DMX uses _cloth_* for procedural cloth bones.
-            // If a retail ClothChain still contains $cloth_* after exact aliasing,
-            // the corresponding bone is absent from the artist skeleton and the
-            // chain cannot compile. Remove that incompatible chain rather than
-            // handing ResourceCompiler a guaranteed "Bone ... not found" failure.
+            // VRF exports only procedural cloth controls that influence the render
+            // mesh. Retail PHYS can additionally contain fixed, non-simulated leaf
+            // controls that have no exported DMX bone. They do not drive a render
+            // vertex or another cloth joint, so they can be omitted while retaining
+            // the rest of the working jacket chain.
             var unresolvedProceduralBones = ClothBoneReferenceRegex.Matches(rewritten)
                 .Select(match => match.Groups["name"].Value)
                 .Where(name => !artistJointNames.Contains(name))
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
+            var pruned = PruneMissingFixedLeafClothJoints(rewritten, unresolvedProceduralBones);
+            rewritten = pruned.Text;
+            unresolvedProceduralBones = ClothBoneReferenceRegex.Matches(rewritten)
+                .Select(match => match.Groups["name"].Value)
+                .Where(name => !artistJointNames.Contains(name))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
+            // Any unresolved procedural control left after the safe leaf pass is
+            // structural or simulated. ResourceCompiler cannot accept that chain.
             if (unresolvedProceduralBones.Length > 0)
             {
                 var rootMatch = ClothRootBoneRegex.Match(rewritten);
@@ -298,11 +419,17 @@ public static class RetailPhysicsAuthoringService
                 continue;
             }
 
-            foreach (var remap in chainRemaps)
+            var retainedReferenceCounts = ClothRootBoneRegex.Matches(rewritten)
+                .Concat(ClothJointNameRegex.Matches(rewritten))
+                .Concat(ClothJointParentRegex.Matches(rewritten))
+                .GroupBy(match => match.Groups["name"].Value, StringComparer.Ordinal)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
+            foreach (var remap in chainRemaps.Where(remap => retainedReferenceCounts.ContainsKey(remap.Value)))
             {
                 remaps.TryAdd(remap.Key, remap.Value);
+                rewrittenReferenceCount += retainedReferenceCounts[remap.Value];
             }
-            rewrittenReferenceCount += chainRewriteCount;
+            prunedMissingJoints.AddRange(pruned.RemovedNames);
 
             if (!string.Equals(block, rewritten, StringComparison.Ordinal))
             {
@@ -310,7 +437,7 @@ public static class RetailPhysicsAuthoringService
             }
         }
 
-        if (edits.Count > 0)
+        if (edits.Count > 0 || remaps.Count > 0)
         {
             var patched = new StringBuilder(original);
             foreach (var edit in edits.OrderByDescending(item => item.Start))
@@ -319,9 +446,25 @@ public static class RetailPhysicsAuthoringService
                 patched.Insert(edit.Start, edit.Text);
             }
 
+            var reconciled = ClothAlignmentBoneReferenceRegex.Replace(
+                patched.ToString(),
+                match =>
+                {
+                    var retailName = match.Groups["name"].Value;
+                    if (!remaps.TryGetValue(retailName, out var wallWormName))
+                    {
+                        return match.Value;
+                    }
+
+                    rewrittenReferenceCount++;
+                    return match.Groups["prefix"].Value
+                           + wallWormName
+                           + match.Groups["suffix"].Value;
+                });
+
             File.WriteAllText(
                 vmdlPath,
-                patched.ToString(),
+                reconciled,
                 new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
         }
 
@@ -329,8 +472,96 @@ public static class RetailPhysicsAuthoringService
             artistJointNames.Count,
             rewrittenReferenceCount,
             remaps,
+            prunedMissingJoints.Count,
+            prunedMissingJoints,
             removedChainRoots.Count,
             removedChainRoots);
+    }
+
+    private static (string Text, IReadOnlyList<string> RemovedNames) PruneMissingFixedLeafClothJoints(
+        string block,
+        IReadOnlyCollection<string> unresolvedNames)
+    {
+        if (unresolvedNames.Count == 0)
+        {
+            return (block, Array.Empty<string>());
+        }
+
+        var edits = new List<(int Start, int Length)>();
+        var removedNames = new List<string>();
+        foreach (var name in unresolvedNames)
+        {
+            var rootMatch = ClothRootBoneRegex.Match(block);
+            if (rootMatch.Success
+                && string.Equals(rootMatch.Groups["name"].Value, name, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (ClothJointParentRegex.Matches(block)
+                .Any(match => string.Equals(match.Groups["name"].Value, name, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            var nameMatches = ClothJointNameRegex.Matches(block)
+                .Where(match => string.Equals(match.Groups["name"].Value, name, StringComparison.Ordinal))
+                .ToArray();
+            if (nameMatches.Length != 1)
+            {
+                continue;
+            }
+
+            var entryStart = block.LastIndexOf('{', nameMatches[0].Index);
+            if (entryStart < 0)
+            {
+                continue;
+            }
+
+            var entryEnd = FindMatchingBrace(block, entryStart);
+            if (entryEnd < 0)
+            {
+                continue;
+            }
+
+            var entry = block[entryStart..(entryEnd + 1)];
+            if (ClothJointNameRegex.Matches(entry).Count != 1
+                || !Regex.IsMatch(entry, "\\bsimulate\\s*=\\s*false\\b", RegexOptions.CultureInvariant))
+            {
+                continue;
+            }
+
+            var removal = ExpandArrayEntryRemovalRange(block, entryStart, entryEnd);
+            edits.Add(removal);
+            removedNames.Add(name);
+        }
+
+        if (edits.Count == 0)
+        {
+            return (block, Array.Empty<string>());
+        }
+
+        var patched = new StringBuilder(block);
+        foreach (var edit in edits.OrderByDescending(item => item.Start))
+        {
+            patched.Remove(edit.Start, edit.Length);
+        }
+
+        return (patched.ToString(), removedNames);
+    }
+
+    private static (int Start, int Length) ExpandArrayEntryRemovalRange(
+        string text,
+        int blockStart,
+        int blockEnd)
+    {
+        var lineStart = blockStart;
+        while (lineStart > 0 && text[lineStart - 1] is ' ' or '\t')
+        {
+            lineStart--;
+        }
+
+        return ExpandClothChainRemovalRange(text, lineStart, blockEnd);
     }
 
     private static (int Start, int Length) ExpandClothChainRemovalRange(
@@ -411,6 +642,98 @@ public static class RetailPhysicsAuthoringService
 
         return names;
     }
+
+    private static IReadOnlyList<RetailFixedClothJoint> ReadRetailFixedClothJoints(
+        ProjectManifest manifest)
+    {
+        if (string.IsNullOrWhiteSpace(manifest.RetailSourceVpk)
+            || !File.Exists(manifest.RetailSourceVpk))
+        {
+            throw new FileNotFoundException(
+                "The retail VPK recorded by hero extraction was not found. Refresh hero source before initializing cloth helpers.",
+                manifest.RetailSourceVpk);
+        }
+        if (string.IsNullOrWhiteSpace(manifest.RetailMainModel))
+        {
+            throw new InvalidOperationException("The retail main model is unknown.");
+        }
+
+        var compiledResourcePath = NormalizeResourcePath(manifest.RetailMainModel);
+        using var package = new Package();
+        package.Read(manifest.RetailSourceVpk);
+        var entry = (package.Entries ?? throw new InvalidDataException(
+                $"Retail VPK contains no entries: {manifest.RetailSourceVpk}"))
+            .SelectMany(group => group.Value)
+            .FirstOrDefault(candidate => string.Equals(
+                NormalizeResourcePath(candidate.GetFullPath()),
+                compiledResourcePath,
+                StringComparison.OrdinalIgnoreCase))
+            ?? throw new FileNotFoundException(
+                $"Retail model '{compiledResourcePath}' was not found in {manifest.RetailSourceVpk}.");
+
+        package.ReadEntry(entry, out byte[] rawData);
+        using var stream = new MemoryStream(rawData, writable: false);
+        using var resource = new Resource { FileName = entry.GetFullPath() };
+        resource.Read(stream);
+        if (resource.DataBlock is not Model model)
+        {
+            throw new InvalidDataException($"Retail resource is not a model: {compiledResourcePath}");
+        }
+
+        var physics = model.GetEmbeddedPhys()
+            ?? throw new InvalidDataException($"Retail model contains no embedded PHYS block: {compiledResourcePath}");
+        if (!physics.Data.TryGetValue("m_pFeModel", out var feModel)
+            || !feModel.IsCollection
+            || !feModel.TryGetValue("m_CtrlName", out var ctrlNameData)
+            || !feModel.TryGetValue("m_InitPose", out var initPoseData))
+        {
+            return Array.Empty<RetailFixedClothJoint>();
+        }
+
+        var names = ctrlNameData.Values.Select(value => value.ToString()).ToArray();
+        var poses = initPoseData.Values.ToArray();
+        var staticNodeCount = feModel["m_nStaticNodes"].ToInt32(CultureInfo.InvariantCulture);
+        var count = Math.Min(Math.Min(names.Length, poses.Length), staticNodeCount);
+        var result = new List<RetailFixedClothJoint>();
+        for (var index = 0; index < count; index++)
+        {
+            if (!names[index].StartsWith("$cloth_", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var values = poses[index].Values
+                .Select(value => value.ToSingle(CultureInfo.InvariantCulture))
+                .ToArray();
+            if (values.Length < 8)
+            {
+                throw new InvalidDataException(
+                    $"Retail fixed cloth joint '{names[index]}' has a malformed initial pose.");
+            }
+
+            var orientation = Quaternion.Normalize(new Quaternion(
+                values[4],
+                values[5],
+                values[6],
+                values[7]));
+            result.Add(new RetailFixedClothJoint(
+                names[index],
+                new Vector3(values[0], values[1], values[2]),
+                orientation));
+        }
+        return result;
+    }
+
+    private static bool IsClothJoint(Element joint) =>
+        string.Equals(joint.ClassName, "DmeJoint", StringComparison.Ordinal)
+        && !string.IsNullOrWhiteSpace(joint.Name)
+        && (joint.Name.StartsWith("$cloth_", StringComparison.Ordinal)
+            || joint.Name.StartsWith("_cloth_", StringComparison.Ordinal));
+
+    private static string GetArtistCompatibleClothBoneName(string name) =>
+        name.StartsWith("$cloth_", StringComparison.Ordinal)
+            ? "_" + name[1..]
+            : name;
 
     private static string InsertFixedAnchorsIntoClothChain(
         string block,
@@ -522,6 +845,11 @@ public static class RetailPhysicsAuthoringService
         var rotationLockedStaticNodeCount = feModel.TryGetValue("m_nRotLockStaticNodes", out var rotationLocks)
             ? rotationLocks.ToInt32(CultureInfo.InvariantCulture)
             : 0;
+        var alignments = ReadClothNodeAlignments(
+            feModel,
+            ctrlNames,
+            staticNodeCount,
+            rotationLockedStaticNodeCount);
         var inverseMasses = feModel["m_NodeInvMasses"].Values
             .Select(value => value.ToSingle(CultureInfo.InvariantCulture))
             .ToArray();
@@ -785,7 +1113,54 @@ public static class RetailPhysicsAuthoringService
             chains.Add(chain);
         }
 
-        return new RetailClothReadResult(chains, warnings);
+        return new RetailClothReadResult(chains, alignments, warnings);
+    }
+
+    private static IReadOnlyList<RetailClothNodeAlignment> ReadClothNodeAlignments(
+        KVObject feModel,
+        IReadOnlyList<string> ctrlNames,
+        int staticNodeCount,
+        int rotationLockedStaticNodeCount)
+    {
+        if (!feModel.TryGetValue("m_NodeBases", out var nodeBaseData))
+        {
+            return Array.Empty<RetailClothNodeAlignment>();
+        }
+
+        var alignments = new List<RetailClothNodeAlignment>();
+        foreach (var value in nodeBaseData.Values)
+        {
+            if (!value.IsCollection)
+            {
+                continue;
+            }
+
+            var indices = new[]
+            {
+                value["nNode"].ToInt32(CultureInfo.InvariantCulture),
+                value["nNodeX0"].ToInt32(CultureInfo.InvariantCulture),
+                value["nNodeX1"].ToInt32(CultureInfo.InvariantCulture),
+                value["nNodeY0"].ToInt32(CultureInfo.InvariantCulture),
+                value["nNodeY1"].ToInt32(CultureInfo.InvariantCulture),
+            };
+            if (indices.Any(index => index < 0 || index >= ctrlNames.Count))
+            {
+                continue;
+            }
+
+            var node = indices[0];
+            alignments.Add(new RetailClothNodeAlignment(
+                $"deadlimit_retail_alignment_{alignments.Count:D3}",
+                ctrlNames[node],
+                ctrlNames[indices[1]],
+                ctrlNames[indices[2]],
+                ctrlNames[indices[3]],
+                ctrlNames[indices[4]],
+                node < staticNodeCount,
+                node >= rotationLockedStaticNodeCount));
+        }
+
+        return alignments;
     }
 
     private static RetailClothChain RepairMissingParentAnchors(
@@ -1310,13 +1685,30 @@ public static class RetailPhysicsAuthoringService
         return text.ToString();
     }
 
-    private static string CreateSoftbody(IReadOnlyList<RetailClothChain> chains)
+    private static string CreateSoftbody(
+        IReadOnlyList<RetailClothChain> chains,
+        IReadOnlyList<RetailClothNodeAlignment> alignments)
     {
         var text = new StringBuilder();
         text.AppendLine("{");
         text.AppendLine("\t_class = \"Softbody\"");
         text.AppendLine("\tchildren =");
         text.AppendLine("\t[");
+        foreach (var alignment in alignments)
+        {
+            text.AppendLine("\t\t{");
+            text.AppendLine("\t\t\t_class = \"ClothNode\"");
+            text.AppendLine($"\t\t\tname = \"{EscapeKv3(alignment.Name)}\"");
+            text.AppendLine($"\t\t\tcloth_node_root_bone = \"{EscapeKv3(alignment.RootBone)}\"");
+            text.AppendLine($"\t\t\tis_static = {FormatBoolean(alignment.IsStatic)}");
+            text.AppendLine($"\t\t\tallow_rotation = {FormatBoolean(alignment.AllowRotation)}");
+            text.AppendLine("\t\t\ttransform_alignment = 4");
+            text.AppendLine($"\t\t\tnode_base_x0 = \"{EscapeKv3(alignment.NodeBaseX0)}\"");
+            text.AppendLine($"\t\t\tnode_base_x1 = \"{EscapeKv3(alignment.NodeBaseX1)}\"");
+            text.AppendLine($"\t\t\tnode_base_y0 = \"{EscapeKv3(alignment.NodeBaseY0)}\"");
+            text.AppendLine($"\t\t\tnode_base_y1 = \"{EscapeKv3(alignment.NodeBaseY1)}\"");
+            text.AppendLine("\t\t},");
+        }
         foreach (var chain in chains)
         {
             text.AppendLine("\t\t{");
@@ -1454,6 +1846,11 @@ public static class RetailPhysicsAuthoringService
 
     private sealed record RetailClothChain(string RootBone, IReadOnlyList<RetailClothNode> Nodes);
 
+    private sealed record RetailFixedClothJoint(
+        string Name,
+        Vector3 Position,
+        Quaternion Orientation);
+
     private sealed record RetailRod(
         int Node0,
         int Node1,
@@ -1464,12 +1861,24 @@ public static class RetailPhysicsAuthoringService
 
     private sealed record RetailStiffHinge(float Strength, float Angle);
 
+    private sealed record RetailClothNodeAlignment(
+        string Name,
+        string RootBone,
+        string NodeBaseX0,
+        string NodeBaseX1,
+        string NodeBaseY0,
+        string NodeBaseY1,
+        bool IsStatic,
+        bool AllowRotation);
+
     private sealed record RetailClothReadResult(
         IReadOnlyList<RetailClothChain> Chains,
+        IReadOnlyList<RetailClothNodeAlignment> Alignments,
         IReadOnlyList<string> Warnings)
     {
         public static RetailClothReadResult Empty { get; } = new(
             Array.Empty<RetailClothChain>(),
+            Array.Empty<RetailClothNodeAlignment>(),
             Array.Empty<string>());
     }
 

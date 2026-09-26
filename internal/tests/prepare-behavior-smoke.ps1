@@ -1,6 +1,11 @@
 $ErrorActionPreference = 'Stop'
 
-$assemblyPath = Resolve-Path 'internal/src/Deadlimit/bin/Release/net10.0-windows/DeadlimitManager.dll'
+$assemblyCandidate = if ([string]::IsNullOrWhiteSpace($env:DEADLIMIT_TEST_ASSEMBLY)) {
+    'internal/src/Deadlimit/bin/Release/net10.0-windows/DeadlimitManager.dll'
+} else {
+    $env:DEADLIMIT_TEST_ASSEMBLY
+}
+$assemblyPath = Resolve-Path $assemblyCandidate
 $assembly = [Reflection.Assembly]::LoadFrom($assemblyPath)
 $nonPublicStatic = [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Static
 $publicStatic = [Reflection.BindingFlags]::Public -bor [Reflection.BindingFlags]::Static
@@ -1147,7 +1152,14 @@ foreach ($required in @(
 $retailPhysicsSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/RetailPhysicsAuthoringService.cs' -Raw
 foreach ($required in @(
     'm_pFeModel',
-    'CreateSoftbody(cloth.Chains)',
+    'CreateSoftbody(cloth.Chains, cloth.Alignments)',
+    'ReadClothNodeAlignments(',
+    'cloth_node_root_bone',
+    'transform_alignment = 4',
+    'node_base_x0',
+    'node_base_x1',
+    'node_base_y0',
+    'node_base_y1',
     'PhysicsJointRevolute',
     'enable_limit',
     'RecoverCubicControl',
@@ -1269,6 +1281,16 @@ rootNode =
             children =
             [
                 {
+                    _class = "ClothNode"
+                    name = "retail_alignment_test"
+                    cloth_node_root_bone = "$cloth_m0p62"
+                    transform_alignment = 4
+                    node_base_x0 = "$cloth_m0p130"
+                    node_base_x1 = "$cloth_m0p62"
+                    node_base_y0 = "$cloth_m0p130"
+                    node_base_y1 = "$cloth_m0p62"
+                },
+                {
                     _class = "ClothChain"
                     root_bone = "$cloth_m0p130"
                     chain =
@@ -1277,6 +1299,7 @@ rootNode =
                         [
                             { joint_name = "$cloth_m0p130" simulate = false },
                             { joint_name = "$cloth_m0p62" joint_parent = "$cloth_m0p130" },
+                            { joint_name = "$cloth_fixed_leaf" joint_parent = "$cloth_m0p130" simulate = false },
                             { joint_name = "$cloth_keep" },
                         ]
                     }
@@ -1310,16 +1333,20 @@ rootNode =
         [object[]]@([string]$clothNameTemp, $artistJoints))
     $clothNameText = [IO.File]::ReadAllText($clothNameTemp)
     if (($clothNameResult.BoneRemaps.Count -ne 2) -or
-        ($clothNameResult.RewrittenReferenceCount -ne 4) -or
+        ($clothNameResult.RewrittenReferenceCount -ne 9) -or
+        ($clothNameResult.PrunedMissingJointCount -ne 1) -or
+        ($clothNameResult.PrunedMissingJointNames.Count -ne 1) -or
+        ($clothNameResult.PrunedMissingJointNames[0] -ne '$cloth_fixed_leaf') -or
         ($clothNameResult.RemovedIncompatibleChainCount -ne 1) -or
         ($clothNameResult.RemovedIncompatibleChainRoots.Count -ne 1) -or
         ($clothNameResult.RemovedIncompatibleChainRoots[0] -ne '$cloth_missing') -or
         $clothNameText.Contains('$cloth_m0p130') -or
         $clothNameText.Contains('$cloth_m0p62') -or
+        $clothNameText.Contains('$cloth_fixed_leaf') -or
         $clothNameText.Contains('$cloth_missing') -or
         (-not $clothNameText.Contains('_cloth_m0p130')) -or
         (-not $clothNameText.Contains('_cloth_m0p62'))) {
-        throw "Wall Worm cloth compatibility was not reconciled safely.\n$clothNameText"
+        throw "Wall Worm cloth compatibility was not reconciled safely. remaps=$($clothNameResult.BoneRemaps.Count) rewritten=$($clothNameResult.RewrittenReferenceCount) pruned=$($clothNameResult.PrunedMissingJointCount) removed=$($clothNameResult.RemovedIncompatibleChainCount)\n$clothNameText"
     }
     if (-not $clothNameText.Contains('$cloth_keep')) {
         throw 'A valid retail $cloth_* bone was rewritten even though the artist skeleton still contains it.'
@@ -1330,6 +1357,7 @@ rootNode =
         $null,
         [object[]]@([string]$clothNameTemp, $artistJoints))
     if (($stableClothNameResult.RewrittenReferenceCount -ne 0) -or
+        ($stableClothNameResult.PrunedMissingJointCount -ne 0) -or
         ($stableClothNameResult.RemovedIncompatibleChainCount -ne 0) -or
         ([IO.File]::ReadAllText($clothNameTemp) -ne $stableClothNameText)) {
         throw 'Wall Worm cloth compatibility reconciliation is not idempotent.'
@@ -1347,6 +1375,8 @@ foreach ($required in @(
     'artistJointNames.Contains(retailName)',
     'var wallWormName = "_" + retailName[1..]',
     'unresolvedProceduralBones',
+    'PruneMissingFixedLeafClothJoints(',
+    'PrunedMissingJointCount',
     'ExpandClothChainRemovalRange(',
     'RemovedIncompatibleChainCount',
     'RetailClothReadResult.Empty',
@@ -1360,10 +1390,12 @@ if (-not $prepareSource.Contains('Retail physics warning:')) {
     throw 'Retail physics warnings are not surfaced by clean prepare.'
 }
 if ((-not $prepareSource.Contains('ReconcileWallWormClothBoneNames(')) -or
-    (-not $prepareSource.Contains('replacedRenderMeshes.Select(overlay => overlay.PreparedDmxPath)')) -or
+    (-not $prepareSource.Contains('preparedDmxPaths')) -or
     (-not $prepareSource.Contains('gltfOverlay.PreparedResources')) -or
     (-not $prepareSource.Contains('replacedFbxMeshes.Select(overlay => overlay.PreparedFbxPath)')) -or
     (-not $prepareSource.Contains('cloth bone alias')) -or
+    (-not $prepareSource.Contains('missing fixed leaf joints pruned')) -or
+    (-not $prepareSource.Contains('omitted non-rendered fixed cloth leaf')) -or
     (-not $prepareSource.Contains('incompatible retail chains removed')) -or
     (-not $prepareSource.Contains('skipped incompatible retail ClothChain root'))) {
     throw 'PREPARE does not reconcile Wall Worm _cloth_* names against effective DMX/FBX skeletons.'

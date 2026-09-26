@@ -307,18 +307,35 @@ public sealed class PrepareAuthoringService
                     resourcePath.Replace('/', Path.DirectorySeparatorChar),
                     "Prepared glTF DMX skeleton"))
                 .ToArray();
+            var preparedDmxPaths = replacedRenderMeshes
+                .Select(overlay => overlay.PreparedDmxPath)
+                .Concat(gltfPreparedDmxPaths)
+                .ToArray();
+            if (retailPhysics.Added)
+            {
+                var fixedClothJoints = RetailPhysicsAuthoringService.MaterializeRetailFixedClothJoints(
+                    manifest,
+                    preparedDmxPaths);
+                log.AppendLine(
+                    $"Retail fixed cloth helpers: distinct joints added={fixedClothJoints.DistinctJointCount}; " +
+                    $"prepared DMX files updated={fixedClothJoints.UpdatedDmxCount}");
+            }
             var clothBoneNames = RetailPhysicsAuthoringService.ReconcileWallWormClothBoneNames(
                 sourceCopy.DestinationVmdlPath,
-                replacedRenderMeshes.Select(overlay => overlay.PreparedDmxPath)
-                    .Concat(gltfPreparedDmxPaths),
+                preparedDmxPaths,
                 replacedFbxMeshes.Select(overlay => overlay.PreparedFbxPath));
             log.AppendLine(
                 $"Wall Worm cloth compatibility: effective authoring joints={clothBoneNames.ArtistJointCount}; " +
                 $"rewritten references={clothBoneNames.RewrittenReferenceCount}; distinct aliases={clothBoneNames.BoneRemaps.Count}; " +
+                $"missing fixed leaf joints pruned={clothBoneNames.PrunedMissingJointCount}; " +
                 $"incompatible retail chains removed={clothBoneNames.RemovedIncompatibleChainCount}");
             foreach (var remap in clothBoneNames.BoneRemaps.OrderBy(pair => pair.Key, StringComparer.Ordinal))
             {
                 log.AppendLine($"  cloth bone alias {remap.Key} -> {remap.Value}");
+            }
+            foreach (var joint in clothBoneNames.PrunedMissingJointNames)
+            {
+                log.AppendLine($"  omitted non-rendered fixed cloth leaf {joint}");
             }
             foreach (var root in clothBoneNames.RemovedIncompatibleChainRoots)
             {

@@ -1,6 +1,10 @@
 $ErrorActionPreference = 'Stop'
 
-$assemblyPath = Resolve-Path 'internal/src/Deadlimit/bin/Release/net10.0-windows/DeadlimitManager.dll'
+$assemblyPath = Resolve-Path $(if ([string]::IsNullOrWhiteSpace($env:DEADLIMIT_TEST_ASSEMBLY)) {
+    'internal/src/Deadlimit/bin/Release/net10.0-windows/DeadlimitManager.dll'
+} else {
+    $env:DEADLIMIT_TEST_ASSEMBLY
+})
 $assembly = [Reflection.Assembly]::LoadFrom($assemblyPath)
 $scopeSmokeType = $assembly.GetType('Deadlimit.Core.HeroExtractionScopePublisherSmoke', $true)
 $scopeSmokeType.GetMethod('Run').Invoke($null, @())
