@@ -53,10 +53,7 @@ public sealed class ImportedVpkAnimationBindingRepairService
         }
 
         var inspection = new ImportedVpkRepairInspectionService(_paths).InspectAndSave(manifest);
-        var payloadRoot = SafePath.ResolveUnderRoot(
-            manifest.ProjectFolder,
-            ImportedVpkPayloadService.PayloadFolderName,
-            "Imported VPK payload folder");
+        var payloadRoot = ImportedVpkPayloadService.ResolveCompiledFolder(manifest.ProjectFolder);
         if (!Directory.Exists(payloadRoot))
         {
             throw new DirectoryNotFoundException(payloadRoot);

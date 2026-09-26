@@ -3,7 +3,7 @@ namespace Deadlimit.Core;
 public sealed record ImportedVpkProjectResult(
     ProjectManifest Manifest,
     string ProjectFolder,
-    string PayloadFolder,
+    string AuthoringFolder,
     string OriginalVpkSnapshotPath);
 
 public static class ImportedVpkProjectService
@@ -11,14 +11,20 @@ public static class ImportedVpkProjectService
     public static ImportedVpkProjectResult Create(
         VpkImportCandidate candidate,
         VpkImportIdentity identity,
-        string projectsRoot) =>
-        Create(candidate, identity, projectsRoot, new DeadlimitPaths());
+        string projectsRoot,
+        string projectName,
+        IProgress<ImportedVpkImportProgress>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        Create(candidate, identity, projectsRoot, projectName, new DeadlimitPaths(), progress, cancellationToken);
 
     public static ImportedVpkProjectResult Create(
         VpkImportCandidate candidate,
         VpkImportIdentity identity,
         string projectsRoot,
-        DeadlimitPaths paths)
+        string projectName,
+        DeadlimitPaths paths,
+        IProgress<ImportedVpkImportProgress>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(candidate);
         ArgumentNullException.ThrowIfNull(identity);
@@ -32,6 +38,10 @@ public static class ImportedVpkProjectService
                     : projectsRoot);
         }
 
+        Report(progress, 4, LocalizedText.T(
+            "Validating the selected VPK...",
+            "Проверка выбранного VPK..."));
+        cancellationToken.ThrowIfCancellationRequested();
         var refreshedCandidate = VpkImportSourceValidator.Validate(candidate.SourceVpkPath);
         if (!string.Equals(
                 refreshedCandidate.SourceVpkSha256,
@@ -44,14 +54,19 @@ public static class ImportedVpkProjectService
 
         var root = Path.GetFullPath(projectsRoot.Trim())
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var folderName = ResolveAvailableFolderName(root, identity.SuggestedFolderName);
+        var folderName = ResolveAvailableFolderName(root, projectName);
         var projectFolder = Path.Combine(root, folderName);
         var folderCreated = false;
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            Report(progress, 10, LocalizedText.T(
+                "Creating the project structure...",
+                "Создание структуры проекта..."));
             Directory.CreateDirectory(projectFolder);
             folderCreated = true;
+            ProjectAuthoringLayout.EnsureStructure(projectFolder);
 
             var manifest = new ProjectManifest
             {
@@ -83,22 +98,49 @@ public static class ImportedVpkProjectService
             };
 
             ProjectStore.Save(manifest);
-            var payload = ImportedVpkPayloadService.Extract(manifest, refreshedCandidate);
+            var payload = ImportedVpkPayloadService.Extract(
+                manifest,
+                refreshedCandidate,
+                progress,
+                cancellationToken);
 
-            // Imported retail slots are claimed only after the raw payload snapshot exists.
+            cancellationToken.ThrowIfCancellationRequested();
+            Report(progress, 86, LocalizedText.T(
+                "Indexing reconstructed project files...",
+                "Индексация восстановленных файлов проекта..."));
+            var scan = ProjectScanner.Scan(projectFolder);
+            manifest.DmxFiles = [.. scan.DmxFiles];
+            manifest.FbxFiles = [.. scan.FbxFiles];
+            manifest.GltfFiles = [.. scan.GltfFiles];
+            manifest.PngTextures = [.. scan.PngTextures];
+            ProjectStore.Save(manifest);
+
+            cancellationToken.ThrowIfCancellationRequested();
+            Report(progress, 89, LocalizedText.T(
+                "Recording ownership of the imported VPK slot...",
+                "Регистрация импортированного слота VPK..."));
+            // Imported retail slots are claimed only after the raw working-files snapshot exists.
             // Adoption compares the current retail VPK entry-by-entry against that snapshot,
             // then records a fingerprint for the complete VPK family before any mutation.
             new VpkSlotOwnershipService(paths).AdoptImportedSource(manifest);
 
             // Stage 7 is inspection-only: exact current-retail model paths are compared
             // against preserved compiled models and the result is written to metadata.
-            // No payload bytes are changed here.
+            // No imported working-file bytes are changed here.
+            cancellationToken.ThrowIfCancellationRequested();
+            Report(progress, 95, LocalizedText.T(
+                "Inspecting imported models...",
+                "Проверка импортированных моделей..."));
             new ImportedVpkRepairInspectionService(paths).InspectAndSave(manifest);
+
+            Report(progress, 100, LocalizedText.T(
+                "VPK project import complete.",
+                "Импорт проекта из VPK завершён."));
 
             return new ImportedVpkProjectResult(
                 manifest,
                 projectFolder,
-                payload.PayloadFolder,
+                payload.AuthoringFolder,
                 payload.SnapshotPath);
         }
         catch
@@ -139,7 +181,13 @@ public static class ImportedVpkProjectService
         {
             throw new InvalidDataException($"Invalid imported project folder name: '{value}'.");
         }
-        return name.TrimEnd(' ', '.');
+
+        name = name.TrimEnd(' ', '.');
+        if (name.Length == 0)
+        {
+            throw new InvalidDataException($"Invalid imported project folder name: '{value}'.");
+        }
+        return name;
     }
 
     private static void TryDeleteFailedImportFolder(string projectFolder)
@@ -157,4 +205,10 @@ public static class ImportedVpkProjectService
             // exclusively for this import attempt and contains no user-authored payload yet.
         }
     }
+
+    private static void Report(
+        IProgress<ImportedVpkImportProgress>? progress,
+        int percent,
+        string message) =>
+        progress?.Report(new ImportedVpkImportProgress(message, Math.Clamp(percent, 0, 100)));
 }

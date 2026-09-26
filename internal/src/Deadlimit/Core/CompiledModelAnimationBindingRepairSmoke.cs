@@ -107,7 +107,7 @@ internal static class CompiledModelAnimationBindingRepairSmoke
             }
 
             var payloadPath = SafePath.ResolveUnderRoot(
-                Path.Combine(projectFolder, ImportedVpkPayloadService.PayloadFolderName),
+                ImportedVpkPayloadService.ResolveCompiledFolder(projectFolder),
                 ResourcePath.Replace('/', Path.DirectorySeparatorChar),
                 "Smoke repaired payload model");
             var repairedPayload = File.ReadAllBytes(payloadPath);

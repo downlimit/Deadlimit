@@ -46,8 +46,7 @@ internal static class ImportedProjectModeFeature
     {
         return button.Name is UiControlNames.SaveProjectButton
             or UiControlNames.ExtractHeroSourceButton
-            or UiControlNames.PrepareButton
-            or UiControlNames.BuildForTestButton;
+            or UiControlNames.PrepareButton;
     }
 
     private static IEnumerable<T> FindDescendants<T>(Control root) where T : Control

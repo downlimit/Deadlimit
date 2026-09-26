@@ -85,7 +85,7 @@ The CSDK authoring stage stays clean: animation binding repair happens after com
 
 Deadlimit Manager can also import an existing `pak##_dir.vpk` as a project.
 
-Imported compiled payload is preserved instead of being pushed through the normal authoring compiler. During **Build & Test**, Deadlimit Manager can compare character animation bindings with the current retail Deadlock model, repair stale or missing bindings, rebuild the VPK, verify it, and deploy it back to the adopted release slot.
+Import creates the normal project folder layout, reconstructs available VMDL/DMX and decoded textures in `1authoring`, and preserves the byte-exact compiled archive in hidden project metadata. During **Build & Test**, an unchanged `1authoring` tree reuses those exact compiled bytes. Changed authoring resources are rebuilt in an isolated project-owned CSDK workspace and overlaid on the preserved baseline. Deadlimit Manager then compares character animation bindings with the current retail Deadlock model, repairs stale or missing bindings, rebuilds and verifies the VPK, and deploys it back to the adopted release slot.
 
 This repair path is intentionally narrow: it targets the animation-binding class of breakage rather than pretending to be a universal repair button for every possible mod problem.
 

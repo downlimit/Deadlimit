@@ -75,10 +75,7 @@ public sealed class ImportedVpkRepairInspectionService
         var snapshot = ImportedVpkPayloadService.TryLoadSnapshot(manifest.ProjectFolder)
             ?? throw new InvalidOperationException(
                 "The imported project's original-vpk.json snapshot is missing or unreadable.");
-        var payloadRoot = SafePath.ResolveUnderRoot(
-            manifest.ProjectFolder,
-            ImportedVpkPayloadService.PayloadFolderName,
-            "Imported VPK payload folder");
+        var payloadRoot = ImportedVpkPayloadService.ResolveCompiledFolder(manifest.ProjectFolder);
         if (!Directory.Exists(payloadRoot))
         {
             throw new DirectoryNotFoundException(payloadRoot);

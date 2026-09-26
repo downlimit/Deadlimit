@@ -233,6 +233,54 @@ foreach ($required in @(
 
 $projectEntry = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ProjectCreationChoiceFeature.cs' -Raw
 Assert-Contains $projectEntry 'Cannot create or import a project while' 'Project mutation interlock'
+foreach ($required in @(
+    'ImportedVpkProjectNameDialog',
+    'await Task.Run(',
+    'VpkImportProgressPresenter',
+    'ImportedVpkProjectService.Create('
+)) {
+    Assert-Contains $projectEntry $required 'Responsive named VPK import flow'
+}
+
+$importedProject = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ImportedVpkProjectService.cs' -Raw
+Assert-Contains $importedProject 'ProjectAuthoringLayout.EnsureStructure(projectFolder);' 'Imported VPK project folder structure'
+Assert-Contains $importedProject 'var scan = ProjectScanner.Scan(projectFolder);' 'Imported VPK reconstructed-file index'
+
+$importedPayload = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ImportedVpkPayloadService.cs' -Raw
+Assert-Contains $importedPayload 'public const string AuthoringFolderName = ProjectAuthoringLayout.AuthoringFolderName;' 'Imported VPK 1authoring destination'
+foreach ($required in @(
+    'public const string CompiledFolderName = "imported-compiled";',
+    'new TextureExtract(resource).ToContentFile()',
+    'FileExtract.Extract(resource, fileLoader, null)',
+    'NormalizeTextureAuthoringPath(decompiledPath)',
+    'imported-authoring-map.json'
+)) {
+    Assert-Contains $importedPayload $required 'Imported VPK editable-resource reconstruction'
+}
+if ($importedPayload.Contains('public const string PayloadFolderName = "payload";', [StringComparison]::Ordinal)) {
+    throw 'Imported VPK extraction must not restore the legacy payload destination.'
+}
+
+$importedAuthoringBuild = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ImportedVpkAuthoringBuildService.cs' -Raw
+foreach ($required in @(
+    'AuthoringMatchesImport(authoringMap.AuthoringFiles, currentAuthoring)',
+    'ResolveOriginalCompiledFolder(manifest.ProjectFolder)',
+    'StageChangedTextureDescriptors(',
+    'Direct ResourceCompiler inputs:',
+    'ImportedVpkPayloadService.BuiltCompiledFolderName',
+    'new ImportedVpkAuthoringBuildSnapshot'
+)) {
+    Assert-Contains $importedAuthoringBuild $required 'Imported VPK 1authoring build input'
+}
+
+$importedRepack = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ImportedVpkRepackService.cs' -Raw
+Assert-Contains $importedRepack 'ImportedVpkRepackEntryStatus.RebuiltFromAuthoring' 'Imported VPK authoring provenance'
+Assert-Contains $importedRepack 'ImportedVpkAuthoringBuildService.TryLoadSnapshot' 'Imported VPK authoring report validation'
+
+$importedMode = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ImportedProjectModeFeature.cs' -Raw
+if ($importedMode.Contains('or UiControlNames.BuildForTestButton', [StringComparison]::Ordinal)) {
+    throw 'Imported VPK projects must keep BUILD FOR TEST enabled.'
+}
 
 $authoring = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ProjectAuthoringLayout.cs' -Raw
 Assert-Contains $authoring "More than one authoring model uses the filename" 'Authoring ambiguity guard'
