@@ -40,36 +40,20 @@ internal static class ProjectSaveStateFeature
             var release = NormalizeReleaseId(releaseId?.Text);
             var manifest = ProjectStore.TryLoad(folder);
 
-            ProjectScanResult scan;
-            try
-            {
-                scan = ProjectScanner.Scan(folder);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                return false;
-            }
-
             if (manifest is null)
             {
+                // The initial save establishes the project's hero and release slot.
+                // Authoring files are discovered automatically by the project scanner
+                // and must not turn SAVE PROJECT into a filesystem dirty indicator.
                 return hero.Length > 0
-                    || release.Length > 0
-                    || scan.DmxFiles.Count > 0
-                    || scan.FbxFiles.Count > 0
-                    || scan.GltfFiles.Count > 0
-                    || scan.PngTextures.Count > 0;
+                    || release.Length > 0;
             }
 
-            if (!string.Equals(hero, manifest.Hero?.Trim(), StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(release, NormalizeReleaseId(manifest.ReleaseTarget), StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            return !SequenceEqualIgnoreCase(scan.DmxFiles, manifest.DmxFiles)
-                || !SequenceEqualIgnoreCase(scan.FbxFiles, manifest.FbxFiles)
-                || !SequenceEqualIgnoreCase(scan.GltfFiles, manifest.GltfFiles)
-                || !SequenceEqualIgnoreCase(scan.PngTextures, manifest.PngTextures);
+            return !string.Equals(hero, manifest.Hero?.Trim(), StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(
+                    release,
+                    NormalizeReleaseId(manifest.ReleaseTarget),
+                    StringComparison.OrdinalIgnoreCase);
         }
 
         void UpdateSaveState()
@@ -198,26 +182,6 @@ internal static class ProjectSaveStateFeature
         }
 
         return parsed.ToString("00");
-    }
-
-    private static bool SequenceEqualIgnoreCase(
-        IReadOnlyList<string> left,
-        IReadOnlyList<string> right)
-    {
-        if (left.Count != right.Count)
-        {
-            return false;
-        }
-
-        for (var index = 0; index < left.Count; index++)
-        {
-            if (!string.Equals(left[index], right[index], StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     private static IEnumerable<T> FindDescendants<T>(Control root) where T : Control

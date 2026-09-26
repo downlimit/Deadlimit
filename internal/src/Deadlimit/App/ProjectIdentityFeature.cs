@@ -145,8 +145,8 @@ internal static class ProjectIdentityFeature
         toolTip.SetToolTip(
             saveButton,
             UiText.T(
-                "Save this project's metadata, hero, Release ID and current DMX/PNG file list.\n\nAfter a successful save, hero selection is locked again to protect the project from accidental changes.",
-                "Сохранить метаданные проекта, героя, Release ID и текущий список DMX/PNG-файлов.\n\nПосле успешного сохранения выбор героя снова блокируется, чтобы защитить проект от случайной смены."));
+                "Save this project's selected hero and Release ID.\n\nAfter a successful save, hero selection is locked again to protect the project from accidental changes.",
+                "Сохранить выбранного героя и Release ID проекта.\n\nПосле успешного сохранения выбор героя снова блокируется, чтобы защитить проект от случайной смены."));
     }
 
     private static void ReplaceReleaseIdWithNumericControl(TableLayoutPanel grid)
