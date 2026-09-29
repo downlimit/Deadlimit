@@ -39,8 +39,11 @@ foreach ($file in $found) {
     if ($name -eq 'branch-hygiene.yml' -and $on.Groups['events'].Value -notmatch 'types:\s*\[closed\]') {
         throw 'Branch hygiene must only run after a PR closes.'
     }
-    if ($name -eq 'release.yml' -and ($content -notmatch '(?m)^      confirm_publish:\s*
-        throw 'Source milestone publication needs an opt-in confirmation.'
+    if ($name -eq 'release.yml') {
+        if (-not $content.Contains('confirm_publish:') -or -not $content.Contains('default: false') -or
+            -not $content.Contains('inputs.confirm_publish') -or -not $content.Contains('for name in native-build native-smoke')) {
+            throw 'Source milestone publication needs confirmation and full native checks.'
+        }
     }
     $perms = [regex]::Match($content, '(?ms)^permissions:\s*\r?\n(?<items>(?:^[ \t]+.*\r?\n)+)')
     if (-not $perms.Success) { throw "$name must specify top-level minimal permissions." }
