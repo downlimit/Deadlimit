@@ -1,6 +1,8 @@
 name: Build
 
 on:
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -12,6 +14,30 @@ concurrency:
 
 jobs:
   build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+      - name: CI cost policy guard
+        shell: pwsh
+        run: internal/tests/ci-policy-smoke.ps1
+      - name: Open-source content policy
+        shell: pwsh
+        run: internal/tests/open-source-content-policy-smoke.ps1
+      - name: Path defaults
+        shell: pwsh
+        run: internal/tests/path-defaults-smoke.ps1
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Restore Windows targeting packs
+        run: dotnet restore internal/src/Deadlimit/Deadlimit.csproj -p:EnableWindowsTargeting=true
+      - name: Cross-compile Deadlimit Manager
+        run: dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore -p:EnableWindowsTargeting=true
+
+  native-build:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
