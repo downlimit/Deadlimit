@@ -8,11 +8,14 @@ Describe the problem and the user-visible result.
 - [ ] I disclosed checks that require external tools and could not be run.
 - [ ] I added or updated tests for behavior changes where practical.
 
-Checks run:
+Checks run (specify `Fast` / `Full`, exit status, local log path, manually dispatched Actions, and unavailable game/CSDK checks):
 
 ```text
 
 ```
+
+- [ ] I ran `internal/tests/ci-policy-smoke.ps1` for workflow changes or disclosed why it could not run.
+- [ ] I introduced no unapproved Actions artifacts, cache, expensive automatic jobs, or publication triggers. See `internal/docs/CI_POLICY.md`.
 
 ## Provenance and safety
 
