@@ -4,7 +4,7 @@ This repository distributes Deadlimit from source through `Install-Deadlimit.cmd
 
 ## Execution contract
 
-- Open PRs receive only the short Ubuntu `Build / build` policy/provenance check and DCO. Do not re-run these on a merge push.
+- Open PRs receive the short Ubuntu `Build / build` policy/provenance check, DCO, and the existing required `Launch game fastpath smoke / smoke` Windows check. Do not re-run these on a merge push. The latter is retained because main branch protection requires the `smoke` check; remove it only after an administrator deliberately changes that requirement.
 - Run `powershell -NoProfile -ExecutionPolicy Bypass -File internal/tests/validate-local.ps1` from a Windows development checkout before sending routine changes for review. Use `-Full` for a local .NET 10 Release build and the relevant deeper smoke tests. It writes its transcript to the local temporary directory and returns nonzero on failure; never upload the transcript.
 - Invoke `Build` manually on the exact branch/ref when hosted native Windows validation is necessary. Its `full-windows` job preserves the prior full test and startup checks. The hero texture, launch-game and UI workflows remain manually available for targeted investigations.
 - Source milestones require separate `Publish source milestone` workflow dispatch on current `main`, the explicit `publish-source-milestone` confirmation, and a successful manual `full-windows` check on that SHA. The release contains only the installer CMD and checksum; no ZIP/EXE. Do not publish releases or store/retail credentials automatically.
@@ -19,7 +19,7 @@ This repository distributes Deadlimit from source through `Install-Deadlimit.cmd
 | --- | --- | --- | --- |
 | Build | PR and main push; full Windows build both times | PR: Ubuntu policy/provenance, 7 min; manual: Windows full validation, 45 min | None |
 | Hero texture pipeline smoke | PR and main push; Windows restore/build | Manual Windows, 35 min | None |
-| Launch game fastpath smoke | PR and main push; Windows restore/build | Manual Windows, 30 min | None |
+| Launch game fastpath smoke | PR and main push; Windows restore/build | Required PR Windows and optional manual Windows, 30 min; no main push | None |
 | UI agent contract smoke | PR and main push; Windows | Manual Windows, 8 min | None |
 | DCO | PR; Ubuntu | PR Ubuntu, 5 min | None |
 | Branch hygiene | Merged PR close; Ubuntu | Same event Ubuntu, 5 min; non-cancelling | None |
@@ -33,7 +33,7 @@ All seven workflows have explicit permissions, concurrency and job timeouts. No 
 2. In account **Settings → Billing & Licensing → Budgets and alerts**, inspect Actions usage across all repositories. If paid overage is not approved, keep a $0 budget with blocking enabled, and separately review Packages/cache quotas. No agent may alter billing without owner approval.
 3. Before discretionary heavy manual runs, inspect remaining account allowance. At indicative 70% and 85% consumption, investigate and pause non-essential runs. These are internal review thresholds, not enforced GitHub limits.
 4. Each billing cycle, inspect Actions usage, artifacts, caches, Packages, release assets and old scheduled workflows. Obtain confirmation before deleting any past artifact, package or release. Deletion cannot reverse past billed storage use.
-5. Verify branch-protection required check names after this PR: the PR `build` job name is preserved, while the three targeted Windows checks now run manually. If any targeted checks are explicitly required by branch protection, adjust the protection to an approved PR gate before relying on the new route.
+5. Verify branch-protection required check names after this PR: the PR `build` job name is preserved, while the hero texture and UI targeted Windows checks now run manually; required `smoke` remains on PR. The GitHub App could not read or edit the branch-protection rule. If any targeted checks are explicitly required by branch protection, adjust the protection to an approved PR gate before relying on the new route.
 
 ## Verification boundaries
 

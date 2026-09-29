@@ -8,7 +8,7 @@ $expected = @{
     'build.yml' = @('pull_request', 'workflow_dispatch')
     'dco.yml' = @('pull_request')
     'hero-texture-smoke.yml' = @('workflow_dispatch')
-    'launch-game-fastpath-smoke.yml' = @('workflow_dispatch')
+    'launch-game-fastpath-smoke.yml' = @('pull_request', 'workflow_dispatch')
     'release.yml' = @('workflow_dispatch')
     'ui-agent-contract-smoke.yml' = @('workflow_dispatch')
 }
@@ -71,9 +71,14 @@ foreach ($file in $files) {
         if ($timeout -lt 1 -or $timeout -gt 45) {
             throw "$($file.Name)/$($name): timeout of $timeout exceeds the approved 45-minute maximum."
         }
+        $requiredSmoke = $file.Name -eq 'launch-game-fastpath-smoke.yml' -and $name -eq 'smoke'
+        if ($requiredSmoke -and ($job -notmatch 'internal/tests/launch-game-fastpath-smoke.ps1' -or
+                                 $job -notmatch 'internal/tests/window-shell-visibility-smoke.ps1')) {
+            throw 'Required smoke must retain launch-game and window-shell coverage.'
+        }
         if ($events -contains 'pull_request' -and
             ($job -match '(?m)^    runs-on:\s+windows-' -or $job -match '\bdotnet\s+(restore|build|publish)\b') -and
-            $job -notmatch "if: github\.event_name == 'workflow_dispatch'") {
+            $job -notmatch "if: github\.event_name == 'workflow_dispatch'" -and -not $requiredSmoke) {
             throw "$($file.Name)/$($name): expensive Windows/.NET job may run automatically on PR."
         }
     }
