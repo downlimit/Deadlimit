@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       confirm_publish:
-        description: "I approve publishing this source milestone after successful Build and Launch game checks for this commit"
+        description: "I approve publishing this source milestone after successful full Windows Build and Launch game checks for this commit"
         required: true
         type: boolean
         default: false
@@ -41,14 +41,14 @@ jobs:
           TARGET_SHA: ${{ steps.target.outputs.sha }}
         run: |
           set -euo pipefail
-          for name in build smoke; do
+          for name in native-build native-smoke; do
             conclusion="$(
               gh api "repos/$GITHUB_REPOSITORY/commits/$TARGET_SHA/check-runs?per_page=100" \
                 --jq "[.check_runs[] | select(.name == \"$name\" and .head_sha == \"$TARGET_SHA\")] | sort_by(.id) | last | .conclusion // empty"
             )"
             if [[ "$conclusion" != "success" ]]; then
               echo "Required check '$name' on $TARGET_SHA is '$conclusion' (expected success)."
-              echo "Run Build and Launch game fastpath smoke manually for this commit before publishing."
+              echo "Run the native-build and native-smoke manual Windows checks for this commit before publishing."
               exit 1
             fi
           done
