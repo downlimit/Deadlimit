@@ -37,8 +37,9 @@ written outside the checkout and failures propagate a nonzero exit code.
 .\internal\Run-Local-Checks.ps1 -Scope Full
 ```
 
-Expensive GitHub Actions suites require explicit manual dispatch; DCO remains
-automatic on pull requests. Report which local/hosted checks ran and which
+Full native Windows GitHub Actions suites require explicit manual dispatch.
+Protected-main PRs run short cross-target .NET `build`, source-contract `smoke`,
+and DCO checks; no equivalent Windows suite repeats on a main push. Report which local/hosted checks ran and which
 Deadlock/CSDK integration checks still need external tools. See
 [internal/docs/CI_POLICY.md](internal/docs/CI_POLICY.md).
 
