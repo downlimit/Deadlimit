@@ -22,3 +22,7 @@ Read `internal/docs/UI_GUIDELINES.md` before creating or modifying Deadlimit Man
 - Run the relevant UI/layout/localization/window smoke tests already present in `internal/tests/`.
 - Build Deadlimit Manager in Release configuration.
 - If a new reusable UI rule is introduced, update `internal/docs/UI_GUIDELINES.md` instead of leaving the rule only inside one implementation file.
+
+## GitHub Actions budget and verification
+
+Read [docs/CI_COST_POLICY.md](docs/CI_COST_POLICY.md) before modifying workflows, release automation, caches or Actions artifacts. Run `internal/tests/validate-local.ps1` for routine changes and add `-Full` for the native Windows/.NET validation where relevant. Do not start a hosted full build, publish a release, upload artifacts, or change account/repository billing and retention settings without the owner's explicit authorization. Run `internal/tests/workflow-cost-policy-smoke.ps1` for every workflow edit and update its approved inventory together with the policy when a new workflow is intentionally introduced. Report local, hosted and owner-only checks separately.

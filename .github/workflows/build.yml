@@ -1,17 +1,35 @@
 name: Build
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: deadlimit-build-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v7
+      - name: Enforce GitHub Actions cost policy
+        shell: pwsh
+        run: internal/tests/workflow-cost-policy-smoke.ps1
+      - name: Open-source content policy
+        shell: pwsh
+        run: internal/tests/open-source-content-policy-smoke.ps1
+
+  full-windows:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - name: Open-source content policy

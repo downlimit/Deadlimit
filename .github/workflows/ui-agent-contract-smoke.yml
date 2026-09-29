@@ -1,16 +1,18 @@
 name: UI agent contract smoke
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: deadlimit-ui-agent-contract-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ui-agent-contract:
+    timeout-minutes: 8
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
