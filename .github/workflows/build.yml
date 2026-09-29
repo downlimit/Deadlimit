@@ -1,19 +1,24 @@
 name: Build
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: windows-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7
+      - name: CI cost policy guard
+        shell: pwsh
+        run: internal/tests/ci-policy-smoke.ps1
       - name: Open-source content policy
         shell: pwsh
         run: internal/tests/open-source-content-policy-smoke.ps1
