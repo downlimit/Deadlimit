@@ -28,14 +28,19 @@ dotnet restore internal/src/Deadlimit/Deadlimit.csproj
 dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
 ```
 
-Run the checks used by `.github/workflows/build.yml` before opening a pull
-request. At minimum, run the checks relevant to the changed area and report any
-check that could not be run because it needs a local application or game.
+Routine changes use the documented local check entry point; full native
+Windows/.NET validation remains required before a source milestone. Logs are
+written outside the checkout and failures propagate a nonzero exit code.
 
 ```powershell
-internal/tests/open-source-content-policy-smoke.ps1
-internal/tests/prepare-behavior-smoke.ps1
+.\internal\Run-Local-Checks.ps1 -Scope Fast
+.\internal\Run-Local-Checks.ps1 -Scope Full
 ```
+
+Expensive GitHub Actions suites require explicit manual dispatch; DCO remains
+automatic on pull requests. Report which local/hosted checks ran and which
+Deadlock/CSDK integration checks still need external tools. See
+[internal/docs/CI_POLICY.md](internal/docs/CI_POLICY.md).
 
 ## Pull-request workflow
 
