@@ -22,3 +22,13 @@ Read `internal/docs/UI_GUIDELINES.md` before creating or modifying Deadlimit Man
 - Run the relevant UI/layout/localization/window smoke tests already present in `internal/tests/`.
 - Build Deadlimit Manager in Release configuration.
 - If a new reusable UI rule is introduced, update `internal/docs/UI_GUIDELINES.md` instead of leaving the rule only inside one implementation file.
+
+## CI minutes, storage, and release safety
+
+Read [internal/docs/CI_POLICY.md](internal/docs/CI_POLICY.md) before changing a workflow, artifact, cache, installer or source-milestone publication process. The MICROMACRO portable policy was adapted to Deadlimit; the repository-specific policy is authoritative here.
+
+- Run `internal/Run-Local-Checks.ps1 -Scope Fast` after routine edits and `-Scope Full` for relevant Windows/.NET changes before requesting a hosted run. Report the command, exit status, and local log path; do not present local validation as hosted success.
+- Hosted Windows Build, texture, launch and UI smoke suites are manual `workflow_dispatch` checks. Do not add push/PR/scheduled expensive runs or duplicate PR+push builds. DCO stays a small automatic PR check; branch cleanup stays an automatic merged-PR maintenance action.
+- No Actions artifacts or caches without documented owner approval. Never upload game assets, CSDK contents, VPKs, proprietary projects, build folders, credentials or unredacted diagnostics. Preserve existing Git-based installation and small source-milestone attachments; publication requires explicit approval.
+- A workflow change must update the inventory, retain least-privilege permissions, per-job timeout and workflow/ref concurrency, and pass `internal/tests/ci-policy-smoke.ps1`. Do not remove failing tests or bypass release checks to save CI minutes.
+- Billing, retention, historical artifact deletion, Packages, secrets, branch protection and store publication require separate owner approval. A policy change alone does not configure administrative settings.
