@@ -28,14 +28,19 @@ dotnet restore internal/src/Deadlimit/Deadlimit.csproj
 dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
 ```
 
-Run the checks used by `.github/workflows/build.yml` before opening a pull
-request. At minimum, run the checks relevant to the changed area and report any
-check that could not be run because it needs a local application or game.
+The default Windows development check uses a single entry point; it includes the
+workflow-cost guard and preserves the exit code and a local transcript. Use
+`-Full` for the native .NET 10 Release build and deeper smoke coverage. The
+small PR-hosted check intentionally does not replace the native build. Record
+any check that requires an external application or game and could not run.
 
 ```powershell
-internal/tests/open-source-content-policy-smoke.ps1
-internal/tests/prepare-behavior-smoke.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File internal/tests/validate-local.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File internal/tests/validate-local.ps1 -Full
 ```
+
+See [GitHub Actions cost policy](docs/CI_COST_POLICY.md) for manual hosted
+validation, release gates, artifact restrictions and owner-only settings.
 
 ## Pull-request workflow
 

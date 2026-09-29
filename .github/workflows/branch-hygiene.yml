@@ -7,11 +7,16 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: deadlimit-branch-hygiene-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 jobs:
   delete-merged-pr-branch:
     if: >-
       github.event.pull_request.merged == true &&
       github.event.pull_request.head.repo.full_name == github.repository
+    timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

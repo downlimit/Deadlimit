@@ -1,16 +1,20 @@
 name: Launch game fastpath smoke
 
 on:
-  push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: deadlimit-launch-game-fastpath-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   smoke:
+    timeout-minutes: 30
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7

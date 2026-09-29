@@ -8,6 +8,10 @@ Describe the problem and the user-visible result.
 - [ ] I disclosed checks that require external tools and could not be run.
 - [ ] I added or updated tests for behavior changes where practical.
 
+- [ ] I ran `internal/tests/validate-local.ps1` or explained why it was unavailable.
+- [ ] For workflow changes, I ran `internal/tests/workflow-cost-policy-smoke.ps1` and updated the [CI cost policy](../docs/CI_COST_POLICY.md) when relevant.
+- [ ] I did not start an unnecessary hosted native build, enable caches, or upload Actions artifacts.
+
 Checks run:
 
 ```text

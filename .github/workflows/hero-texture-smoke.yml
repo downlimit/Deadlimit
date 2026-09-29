@@ -1,16 +1,18 @@
 name: Hero texture pipeline smoke
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: deadlimit-hero-texture-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   hero-texture-smoke:
+    timeout-minutes: 35
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
