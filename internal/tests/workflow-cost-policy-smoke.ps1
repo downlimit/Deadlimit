@@ -65,16 +65,16 @@ foreach ($file in $files) {
         $job = $jobsText.Substring($start, $end - $start)
         $name = $jobHeaders[$i].Groups[1].Value
         if ($job -notmatch '(?m)^    runs-on:\s+\S+' -or $job -notmatch '(?m)^    timeout-minutes:\s*(\d+)\s*$') {
-            throw "$($file.Name)/$name: runner or explicit job timeout missing."
+            throw "$($file.Name)/$($name): runner or explicit job timeout missing."
         }
         $timeout = [int]$Matches[1]
         if ($timeout -lt 1 -or $timeout -gt 45) {
-            throw "$($file.Name)/$name: timeout of $timeout exceeds the approved 45-minute maximum."
+            throw "$($file.Name)/$($name): timeout of $timeout exceeds the approved 45-minute maximum."
         }
         if ($events -contains 'pull_request' -and
             ($job -match '(?m)^    runs-on:\s+windows-' -or $job -match '\bdotnet\s+(restore|build|publish)\b') -and
             $job -notmatch "if: github\.event_name == 'workflow_dispatch'") {
-            throw "$($file.Name)/$name: expensive Windows/.NET job may run automatically on PR."
+            throw "$($file.Name)/$($name): expensive Windows/.NET job may run automatically on PR."
         }
     }
     if ($file.Name -eq 'release.yml' -and
