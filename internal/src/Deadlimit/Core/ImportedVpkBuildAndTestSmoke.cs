@@ -70,12 +70,16 @@ internal static class ImportedVpkBuildAndTestSmoke
                 DeadlockToolsRoot = Path.Combine(root, "deadlock-tools-must-not-be-used"),
             });
             _ = new VpkSlotOwnershipService(paths).AdoptImportedSource(manifest);
+            var importedSourceBeforeBuild = File.ReadAllBytes(importedSource);
+            manifest.ReleaseTarget = "43";
+            var targetVpk = Path.Combine(addonsRoot, "pak43_dir.vpk");
 
             var routedService = new Deadlimit.App.BuildAndTestService(paths);
             var first = routedService.BuildAsync(manifest).GetAwaiter().GetResult();
             if (first.CompiledSourceCount != 0
                 || !first.Ag2Applied
-                || !string.Equals(first.VpkPath, importedSource, StringComparison.OrdinalIgnoreCase))
+                || !string.Equals(first.VpkPath, targetVpk, StringComparison.OrdinalIgnoreCase)
+                || !File.ReadAllBytes(importedSource).SequenceEqual(importedSourceBeforeBuild))
             {
                 return 1;
             }
@@ -87,7 +91,7 @@ internal static class ImportedVpkBuildAndTestSmoke
                 return 2;
             }
 
-            var firstDeployed = ReadEntry(importedSource, ResourcePath);
+            var firstDeployed = ReadEntry(targetVpk, ResourcePath);
             var firstSnapshot = CompiledModelAnimationBindingRepair.ReadSnapshot(firstDeployed, ResourcePath);
             var retailSnapshot = CompiledModelAnimationBindingRepair.ReadSnapshot(retailModel, ResourcePath);
             if (!CompiledModelAnimationBindingRepair.SnapshotsEqual(firstSnapshot, retailSnapshot)
@@ -122,9 +126,10 @@ internal static class ImportedVpkBuildAndTestSmoke
                 return 6;
             }
 
-            var secondDeployed = ReadEntry(importedSource, ResourcePath);
+            var secondDeployed = ReadEntry(targetVpk, ResourcePath);
             if (!secondDeployed.SequenceEqual(firstDeployed)
-                || !ReadEntry(importedSource, MaterialPath).SequenceEqual(materialBytes))
+                || !ReadEntry(targetVpk, MaterialPath).SequenceEqual(materialBytes)
+                || !File.ReadAllBytes(importedSource).SequenceEqual(importedSourceBeforeBuild))
             {
                 return 7;
             }

@@ -44,8 +44,7 @@ internal static class ImportedProjectModeFeature
 
     private static bool IsAuthoringOnlyButton(Button button)
     {
-        return button.Name is UiControlNames.SaveProjectButton
-            or UiControlNames.ExtractHeroSourceButton
+        return button.Name is UiControlNames.ExtractHeroSourceButton
             or UiControlNames.PrepareButton;
     }
 

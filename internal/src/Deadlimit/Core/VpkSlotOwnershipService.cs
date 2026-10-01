@@ -84,6 +84,17 @@ public sealed class VpkSlotOwnershipService
                 "Restore/remove that VPK manually or choose another Release ID.");
         }
 
+        if (manifest.Mode == ProjectMode.ImportedVpk
+            && ImportedSourceMatchesCurrentSlot(manifest, slot, vpkPath))
+        {
+            return new VpkSlotOwnershipCheck(
+                vpkPath,
+                ExistingFilePresent: true,
+                OwnedByProject: true,
+                LegacyOwnershipAdopted: false,
+                ExistingFamilySha256: ComputeFamilySha256(vpkPath));
+        }
+
         var legacyBuildState = Path.Combine(ProjectStore.GetMetadataFolder(manifest.ProjectFolder), BuildStateFileName);
         if (manifest.Mode == ProjectMode.Authoring
             && !ownershipFileExists
@@ -326,7 +337,18 @@ public sealed class VpkSlotOwnershipService
             && !string.IsNullOrWhiteSpace(previous.VpkPath)
             && File.Exists(previous.VpkPath))
         {
-            TryRemovePreviouslyOwnedFamily(previous);
+            var previousIsImportedSource = manifest.Mode == ProjectMode.ImportedVpk
+                && manifest.ImportedVpk is not null
+                && int.TryParse(manifest.ImportedVpk.SourceReleaseTarget?.Trim(), out var sourceSlot)
+                && previous.ReleaseSlot == sourceSlot
+                && string.Equals(
+                    previous.ImportedSourceSha256,
+                    manifest.ImportedVpk.OriginalVpkSha256,
+                    StringComparison.OrdinalIgnoreCase);
+            if (!previousIsImportedSource)
+            {
+                TryRemovePreviouslyOwnedFamily(previous);
+            }
         }
 
         WriteRecord(
@@ -406,6 +428,31 @@ public sealed class VpkSlotOwnershipService
 
         var currentHash = ComputeSha256(vpkPath);
         return string.Equals(record.Sha256, currentHash, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ImportedSourceMatchesCurrentSlot(
+        ProjectManifest manifest,
+        int slot,
+        string vpkPath)
+    {
+        if (manifest.ImportedVpk is null
+            || !int.TryParse(manifest.ImportedVpk.SourceReleaseTarget?.Trim(), out var sourceSlot)
+            || sourceSlot != slot)
+        {
+            return false;
+        }
+
+        var snapshot = ImportedVpkPayloadService.TryLoadSnapshot(manifest.ProjectFolder);
+        if (snapshot is null
+            || !string.Equals(
+                snapshot.SourceVpkSha256,
+                manifest.ImportedVpk.OriginalVpkSha256,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return VpkArchiveIdentityService.CompareToSnapshot(vpkPath, snapshot).Matches;
     }
 
     private string GetVpkPath(int slot) =>

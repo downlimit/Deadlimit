@@ -242,7 +242,7 @@ public sealed class ImportedVpkRepackService
         var metadataFolder = ProjectStore.GetMetadataFolder(manifest.ProjectFolder);
         var repackFolder = Path.Combine(metadataFolder, RepackFolderName);
         Directory.CreateDirectory(repackFolder);
-        var outputName = ResolveOutputFileName(original);
+        var outputName = ResolveOutputFileName(manifest, original);
         var outputVpk = Path.Combine(repackFolder, outputName);
         var stagedVpk = CreateStagedVpkPath(repackFolder, outputName);
 
@@ -513,8 +513,15 @@ public sealed class ImportedVpkRepackService
         }
     }
 
-    private static string ResolveOutputFileName(OriginalVpkSnapshot snapshot)
+    private static string ResolveOutputFileName(ProjectManifest manifest, OriginalVpkSnapshot snapshot)
     {
+        if (!string.IsNullOrWhiteSpace(manifest.ReleaseTarget)
+            && int.TryParse(manifest.ReleaseTarget, out var targetSlot)
+            && targetSlot is >= 1 and <= 99)
+        {
+            return $"pak{targetSlot:D2}_dir.vpk";
+        }
+
         var fileName = Path.GetFileName(snapshot.SourceVpkFileName);
         if (!string.IsNullOrWhiteSpace(fileName)
             && fileName.EndsWith("_dir.vpk", StringComparison.OrdinalIgnoreCase))
