@@ -1389,6 +1389,10 @@ $prepareSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/PrepareAu
 if (-not $prepareSource.Contains('Retail physics warning:')) {
     throw 'Retail physics warnings are not surfaced by clean prepare.'
 }
+if (([regex]::Matches($prepareSource, 'MaterializeRetailFixedClothJoints\(')).Count -ne 1 -or
+    $prepareSource -match 'if\s*\(retailPhysics\.Added\)\s*\{\s*var fixedClothJoints') {
+    throw 'Every PREPARE must re-materialize retail fixed cloth helpers after overlaying the artist DMX.'
+}
 if ((-not $prepareSource.Contains('ReconcileWallWormClothBoneNames(')) -or
     (-not $prepareSource.Contains('preparedDmxPaths')) -or
     (-not $prepareSource.Contains('gltfOverlay.PreparedResources')) -or
@@ -1517,6 +1521,8 @@ $datamodelAssembly = [Reflection.Assembly]::LoadFrom((Join-Path (Split-Path $ass
 $documentType = $datamodelAssembly.GetType('Datamodel.Datamodel', $true)
 $elementType = $datamodelAssembly.GetType('Datamodel.Element', $true)
 $elementArrayType = $datamodelAssembly.GetType('Datamodel.ElementArray', $true)
+$syntheticRootSmoke = $assembly.GetType('Deadlimit.Core.DmxSyntheticRootRepairSmoke', $true)
+$syntheticRootSmoke.GetMethod('Run').Invoke($null, @())
 $elementConstructor = $elementType.GetConstructors() |
     Where-Object { $_.GetParameters().Count -eq 4 } |
     Select-Object -First 1
@@ -1796,6 +1802,10 @@ foreach ($required in @(
     if (-not $preparedDmxRemapSource.Contains($required)) {
         throw "Prepared DMX direct-material remap contract is missing: $required"
     }
+}
+$retailInheritanceSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/RetailVmdlInheritance.cs' -Raw
+if (-not $retailInheritanceSource.Contains('relative = TextureAuthoringPathPolicy.Normalize(relative);')) {
+    throw 'PREPARE does not normalize VRF-generated texture names while staging existing extracted sources.'
 }
 if ((-not $prepareSource.Contains('PreparedDmxMaterialRemapService.Apply(')) -or
     (-not $prepareSource.Contains('overlay.PreparedDmxPath'))) {

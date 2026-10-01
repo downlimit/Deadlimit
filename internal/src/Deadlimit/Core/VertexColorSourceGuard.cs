@@ -124,6 +124,10 @@ public static class VertexColorSourceGuard
         string artistDmxPath,
         string stagedDmxPath)
     {
+        var rootRepair = DmxSyntheticRootRepairService.Repair(stagedDmxPath);
+        var rootRepairMessage = rootRepair.Repaired
+            ? $"Removed Wall Worm synthetic root and restored skin-index alignment ({rootRepair.JointCountBefore} -> {rootRepair.JointCountAfter} joints). "
+            : string.Empty;
         var state = Inspect(artistDmxPath);
         if (!state.UsesVertexColorMaterial)
         {
@@ -131,8 +135,8 @@ public static class VertexColorSourceGuard
                 VertexColorSidecarStatus.Skipped,
                 state.SidecarPath,
                 0,
-                state.Message);
-            return new VertexColorStagedResult(true, result, state.Message);
+                rootRepairMessage + state.Message);
+            return new VertexColorStagedResult(true, result, result.Message);
         }
 
         if (state.HasEmbeddedVertexColor)
@@ -141,8 +145,8 @@ public static class VertexColorSourceGuard
                 VertexColorSidecarStatus.Applied,
                 state.SidecarPath,
                 0,
-                state.Message);
-            return new VertexColorStagedResult(true, result, state.Message);
+                rootRepairMessage + state.Message);
+            return new VertexColorStagedResult(true, result, result.Message);
         }
 
         if (!state.SidecarExists || !state.SidecarCurrent)
@@ -154,11 +158,15 @@ public static class VertexColorSourceGuard
                 status,
                 state.SidecarPath,
                 0,
-                state.Message);
-            return new VertexColorStagedResult(false, result, state.Message);
+                rootRepairMessage + state.Message);
+            return new VertexColorStagedResult(false, result, result.Message);
         }
 
         var applied = VertexColorTransferService.TryApply(artistDmxPath, stagedDmxPath);
+        if (rootRepair.Repaired)
+        {
+            applied = applied with { Message = rootRepairMessage + applied.Message };
+        }
         return new VertexColorStagedResult(
             applied.Status == VertexColorSidecarStatus.Applied,
             applied,
