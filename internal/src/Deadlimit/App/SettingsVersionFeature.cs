@@ -428,16 +428,27 @@ internal static class SettingsVersionFeature
 
     private static async Task<ManagerVersionState> CheckManagerVersionAsync(CancellationToken cancellationToken)
     {
-        var repositoryRoot = DeadlimitPaths.DefaultDeadlimitRoot;
-        var localSha = await ReadGitHeadAsync(repositoryRoot, cancellationToken).ConfigureAwait(false);
+        var runningSha = ReadRunningCommitSha();
         var remoteSha = await GetMainCommitShaAsync(cancellationToken).ConfigureAwait(false);
-        return string.Equals(localSha, remoteSha, StringComparison.OrdinalIgnoreCase)
+        if (runningSha is null)
+        {
+            return ManagerVersionState.UpdateAvailable(
+                "build-unknown",
+                UiText.T(
+                    "The running Deadlimit build could not be verified. UPDATE will refresh it from origin/main.",
+                    "Версию запущенной сборки Deadlimit не удалось подтвердить. ОБНОВИТЬ установит актуальную сборку из origin/main."));
+        }
+
+        var identity = $"build-{ShortSha(runningSha)}";
+        return remoteSha.StartsWith(runningSha, StringComparison.OrdinalIgnoreCase)
             ? ManagerVersionState.UpToDate(
-                $"main-{ShortSha(localSha)}",
-                UiText.T("This installation matches origin/main.", "Эта установка соответствует origin/main."))
+                identity,
+                UiText.T("The running Deadlimit build matches origin/main.", "Запущенная сборка Deadlimit соответствует origin/main."))
             : ManagerVersionState.UpdateAvailable(
-                $"main-{ShortSha(localSha)}",
-                UiText.T("A newer origin/main revision is available.", "Доступна более новая версия origin/main."));
+                identity,
+                UiText.T(
+                    "A newer Deadlimit build is available from origin/main.",
+                    "В origin/main доступна более новая сборка Deadlimit."));
     }
 
     private static async Task<string> GetMainCommitShaAsync(CancellationToken cancellationToken)
@@ -455,36 +466,30 @@ internal static class SettingsVersionFeature
         return shaElement.GetString()!;
     }
 
-    private static async Task<string> ReadGitHeadAsync(string repositoryRoot, CancellationToken cancellationToken)
+    private static string? ReadRunningCommitSha()
     {
-        var startInfo = new ProcessStartInfo
+        var productVersion = Application.ProductVersion?.Trim();
+        if (string.IsNullOrWhiteSpace(productVersion))
         {
-            FileName = "git",
-            WorkingDirectory = repositoryRoot,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-        startInfo.ArgumentList.Add("-C");
-        startInfo.ArgumentList.Add(repositoryRoot);
-        startInfo.ArgumentList.Add("rev-parse");
-        startInfo.ArgumentList.Add("HEAD");
-
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Git could not be started.");
-        var outputTask = process.StandardOutput.ReadToEndAsync();
-        var errorTask = process.StandardError.ReadToEndAsync();
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        var output = (await outputTask.ConfigureAwait(false)).Trim();
-        var error = (await errorTask.ConfigureAwait(false)).Trim();
-        if (process.ExitCode != 0 || string.IsNullOrWhiteSpace(output))
-        {
-            throw new InvalidOperationException(
-                string.IsNullOrWhiteSpace(error) ? "The current Git revision could not be read." : error);
+            return null;
         }
 
-        return output;
+        var metadataSeparator = productVersion.LastIndexOf('+');
+        if (metadataSeparator < 0 || metadataSeparator == productVersion.Length - 1)
+        {
+            return null;
+        }
+
+        var metadata = productVersion[(metadataSeparator + 1)..];
+        var shaLength = 0;
+        while (shaLength < metadata.Length && Uri.IsHexDigit(metadata[shaLength]))
+        {
+            shaLength++;
+        }
+
+        return shaLength is >= 7 and <= 40
+            ? metadata[..shaLength]
+            : null;
     }
 
     private static string CurrentDisplayIdentity() => "main";

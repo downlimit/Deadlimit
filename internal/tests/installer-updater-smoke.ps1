@@ -101,10 +101,14 @@ $settingsVersion = Get-Content -LiteralPath 'internal/src/Deadlimit/App/Settings
 foreach ($required in @(
     'Arguments = $"-WaitForPid {managerProcessId}"',
     'owner.BeginInvoke',
-    'mainForm.BeginInvoke((Action)mainForm.Close)'
+    'mainForm.BeginInvoke((Action)mainForm.Close)',
+    'ReadRunningCommitSha()',
+    'Application.ProductVersion?.Trim()',
+    '"build-unknown"'
 )) {
     Assert-Contains $settingsVersion $required 'In-app updater graceful shutdown'
 }
+Assert-NotContains $settingsVersion 'ReadGitHeadAsync' 'In-app updater running-build identity'
 
 $originFeature = Get-Content -LiteralPath 'internal/src/Deadlimit/App/UpdaterLaunchOriginFeature.cs' -Raw
 foreach ($required in @(
