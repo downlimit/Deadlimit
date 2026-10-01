@@ -29,8 +29,7 @@ public sealed class AddonIdentityService
         ArgumentNullException.ThrowIfNull(manifest);
 
         var projectFolder = NormalizePath(manifest.ProjectFolder);
-        var projectIdWasMissing = string.IsNullOrWhiteSpace(manifest.ProjectId);
-        var projectId = projectIdWasMissing
+        var projectId = string.IsNullOrWhiteSpace(manifest.ProjectId)
             ? CreateProjectId()
             : manifest.ProjectId.Trim();
         var addonId = string.IsNullOrWhiteSpace(manifest.AddonId)
@@ -53,12 +52,16 @@ public sealed class AddonIdentityService
 
         if (ownership is not null)
         {
-            if (projectIdWasMissing
-                && string.Equals(ownership.AddonId, addonId, StringComparison.OrdinalIgnoreCase)
-                && PathsEqual(ownership.ProjectFolder, projectFolder))
+            var sameAddonAndProjectFolder =
+                string.Equals(ownership.AddonId, addonId, StringComparison.OrdinalIgnoreCase)
+                && PathsEqual(ownership.ProjectFolder, projectFolder);
+            if (sameAddonAndProjectFolder)
             {
+                // The project folder is the durable artist-facing identity. If an artist
+                // intentionally deletes and recreates a project at the same path, reconnect
+                // it to the existing CSDK addon instead of treating the new manifest GUID as
+                // a second owner. A copied project at another path is still rejected below.
                 projectId = ownership.ProjectId;
-                projectIdWasMissing = false;
             }
 
             var ownedByProject = string.Equals(ownership.ProjectId, projectId, StringComparison.OrdinalIgnoreCase)
