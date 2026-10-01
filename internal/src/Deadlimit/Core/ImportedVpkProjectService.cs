@@ -54,6 +54,7 @@ public static class ImportedVpkProjectService
 
         var root = Path.GetFullPath(projectsRoot.Trim())
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var releaseTarget = ReleaseSlotAllocationService.AllocateFirstFree(root, paths);
         var folderName = ResolveAvailableFolderName(root, projectName);
         var projectFolder = Path.Combine(root, folderName);
         var folderCreated = false;
@@ -77,7 +78,7 @@ public static class ImportedVpkProjectService
                 ProjectName = folderName,
                 ProjectFolder = projectFolder,
                 Hero = identity.HeroLookupName ?? string.Empty,
-                ReleaseTarget = refreshedCandidate.ReleaseTarget,
+                ReleaseTarget = releaseTarget,
                 RetailMainModel = identity.HeroLookupName is not null
                     && identity.PrimaryModelResources.Count == 1
                         ? identity.PrimaryModelResources[0]
@@ -116,13 +117,18 @@ public static class ImportedVpkProjectService
             ProjectStore.Save(manifest);
 
             cancellationToken.ThrowIfCancellationRequested();
-            Report(progress, 89, LocalizedText.T(
-                "Recording ownership of the imported VPK slot...",
-                "Регистрация импортированного слота VPK..."));
-            // Imported retail slots are claimed only after the raw working-files snapshot exists.
-            // Adoption compares the current retail VPK entry-by-entry against that snapshot,
-            // then records a fingerprint for the complete VPK family before any mutation.
-            new VpkSlotOwnershipService(paths).AdoptImportedSource(manifest);
+            if (string.Equals(
+                    manifest.ReleaseTarget,
+                    manifest.ImportedVpk.SourceReleaseTarget,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                Report(progress, 89, LocalizedText.T(
+                    "Recording ownership of the imported VPK slot...",
+                    "Регистрация импортированного слота VPK..."));
+                // This is possible only when the imported archive is outside the configured
+                // game client and its numbered target is genuinely free there.
+                new VpkSlotOwnershipService(paths).AdoptImportedSource(manifest);
+            }
 
             // Stage 7 is inspection-only: exact current-retail model paths are compared
             // against preserved compiled models and the result is written to metadata.

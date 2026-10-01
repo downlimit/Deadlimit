@@ -247,6 +247,12 @@ foreach ($required in @(
 $importedProject = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ImportedVpkProjectService.cs' -Raw
 Assert-Contains $importedProject 'ProjectAuthoringLayout.EnsureStructure(projectFolder);' 'Imported VPK project folder structure'
 Assert-Contains $importedProject 'var scan = ProjectScanner.Scan(projectFolder);' 'Imported VPK reconstructed-file index'
+Assert-Contains $importedProject 'ReleaseSlotAllocationService.AllocateFirstFree(root, paths)' 'Imported VPK free Release ID allocation'
+Assert-Contains $importedProject 'manifest.ImportedVpk.SourceReleaseTarget' 'Imported VPK source and target slot separation'
+
+$addonIdentity = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/AddonIdentityService.cs' -Raw
+Assert-Contains $addonIdentity 'sameAddonAndProjectFolder' 'Recreated project CSDK addon continuity'
+Assert-Contains $addonIdentity 'projectId = ownership.ProjectId;' 'Recreated project CSDK addon continuity'
 
 $importedPayload = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ImportedVpkPayloadService.cs' -Raw
 Assert-Contains $importedPayload 'public const string AuthoringFolderName = ProjectAuthoringLayout.AuthoringFolderName;' 'Imported VPK 1authoring destination'

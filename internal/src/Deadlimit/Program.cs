@@ -144,6 +144,12 @@ internal static class Program
                 return 10 + vpkOwnershipResult;
             }
 
+            var projectIdentityResult = ProjectIdentityAndReleaseSlotSmoke.Run();
+            if (projectIdentityResult != 0)
+            {
+                return 20 + projectIdentityResult;
+            }
+
             var repairInspectionResult = ImportedVpkRepairInspectionSmoke.Run();
             if (repairInspectionResult != 0)
             {
