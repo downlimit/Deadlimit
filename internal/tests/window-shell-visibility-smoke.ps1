@@ -33,7 +33,6 @@ $requiredShellVisible = @(
     'MessageBox.cs',
     'SettingsForm.cs',
     'BuildTestSuccessDialog.cs',
-    'ProjectCreationChoiceFeature.cs',
     'ProjectLibraryFeature.cs'
 )
 foreach ($name in $requiredShellVisible) {

@@ -116,8 +116,8 @@ internal static class ProjectIdentityFeature
         toolTip.SetToolTip(
             extractButton,
             UiText.T(
-                "Extract the selected hero's current source files into 0source. Choose file groups in the dialog.\n\nHold **SHIFT+LMB** to **EXTRACT VPK…** into a new project.\n\nWhen refreshing an existing 0source, you can keep the previous copy as a backup.",
-                "Извлечь актуальные исходные файлы выбранного героя в 0source. Группы файлов выбираются в диалоге.\n\nУдерживайте **SHIFT+ЛКМ**, чтобы **ИЗВЛЕЧЬ VPK…** в новый проект.\n\nПри обновлении существующего 0source можно сохранить предыдущую копию как резервную."));
+                "Extract the selected hero's current source files into 0source. Choose file groups in the dialog.\n\nHold **SHIFT+LMB** to **EXTRACT VPK…** into the current project's 1authoring folder.\n\nWhen refreshing an existing 0source, you can keep the previous copy as a backup.",
+                "Извлечь актуальные исходные файлы выбранного героя в 0source. Группы файлов выбираются в диалоге.\n\nУдерживайте **SHIFT+ЛКМ**, чтобы **ИЗВЛЕЧЬ VPK…** в папку 1authoring текущего проекта.\n\nПри обновлении существующего 0source можно сохранить предыдущую копию как резервную."));
     }
 
     private static void MoveSaveButtonToReleaseRow(TableLayoutPanel grid)

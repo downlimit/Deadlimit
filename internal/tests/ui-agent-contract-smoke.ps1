@@ -33,7 +33,7 @@ if (-not $mainForm.Contains('UiText.T("EXTRACT SOURCE…", "ИЗВЛЕЧЬ ИС�
 }
 foreach ($required in @(
     '(ModifierKeys & Keys.Shift) == Keys.Shift',
-    'ProjectCreationChoiceFeature.ExtractVpkAsProjectAsync(this, _extractHeroButton)'
+    'ProjectCreationChoiceFeature.ExtractVpkIntoCurrentProjectAsync(this, _extractHeroButton)'
 )) {
     if (-not $mainForm.Contains($required)) {
         throw "EXTRACT SOURCE modifier action lost required contract token: $required"
@@ -90,8 +90,8 @@ foreach ($required in @(
     'ProjectActionGap = 6',
     'actions.Controls.Add(openFolderButton)',
     'actions.Controls.Add(extractButton)',
-    'Hold **SHIFT+LMB** to **EXTRACT VPK…** into a new project.',
-    'Удерживайте **SHIFT+ЛКМ**, чтобы **ИЗВЛЕЧЬ VPK…** в новый проект.')) {
+    "Hold **SHIFT+LMB** to **EXTRACT VPK…** into the current project's 1authoring folder.",
+    'Удерживайте **SHIFT+ЛКМ**, чтобы **ИЗВЛЕЧЬ VPK…** в папку 1authoring текущего проекта.')) {
     if (-not $projectIdentity.Contains($required)) {
         throw "Project action layout lost required contract token: $required"
     }

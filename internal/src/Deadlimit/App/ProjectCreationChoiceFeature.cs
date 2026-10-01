@@ -5,7 +5,7 @@ namespace Deadlimit.App;
 
 internal static class ProjectCreationChoiceFeature
 {
-    public static async Task ExtractVpkAsProjectAsync(MainForm form, Button triggerButton)
+    public static async Task ExtractVpkIntoCurrentProjectAsync(MainForm form, Button triggerButton)
     {
         if (ApplicationMutationCoordinator.IsBusy)
         {
@@ -15,6 +15,33 @@ internal static class ProjectCreationChoiceFeature
                     $"Cannot extract a VPK while {ApplicationMutationCoordinator.ActiveOperation} is running.",
                     $"Нельзя извлечь VPK, пока выполняется операция: {ApplicationMutationCoordinator.ActiveOperation}."),
                 UiText.T("Operation in progress", "Операция выполняется"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        var currentProject = form.LoadedManifest;
+        if (currentProject is null)
+        {
+            MessageBox.Show(
+                form,
+                UiText.T(
+                    "Save the current project before extracting a VPK into 1authoring.",
+                    "Сохраните текущий проект перед извлечением VPK в 1authoring."),
+                UiText.T("Project is not saved", "Проект не сохранён"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        if (ProjectSaveStateFeature.IsDirty(form))
+        {
+            MessageBox.Show(
+                form,
+                UiText.T(
+                    "Save the changed project folder, hero, or Release ID before extracting a VPK.",
+                    "Сохраните изменённую папку проекта, героя или Release ID перед извлечением VPK."),
+                UiText.T("Save the project", "Сохраните проект"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
             return;
@@ -78,23 +105,6 @@ internal static class ProjectCreationChoiceFeature
             return;
         }
 
-        using var nameDialog = new ImportedVpkProjectNameDialog(
-            identity.SuggestedFolderName,
-            settings.UiTheme);
-        WindowProgressFeature.ReportStatus(
-            form,
-            UiText.T(
-                "VPK inspected. Enter the project name.",
-                "VPK проверен. Введите название проекта."));
-        if (nameDialog.ShowDialog(form) != DialogResult.OK)
-        {
-            triggerButton.Enabled = true;
-            WindowProgressFeature.ReportStatus(
-                form,
-                UiText.T("VPK extraction cancelled.", "Извлечение VPK отменено."));
-            return;
-        }
-
         ImportedVpkProjectResult importedProject;
         using var cancellation = new CancellationTokenSource();
         void CancelWhenClosed(object? _, FormClosedEventArgs __) => cancellation.Cancel();
@@ -105,11 +115,11 @@ internal static class ProjectCreationChoiceFeature
             using var importProgress = new VpkImportProgressPresenter(form);
             var progress = new Progress<ImportedVpkImportProgress>(importProgress.Update);
             importedProject = await Task.Run(
-                () => ImportedVpkProjectService.Create(
+                () => ImportedVpkProjectService.ExtractIntoExisting(
+                    currentProject,
                     candidate,
                     identity,
-                    settings.ProjectsRoot,
-                    nameDialog.ProjectName,
+                    new DeadlimitPaths(),
                     progress,
                     cancellation.Token),
                 cancellation.Token);
@@ -155,7 +165,7 @@ internal static class ProjectCreationChoiceFeature
         }
 
         TrySelectImportedProject(form, importedProject.ProjectFolder);
-        ShowImportedProjectCreated(form, importedProject, identity);
+        ShowVpkExtracted(form, importedProject);
     }
 
     private static void TrySelectImportedProject(MainForm form, string projectFolder)
@@ -191,25 +201,17 @@ internal static class ProjectCreationChoiceFeature
         }
     }
 
-    private static void ShowImportedProjectCreated(
+    private static void ShowVpkExtracted(
         MainForm form,
-        ImportedVpkProjectResult importedProject,
-        VpkImportIdentity identity)
+        ImportedVpkProjectResult importedProject)
     {
         var manifest = importedProject.Manifest;
-        var releaseId = manifest.ReleaseTarget
-            ?? UiText.T("not derived from filename", "не определён по имени файла");
-        var hero = identity.HeroDisplayName
-            ?? UiText.T("not identified confidently", "не определён с достаточной уверенностью");
-        var primaryModel = identity.PrimaryModelResources.Count > 0
-            ? identity.PrimaryModelResources[0]
-            : UiText.T("not uniquely identified", "не определена однозначно");
 
         MessageBox.Show(
             form,
             UiText.T(
-                $"VPK extracted into a new project.\n\nProject: {manifest.ProjectName}\nHero: {hero}\nRelease ID: {releaseId}\nPrimary model: {primaryModel}\nPreserved files: {manifest.ImportedVpk!.SourceEntryCount}\nWorking files: {importedProject.AuthoringFolder}\nSHA-256: {manifest.ImportedVpk.OriginalVpkSha256}\n\nThe original VPK entry manifest is stored in .deadlimit/original-vpk.json.",
-                $"VPK извлечён в новый проект.\n\nПроект: {manifest.ProjectName}\nГерой: {hero}\nRelease ID: {releaseId}\nОсновная модель: {primaryModel}\nСохранено файлов: {manifest.ImportedVpk!.SourceEntryCount}\nРабочие файлы: {importedProject.AuthoringFolder}\nSHA-256: {manifest.ImportedVpk.OriginalVpkSha256}\n\nСписок исходных VPK-файлов и их хэшей сохранён в .deadlimit/original-vpk.json."),
+                $"VPK extracted into the current project's 1authoring folder.\n\nProject: {manifest.ProjectName}\nFiles: {manifest.ImportedVpk!.SourceEntryCount}\nOutput: {importedProject.AuthoringFolder}",
+                $"VPK извлечён в папку 1authoring текущего проекта.\n\nПроект: {manifest.ProjectName}\nФайлов: {manifest.ImportedVpk!.SourceEntryCount}\nПапка: {importedProject.AuthoringFolder}"),
             UiText.T("VPK extracted", "VPK извлечён"),
             MessageBoxButtons.OK,
             MessageBoxIcon.Information);
@@ -228,116 +230,6 @@ internal static class ProjectCreationChoiceFeature
             {
                 yield return nested;
             }
-        }
-    }
-
-    private sealed class ImportedVpkProjectNameDialog : Form
-    {
-        private readonly TextBox _nameText = new() { Dock = DockStyle.Fill };
-
-        public ImportedVpkProjectNameDialog(string suggestedName, string theme)
-        {
-            _nameText.Text = suggestedName;
-
-            Text = UiText.T("Extract VPK into project", "Извлечь VPK в проект");
-            StartPosition = FormStartPosition.CenterParent;
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            ClientSize = new Size(470, 150);
-            MaximizeBox = false;
-            MinimizeBox = false;
-            ShowInTaskbar = true;
-            ShowIcon = false;
-
-            BuildUi();
-            UiTheme.ApplyCustomPalette(this, theme);
-            Shown += (_, _) =>
-            {
-                _nameText.Focus();
-                _nameText.SelectAll();
-            };
-        }
-
-        public string ProjectName { get; private set; } = string.Empty;
-
-        private void BuildUi()
-        {
-            var root = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 1,
-                RowCount = 3,
-                Padding = new Padding(14),
-            };
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-
-            var label = new Label
-            {
-                Text = UiText.T(
-                    "Project name. This will also be the mod's working folder name.",
-                    "Название проекта. Оно также станет именем рабочей папки мода."),
-                AutoSize = true,
-                Margin = new Padding(0, 0, 0, 6),
-            };
-            _nameText.Margin = new Padding(0, 0, 0, 12);
-
-            var buttons = new FlowLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                AutoSize = true,
-                FlowDirection = FlowDirection.RightToLeft,
-                WrapContents = false,
-            };
-            var cancelButton = new Button
-            {
-                Text = UiText.T("CANCEL", "ОТМЕНА"),
-                AutoSize = true,
-                DialogResult = DialogResult.Cancel,
-            };
-            var extractButton = new Button
-            {
-                Text = UiText.T("EXTRACT", "ИЗВЛЕЧЬ"),
-                AutoSize = true,
-            };
-            extractButton.Click += (_, _) => CompleteExtraction();
-
-            buttons.Controls.Add(cancelButton);
-            buttons.Controls.Add(extractButton);
-            root.Controls.Add(label, 0, 0);
-            root.Controls.Add(_nameText, 0, 1);
-            root.Controls.Add(buttons, 0, 2);
-            Controls.Add(root);
-
-            AcceptButton = extractButton;
-            CancelButton = cancelButton;
-        }
-
-        private void CompleteExtraction()
-        {
-            var name = _nameText.Text.Trim();
-            if (name.Length == 0
-                || Path.IsPathRooted(name)
-                || name.Contains(Path.DirectorySeparatorChar)
-                || name.Contains(Path.AltDirectorySeparatorChar)
-                || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
-                || name.EndsWith(' ')
-                || name.EndsWith('.'))
-            {
-                MessageBox.Show(
-                    this,
-                    UiText.T(
-                        "Enter a valid project name without path separators or reserved filename characters.",
-                        "Введите корректное название проекта без разделителей пути и запрещённых символов имени файла."),
-                    UiText.T("Invalid project name", "Некорректное название проекта"),
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-                return;
-            }
-
-            ProjectName = name;
-            DialogResult = DialogResult.OK;
-            Close();
         }
     }
 
