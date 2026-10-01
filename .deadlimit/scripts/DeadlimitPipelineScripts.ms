@@ -175,6 +175,9 @@ global deadlimitDetachedInnerLineartBuild
 global deadlimitDetachedInnerLineartApplySkins
 global deadlimitDetachedInnerLineartApplyExplicitNormals
 global deadlimitDetachedInnerLineartApplyExplicitNormalsFast
+global deadlimitDetachedInnerLineartApplyCapturedNormals
+global deadlimitDetachedInnerLineartFinalizeFast
+global deadlimitDetachedInnerLineartRepairNormals
 global deadlimitDetachedInnerLineartUniqueName
 global deadlimitDetachedInnerLineartAddOutputVertex
 global deadlimitDetachedInnerLineartAddBoundaryVertex
@@ -2646,12 +2649,11 @@ fn deadlimitVertexColorCreateInnerLineart useUndo:true vertexMarker:false =
 
     Rendering contract:
     - Geometry, junctions, and every map face are completed in the source orientation first.
-    - The reference polygon flip reverses the complete generated face set in one native pass.
-      The alternative path writes that final winding into the completed in-memory face records.
-    - Optional normal inversion runs after the flip. The reference path bakes a temporary Edit
-      Normals modifier; the alternative path writes persistent explicit normals through a brief
-      Editable Mesh conversion. Both return a clean Editable Poly base. Copy Skin, when requested,
-      is added only after this bake and therefore remains live.
+    - Optional normal inversion runs after the flip. The fast path captures every evaluated
+      vertex normal before winding changes, flips the complete Mesh once, maps each captured
+      direction back to every matching face-corner normal, and collapses a temporary Edit Normals
+      modifier. The result is a clean Editable Poly base. Copy Skin, when requested, is added only
+      after this bake and therefore remains live.
     - The detached node copies both node.transform and objectOffsetPos/Rot/Scale. Generated local
       positions are authored against source.objectTransform, so arbitrary position, rotation,
       non-uniform scale, parent transform, and object-offset transform stay spatially aligned.
@@ -2659,14 +2661,10 @@ fn deadlimitVertexColorCreateInnerLineart useUndo:true vertexMarker:false =
       toward the original surface, matching the Deadlock expanded-backface outline.
 
     Performance contract:
-    - CREATE LINEART keeps the reference transaction with full Editable Poly undo recording.
-    - ALTERNATIVE FAST runs the same geometry kernel and emits the same topology/attribute data.
-      It preauthors the final polygon/map winding in memory, writes persistent vertex normals
-      directly on Editable Mesh, and suppresses per-element undo snapshots while the new node is
-      populated. Node creation remains inside one named Undo transaction, so Ctrl+Z removes the
-      complete generated object. The Mesh-to-Poly return may cyclically rotate a polygon's first
-      listed corner while preserving vertex IDs, winding, and every geometry/map corner pairing.
-    - Keep both paths available until production assets confirm the fast transaction path.
+    - CREATE LINEART suppresses per-element undo snapshots while the new node is populated.
+      Node creation remains inside one named Undo transaction, so Ctrl+Z removes the complete
+      generated object. One Mesh flip changes geometry and map winding after the original vertex
+      normals have been captured.
 
     Blender port: build an independent BMesh strip from the selected-edge graph, copy corner
     custom-data layers, create vertex groups from source IDs, reverse polygons, and write custom
@@ -3159,19 +3157,132 @@ fn deadlimitDetachedInnerLineartApplyExplicitNormals lineartNode =
 
 fn deadlimitDetachedInnerLineartApplyExplicitNormalsFast lineartNode =
 (
-    -- Every generated face has smoothing group 1, so each connected output vertex owns one
-    -- smooth normal. Editable Mesh can write those vertex normals directly as persistent explicit
-    -- normals (supported MAXScript hosts), avoiding the temporary Edit Normals modifier and Modify-panel UI.
-    convertToMesh lineartNode
-    local vertexCount = getNumVerts lineartNode
-    if vertexCount <= 0 then throw "Generated lineart mesh has no vertices for explicit normals."
-    for vertexIndex = 1 to vertexCount do setNormal lineartNode vertexIndex (-(getNormal lineartNode vertexIndex))
+    -- Compatibility entry point for older callers. Repair the selected node's current implicit
+    -- normals instead of relying on Editable Mesh normals surviving Mesh-to-Poly conversion.
+    deadlimitDetachedInnerLineartRepairNormals nodes:#(lineartNode)
+)
+
+fn deadlimitDetachedInnerLineartApplyCapturedNormals lineartNode vertexNormals =
+(
+    if (classOf lineartNode.baseObject) != Editable_Poly then throw "Captured lineart normals require an Editable Poly base."
+    local vertexCount = polyop.getNumVerts lineartNode.baseObject
+    if vertexNormals.count != vertexCount then throw "Captured lineart normal count no longer matches the generated vertices."
+
+    local normalModifier = Edit_Normals()
+    addModifier lineartNode normalModifier
+    select lineartNode
+    max modify mode
+    modPanel.setCurrentObject normalModifier node:lineartNode ui:true
     update lineartNode
-    convertToPoly lineartNode
-    if (classOf lineartNode.baseObject) != Editable_Poly then throw "Fast explicit-normal bake could not restore Editable Poly."
-    if lineartNode.modifiers.count != 0 then throw "Fast explicit-normal bake left an unexpected modifier."
+
+    local normalCount = normalModifier.GetNumNormals node:lineartNode
+    if normalCount <= 0 then throw "Edit Normals did not expose generated lineart normals."
+    local targetNormals = for normalIndex = 1 to normalCount collect undefined
+    for faceIndex = 1 to normalModifier.GetNumFaces node:lineartNode do
+    (
+        for cornerIndex = 1 to normalModifier.GetFaceDegree faceIndex node:lineartNode do
+        (
+            local normalId = normalModifier.GetNormalID faceIndex cornerIndex node:lineartNode
+            local vertexId = normalModifier.GetVertexID faceIndex cornerIndex node:lineartNode
+            if vertexId < 1 or vertexId > vertexNormals.count then throw "Edit Normals returned an invalid lineart vertex ID."
+            targetNormals[normalId] = vertexNormals[vertexId]
+        )
+    )
+
+    normalModifier.MakeExplicit selection:#{1..normalCount} node:lineartNode
+    for normalIndex = 1 to normalCount do
+    (
+        if targetNormals[normalIndex] == undefined then throw "Could not map a generated lineart normal back to its source vertex."
+        normalModifier.SetNormal normalIndex targetNormals[normalIndex] node:lineartNode
+    )
+    update lineartNode
+    collapseStack lineartNode
+    if (classOf lineartNode.baseObject) != Editable_Poly do convertToPoly lineartNode
+    if lineartNode.modifiers.count != 0 then throw "Captured lineart normals could not be collapsed into the Editable Poly base."
     update lineartNode
     lineartNode.baseObject
+)
+
+fn deadlimitDetachedInnerLineartFinalizeFast lineartNode flipGeometry:true invertNormals:true =
+(
+    convertToMesh lineartNode
+    local vertexCount = getNumVerts lineartNode
+    local faceCount = getNumFaces lineartNode
+    if vertexCount <= 0 or faceCount <= 0 then throw "Generated lineart mesh has no geometry to finalize."
+
+    -- Capture the evaluated smooth direction while the completed strip still has its original
+    -- winding. After the mesh flip, face-corner normals are restored by their vertex IDs.
+    local capturedNormals = #()
+    if invertNormals do capturedNormals = for vertexIndex = 1 to vertexCount collect (getNormal lineartNode vertexIndex)
+    if flipGeometry do meshop.flipNormals lineartNode #{1..faceCount}
+    update lineartNode
+    convertToPoly lineartNode
+    if (classOf lineartNode.baseObject) != Editable_Poly then throw "Fast lineart finalization could not restore Editable Poly."
+
+    if invertNormals do
+    (
+        if not flipGeometry do for vertexIndex = 1 to capturedNormals.count do capturedNormals[vertexIndex] = -capturedNormals[vertexIndex]
+        deadlimitDetachedInnerLineartApplyCapturedNormals lineartNode capturedNormals
+    )
+    update lineartNode
+    lineartNode.baseObject
+)
+
+fn deadlimitDetachedInnerLineartRepairNormals nodes:undefined =
+(
+    if nodes == undefined do nodes = selection as array
+    if nodes.count == 0 then throw "Select at least one generated lineart object."
+    local repairedCount = 0
+    local skippedCount = 0
+
+    undo "Repair Lineart Normals" on
+    (
+        for node in nodes do
+        (
+            if not isValidNode node or (superClassOf node) != GeometryClass then throw "Repair Normals requires valid geometry objects."
+            if not matchPattern node.name pattern:"lineart_*" ignoreCase:true then throw ("'" + node.name + "' is not a generated lineart object.")
+            if (classOf node.baseObject) != Editable_Poly then throw ("Lineart '" + node.name + "' must have an Editable Poly base.")
+
+            local originalModifierCount = node.modifiers.count
+            local normalModifier = Edit_Normals()
+            normalModifier.name = "Deadlimit Repaired Normals"
+            addModifier node normalModifier before:(originalModifierCount + 1)
+            select node
+            max modify mode
+            modPanel.setCurrentObject normalModifier node:node ui:true
+            update node
+
+            local normalCount = normalModifier.GetNumNormals node:node
+            if normalCount <= 0 then throw ("Lineart '" + node.name + "' exposes no normals to repair.")
+            local repairedThisNode = false
+            local targetNormals = for normalIndex = 1 to normalCount collect
+            (
+                if normalModifier.GetNormalExplicit normalIndex node:node then
+                    normalModifier.GetNormal normalIndex node:node
+                else
+                (
+                    repairedThisNode = true
+                    -(normalModifier.GetNormal normalIndex node:node)
+                )
+            )
+
+            if repairedThisNode then
+            (
+                normalModifier.MakeExplicit selection:#{1..normalCount} node:node
+                for normalIndex = 1 to normalCount do normalModifier.SetNormal normalIndex targetNormals[normalIndex] node:node
+                update node
+                if originalModifierCount == 0 do collapseStack node
+                repairedCount += 1
+            )
+            else
+            (
+                deleteModifier node normalModifier
+                skippedCount += 1
+            )
+        )
+    )
+    redrawViews()
+    #(repairedCount, skippedCount)
 )
 
 fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false layerName:"lineart" flipGeometry:true invertNormals:true taperEnds:true taperExponent:2.0 copySkin:false fastUndo:false =
@@ -3228,10 +3339,9 @@ fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false 
         local skinSnapshots = #()
         if copySkin do skinSnapshots = deadlimitVertexColorCaptureInnerLineartSkins sourceNode sourceModifier sourceVertCount
         local widthWorld = (units.decodeValue "1mm") * widthMm
-        -- The reference path preserves its established post-commit FlipNormals operation. The
-        -- alternative path authors the same final winding in the in-memory records after the
-        -- complete junction/strip solution exists, before any output node is populated.
-        local buildResult = deadlimitDetachedInnerLineartBuild sourceNode workingPoly selectedEdges widthWorld flipGeometry:(fastUndo and flipGeometry) taperEnds:taperEnds taperExponent:taperExponent
+        -- Build the completed strip with its original winding. The fast finalizer captures the
+        -- resulting vertex normals before it flips the populated mesh.
+        local buildResult = deadlimitDetachedInnerLineartBuild sourceNode workingPoly selectedEdges widthWorld flipGeometry:false taperEnds:taperEnds taperExponent:taperExponent
         with undo off try(if isValidNode workingNode do delete workingNode)catch()
         workingNode = undefined
 
@@ -3324,6 +3434,8 @@ fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false 
             )
             update lineartNode
 
+            if fastUndo do deadlimitDetachedInnerLineartFinalizeFast lineartNode flipGeometry:flipGeometry invertNormals:invertNormals
+
             local targetLayer = undefined
             if customLayer then
             (
@@ -3335,16 +3447,9 @@ fn deadlimitVertexColorCreateDetachedInnerLineart widthMm:1.0 customLayer:false 
                 targetLayer = LayerManager.getLayerFromName (sourceNode.layer as string)
             if targetLayer != undefined do targetLayer.addNode lineartNode
 
-            -- Bake custom normals into the clean base. The reference uses temporary Edit Normals;
-            -- the fast path uses persistent Editable Mesh vertex normals. Optional Skin is added
-            -- afterwards and remains editable instead of being consumed by either bake.
-            if invertNormals do
-            (
-                if fastUndo then
-                    deadlimitDetachedInnerLineartApplyExplicitNormalsFast lineartNode
-                else
-                    deadlimitDetachedInnerLineartApplyExplicitNormals lineartNode
-            )
+            -- Bake custom normals into the clean base. Optional Skin is added afterwards and
+            -- remains editable instead of being consumed by the bake.
+            if invertNormals and not fastUndo do deadlimitDetachedInnerLineartApplyExplicitNormals lineartNode
             if copySkin do copiedSkins = deadlimitDetachedInnerLineartApplySkins lineartNode skinSnapshots buildResult[2]
             update lineartNode
             select lineartNode
@@ -3516,25 +3621,26 @@ rollout deadlimitVertexColorInnerLineartRollout "INNER LINEART"
     spinner taperExponentSpinner "EXP:" range:[0.1,10.0,2.0] type:#float scale:0.1 fieldWidth:50 width:115 enabled:true tooltip:"1 = linear roof; 2 = rounded bridge-like falloff."
     checkbox customLineartLayerCheckbox "Custom Layer" checked:false width:105 across:2 tooltip:"Place generated strips into the named layer."
     editText lineartLayerNameEdit text:"lineart" width:185 height:18 enabled:false tooltip:"Existing or new layer name for generated lineart."
-    button createInnerLineartButton "CREATE LINEART" width:220 height:24 align:#center tooltip:"Build a separate lineart strip from the selected edge network."
-    button createInnerLineartFastButton "ALTERNATIVE FAST" width:220 height:24 align:#center tooltip:"Build the same evaluated lineart with preauthored winding, direct persistent normals, and compact undo recording."
+    button createInnerLineartButton "CREATE LINEART" width:140 height:24 across:2 tooltip:"Build a separate lineart strip from the selected edge network with compact undo recording."
+    button repairLineartNormalsButton "REPAIR NORMALS" width:125 height:24 tooltip:"Restore missing explicit normals on selected lineart objects. Existing explicit normals are preserved."
 
     on createInnerLineartButton pressed do
     (
         try
         (
-            local result = deadlimitVertexColorCreateDetachedInnerLineart widthMm:lineartWidthMmSpinner.value customLayer:customLineartLayerCheckbox.checked layerName:lineartLayerNameEdit.text flipGeometry:flipLineartCheckbox.checked invertNormals:invertLineartNormalsCheckbox.checked taperEnds:taperLineartCheckbox.checked taperExponent:taperExponentSpinner.value copySkin:copyLineartSkinCheckbox.checked
-            deadlimitVertexColorFbxRollout.statusLabel.text = "Lineart '" + result[4] + "': " + (result[1] as string) + " edge(s), " + (result[2] as string) + " face(s), " + (result[5] as string) + " Skin."
+            local result = deadlimitVertexColorCreateDetachedInnerLineartFast widthMm:lineartWidthMmSpinner.value customLayer:customLineartLayerCheckbox.checked layerName:lineartLayerNameEdit.text flipGeometry:flipLineartCheckbox.checked invertNormals:invertLineartNormalsCheckbox.checked taperEnds:taperLineartCheckbox.checked taperExponent:taperExponentSpinner.value copySkin:copyLineartSkinCheckbox.checked
+            local seconds = result[6] / 1000.0
+            deadlimitVertexColorFbxRollout.statusLabel.text = "Lineart '" + result[4] + "': " + (result[1] as string) + " edge(s), " + (result[2] as string) + " face(s), " + (formattedPrint seconds format:".2f") + " s."
         )
         catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
     )
-    on createInnerLineartFastButton pressed do
+
+    on repairLineartNormalsButton pressed do
     (
         try
         (
-            local result = deadlimitVertexColorCreateDetachedInnerLineartFast widthMm:lineartWidthMmSpinner.value customLayer:customLineartLayerCheckbox.checked layerName:lineartLayerNameEdit.text flipGeometry:flipLineartCheckbox.checked invertNormals:invertLineartNormalsCheckbox.checked taperEnds:taperLineartCheckbox.checked taperExponent:taperExponentSpinner.value copySkin:copyLineartSkinCheckbox.checked
-            local seconds = result[6] / 1000.0
-            deadlimitVertexColorFbxRollout.statusLabel.text = "Fast lineart '" + result[4] + "': " + (result[1] as string) + " edge(s), " + (result[2] as string) + " face(s), " + (formattedPrint seconds format:".2f") + " s."
+            local result = deadlimitDetachedInnerLineartRepairNormals()
+            deadlimitVertexColorFbxRollout.statusLabel.text = "Lineart normals: " + (result[1] as string) + " repaired, " + (result[2] as string) + " already explicit."
         )
         catch (deadlimitVertexColorFbxRollout.statusLabel.text = substituteString (getCurrentException()) "-- Runtime error: " "")
     )
