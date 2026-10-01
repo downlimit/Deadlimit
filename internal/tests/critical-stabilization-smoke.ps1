@@ -259,7 +259,7 @@ Assert-Contains $importedPayload 'public const string AuthoringFolderName = Proj
 foreach ($required in @(
     'public const string CompiledFolderName = "imported-compiled";',
     'new TextureExtract(resource).ToContentFile()',
-    'FileExtract.Extract(resource, fileLoader, null)',
+    'VrfContentExtraction.Extract(resource, fileLoader)',
     'modelExtract.AnimationsToExtract.Clear()',
     'ModelExtract.ModelExtractType.Map_AggregateSplit',
     'NormalizeTextureAuthoringPath(decompiledPath)',
@@ -274,14 +274,29 @@ if ($importedPayload.Contains('public const string PayloadFolderName = "payload"
 $heroExtraction = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/HeroExtractionService.cs' -Raw
 foreach ($required in @(
     'ExtractContentFileWithShaderCompatibilityFallback(',
+    'VrfContentExtraction.Extract('
+)) {
+    Assert-Contains $heroExtraction $required 'Hero extraction newer VCS material fallback'
+}
+
+$vrfExtraction = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/VrfContentExtraction.cs' -Raw
+foreach ($required in @(
     'resource.ResourceType == ResourceType.Material',
     'IsUnsupportedVcsVersion(exception)',
     'new MaterialExtract(resource, fileLoader: null).ToContentFile()',
     'Only VCS file versions',
     'vcsFileVersion'
 )) {
-    Assert-Contains $heroExtraction $required 'Hero extraction newer VCS material fallback'
+    Assert-Contains $vrfExtraction $required 'Shared newer VCS material fallback'
 }
+Assert-Contains $importedPayload 'VrfContentExtraction.Extract(resource, fileLoader)' 'Imported VPK newer VCS material fallback'
+
+$customMaterials = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/CustomMaterialAuthoringService.cs' -Raw
+Assert-Contains $customMaterials 'VrfContentExtraction.Extract(resource, fileLoader)' 'PREPARE newer VCS material fallback'
+
+$sourceResolver = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ExtractedSourceAssetResolver.cs' -Raw
+Assert-Contains $sourceResolver 'manifest.Mode == ProjectMode.ImportedVpk' 'Imported VPK multi-model source routing'
+Assert-Contains $sourceResolver 'ProjectAuthoringLayout.GetAuthoringRoot(manifest)' 'Imported VPK multi-model source routing'
 
 $importedAuthoringBuild = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ImportedVpkAuthoringBuildService.cs' -Raw
 foreach ($required in @(

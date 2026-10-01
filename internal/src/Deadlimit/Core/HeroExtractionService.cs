@@ -916,41 +916,11 @@ public sealed partial class HeroExtractionService
         string resourcePath,
         IProgress<HeroExtractionProgress>? progress)
     {
-        if (resource.ResourceType == ResourceType.Texture)
-        {
-            return new TextureExtract(resource).ToContentFile();
-        }
-
-        try
-        {
-            return FileExtract.Extract(resource, fileLoader, null);
-        }
-        catch (Exception exception) when (
-            resource.ResourceType == ResourceType.Material
-            && IsUnsupportedVcsVersion(exception))
-        {
-            progress?.Report(new HeroExtractionProgress(
-                $"The current shader format is newer than ValveResourceFormat; extracting material parameters without shader metadata: {Path.GetFileName(resourcePath)}"));
-
-            // MaterialExtract's basic provider reconstructs the editable VMAT from the
-            // material resource itself without opening the newer VCS shader binary.
-            // Texture resources are extracted separately by the dependency pass.
-            return new MaterialExtract(resource, fileLoader: null).ToContentFile();
-        }
-    }
-
-    private static bool IsUnsupportedVcsVersion(Exception exception)
-    {
-        for (var current = exception; current is not null; current = current.InnerException)
-        {
-            if (current.Message.Contains("Only VCS file versions", StringComparison.OrdinalIgnoreCase)
-                && current.Message.Contains("vcsFileVersion", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return VrfContentExtraction.Extract(
+            resource,
+            fileLoader,
+            () => progress?.Report(new HeroExtractionProgress(
+                $"The current shader format is newer than ValveResourceFormat; extracting material parameters without shader metadata: {Path.GetFileName(resourcePath)}")));
     }
 
     private static void DumpContentFile(string outputRoot, string path, ContentFile contentFile)

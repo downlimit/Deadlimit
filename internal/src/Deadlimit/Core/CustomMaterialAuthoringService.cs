@@ -545,7 +545,7 @@ public sealed class CustomMaterialAuthoringService
             using var stream = new MemoryStream(rawData, writable: false);
             using var resource = new Resource { FileName = candidatePath };
             resource.Read(stream);
-            using var contentFile = FileExtract.Extract(resource, fileLoader, null);
+            using var contentFile = VrfContentExtraction.Extract(resource, fileLoader);
 
             if (contentFile.Data is null || contentFile.Data.Length == 0)
             {

@@ -53,10 +53,12 @@ internal static class ExtractedSourceAssetResolver
             return null;
         }
 
-        var sourceRoot = SafePath.ResolveUnderRoot(
-            manifest.ProjectFolder,
-            manifest.SourceDumpFolderName,
-            "Project source-dump folder");
+        var sourceRoot = manifest.Mode == ProjectMode.ImportedVpk
+            ? ProjectAuthoringLayout.GetAuthoringRoot(manifest)
+            : SafePath.ResolveUnderRoot(
+                manifest.ProjectFolder,
+                manifest.SourceDumpFolderName,
+                "Project source-dump folder");
         return Directory.Exists(sourceRoot) ? sourceRoot : null;
     }
 
