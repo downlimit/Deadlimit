@@ -362,7 +362,16 @@ public sealed class MainForm : Form
             AutoSize = true,
         };
         settingsButton.Click += (_, _) => ShowSettings();
-        _extractHeroButton.Click += async (_, _) => await ExtractHeroSourceAsync();
+        _extractHeroButton.Click += async (_, _) =>
+        {
+            if ((ModifierKeys & Keys.Shift) == Keys.Shift)
+            {
+                await ProjectCreationChoiceFeature.ExtractVpkAsProjectAsync(this, _extractHeroButton);
+                return;
+            }
+
+            await ExtractHeroSourceAsync();
+        };
 
         topBar.Controls.Add(_extractHeroButton);
         topBar.Controls.Add(settingsButton);

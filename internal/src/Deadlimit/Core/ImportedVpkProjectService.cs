@@ -49,7 +49,7 @@ public static class ImportedVpkProjectService
                 StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
-                "The selected VPK changed after validation. Import was cancelled before creating a project.");
+                "The selected VPK changed after validation. Extraction was cancelled before creating a project.");
         }
 
         var root = Path.GetFullPath(projectsRoot.Trim())
@@ -123,8 +123,8 @@ public static class ImportedVpkProjectService
                     StringComparison.OrdinalIgnoreCase))
             {
                 Report(progress, 89, LocalizedText.T(
-                    "Recording ownership of the imported VPK slot...",
-                    "Регистрация импортированного слота VPK..."));
+                    "Recording ownership of the source VPK slot...",
+                    "Регистрация слота исходного VPK..."));
                 // This is possible only when the imported archive is outside the configured
                 // game client and its numbered target is genuinely free there.
                 new VpkSlotOwnershipService(paths).AdoptImportedSource(manifest);
@@ -135,13 +135,13 @@ public static class ImportedVpkProjectService
             // No imported working-file bytes are changed here.
             cancellationToken.ThrowIfCancellationRequested();
             Report(progress, 95, LocalizedText.T(
-                "Inspecting imported models...",
-                "Проверка импортированных моделей..."));
+                "Inspecting extracted models...",
+                "Проверка извлечённых моделей..."));
             new ImportedVpkRepairInspectionService(paths).InspectAndSave(manifest);
 
             Report(progress, 100, LocalizedText.T(
-                "VPK project import complete.",
-                "Импорт проекта из VPK завершён."));
+                "VPK extraction into the project is complete.",
+                "Извлечение VPK в проект завершено."));
 
             return new ImportedVpkProjectResult(
                 manifest,

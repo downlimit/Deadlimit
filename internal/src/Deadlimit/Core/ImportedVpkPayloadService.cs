@@ -130,7 +130,7 @@ public static class ImportedVpkPayloadService
         if (!string.Equals(source.SourceVpkSha256, candidate.SourceVpkSha256, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
-                "The selected VPK changed before extraction. Import was cancelled.");
+                "The selected VPK changed before extraction. Extraction was cancelled.");
         }
 
         Directory.CreateDirectory(compiledStagingFolder);
@@ -167,8 +167,8 @@ public static class ImportedVpkPayloadService
 
             cancellationToken.ThrowIfCancellationRequested();
             Report(progress, 73, LocalizedText.T(
-                "Converting imported resources into editable files...",
-                "Преобразование импортированных ресурсов в редактируемые файлы..."));
+                "Converting extracted resources into editable files...",
+                "Преобразование извлечённых ресурсов в редактируемые файлы..."));
             var authoringMap = ExtractAuthoringFiles(
                 source.SourceVpkPath,
                 authoringStagingFolder,

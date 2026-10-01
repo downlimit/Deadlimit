@@ -31,6 +31,14 @@ $mainForm = Get-Content -LiteralPath $mainFormPath -Raw
 if (-not $mainForm.Contains('UiText.T("EXTRACT SOURCE…", "ИЗВЛЕЧЬ ИСХОДНИКИ…")')) {
     throw 'EXTRACT SOURCE must keep the established wording and dialog-action ellipsis in both locales.'
 }
+foreach ($required in @(
+    '(ModifierKeys & Keys.Shift) == Keys.Shift',
+    'ProjectCreationChoiceFeature.ExtractVpkAsProjectAsync(this, _extractHeroButton)'
+)) {
+    if (-not $mainForm.Contains($required)) {
+        throw "EXTRACT SOURCE modifier action lost required contract token: $required"
+    }
+}
 
 $feedback = Get-Content -LiteralPath $feedbackPath -Raw
 if (-not $feedback.Contains('SettingsUiFactory.CreateActionButton()')) {
@@ -81,7 +89,9 @@ foreach ($required in @(
     'extractButton.Width = Math.Max(ProjectActionTextWidth, preferredWidth);',
     'ProjectActionGap = 6',
     'actions.Controls.Add(openFolderButton)',
-    'actions.Controls.Add(extractButton)')) {
+    'actions.Controls.Add(extractButton)',
+    'Hold **SHIFT+LMB** to **EXTRACT VPK…** into a new project.',
+    'Удерживайте **SHIFT+ЛКМ**, чтобы **ИЗВЛЕЧЬ VPK…** в новый проект.')) {
     if (-not $projectIdentity.Contains($required)) {
         throw "Project action layout lost required contract token: $required"
     }

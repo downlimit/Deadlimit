@@ -116,8 +116,8 @@ internal static class ProjectIdentityFeature
         toolTip.SetToolTip(
             extractButton,
             UiText.T(
-                "Open extraction options for the selected hero, then extract the chosen current retail resources into 0source.\n\nThe dialog lets you choose textures, abilities / VFX, portraits and UI, and whether an existing 0source refresh keeps a backup.",
-                "Открыть параметры извлечения выбранного героя, затем извлечь выбранные актуальные retail-ресурсы в 0source.\n\nВ диалоге можно выбрать текстуры, способности / VFX, портреты и UI, а также сохранять ли backup при обновлении существующего 0source."));
+                "Extract the selected hero's current source files into 0source. Choose file groups in the dialog.\n\nHold **SHIFT+LMB** to **EXTRACT VPK…** into a new project.\n\nWhen refreshing an existing 0source, you can keep the previous copy as a backup.",
+                "Извлечь актуальные исходные файлы выбранного героя в 0source. Группы файлов выбираются в диалоге.\n\nУдерживайте **SHIFT+ЛКМ**, чтобы **ИЗВЛЕЧЬ VPK…** в новый проект.\n\nПри обновлении существующего 0source можно сохранить предыдущую копию как резервную."));
     }
 
     private static void MoveSaveButtonToReleaseRow(TableLayoutPanel grid)
