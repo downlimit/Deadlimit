@@ -986,14 +986,6 @@ public sealed class MainForm : Form
             return;
         }
 
-        if (_loadedManifest.Mode == ProjectMode.ImportedVpk)
-        {
-            ShowValidation(UiText.T(
-                "This VPK project already contains imported working files. Use BUILD FOR TEST to rebuild it.",
-                "Этот VPK-проект уже содержит импортированные рабочие файлы. Для пересборки используйте СОБРАТЬ ДЛЯ ТЕСТА."));
-            return;
-        }
-
         var outputFolder = Path.Combine(_loadedManifest.ProjectFolder, _loadedManifest.SourceDumpFolderName);
         var gltfOutputFolder = Path.Combine(outputFolder, ExtractedSourceLayout.GltfPipelineFolderName);
         var legacyGltfOutputFolder = Path.Combine(outputFolder, ExtractedSourceLayout.LegacyGltfPipelineFolderName);

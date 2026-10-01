@@ -67,8 +67,6 @@ internal static class ProjectCreationChoiceFeature
                 "Add a project to the Library.\n\nCreate a new project or import an existing Deadlock VPK.",
                 "Добавить проект в Библиотеку.\n\nСоздайте новый проект или импортируйте существующий VPK Deadlock."));
 
-        ImportedProjectModeFeature.Attach(form);
-
         form.Disposed += (_, _) =>
         {
             toolTip.Dispose();
