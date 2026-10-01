@@ -254,6 +254,8 @@ foreach ($required in @(
     'public const string CompiledFolderName = "imported-compiled";',
     'new TextureExtract(resource).ToContentFile()',
     'FileExtract.Extract(resource, fileLoader, null)',
+    'modelExtract.AnimationsToExtract.Clear()',
+    'ModelExtract.ModelExtractType.Map_AggregateSplit',
     'NormalizeTextureAuthoringPath(decompiledPath)',
     'imported-authoring-map.json'
 )) {
@@ -279,9 +281,9 @@ $importedRepack = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/Imported
 Assert-Contains $importedRepack 'ImportedVpkRepackEntryStatus.RebuiltFromAuthoring' 'Imported VPK authoring provenance'
 Assert-Contains $importedRepack 'ImportedVpkAuthoringBuildService.TryLoadSnapshot' 'Imported VPK authoring report validation'
 
-$importedMode = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ImportedProjectModeFeature.cs' -Raw
-if ($importedMode.Contains('or UiControlNames.BuildForTestButton', [StringComparison]::Ordinal)) {
-    throw 'Imported VPK projects must keep BUILD FOR TEST enabled.'
+$projectCreation = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ProjectCreationChoiceFeature.cs' -Raw
+if ($projectCreation.Contains('ImportedProjectModeFeature.Attach', [StringComparison]::Ordinal)) {
+    throw 'Imported VPK projects must keep normal source extraction and CSDK preparation actions enabled.'
 }
 
 $authoring = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ProjectAuthoringLayout.cs' -Raw

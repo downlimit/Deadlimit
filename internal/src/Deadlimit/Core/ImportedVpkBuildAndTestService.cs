@@ -190,11 +190,10 @@ internal sealed class ImportedVpkBuildAndTestService
             throw new InvalidOperationException("Imported BUILD FOR TEST requires Release ID 01-99.");
         }
         if (!int.TryParse(manifest.ImportedVpk.SourceReleaseTarget?.Trim(), out var sourceSlot)
-            || sourceSlot != releaseSlot)
+            || sourceSlot is < 1 or > 99)
         {
             throw new InvalidOperationException(
-                "Imported BUILD FOR TEST must deploy back to the Release ID carried by the imported pak##_dir.vpk. " +
-                "Changing the imported project's release slot is not supported by this repair path.");
+                "Imported BUILD FOR TEST requires a valid source Release ID in the imported VPK metadata.");
         }
         _ = ImportedVpkPayloadService.TryLoadSnapshot(manifest.ProjectFolder)
             ?? throw new InvalidOperationException(

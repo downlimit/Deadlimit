@@ -5,6 +5,7 @@ namespace Deadlimit.App;
 internal static class ProjectSaveStateFeature
 {
     private static readonly Dictionary<MainForm, Action> Updaters = [];
+    private static readonly Dictionary<MainForm, Func<bool>> DirtyChecks = [];
 
     public static void Attach(MainForm form)
     {
@@ -38,7 +39,7 @@ internal static class ProjectSaveStateFeature
                 ? entry.LookupName.Trim()
                 : heroCombo?.Text.Trim() ?? string.Empty;
             var release = NormalizeReleaseId(releaseId?.Text);
-            var manifest = ProjectStore.TryLoad(folder);
+            var manifest = form.LoadedManifest;
 
             if (manifest is null)
             {
@@ -49,7 +50,8 @@ internal static class ProjectSaveStateFeature
                     || release.Length > 0;
             }
 
-            return !string.Equals(hero, manifest.Hero?.Trim(), StringComparison.OrdinalIgnoreCase)
+            return !PathsEqual(folder, manifest.ProjectFolder)
+                || !string.Equals(hero, manifest.Hero?.Trim(), StringComparison.OrdinalIgnoreCase)
                 || !string.Equals(
                     release,
                     NormalizeReleaseId(manifest.ReleaseTarget),
@@ -95,6 +97,7 @@ internal static class ProjectSaveStateFeature
         }
 
         Updaters[form] = UpdateSaveState;
+        DirtyChecks[form] = IsDirty;
 
         folderText.TextChanged += (_, _) => UpdateSaveState();
         if (heroCombo is not null)
@@ -115,7 +118,11 @@ internal static class ProjectSaveStateFeature
             WarnIfReleaseIdIsShared();
         }));
         form.Shown += (_, _) => UpdateSaveState();
-        form.FormClosed += (_, _) => Updaters.Remove(form);
+        form.FormClosed += (_, _) =>
+        {
+            Updaters.Remove(form);
+            DirtyChecks.Remove(form);
+        };
 
         UpdateSaveState();
     }
@@ -127,6 +134,9 @@ internal static class ProjectSaveStateFeature
             update();
         }
     }
+
+    public static bool IsDirty(MainForm form) =>
+        DirtyChecks.TryGetValue(form, out var check) && check();
 
     private static List<string> FindReleaseIdConflicts(string currentFolder, string release)
     {

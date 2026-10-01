@@ -35,6 +35,8 @@ public sealed class MainForm : Form
     private CancellationTokenSource? _heroExtractionCancellation;
     private bool _closeAfterHeroExtraction;
 
+    internal ProjectManifest? LoadedManifest => _loadedManifest;
+
     public MainForm()
     {
         Text = "Deadlimit Manager";
@@ -158,11 +160,80 @@ public sealed class MainForm : Form
                 return 4;
             }
 
+            var importedMetadata = new ImportedVpkMetadata
+            {
+                SourceVpkFileName = "pak01_dir.vpk",
+                SourceVpkPath = Path.Combine(tempRoot, "pak01_dir.vpk"),
+                SourceReleaseTarget = "01",
+                OriginalVpkSha256 = new string('a', 64),
+                SourceEntryCount = 1,
+                InferredHeroes = ["hero_smoke"],
+                PrimaryModelResources = ["models/heroes/hero_smoke/hero_smoke.vmdl_c"],
+            };
+            persisted.Mode = ProjectMode.ImportedVpk;
+            persisted.ImportedVpk = importedMetadata;
+            ProjectStore.Save(persisted);
+            form.LoadManifest(ProjectStore.TryLoad(projectFolder)!);
+
+            ProjectIdentityFeature.Attach(form);
+            HeroCatalogFeature.Attach(form);
+            ProjectSaveStateFeature.Attach(form);
+            if (ProjectSaveStateFeature.IsDirty(form))
+            {
+                return 5;
+            }
+
+            form._projectNameText.Text = "Unrelated display-name change";
+            if (ProjectSaveStateFeature.IsDirty(form))
+            {
+                return 6;
+            }
+
+            form._releaseTargetText.Text = "02";
+            if (!ProjectSaveStateFeature.IsDirty(form))
+            {
+                return 7;
+            }
+
+            form._releaseTargetText.Text = "01";
+            if (ProjectSaveStateFeature.IsDirty(form))
+            {
+                return 8;
+            }
+
+            form._heroText.Text = "hero_changed";
+            if (!ProjectSaveStateFeature.IsDirty(form))
+            {
+                return 9;
+            }
+
+            form._heroText.Text = "hero_smoke";
+            var otherFolder = Path.Combine(projectsRoot, "OtherFolder");
+            Directory.CreateDirectory(otherFolder);
+            form._projectFolderText.Text = otherFolder;
+            if (!ProjectSaveStateFeature.IsDirty(form))
+            {
+                return 10;
+            }
+
+            form._projectFolderText.Text = projectFolder;
+            form._releaseTargetText.Text = "02";
+            form.SaveProject();
+            var importedAfterSave = ProjectStore.TryLoad(projectFolder);
+            if (importedAfterSave?.Mode != ProjectMode.ImportedVpk
+                || importedAfterSave.ImportedVpk is null
+                || importedAfterSave.ImportedVpk.OriginalVpkSha256 != importedMetadata.OriginalVpkSha256
+                || importedAfterSave.ImportedVpk.SourceVpkPath != importedMetadata.SourceVpkPath
+                || importedAfterSave.ImportedVpk.SourceEntryCount != importedMetadata.SourceEntryCount)
+            {
+                return 11;
+            }
+
             return 0;
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
-            return 5;
+            return 12;
         }
         finally
         {
@@ -849,6 +920,7 @@ public sealed class MainForm : Form
             var manifest = new ProjectManifest
             {
                 SchemaVersion = Math.Max(existing?.SchemaVersion ?? 1, 3),
+                Mode = existing?.Mode ?? ProjectMode.Authoring,
                 ProjectId = string.IsNullOrWhiteSpace(existing?.ProjectId)
                     ? AddonIdentityService.CreateProjectId()
                     : existing.ProjectId,
@@ -876,6 +948,7 @@ public sealed class MainForm : Form
                 CompiledVmdl = existing?.CompiledVmdl,
                 AnimGraph2Refs = existing?.AnimGraph2Refs ?? [],
                 NmSkeletonRef = existing?.NmSkeletonRef,
+                ImportedVpk = existing?.ImportedVpk,
             };
 
             ProjectStore.Save(manifest);
@@ -897,8 +970,19 @@ public sealed class MainForm : Form
 
     private async Task ExtractHeroSourceAsync()
     {
-        if (!TrySaveProject() || _loadedManifest is null)
+        if (_loadedManifest is null)
         {
+            ShowValidation(UiText.T(
+                "Save the current project before extracting hero source.",
+                "Сохраните текущий проект перед извлечением исходников героя."));
+            return;
+        }
+
+        if (ProjectSaveStateFeature.IsDirty(this))
+        {
+            ShowValidation(UiText.T(
+                "Save the changed project folder, hero, or Release ID before extracting hero source.",
+                "Сохраните изменённую папку проекта, героя или Release ID перед извлечением исходников героя."));
             return;
         }
 

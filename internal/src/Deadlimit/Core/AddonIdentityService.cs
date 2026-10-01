@@ -28,13 +28,6 @@ public sealed class AddonIdentityService
     {
         ArgumentNullException.ThrowIfNull(manifest);
 
-        if (manifest.Mode == ProjectMode.ImportedVpk)
-        {
-            throw new InvalidOperationException(
-                "Imported VPK projects do not use the normal CSDK authoring path. " +
-                "Use the imported-project repair/build path instead.");
-        }
-
         var projectFolder = NormalizePath(manifest.ProjectFolder);
         var projectIdWasMissing = string.IsNullOrWhiteSpace(manifest.ProjectId);
         var projectId = projectIdWasMissing
