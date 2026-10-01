@@ -11,6 +11,7 @@ internal static class Program
     private const string StartupSmokeArgument = "--startup-smoke";
     private const string WriteVertexColorScriptArgument = "--write-vertex-color-script";
     private const string ExtractDmxVertexColorTransferArgument = "--extract-dmx-vertex-color-transfer";
+    private const string RefreshImportedAuthoringArgument = "--refresh-imported-authoring";
     private const string SingleInstanceMutexName = @"Local\Deadlimit.Gui.SingleInstance.v1";
     private const int SwRestore = 9;
 
@@ -30,6 +31,12 @@ internal static class Program
             && string.Equals(args[0], ExtractDmxVertexColorTransferArgument, StringComparison.OrdinalIgnoreCase))
         {
             return ExtractDmxVertexColorTransfer(args);
+        }
+
+        if (args.Length > 0
+            && string.Equals(args[0], RefreshImportedAuthoringArgument, StringComparison.OrdinalIgnoreCase))
+        {
+            return RefreshImportedAuthoring(args);
         }
 
         var startupSmoke = args.Any(argument =>
@@ -73,6 +80,30 @@ internal static class Program
                 }
                 singleInstanceMutex.Dispose();
             }
+        }
+    }
+
+    private static int RefreshImportedAuthoring(string[] args)
+    {
+        if (args.Length != 2 || string.IsNullOrWhiteSpace(args[1]))
+        {
+            Console.Error.WriteLine("Usage: --refresh-imported-authoring <project-folder>");
+            return 2;
+        }
+
+        try
+        {
+            var manifest = ProjectStore.TryLoad(args[1])
+                ?? throw new InvalidOperationException("Deadlimit project manifest was not found.");
+            var map = ImportedVpkPayloadService.RefreshAuthoring(manifest);
+            Console.WriteLine(
+                $"Imported working files refreshed: {map.AuthoringFiles.Count} file(s); schema {map.SchemaVersion}.");
+            return 0;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            Console.Error.WriteLine(exception.Message);
+            return 1;
         }
     }
 

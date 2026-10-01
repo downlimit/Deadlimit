@@ -38,7 +38,7 @@ public sealed record ImportedVpkImportProgress(string Message, int Percent);
 
 public sealed class ImportedVpkAuthoringMap
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
     public DateTimeOffset CreatedUtc { get; set; } = DateTimeOffset.UtcNow;
     public List<ImportedVpkAuthoringMapEntry> Entries { get; set; } = [];
     public List<ImportedVpkAuthoringFileSnapshot> AuthoringFiles { get; set; } = [];
@@ -206,6 +206,90 @@ public static class ImportedVpkPayloadService
         }
     }
 
+    public static ImportedVpkAuthoringMap RefreshAuthoring(ProjectManifest manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (manifest.Mode != ProjectMode.ImportedVpk || manifest.ImportedVpk is null)
+        {
+            throw new InvalidOperationException(
+                "Refreshing imported working files requires an ImportedVpk project manifest.");
+        }
+
+        var projectFolder = Path.GetFullPath(manifest.ProjectFolder);
+        var authoringFolder = SafePath.ResolveUnderRoot(
+            projectFolder,
+            AuthoringFolderName,
+            "Imported VPK working-files folder");
+        var previousMap = TryLoadAuthoringMap(projectFolder)
+            ?? throw new InvalidOperationException(
+                "The imported project's authoring map is missing or invalid.");
+        if (!AuthoringMatchesSnapshot(authoringFolder, previousMap.AuthoringFiles))
+        {
+            throw new InvalidOperationException(
+                "Imported working files changed after extraction. Automatic refresh was stopped to protect those edits.");
+        }
+
+        var original = TryLoadSnapshot(projectFolder)
+            ?? throw new InvalidOperationException(
+                "The imported project's original VPK snapshot is missing or invalid.");
+        var source = VpkImportSourceValidator.Validate(manifest.ImportedVpk.SourceVpkPath);
+        if (!string.Equals(source.SourceVpkSha256, original.SourceVpkSha256, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(
+                source.SourceVpkSha256,
+                manifest.ImportedVpk.OriginalVpkSha256,
+                StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "The source VPK no longer matches the archive originally imported into this project.");
+        }
+
+        var metadataFolder = ProjectStore.GetMetadataFolder(projectFolder);
+        var stagingFolder = Path.Combine(metadataFolder, $"authoring-refresh-staging-{Guid.NewGuid():N}");
+        var backupFolder = Path.Combine(metadataFolder, $"authoring-refresh-backup-{Guid.NewGuid():N}");
+        var mapPath = Path.Combine(metadataFolder, AuthoringMapFileName);
+        var previousMapBytes = File.ReadAllBytes(mapPath);
+        var oldMoved = false;
+        var newMoved = false;
+        try
+        {
+            Directory.CreateDirectory(stagingFolder);
+            var refreshedMap = ExtractAuthoringFiles(
+                source.SourceVpkPath,
+                stagingFolder,
+                progress: null,
+                CancellationToken.None);
+
+            Directory.Move(authoringFolder, backupFolder);
+            oldMoved = true;
+            Directory.Move(stagingFolder, authoringFolder);
+            newMoved = true;
+            AtomicFile.WriteJson(mapPath, refreshedMap, JsonOptions);
+            Directory.Delete(backupFolder, recursive: true);
+            return refreshedMap;
+        }
+        catch
+        {
+            if (newMoved && Directory.Exists(authoringFolder))
+            {
+                TryDeleteDirectory(authoringFolder);
+            }
+            if (oldMoved && Directory.Exists(backupFolder) && !Directory.Exists(authoringFolder))
+            {
+                Directory.Move(backupFolder, authoringFolder);
+            }
+            AtomicFile.WriteAllBytes(mapPath, previousMapBytes);
+            throw;
+        }
+        finally
+        {
+            TryDeleteDirectory(stagingFolder);
+            if (!oldMoved || Directory.Exists(authoringFolder))
+            {
+                TryDeleteDirectory(backupFolder);
+            }
+        }
+    }
+
     public static string ResolveCompiledFolder(string projectFolder)
     {
         var builtCompiled = Path.Combine(ProjectStore.GetMetadataFolder(projectFolder), BuiltCompiledFolderName);
@@ -252,7 +336,7 @@ public static class ImportedVpkPayloadService
         try
         {
             var map = JsonSerializer.Deserialize<ImportedVpkAuthoringMap>(File.ReadAllText(path), JsonOptions);
-            return map is { SchemaVersion: 1 } ? map : null;
+            return map is { SchemaVersion: 1 or 2 } ? map : null;
         }
         catch (Exception exception) when (exception is JsonException
                                            or IOException
@@ -415,9 +499,7 @@ public static class ImportedVpkPayloadService
                         ToWindowsPath(authoringPath),
                         "Decompiled imported VPK resource");
 
-                    using var contentFile = resource.ResourceType == ResourceType.Texture
-                        ? new TextureExtract(resource).ToContentFile()
-                        : FileExtract.Extract(resource, fileLoader, null);
+                    using var contentFile = ExtractEditableResource(resource, fileLoader);
                     DumpContentFile(authoringRoot, outputPath, contentFile);
                 }
             }
@@ -449,6 +531,34 @@ public static class ImportedVpkPayloadService
         };
     }
 
+    private static ContentFile ExtractEditableResource(Resource resource, IFileLoader fileLoader)
+    {
+        if (resource.ResourceType == ResourceType.Texture)
+        {
+            return new TextureExtract(resource).ToContentFile();
+        }
+
+        if (resource.ResourceType != ResourceType.Model)
+        {
+            return FileExtract.Extract(resource, fileLoader, null);
+        }
+
+        // A compiled model can reach embedded animations, animation-group data and
+        // animation-graph clips that were never separate entries in the imported VPK.
+        // VRF's full model export materializes all of them as DMX/VNMCLIP files. That
+        // behavior is useful for archival extraction, but it falsely turns game-owned
+        // animation data into project-authored files. Imported projects keep the exact
+        // compiled model in .deadlimit/imported-compiled; 1authoring receives the model,
+        // meshes and physics only. A real standalone animation entry in the VPK still
+        // follows the normal FileExtract path above.
+        var modelExtract = new ModelExtract(resource, fileLoader)
+        {
+            Type = ModelExtract.ModelExtractType.Map_AggregateSplit,
+        };
+        modelExtract.AnimationsToExtract.Clear();
+        return modelExtract.ToContentFile();
+    }
+
     private static List<ImportedVpkAuthoringFileSnapshot> CaptureAuthoringFiles(
         string authoringRoot,
         CancellationToken cancellationToken)
@@ -465,6 +575,44 @@ public static class ImportedVpkPayloadService
                 stream.Length));
         }
         return result;
+    }
+
+    private static bool AuthoringMatchesSnapshot(
+        string authoringRoot,
+        IReadOnlyCollection<ImportedVpkAuthoringFileSnapshot> snapshot)
+    {
+        if (!Directory.Exists(authoringRoot))
+        {
+            return false;
+        }
+
+        var expected = snapshot.ToDictionary(entry => entry.RelativePath, StringComparer.OrdinalIgnoreCase);
+        var files = Directory.EnumerateFiles(authoringRoot, "*", SearchOption.AllDirectories).ToArray();
+        if (files.Length != expected.Count)
+        {
+            return false;
+        }
+
+        foreach (var path in files)
+        {
+            var relative = NormalizeVpkPath(Path.GetRelativePath(authoringRoot, path));
+            if (!expected.TryGetValue(relative, out var entry))
+            {
+                return false;
+            }
+            var info = new FileInfo(path);
+            if (info.Length != entry.Size)
+            {
+                return false;
+            }
+            using var stream = File.OpenRead(path);
+            var sha = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
+            if (!string.Equals(sha, entry.Sha256, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static string NormalizeTextureAuthoringPath(string path)
