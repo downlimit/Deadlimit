@@ -540,7 +540,7 @@ public static class ImportedVpkPayloadService
 
         if (resource.ResourceType != ResourceType.Model)
         {
-            return FileExtract.Extract(resource, fileLoader, null);
+            return VrfContentExtraction.Extract(resource, fileLoader);
         }
 
         // A compiled model can reach embedded animations, animation-group data and
