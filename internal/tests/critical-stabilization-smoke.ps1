@@ -232,8 +232,9 @@ foreach ($required in @(
 }
 
 $projectEntry = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ProjectCreationChoiceFeature.cs' -Raw
-Assert-Contains $projectEntry 'Cannot create or import a project while' 'Project mutation interlock'
+Assert-Contains $projectEntry 'Cannot extract a VPK while' 'VPK extraction mutation interlock'
 foreach ($required in @(
+    'ExtractVpkAsProjectAsync',
     'ImportedVpkProjectNameDialog',
     'await Task.Run(',
     'VpkImportProgressPresenter',
@@ -241,8 +242,23 @@ foreach ($required in @(
     'SteamStatusFeature.ReportProgress(_form, null)',
     'ImportedVpkProjectService.Create('
 )) {
-    Assert-Contains $projectEntry $required 'Responsive named VPK import flow'
+    Assert-Contains $projectEntry $required 'Responsive named VPK extraction flow'
 }
+foreach ($removed in @('ProjectEntryChoiceDialog', 'How do you want to add the project?')) {
+    Assert-NotContains $projectEntry $removed 'Direct new-project creation flow'
+}
+
+$mainForm = Get-Content -LiteralPath 'internal/src/Deadlimit/App/MainForm.cs' -Raw
+foreach ($required in @(
+    '(ModifierKeys & Keys.Shift) == Keys.Shift',
+    'ProjectCreationChoiceFeature.ExtractVpkAsProjectAsync(this, _extractHeroButton)',
+    'await ExtractHeroSourceAsync()'
+)) {
+    Assert-Contains $mainForm $required 'EXTRACT SOURCE modifier routing'
+}
+
+$projectLibrary = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ProjectLibraryFeature.cs' -Raw
+Assert-Contains $projectLibrary 'addButton.Click += (_, _) => CreateProjectFolder();' 'Direct new-project creation action'
 
 $importedProject = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ImportedVpkProjectService.cs' -Raw
 Assert-Contains $importedProject 'ProjectAuthoringLayout.EnsureStructure(projectFolder);' 'Imported VPK project folder structure'

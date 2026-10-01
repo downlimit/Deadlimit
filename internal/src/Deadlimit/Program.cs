@@ -268,7 +268,6 @@ internal static class Program
         UpdateStartup(startup, 62, loadingProjectControlsText);
         ProjectLibraryHotfixFeature.Attach(form);
         ProjectLibraryFeature.Attach(form);
-        ProjectCreationChoiceFeature.Attach(form);
         HeroCatalogFeature.Attach(form);
         ProjectLogsFeature.Attach(form);
         ProjectSaveStateFeature.Attach(form);
