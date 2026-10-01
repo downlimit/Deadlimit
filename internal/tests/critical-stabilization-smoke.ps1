@@ -271,6 +271,18 @@ if ($importedPayload.Contains('public const string PayloadFolderName = "payload"
     throw 'Imported VPK extraction must not restore the legacy payload destination.'
 }
 
+$heroExtraction = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/HeroExtractionService.cs' -Raw
+foreach ($required in @(
+    'ExtractContentFileWithShaderCompatibilityFallback(',
+    'resource.ResourceType == ResourceType.Material',
+    'IsUnsupportedVcsVersion(exception)',
+    'new MaterialExtract(resource, fileLoader: null).ToContentFile()',
+    'Only VCS file versions',
+    'vcsFileVersion'
+)) {
+    Assert-Contains $heroExtraction $required 'Hero extraction newer VCS material fallback'
+}
+
 $importedAuthoringBuild = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ImportedVpkAuthoringBuildService.cs' -Raw
 foreach ($required in @(
     'AuthoringMatchesImport(authoringMap.AuthoringFiles, currentAuthoring)',
