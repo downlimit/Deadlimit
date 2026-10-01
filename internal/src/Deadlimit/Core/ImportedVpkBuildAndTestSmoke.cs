@@ -41,25 +41,15 @@ internal static class ImportedVpkBuildAndTestSmoke
             var candidate = VpkImportSourceValidator.Validate(importedSource);
             var manifest = new ProjectManifest
             {
-                SchemaVersion = 4,
-                Mode = ProjectMode.ImportedVpk,
+                SchemaVersion = 5,
+                Mode = ProjectMode.Authoring,
                 ProjectId = AddonIdentityService.CreateProjectId(),
                 ProjectName = "Ivy Repair",
                 ProjectFolder = projectFolder,
                 Hero = "ivy",
                 ReleaseTarget = "42",
                 RetailMainModel = ResourcePath,
-                ImportedVpk = new ImportedVpkMetadata
-                {
-                    SourceVpkFileName = candidate.SourceVpkFileName,
-                    SourceVpkPath = candidate.SourceVpkPath,
-                    SourceReleaseTarget = candidate.ReleaseTarget,
-                    OriginalVpkSha256 = candidate.SourceVpkSha256,
-                    SourceEntryCount = candidate.EntryCount,
-                    PrimaryModelResources = [ResourcePath],
-                },
             };
-            _ = ImportedVpkPayloadService.Extract(manifest, candidate);
 
             var missingCsdkRoot = Path.Combine(root, "csdk-must-not-be-created");
             var paths = new DeadlimitPaths(new ToolPathSettings
@@ -69,7 +59,22 @@ internal static class ImportedVpkBuildAndTestSmoke
                 CsdkRoot = missingCsdkRoot,
                 DeadlockToolsRoot = Path.Combine(root, "deadlock-tools-must-not-be-used"),
             });
-            _ = new VpkSlotOwnershipService(paths).AdoptImportedSource(manifest);
+            var identity = VpkImportIdentityService.Infer(candidate);
+            var extracted = ImportedVpkProjectService.ExtractIntoExisting(
+                manifest,
+                candidate,
+                identity,
+                paths);
+            manifest = extracted.Manifest;
+            if (!ProjectAuthoringLayout.ArtistFolderNames.All(name =>
+                    Directory.Exists(Path.Combine(projectFolder, name)))
+                || manifest.Mode != ProjectMode.ImportedVpk
+                || manifest.ImportedVpk is null
+                || !string.Equals(manifest.ProjectFolder, projectFolder, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(manifest.ReleaseTarget, "42", StringComparison.Ordinal))
+            {
+                return 1;
+            }
             var importedSourceBeforeBuild = File.ReadAllBytes(importedSource);
             manifest.ReleaseTarget = "43";
             var targetVpk = Path.Combine(addonsRoot, "pak43_dir.vpk");
@@ -81,14 +86,14 @@ internal static class ImportedVpkBuildAndTestSmoke
                 || !string.Equals(first.VpkPath, targetVpk, StringComparison.OrdinalIgnoreCase)
                 || !File.ReadAllBytes(importedSource).SequenceEqual(importedSourceBeforeBuild))
             {
-                return 1;
+                return 2;
             }
             if (Directory.Exists(missingCsdkRoot)
                 || File.Exists(Path.Combine(
                     ProjectStore.GetMetadataFolder(projectFolder),
                     "build-test-state.json")))
             {
-                return 2;
+                return 3;
             }
 
             var firstDeployed = ReadEntry(targetVpk, ResourcePath);
@@ -97,7 +102,7 @@ internal static class ImportedVpkBuildAndTestSmoke
             if (!CompiledModelAnimationBindingRepair.SnapshotsEqual(firstSnapshot, retailSnapshot)
                 || !ReadEntry(importedSource, MaterialPath).SequenceEqual(materialBytes))
             {
-                return 3;
+                return 4;
             }
 
             var metadataFolder = ProjectStore.GetMetadataFolder(projectFolder);
@@ -106,7 +111,7 @@ internal static class ImportedVpkBuildAndTestSmoke
                 ImportedVpkAnimationBindingRepairService.ReportFileName);
             if (!File.Exists(repairReport))
             {
-                return 4;
+                return 5;
             }
             var provenanceBeforeSecond = File.ReadAllBytes(repairReport);
             var payloadModelPath = SafePath.ResolveUnderRoot(
@@ -118,12 +123,12 @@ internal static class ImportedVpkBuildAndTestSmoke
             var second = routedService.BuildAsync(manifest).GetAwaiter().GetResult();
             if (second.CompiledSourceCount != 0 || second.Ag2Applied)
             {
-                return 5;
+                return 6;
             }
             if (!payloadBeforeSecond.SequenceEqual(File.ReadAllBytes(payloadModelPath))
                 || !provenanceBeforeSecond.SequenceEqual(File.ReadAllBytes(repairReport)))
             {
-                return 6;
+                return 7;
             }
 
             var secondDeployed = ReadEntry(targetVpk, ResourcePath);
@@ -131,7 +136,7 @@ internal static class ImportedVpkBuildAndTestSmoke
                 || !ReadEntry(targetVpk, MaterialPath).SequenceEqual(materialBytes)
                 || !File.ReadAllBytes(importedSource).SequenceEqual(importedSourceBeforeBuild))
             {
-                return 7;
+                return 8;
             }
 
             var authoringFolder = Path.Combine(projectsRoot, "AuthoringControl");

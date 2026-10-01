@@ -234,24 +234,29 @@ foreach ($required in @(
 $projectEntry = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ProjectCreationChoiceFeature.cs' -Raw
 Assert-Contains $projectEntry 'Cannot extract a VPK while' 'VPK extraction mutation interlock'
 foreach ($required in @(
-    'ExtractVpkAsProjectAsync',
-    'ImportedVpkProjectNameDialog',
+    'ExtractVpkIntoCurrentProjectAsync',
+    'var currentProject = form.LoadedManifest;',
     'await Task.Run(',
     'VpkImportProgressPresenter',
     'SteamStatusFeature.ReportProgress(_form, update.Percent)',
     'SteamStatusFeature.ReportProgress(_form, null)',
-    'ImportedVpkProjectService.Create('
+    'ImportedVpkProjectService.ExtractIntoExisting('
 )) {
-    Assert-Contains $projectEntry $required 'Responsive named VPK extraction flow'
+    Assert-Contains $projectEntry $required 'Responsive current-project VPK extraction flow'
 }
-foreach ($removed in @('ProjectEntryChoiceDialog', 'How do you want to add the project?')) {
-    Assert-NotContains $projectEntry $removed 'Direct new-project creation flow'
+foreach ($removed in @(
+    'ProjectEntryChoiceDialog',
+    'ImportedVpkProjectNameDialog',
+    'How do you want to add the project?',
+    'VPK extracted into a new project.'
+)) {
+    Assert-NotContains $projectEntry $removed 'Direct current-project VPK extraction flow'
 }
 
 $mainForm = Get-Content -LiteralPath 'internal/src/Deadlimit/App/MainForm.cs' -Raw
 foreach ($required in @(
     '(ModifierKeys & Keys.Shift) == Keys.Shift',
-    'ProjectCreationChoiceFeature.ExtractVpkAsProjectAsync(this, _extractHeroButton)',
+    'ProjectCreationChoiceFeature.ExtractVpkIntoCurrentProjectAsync(this, _extractHeroButton)',
     'await ExtractHeroSourceAsync()'
 )) {
     Assert-Contains $mainForm $required 'EXTRACT SOURCE modifier routing'
@@ -259,12 +264,14 @@ foreach ($required in @(
 
 $projectLibrary = Get-Content -LiteralPath 'internal/src/Deadlimit/App/ProjectLibraryFeature.cs' -Raw
 Assert-Contains $projectLibrary 'addButton.Click += (_, _) => CreateProjectFolder();' 'Direct new-project creation action'
+Assert-Contains $mainForm 'ReleaseSlotAllocationService.AllocateFirstFree(' 'New-project first-free Release ID allocation'
 
 $importedProject = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/ImportedVpkProjectService.cs' -Raw
 Assert-Contains $importedProject 'ProjectAuthoringLayout.EnsureStructure(projectFolder);' 'Imported VPK project folder structure'
 Assert-Contains $importedProject 'var scan = ProjectScanner.Scan(projectFolder);' 'Imported VPK reconstructed-file index'
-Assert-Contains $importedProject 'ReleaseSlotAllocationService.AllocateFirstFree(root, paths)' 'Imported VPK free Release ID allocation'
-Assert-Contains $importedProject 'manifest.ImportedVpk.SourceReleaseTarget' 'Imported VPK source and target slot separation'
+Assert-Contains $importedProject 'ReleaseTarget = source.ReleaseTarget' 'Current project Release ID preservation'
+Assert-Contains $importedProject 'importedManifest.ImportedVpk!.SourceReleaseTarget' 'Imported VPK source and target slot separation'
+Assert-NotContains $importedProject 'Directory.CreateDirectory(projectFolder)' 'VPK extraction must not create another project folder'
 
 $addonIdentity = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/AddonIdentityService.cs' -Raw
 Assert-Contains $addonIdentity 'sameAddonAndProjectFolder' 'Recreated project CSDK addon continuity'

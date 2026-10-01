@@ -366,7 +366,7 @@ public sealed class MainForm : Form
         {
             if ((ModifierKeys & Keys.Shift) == Keys.Shift)
             {
-                await ProjectCreationChoiceFeature.ExtractVpkAsProjectAsync(this, _extractHeroButton);
+                await ProjectCreationChoiceFeature.ExtractVpkIntoCurrentProjectAsync(this, _extractHeroButton);
                 return;
             }
 
@@ -760,7 +760,7 @@ public sealed class MainForm : Form
         _projectFolderText.Text = Path.GetFullPath(folder);
         _projectNameText.Text = new DirectoryInfo(folder).Name;
         _heroText.Clear();
-        _releaseTargetText.Clear();
+        _releaseTargetText.Text = TryAllocateFirstFreeReleaseId();
         RefreshScan(showStatus: false);
 
         if (rememberSelection)
@@ -773,6 +773,29 @@ public sealed class MainForm : Form
             SetStatus(UiText.T(
                 "Project folder selected. Enter the hero and save project metadata.",
                 "Папка проекта выбрана. Укажите героя и сохраните метаданные проекта."));
+        }
+    }
+
+    private string TryAllocateFirstFreeReleaseId()
+    {
+        try
+        {
+            return ReleaseSlotAllocationService.AllocateFirstFree(
+                ProjectStore.GetToolPathSettings().ProjectsRoot,
+                new DeadlimitPaths());
+        }
+        catch (Exception exception) when (exception is IOException
+            or UnauthorizedAccessException
+            or InvalidOperationException
+            or ArgumentException)
+        {
+            MessageBox.Show(
+                this,
+                exception.Message,
+                UiText.T("Could not assign Release ID", "Не удалось назначить Release ID"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return string.Empty;
         }
     }
 

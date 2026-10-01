@@ -8,34 +8,23 @@ public sealed record ImportedVpkProjectResult(
 
 public static class ImportedVpkProjectService
 {
-    public static ImportedVpkProjectResult Create(
+    public static ImportedVpkProjectResult ExtractIntoExisting(
+        ProjectManifest currentManifest,
         VpkImportCandidate candidate,
         VpkImportIdentity identity,
-        string projectsRoot,
-        string projectName,
-        IProgress<ImportedVpkImportProgress>? progress = null,
-        CancellationToken cancellationToken = default) =>
-        Create(candidate, identity, projectsRoot, projectName, new DeadlimitPaths(), progress, cancellationToken);
-
-    public static ImportedVpkProjectResult Create(
-        VpkImportCandidate candidate,
-        VpkImportIdentity identity,
-        string projectsRoot,
-        string projectName,
         DeadlimitPaths paths,
         IProgress<ImportedVpkImportProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(currentManifest);
         ArgumentNullException.ThrowIfNull(candidate);
         ArgumentNullException.ThrowIfNull(identity);
         ArgumentNullException.ThrowIfNull(paths);
 
-        if (string.IsNullOrWhiteSpace(projectsRoot) || !Directory.Exists(projectsRoot))
+        var projectFolder = Path.GetFullPath(currentManifest.ProjectFolder);
+        if (!Directory.Exists(projectFolder))
         {
-            throw new DirectoryNotFoundException(
-                string.IsNullOrWhiteSpace(projectsRoot)
-                    ? "Projects folder is not configured."
-                    : projectsRoot);
+            throw new DirectoryNotFoundException(projectFolder);
         }
 
         Report(progress, 4, LocalizedText.T(
@@ -49,168 +38,111 @@ public static class ImportedVpkProjectService
                 StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidOperationException(
-                "The selected VPK changed after validation. Extraction was cancelled before creating a project.");
+                "The selected VPK changed after validation. Extraction was cancelled.");
         }
 
-        var root = Path.GetFullPath(projectsRoot.Trim())
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var releaseTarget = ReleaseSlotAllocationService.AllocateFirstFree(root, paths);
-        var folderName = ResolveAvailableFolderName(root, projectName);
-        var projectFolder = Path.Combine(root, folderName);
-        var folderCreated = false;
+        ProjectAuthoringLayout.EnsureStructure(projectFolder);
+        var importedManifest = CreateImportedManifest(currentManifest, refreshedCandidate, identity);
+        var payload = ImportedVpkPayloadService.Extract(
+            importedManifest,
+            refreshedCandidate,
+            progress,
+            cancellationToken);
 
-        try
+        // Persist the imported-VPK contract immediately after the atomic payload
+        // extraction. Later indexing and inspection can safely be retried.
+        ProjectStore.Save(importedManifest);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        Report(progress, 86, LocalizedText.T(
+            "Indexing reconstructed project files...",
+            "Индексация восстановленных файлов проекта..."));
+        var scan = ProjectScanner.Scan(projectFolder);
+        importedManifest.DmxFiles = [.. scan.DmxFiles];
+        importedManifest.FbxFiles = [.. scan.FbxFiles];
+        importedManifest.GltfFiles = [.. scan.GltfFiles];
+        importedManifest.PngTextures = [.. scan.PngTextures];
+        ProjectStore.Save(importedManifest);
+
+        cancellationToken.ThrowIfCancellationRequested();
+        if (string.Equals(
+                importedManifest.ReleaseTarget,
+                importedManifest.ImportedVpk!.SourceReleaseTarget,
+                StringComparison.OrdinalIgnoreCase))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            Report(progress, 10, LocalizedText.T(
-                "Creating the project structure...",
-                "Создание структуры проекта..."));
-            Directory.CreateDirectory(projectFolder);
-            folderCreated = true;
-            ProjectAuthoringLayout.EnsureStructure(projectFolder);
-
-            var manifest = new ProjectManifest
-            {
-                SchemaVersion = 4,
-                Mode = ProjectMode.ImportedVpk,
-                ProjectId = AddonIdentityService.CreateProjectId(),
-                AddonId = string.Empty,
-                ProjectName = folderName,
-                ProjectFolder = projectFolder,
-                Hero = identity.HeroLookupName ?? string.Empty,
-                ReleaseTarget = releaseTarget,
-                RetailMainModel = identity.HeroLookupName is not null
-                    && identity.PrimaryModelResources.Count == 1
-                        ? identity.PrimaryModelResources[0]
-                        : null,
-                ImportedVpk = new ImportedVpkMetadata
-                {
-                    SourceVpkFileName = refreshedCandidate.SourceVpkFileName,
-                    SourceVpkPath = refreshedCandidate.SourceVpkPath,
-                    SourceReleaseTarget = refreshedCandidate.ReleaseTarget,
-                    OriginalVpkSha256 = refreshedCandidate.SourceVpkSha256,
-                    SourceEntryCount = refreshedCandidate.EntryCount,
-                    ImportedUtc = DateTimeOffset.UtcNow,
-                    ImporterVersion = typeof(ImportedVpkProjectService).Assembly.GetName().Version?.ToString()
-                        ?? "unknown",
-                    InferredHeroes = [.. identity.DetectedHeroLookupNames],
-                    PrimaryModelResources = [.. identity.PrimaryModelResources],
-                },
-            };
-
-            ProjectStore.Save(manifest);
-            var payload = ImportedVpkPayloadService.Extract(
-                manifest,
-                refreshedCandidate,
-                progress,
-                cancellationToken);
-
-            cancellationToken.ThrowIfCancellationRequested();
-            Report(progress, 86, LocalizedText.T(
-                "Indexing reconstructed project files...",
-                "Индексация восстановленных файлов проекта..."));
-            var scan = ProjectScanner.Scan(projectFolder);
-            manifest.DmxFiles = [.. scan.DmxFiles];
-            manifest.FbxFiles = [.. scan.FbxFiles];
-            manifest.GltfFiles = [.. scan.GltfFiles];
-            manifest.PngTextures = [.. scan.PngTextures];
-            ProjectStore.Save(manifest);
-
-            cancellationToken.ThrowIfCancellationRequested();
-            if (string.Equals(
-                    manifest.ReleaseTarget,
-                    manifest.ImportedVpk.SourceReleaseTarget,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                Report(progress, 89, LocalizedText.T(
-                    "Recording ownership of the source VPK slot...",
-                    "Регистрация слота исходного VPK..."));
-                // This is possible only when the imported archive is outside the configured
-                // game client and its numbered target is genuinely free there.
-                new VpkSlotOwnershipService(paths).AdoptImportedSource(manifest);
-            }
-
-            // Stage 7 is inspection-only: exact current-retail model paths are compared
-            // against preserved compiled models and the result is written to metadata.
-            // No imported working-file bytes are changed here.
-            cancellationToken.ThrowIfCancellationRequested();
-            Report(progress, 95, LocalizedText.T(
-                "Inspecting extracted models...",
-                "Проверка извлечённых моделей..."));
-            new ImportedVpkRepairInspectionService(paths).InspectAndSave(manifest);
-
-            Report(progress, 100, LocalizedText.T(
-                "VPK extraction into the project is complete.",
-                "Извлечение VPK в проект завершено."));
-
-            return new ImportedVpkProjectResult(
-                manifest,
-                projectFolder,
-                payload.AuthoringFolder,
-                payload.SnapshotPath);
+            Report(progress, 89, LocalizedText.T(
+                "Recording ownership of the source VPK slot...",
+                "Регистрация слота исходного VPK..."));
+            new VpkSlotOwnershipService(paths).AdoptImportedSource(importedManifest);
         }
-        catch
-        {
-            if (folderCreated)
-            {
-                TryDeleteFailedImportFolder(projectFolder);
-            }
-            throw;
-        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        Report(progress, 95, LocalizedText.T(
+            "Inspecting extracted models...",
+            "Проверка извлечённых моделей..."));
+        new ImportedVpkRepairInspectionService(paths).InspectAndSave(importedManifest);
+
+        Report(progress, 100, LocalizedText.T(
+            "VPK extraction into the project is complete.",
+            "Извлечение VPK в проект завершено."));
+
+        return new ImportedVpkProjectResult(
+            importedManifest,
+            projectFolder,
+            payload.AuthoringFolder,
+            payload.SnapshotPath);
     }
 
-    private static string ResolveAvailableFolderName(string projectsRoot, string suggestedName)
-    {
-        var baseName = NormalizeFolderName(suggestedName);
-        for (var index = 1; index <= 999; index++)
+    private static ProjectManifest CreateImportedManifest(
+        ProjectManifest source,
+        VpkImportCandidate candidate,
+        VpkImportIdentity identity) =>
+        new()
         {
-            var name = index == 1 ? baseName : $"{baseName} ({index})";
-            var candidate = Path.Combine(projectsRoot, name);
-            if (!Directory.Exists(candidate) && !File.Exists(candidate))
+            SchemaVersion = Math.Max(source.SchemaVersion, 5),
+            Mode = ProjectMode.ImportedVpk,
+            ImportedVpk = new ImportedVpkMetadata
             {
-                return name;
-            }
-        }
-
-        throw new IOException(
-            $"Could not allocate a unique project folder for '{baseName}' inside the configured Projects folder.");
-    }
-
-    private static string NormalizeFolderName(string value)
-    {
-        var name = value.Trim();
-        if (name.Length == 0
-            || Path.IsPathRooted(name)
-            || name.Contains(Path.DirectorySeparatorChar)
-            || name.Contains(Path.AltDirectorySeparatorChar)
-            || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
-        {
-            throw new InvalidDataException($"Invalid imported project folder name: '{value}'.");
-        }
-
-        name = name.TrimEnd(' ', '.');
-        if (name.Length == 0)
-        {
-            throw new InvalidDataException($"Invalid imported project folder name: '{value}'.");
-        }
-        return name;
-    }
-
-    private static void TryDeleteFailedImportFolder(string projectFolder)
-    {
-        try
-        {
-            if (Directory.Exists(projectFolder))
-            {
-                Directory.Delete(projectFolder, recursive: true);
-            }
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            // The original import failure remains authoritative. The folder was allocated
-            // exclusively for this import attempt and contains no user-authored payload yet.
-        }
-    }
+                SourceVpkFileName = candidate.SourceVpkFileName,
+                SourceVpkPath = candidate.SourceVpkPath,
+                SourceReleaseTarget = candidate.ReleaseTarget,
+                OriginalVpkSha256 = candidate.SourceVpkSha256,
+                SourceEntryCount = candidate.EntryCount,
+                ImportedUtc = DateTimeOffset.UtcNow,
+                ImporterVersion = typeof(ImportedVpkProjectService).Assembly.GetName().Version?.ToString()
+                    ?? "unknown",
+                InferredHeroes = [.. identity.DetectedHeroLookupNames],
+                PrimaryModelResources = [.. identity.PrimaryModelResources],
+            },
+            ProjectId = source.ProjectId,
+            AddonId = source.AddonId,
+            ProjectName = source.ProjectName,
+            ProjectFolder = source.ProjectFolder,
+            Hero = source.Hero,
+            ReleaseTarget = source.ReleaseTarget,
+            SourceDumpFolderName = source.SourceDumpFolderName,
+            DmxFiles = [.. source.DmxFiles],
+            FbxFiles = [.. source.FbxFiles],
+            GltfFiles = [.. source.GltfFiles],
+            PngTextures = [.. source.PngTextures],
+            TextureTargetBindings = source.TextureTargetBindings.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value.ToList(),
+                StringComparer.OrdinalIgnoreCase),
+            CreatedUtc = source.CreatedUtc,
+            UpdatedUtc = source.UpdatedUtc,
+            RetailMainModel = source.RetailMainModel,
+            RetailSourceVpk = source.RetailSourceVpk,
+            LastSourceExtractionUtc = source.LastSourceExtractionUtc,
+            Source2ViewerVersion = source.Source2ViewerVersion,
+            ExtractedSourceFileCount = source.ExtractedSourceFileCount,
+            LastSourceExtractionIncludedTextures = source.LastSourceExtractionIncludedTextures,
+            LastSourceExtractionIncludedAbilities = source.LastSourceExtractionIncludedAbilities,
+            SourceVmdl = source.SourceVmdl,
+            CompiledVmdl = source.CompiledVmdl,
+            AnimGraph2Refs = [.. source.AnimGraph2Refs],
+            NmSkeletonRef = source.NmSkeletonRef,
+        };
 
     private static void Report(
         IProgress<ImportedVpkImportProgress>? progress,
