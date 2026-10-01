@@ -62,9 +62,6 @@ public static class ImportedVpkPayloadService
     public const string AuthoringMapFileName = "imported-authoring-map.json";
     public const string OriginalVpkSnapshotFileName = "original-vpk.json";
 
-    private static readonly Regex SourceTextureSuffix = new(
-        @"_(?<extension>png|tga|psd|jpg|jpeg)_(?<hash>[0-9a-f]{7,8})$",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
     private static readonly Regex GeneratedHashSuffix = new(
         @"_(?<hash>[0-9a-f]{7,8})$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
@@ -616,27 +613,7 @@ public static class ImportedVpkPayloadService
     }
 
     private static string NormalizeTextureAuthoringPath(string path)
-    {
-        var directory = Path.GetDirectoryName(path)?.Replace('\\', '/') ?? string.Empty;
-        var extension = Path.GetExtension(path);
-        var stem = Path.GetFileNameWithoutExtension(path);
-        var sourceMatch = SourceTextureSuffix.Match(stem);
-        if (sourceMatch.Success)
-        {
-            stem = stem[..sourceMatch.Index];
-        }
-        else
-        {
-            var generatedMatch = GeneratedHashSuffix.Match(stem);
-            if (generatedMatch.Success)
-            {
-                stem = stem[..generatedMatch.Index];
-            }
-        }
-
-        var filename = stem + extension;
-        return string.IsNullOrEmpty(directory) ? filename : directory + "/" + filename;
-    }
+        => TextureAuthoringPathPolicy.Normalize(path);
 
     private static string AllocateAuthoringPath(
         string preferredPath,
@@ -674,6 +651,10 @@ public static class ImportedVpkPayloadService
         foreach (var additionalFile in contentFile.AdditionalFiles)
         {
             var additionalFileName = NormalizeVpkPath(additionalFile.FileName);
+            if (additionalFile is TextureContentFile)
+            {
+                additionalFileName = TextureAuthoringPathPolicy.Normalize(additionalFileName);
+            }
             var preserveTextureResourceDirectory = additionalFile is TextureContentFile
                 && additionalFileName.Contains('/');
             var additionalPath = additionalFile.KeepFullPath || preserveTextureResourceDirectory

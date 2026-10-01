@@ -141,6 +141,10 @@ public static class RetailVmdlInheritance
         foreach (var sourceFile in Directory.EnumerateFiles(sourceFolder, "*", SearchOption.AllDirectories))
         {
             var relative = Path.GetRelativePath(sourceFolder, sourceFile);
+            if (RetailTextureSourceExtensions.Contains(Path.GetExtension(relative)))
+            {
+                relative = TextureAuthoringPathPolicy.Normalize(relative);
+            }
             var destination = SafePath.ResolveUnderRoot(
                 destinationFolder,
                 relative,

@@ -4,6 +4,8 @@ $text = Get-Content -LiteralPath $path -Raw
 $required = @(
     'var additionalFileName = NormalizeResourcePath(additionalFile.FileName);',
     'additionalFile is TextureContentFile',
+    'TextureAuthoringPathPolicy.Normalize(additionalFileName)',
+    'TextureAuthoringPathPolicy.Normalize(decompiledPath)',
     "additionalFileName.Contains('/')",
     'additionalFile.KeepFullPath || preserveTextureResourceDirectory',
     'ToWindowsPath(additionalFileName)'

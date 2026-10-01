@@ -297,6 +297,7 @@ if ($importedPayload.Contains('public const string PayloadFolderName = "payload"
 $heroExtraction = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/HeroExtractionService.cs' -Raw
 foreach ($required in @(
     'ExtractContentFileWithShaderCompatibilityFallback(',
+    'TextureAuthoringPathPolicy.Normalize(decompiledPath)',
     'VrfContentExtraction.Extract('
 )) {
     Assert-Contains $heroExtraction $required 'Hero extraction newer VCS material fallback'

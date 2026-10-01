@@ -311,15 +311,16 @@ public sealed class PrepareAuthoringService
                 .Select(overlay => overlay.PreparedDmxPath)
                 .Concat(gltfPreparedDmxPaths)
                 .ToArray();
-            if (retailPhysics.Added)
-            {
-                var fixedClothJoints = RetailPhysicsAuthoringService.MaterializeRetailFixedClothJoints(
-                    manifest,
-                    preparedDmxPaths);
-                log.AppendLine(
-                    $"Retail fixed cloth helpers: distinct joints added={fixedClothJoints.DistinctJointCount}; " +
-                    $"prepared DMX files updated={fixedClothJoints.UpdatedDmxCount}");
-            }
+            // Every PREPARE overlays the artist DMX again. Re-materialize the fixed
+            // retail cloth leaves even when the VMDL physics block was preserved;
+            // otherwise a second/incremental PREPARE leaves ClothChain references
+            // pointing at helpers that disappeared with the previous staged DMX.
+            var fixedClothJoints = RetailPhysicsAuthoringService.MaterializeRetailFixedClothJoints(
+                manifest,
+                preparedDmxPaths);
+            log.AppendLine(
+                $"Retail fixed cloth helpers: distinct joints added={fixedClothJoints.DistinctJointCount}; " +
+                $"prepared DMX files updated={fixedClothJoints.UpdatedDmxCount}");
             var clothBoneNames = RetailPhysicsAuthoringService.ReconcileWallWormClothBoneNames(
                 sourceCopy.DestinationVmdlPath,
                 preparedDmxPaths,

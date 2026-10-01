@@ -809,6 +809,10 @@ public sealed partial class HeroExtractionService
 
                     var outputExtension = FileExtract.GetExtension(resource) ?? entry.TypeName[..^2];
                     var decompiledPath = Path.ChangeExtension(filePath, outputExtension);
+                    if (resource.ResourceType == ResourceType.Texture)
+                    {
+                        decompiledPath = TextureAuthoringPathPolicy.Normalize(decompiledPath);
+                    }
                     var outputPath = SafePath.ResolveUnderRoot(
                         outputRoot,
                         ToWindowsPath(decompiledPath),
@@ -888,6 +892,10 @@ public sealed partial class HeroExtractionService
 
                 var outputExtension = FileExtract.GetExtension(resource) ?? entry.TypeName[..^2];
                 var decompiledPath = Path.ChangeExtension(filePath, outputExtension);
+                if (resource.ResourceType == ResourceType.Texture)
+                {
+                    decompiledPath = TextureAuthoringPathPolicy.Normalize(decompiledPath);
+                }
                 var outputPath = SafePath.ResolveUnderRoot(
                     outputRoot,
                     ToWindowsPath(decompiledPath),
@@ -933,6 +941,10 @@ public sealed partial class HeroExtractionService
         foreach (var additionalFile in contentFile.AdditionalFiles)
         {
             var additionalFileName = NormalizeResourcePath(additionalFile.FileName);
+            if (additionalFile is TextureContentFile)
+            {
+                additionalFileName = TextureAuthoringPathPolicy.Normalize(additionalFileName);
+            }
             var preserveTextureResourceDirectory = additionalFile is TextureContentFile
                 && additionalFileName.Contains('/');
             var additionalPath = additionalFile.KeepFullPath || preserveTextureResourceDirectory
