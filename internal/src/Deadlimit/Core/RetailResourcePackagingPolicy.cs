@@ -99,6 +99,15 @@ internal static class RetailResourcePackagingPolicy
             addonContentRoot,
             new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
 
+    internal static bool IsCompatibilityOnlyRetailMaterialForSmoke(
+        string preparedVmatPath,
+        string extractedVmatPath,
+        string addonContentRoot) =>
+        RetailVmatAuthoringCompatibility.IsCompatibilityOnlyCopy(
+            preparedVmatPath,
+            extractedVmatPath,
+            addonContentRoot);
+
     private static HashSet<string> ResolveProjectRoots(
         ProjectManifest manifest,
         string extractedSourceRoot,
@@ -159,12 +168,32 @@ internal static class RetailResourcePackagingPolicy
                 || !File.Exists(extractedPath)
                 || !FilesEqual(extractedPath, sourcePath, fileHashes);
 
+            var explicitOverride = textureOverridePaths.Contains(sourceRelativePath)
+                || textureOverrideMaterials.Contains(sourceRelativePath);
+
+            // PREPARE rewrites fallback retail VMAT syntax so Reduced CSDK can compile
+            // and preview current Deadlock materials. That generated compatibility copy
+            // is still the stock game material for release packaging: the shipped VPK
+            // must resolve it (and its stock textures) from Deadlock instead of embedding
+            // the local CSDK compilation. Any artist edit stops matching the deterministic
+            // compatibility transform and remains an authored packaging root.
+            if (projectOwned
+                && !explicitOverride
+                && extractedPath is not null
+                && File.Exists(extractedPath)
+                && sourceRelativePath.EndsWith(".vmat", StringComparison.OrdinalIgnoreCase)
+                && RetailVmatAuthoringCompatibility.IsCompatibilityOnlyCopy(
+                    sourcePath,
+                    extractedPath,
+                    addonContentRoot))
+            {
+                projectOwned = false;
+            }
+
             // An exact project-root replacement is explicit authored content even when an
             // identical copy has appeared in 0source. The extraction baseline must never
             // demote an artist-provided override back to a reusable retail resource.
-            projectOwned = projectOwned
-                || textureOverridePaths.Contains(sourceRelativePath)
-                || textureOverrideMaterials.Contains(sourceRelativePath);
+            projectOwned = projectOwned || explicitOverride;
 
             if (projectOwned)
             {
