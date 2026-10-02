@@ -29,12 +29,38 @@ internal static partial class RetailVmatAuthoringCompatibility
     internal static bool Repair(string vmatPath, string addonContentRoot)
     {
         var original = File.ReadAllText(vmatPath);
+        var text = BuildCompatibleText(original, addonContentRoot, writeDerivedTextures: true);
+        if (string.Equals(original, text, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        File.WriteAllText(vmatPath, text);
+        return true;
+    }
+
+    internal static bool IsCompatibilityOnlyCopy(
+        string preparedVmatPath,
+        string extractedVmatPath,
+        string addonContentRoot)
+    {
+        var extracted = File.ReadAllText(extractedVmatPath);
+        var expected = BuildCompatibleText(extracted, addonContentRoot, writeDerivedTextures: false);
+        return !string.Equals(extracted, expected, StringComparison.Ordinal)
+               && string.Equals(File.ReadAllText(preparedVmatPath), expected, StringComparison.Ordinal);
+    }
+
+    private static string BuildCompatibleText(
+        string original,
+        string addonContentRoot,
+        bool writeDerivedTextures)
+    {
         if (!Regex.IsMatch(
                 original,
                 "\\\"shader\\\"[ \\t]+\\\"pbr\\.vfx\\\"",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
         {
-            return false;
+            return original;
         }
 
         // Keep the retail compiled-resource map. It points at the exact stock VTEX
@@ -60,6 +86,7 @@ internal static partial class RetailVmatAuthoringCompatibility
                             value,
                             "metalness",
                             PackedChannel.Alpha,
+                            writeDerivedTextures,
                             out var metalnessPath))
                     {
                         text = UpsertAssignment(text, "TextureMetalness1", metalnessPath);
@@ -72,6 +99,7 @@ internal static partial class RetailVmatAuthoringCompatibility
                             value,
                             "roughness",
                             PackedChannel.Alpha,
+                            writeDerivedTextures,
                             out var roughnessPath))
                     {
                         text = UpsertAssignment(text, "TextureRoughness1", roughnessPath);
@@ -96,6 +124,7 @@ internal static partial class RetailVmatAuthoringCompatibility
                             value,
                             "tint",
                             PackedChannel.Red,
+                            writeDerivedTextures,
                             out var tintPath))
                     {
                         text = UpsertAssignment(text, "TextureTintMask1", tintPath);
@@ -109,6 +138,7 @@ internal static partial class RetailVmatAuthoringCompatibility
                             value,
                             "rim",
                             PackedChannel.Green,
+                            writeDerivedTextures,
                             out var rimPath))
                     {
                         text = UpsertAssignment(text, "TextureRimLightMask1", rimPath);
@@ -124,13 +154,7 @@ internal static partial class RetailVmatAuthoringCompatibility
             }
         }
 
-        if (string.Equals(original, text, StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        File.WriteAllText(vmatPath, text);
-        return true;
+        return text;
     }
 
     private static string ReplaceLegacyAssignment(
@@ -170,6 +194,7 @@ internal static partial class RetailVmatAuthoringCompatibility
         string sourceResourcePath,
         string suffix,
         PackedChannel channel,
+        bool writeOutput,
         out string outputResourcePath)
     {
         outputResourcePath = string.Empty;
@@ -205,7 +230,10 @@ internal static partial class RetailVmatAuthoringCompatibility
             outputResourcePath.Replace('/', Path.DirectorySeparatorChar),
             "Derived retail material texture");
 
-        WriteChannelPng(sourcePath, outputPath, channel);
+        if (writeOutput)
+        {
+            WriteChannelPng(sourcePath, outputPath, channel);
+        }
         return true;
     }
 

@@ -7,7 +7,8 @@ internal static class RetailResourcePackagingPolicySmoke
         if (!UnsupportedHeaderIsNonFatal()
             || !NonCompiledPayloadIsNotParsed()
             || !TruncatedCompiledResourceIsNonFatal()
-            || !ChangedPreparedRetailTextureIsDetected())
+            || !ChangedPreparedRetailTextureIsDetected()
+            || !CompatibilityOnlyRetailMaterialIsRecognized())
         {
             return 1;
         }
@@ -65,6 +66,56 @@ internal static class RetailResourcePackagingPolicySmoke
         };
 
         return included.SetEquals(expected) ? 0 : 1;
+    }
+
+    private static bool CompatibilityOnlyRetailMaterialIsRecognized()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"deadlimit-packaging-vmat-{Guid.NewGuid():N}");
+        var extractedRoot = Path.Combine(root, "0source");
+        var preparedRoot = Path.Combine(root, "content", "citadel_addons", "test");
+        var relativePath = Path.Combine("materials", "hero", "body.vmat");
+        var extractedPath = Path.Combine(extractedRoot, relativePath);
+        var preparedPath = Path.Combine(preparedRoot, relativePath);
+        var texturePath = Path.Combine(preparedRoot, "materials", "hero", "body_color.png");
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(extractedPath)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(preparedPath)!);
+            using (var bitmap = new System.Drawing.Bitmap(1, 1))
+            {
+                bitmap.SetPixel(0, 0, System.Drawing.Color.FromArgb(64, 10, 20, 30));
+                bitmap.Save(texturePath, System.Drawing.Imaging.ImageFormat.Png);
+            }
+
+            const string fallback = """
+                "Layer0"
+                {
+                    "shader" "pbr.vfx"
+                    "TextureColor" "materials/hero/body_color.png"
+                }
+                """;
+            File.WriteAllText(extractedPath, fallback);
+            File.WriteAllText(preparedPath, fallback);
+            if (!RetailVmatAuthoringCompatibility.Repair(preparedPath, preparedRoot)
+                || !RetailResourcePackagingPolicy.IsCompatibilityOnlyRetailMaterialForSmoke(
+                    preparedPath,
+                    extractedPath,
+                    preparedRoot))
+            {
+                return false;
+            }
+
+            File.AppendAllText(preparedPath, Environment.NewLine + "// artist edit");
+            return !RetailResourcePackagingPolicy.IsCompatibilityOnlyRetailMaterialForSmoke(
+                preparedPath,
+                extractedPath,
+                preparedRoot);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
     private static bool ChangedPreparedRetailTextureIsDetected()
