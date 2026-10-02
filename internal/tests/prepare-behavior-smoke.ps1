@@ -1523,6 +1523,8 @@ $elementType = $datamodelAssembly.GetType('Datamodel.Element', $true)
 $elementArrayType = $datamodelAssembly.GetType('Datamodel.ElementArray', $true)
 $syntheticRootSmoke = $assembly.GetType('Deadlimit.Core.DmxSyntheticRootRepairSmoke', $true)
 $syntheticRootSmoke.GetMethod('Run').Invoke($null, @())
+$retailVmatSmoke = $assembly.GetType('Deadlimit.Core.RetailVmatAuthoringCompatibilitySmoke', $true)
+$retailVmatSmoke.GetMethod('Run').Invoke($null, @())
 $elementConstructor = $elementType.GetConstructors() |
     Where-Object { $_.GetParameters().Count -eq 4 } |
     Select-Object -First 1
@@ -1806,6 +1808,22 @@ foreach ($required in @(
 $retailInheritanceSource = Get-Content -LiteralPath 'internal/src/Deadlimit/Core/RetailVmdlInheritance.cs' -Raw
 if (-not $retailInheritanceSource.Contains('relative = TextureAuthoringPathPolicy.Normalize(relative);')) {
     throw 'PREPARE does not normalize VRF-generated texture names while staging existing extracted sources.'
+}
+if (-not $retailInheritanceSource.Contains('RetailVmatAuthoringCompatibility.RepairTree(destinationFolder, addonContentRoot)')) {
+    throw 'PREPARE does not repair fallback retail VMATs for the current CSDK authoring schema.'
+}
+$retailTextureOverrideType = $assembly.GetType('Deadlimit.Core.RetailTextureOverrideService', $true)
+$removeCompiledCache = $retailTextureOverrideType.GetMethod(
+    'RemoveCompiledTextureCache',
+    [Reflection.BindingFlags]::NonPublic -bor [Reflection.BindingFlags]::Static)
+if ($null -eq $removeCompiledCache) {
+    throw 'Retail VMAT Compiled Textures sanitizer was not found.'
+}
+$cachedVmat = "`"Layer0`"`n{`n`t`"TextureColor`" `"models/test/body_color.png`"`n`t`"Compiled Textures`"`n`t{`n`t`t`"g_tColor`" `"models/test/body_color_png_deadbee.vtex`"`n`t}`n}`n"
+$sanitizedVmat = [string]$removeCompiledCache.Invoke($null, [object[]]@($cachedVmat))
+if ($sanitizedVmat.Contains('Compiled Textures', [StringComparison]::Ordinal) -or
+    -not $sanitizedVmat.Contains('body_color.png', [StringComparison]::Ordinal)) {
+    throw "Retail VMAT sanitizer did not remove only the compiled cache.`n$sanitizedVmat"
 }
 if ((-not $prepareSource.Contains('PreparedDmxMaterialRemapService.Apply(')) -or
     (-not $prepareSource.Contains('overlay.PreparedDmxPath'))) {

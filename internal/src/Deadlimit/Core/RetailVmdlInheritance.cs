@@ -170,6 +170,8 @@ public static class RetailVmdlInheritance
             sourceRoot,
             addonContentRoot);
 
+        RetailVmatAuthoringCompatibility.RepairTree(destinationFolder, addonContentRoot);
+
         var textureTargets = RetailTextureOverrideService.BuildTargetIndex(sourceRoot);
         var textureOverrides = RetailTextureOverrideService.ResolveProjectRootOverrides(
             manifest,

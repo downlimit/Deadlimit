@@ -250,7 +250,7 @@ public static class RetailTextureOverrideService
             }
 
             var text = File.ReadAllText(materialPath);
-            var sanitized = CompiledTexturesBlockRegex.Replace(text, string.Empty);
+            var sanitized = RemoveCompiledTextureCache(text);
             foreach (var replacement in overrides.Where(item => string.Equals(
                          item.ReferencingMaterialResourcePath,
                          materialResourcePath,
@@ -268,6 +268,12 @@ public static class RetailTextureOverrideService
         }
 
         return staged;
+    }
+
+    internal static string RemoveCompiledTextureCache(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        return CompiledTexturesBlockRegex.Replace(text, string.Empty);
     }
 
     private static void StagePanoramaTextureDescriptor(
