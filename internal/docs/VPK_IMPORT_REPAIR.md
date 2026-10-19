@@ -206,8 +206,33 @@ The imported build path validates project/slot state, repairs eligible bindings,
 rebuilds and verifies the VPK, deploys transactionally to the adopted retail slot, and
 records deployment ownership.
 
-SAVE PROJECT, EXTRACT HERO SOURCE, and PREPARE FOR CSDK remain disabled while an imported
-VPK project is selected. BUILD FOR TEST remains available.
+## PREPARE FOR CSDK for imported projects
+
+Model extraction restores missing ragdoll joints and cloth authoring nodes from the
+imported model's embedded PHYS block before recording the authoring baseline. This
+includes supported capsule/box cloth colliders and constraint iteration counts,
+including constraints involving extruded nodes. Unsupported collider layouts are
+reported in the extraction warnings; the compiled baseline remains preserved.
+Reconstructed chain grouping and generated collider names can differ from the
+artist's original ModelDoc, so compilation alone is insufficient to validate physics.
+
+PREPARE uses the reconstructed `1authoring` tree directly, retaining resource paths,
+material parameters, texture variants, model structure and physics. It does not require
+a separate retail `0source` extraction. Only the CSDK copy of each ModelDoc is passed
+through the existing unsupported-class filter (`AnimGraph2List`, `NmSkeletonList`).
+The original compiled tree is also staged into the owned CSDK game addon, including
+nested prefab VPKs and particle resources, so preview has the imported runtime assets.
+
+Repeated preparation synchronizes previously managed, unedited destinations and preserves
+existing CSDK edits. Section regeneration from retail templates is rejected for imported
+projects. Preparation never modifies `1authoring` or the preserved compiled baseline.
+The imported BUILD path continues to consume `1authoring`; CSDK-only edits are not inputs
+to that path. An untouched round trip deliberately reuses the exact compiled baseline,
+so it does not demonstrate that recompiling every source reproduces identical bytes.
+
+`internal/tests/imported-vpk-prepare-smoke.ps1` covers original paths and material
+parameters, texture variants, nested runtime VPKs, CSDK compatibility, source integrity,
+repeat synchronization and preservation of CSDK edits.
 
 ## Evidence and limits
 

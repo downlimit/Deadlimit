@@ -498,6 +498,15 @@ public static class ImportedVpkPayloadService
 
                     using var contentFile = ExtractEditableResource(resource, fileLoader);
                     DumpContentFile(authoringRoot, outputPath, contentFile);
+                    if (resource.DataBlock is Model model)
+                    {
+                        // VRF exports collision shapes but omits ragdoll joints and
+                        // cloth authoring nodes. Recover them from this imported model's
+                        // PHYS block before capturing the editable baseline.
+                        var physics = RetailPhysicsAuthoringService.RestoreImportedModelPhysics(model, outputPath);
+                        if (physics.Warnings.Count > 0)
+                            warning = string.Join("; ", physics.Warnings);
+                    }
                 }
             }
             catch (Exception exception) when (exception is not OperationCanceledException

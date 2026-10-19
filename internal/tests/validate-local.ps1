@@ -41,6 +41,7 @@ try {
                 'internal/tests/metal-material-preset-smoke.ps1',
                 'internal/tests/texture-naming-alias-smoke.ps1',
                 'internal/tests/prepare-behavior-smoke.ps1',
+                'internal/tests/imported-vpk-prepare-smoke.ps1',
                 'internal/tests/gltf-authoring-pipeline-smoke.ps1',
                 'internal/tests/ui-localization-smoke.ps1',
                 'internal/tests/window-shell-visibility-smoke.ps1',

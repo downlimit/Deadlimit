@@ -106,18 +106,39 @@ public static class RetailPhysicsAuthoringService
             throw new InvalidDataException($"Retail resource is not a model: {compiledResourcePath}");
         }
 
-        var physics = model.GetEmbeddedPhys()
-            ?? throw new InvalidDataException($"Retail model contains no embedded PHYS block: {compiledResourcePath}");
-        var jointData = physics.Data["m_joints"];
-        if (!jointData.IsArray || jointData.Count == 0)
+        return InitializeModelPhysics(model, destinationVmdlPath, replaceExisting, requireRagdoll: true);
+    }
+
+    internal static RetailPhysicsInitializationResult RestoreImportedModelPhysics(
+        Model model, string destinationVmdlPath) =>
+        InitializeModelPhysics(model, destinationVmdlPath, replaceExisting: false, requireRagdoll: false);
+
+    private static RetailPhysicsInitializationResult InitializeModelPhysics(
+        Model model, string destinationVmdlPath, bool replaceExisting, bool requireRagdoll)
+    {
+        var addJoints = replaceExisting
+            || !RetailVmdlInheritance.ContainsRootNode(destinationVmdlPath, PhysicsJointListClass);
+        var addSoftbody = replaceExisting
+            || !RetailVmdlInheritance.ContainsRootNode(destinationVmdlPath, SoftbodyClass);
+        if (!addJoints && !addSoftbody)
+            return new RetailPhysicsInitializationResult(0, 0, false, Array.Empty<string>());
+
+        var physics = model.GetEmbeddedPhys();
+        if (physics is null)
         {
-            throw new InvalidDataException($"Retail model contains no ragdoll joints: {compiledResourcePath}");
+            if (requireRagdoll) throw new InvalidDataException("Retail model contains no embedded PHYS block.");
+            return new RetailPhysicsInitializationResult(0, 0, false, Array.Empty<string>());
+        }
+        var jointData = physics.Data["m_joints"];
+        if (requireRagdoll && (!jointData.IsArray || jointData.Count == 0))
+        {
+            throw new InvalidDataException("Retail model contains no ragdoll joints.");
         }
 
-        var joints = jointData.Values
+        var joints = (jointData.IsArray ? jointData.Values : [])
             .Select(value => ReadPhysicsJoint(value, physics.BoneNames))
             .ToArray();
-        if (addJoints)
+        if (addJoints && joints.Length > 0)
         {
             var nodeText = CreatePhysicsJointList(joints);
             RetailVmdlInheritance.UpsertRootNode(destinationVmdlPath, PhysicsJointListClass, nodeText);
@@ -128,17 +149,83 @@ public static class RetailPhysicsAuthoringService
             : RetailClothReadResult.Empty;
         if (addSoftbody && cloth.Chains.Count > 0)
         {
+            var softbody = CreateSoftbody(cloth.Chains, cloth.Alignments);
+            if (!requireRagdoll)
+            {
+                var collisionShapes = CreateImportedClothCollisionShapes(feModel!);
+                var endOfChildren = Environment.NewLine + "\t]";
+                var insertion = softbody.LastIndexOf(endOfChildren, StringComparison.Ordinal);
+                if (insertion < 0) throw new InvalidDataException("Recovered Softbody has no children array.");
+                softbody = softbody.Insert(insertion, Environment.NewLine + collisionShapes);
+            }
             RetailVmdlInheritance.UpsertRootNode(
                 destinationVmdlPath,
                 SoftbodyClass,
-                CreateSoftbody(cloth.Chains, cloth.Alignments));
+                softbody);
         }
 
         return new RetailPhysicsInitializationResult(
             addJoints ? joints.Length : 0,
             addSoftbody ? cloth.Chains.Count : 0,
-            true,
+            (addJoints && joints.Length > 0) || (addSoftbody && cloth.Chains.Count > 0),
             cloth.Warnings);
+    }
+
+    private static string CreateImportedClothCollisionShapes(KVObject feModel)
+    {
+        var names = feModel["m_CtrlName"].Values.Select(value => value.ToString()).ToArray();
+        var text = new StringBuilder();
+        foreach (var field in new[] { "m_TaperedCapsuleRigids", "m_BoxRigids" })
+        {
+            if (!feModel.TryGetValue(field, out var shapes)) continue;
+            var index = 0;
+            foreach (var shape in shapes.Values)
+            {
+                var node = shape["nNode"].ToInt32(CultureInfo.InvariantCulture);
+                var mask = shape["nCollisionMask"].ToInt32(CultureInfo.InvariantCulture);
+                if (node < 0 || node >= names.Length
+                    || shape["nFlags"].ToInt32(CultureInfo.InvariantCulture) != 0
+                    || shape["nVertexMapIndex"].ToInt32(CultureInfo.InvariantCulture) != ushort.MaxValue)
+                    throw new InvalidDataException("Imported cloth collider has unsupported flags, vertex mapping or parent node; compiled physics remains preserved.");
+                var capsule = field == "m_TaperedCapsuleRigids";
+                text.AppendLine("\t\t{");
+                text.AppendLine($"\t\t\t_class = \"{(capsule ? "ClothShapeCapsule" : "ClothShapeBox")}\"");
+                text.AppendLine($"\t\t\tname = \"imported_{(capsule ? "capsule" : "box")}_{index++}\"");
+                text.AppendLine($"\t\t\tparent_bone = \"{EscapeKv3(names[node])}\"");
+                for (var layer = 0; layer < 4; layer++)
+                    text.AppendLine($"\t\t\tcloth_collision_layer{layer} = {FormatBoolean((mask & (1 << layer)) != 0)}");
+                text.AppendLine("\t\t\tcloth_collision_priority = 0");
+                text.AppendLine("\t\t\tvertex_map = \"\"");
+                text.AppendLine("\t\t\tinverted_collision = false");
+                text.AppendLine("\t\t\tplanarize = false");
+                text.AppendLine("\t\t\tbounciness = 0.0");
+                if (capsule)
+                {
+                    var spheres = shape["vSphere"].Values.ToArray();
+                    if (spheres.Length != 2) throw new InvalidDataException("Invalid imported cloth capsule.");
+                    for (var point = 0; point < 2; point++)
+                    {
+                        var sphere = spheres[point].Values.Select(value => value.ToSingle(CultureInfo.InvariantCulture)).ToArray();
+                        if (sphere.Length != 4) throw new InvalidDataException("Invalid imported cloth capsule sphere.");
+                        text.AppendLine($"\t\t\tpoint{point} = {FormatVector(new Vector3(sphere[0], sphere[1], sphere[2]))}");
+                        text.AppendLine($"\t\t\tradius{point} = {FormatFloat(sphere[3])}");
+                    }
+                }
+                else
+                {
+                    var frame = shape["tmFrame2"].Values.Select(value => value.ToSingle(CultureInfo.InvariantCulture)).ToArray();
+                    var size = shape["vSize"].Values.Select(value => value.ToSingle(CultureInfo.InvariantCulture)).ToArray();
+                    if (frame.Length != 8 || size.Length != 3 || Math.Abs(frame[3] - 1.0f) > 0.00001f)
+                        throw new InvalidDataException("Unsupported imported cloth box transform.");
+                    text.AppendLine($"\t\t\tdimensions = {FormatVector(new Vector3(size[0], size[1], size[2]) * 2)}");
+                    text.AppendLine($"\t\t\torigin = {FormatVector(new Vector3(frame[0], frame[1], frame[2]))}");
+                    var angles = QuaternionToSourceAngles(Quaternion.Normalize(new Quaternion(frame[4], frame[5], frame[6], frame[7])));
+                    text.AppendLine($"\t\t\tangles = {FormatVector(angles)}");
+                }
+                text.AppendLine("\t\t},");
+            }
+        }
+        return text.ToString();
     }
 
     public static int RepairInvalidClothParentAnchors(string vmdlPath)
@@ -1007,14 +1094,19 @@ public static class RetailPhysicsAuthoringService
                 }
             }
 
+            // Extra iterations repeat constraints once per iteration. Extruded
+            // $cc nodes carry these repetitions too, even though they are rebuilt
+            // from their parent node's extrusion settings rather than direct joints.
+            var constraintNodes = included.Concat(included
+                    .Where(extrusionChildren.ContainsKey)
+                    .SelectMany(index => extrusionChildren[index].Select(child => child.Child)))
+                .ToHashSet();
             var maxRodMultiplicity = rodMultiplicity
-                .Where(pair => included.Contains(pair.Key.Item1) && included.Contains(pair.Key.Item2))
+                .Where(pair => constraintNodes.Contains(pair.Key.Item1) && constraintNodes.Contains(pair.Key.Item2))
                 .Select(pair => pair.Value)
                 .DefaultIfEmpty(1)
                 .Max();
-            var extraIterations = Math.Max(
-                0,
-                (int)Math.Round(Math.Log2(maxRodMultiplicity), MidpointRounding.AwayFromZero));
+            var extraIterations = Math.Max(0, maxRodMultiplicity - 1);
             var nodes = included
                 .OrderBy(index => index)
                 .Select(index =>
