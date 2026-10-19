@@ -12,6 +12,7 @@ edit project-root DMX / PNG
 → prepare/synchronize authoring content
 → compile changed Source 2 assets headlessly
 → restore required AG2/NmSkeleton data on a freshly compiled character model
+→ repair recognized outdated model camera/aim attachments and lobby metadata
 → create VPK
 → write VPK directly into retail Deadlock game/citadel/addons
 → optionally launch Deadlock from the completion dialog
@@ -299,3 +300,63 @@ Implemented after that live proof but **not yet locally acceptance-tested**:
 - English/Russian UI setting.
 
 The next local acceptance run must verify those changes before they are classified as live-confirmed.
+
+
+### Camera compatibility repair (2026-10-19)
+
+Both Authoring and Imported VPK BUILD & TEST use the current installed game's exact
+model counterpart. Authoring runs the camera step after AG2 restoration on every
+build, including incremental builds. Imported projects repair AG2 and camera data
+in one payload transaction, retaining SHA-256 provenance from the original import or the verified
+reconstructed-authoring build to the final repaired model.
+
+The repair recognizes the old Y-up camera frame in standing/crouching pivots and
+updates matching root-motion attachments in every embedded mesh/LOD. It also
+updates `AttachmentCameraData` and `CitadelModelSceneData_t`. A missing lobby
+`attachWorld` helper can map to `root_motion` only with equivalent root bind poses,
+unit scales, an identity helper transform, and a single ordinary weight-1 influence.
+Unrecognized author changes and unsupported skeletons remain unchanged with a
+build warning. Models without an exact retail counterpart are skipped.
+
+Edited blocks are reopened and checked semantically. Geometry, materials,
+skeleton/animation data, other attachments and other game metadata are verified;
+unedited resource blocks remain byte-identical. Imported VPK repacking additionally
+verifies the entry set and each resource hash. Repeated repairs are no-ops and keep
+existing repair provenance. Failed payload writes roll back before deployment.
+
+ValveResourceFormat 20.1.7467 is required for current KV3 types 26/27. Run
+`internal/tests/camera-repair-smoke.ps1` after a Release build for deterministic
+camera and imported BUILD & TEST tests. Add `-RetailRoot <Deadlock root>` to check
+the installed Ivy (`pak01`) and Dynamo (`pak34`) models through both camera paths
+and verified VPK repacking in isolated temporary projects. This check leaves the
+installed mods unchanged and records that in-game verification remains pending.
+
+
+
+### BUILD FOR TEST shortcuts
+
+Hold **CTRL** while clicking BUILD FOR TEST to open the configured Deadlock client
+`game/citadel/addons` folder in Explorer. This shortcut runs before build/cancel
+handling and does not start a build or close the game. CTRL takes precedence when
+combined with SHIFT. Hold **SHIFT** without CTRL for the existing full clean rebuild.
+The regular button and header overlay share the same localized RichToolTip.
+
+### VPK selection and artifact audit
+
+The outer authoring VPK uses an explicit inclusion set: project roots, their required
+dependencies, and freshly built hero-select packages. Files emitted after dependency
+planning cannot enter the archive implicitly. After writing, every entry path and
+SHA-256 must match the selected compiled bytes before deployment.
+
+VRF can extract both an unpacked authoring image and the packed retail image named
+by a VMAT's compiled texture map. A prepared image byte-identical to that declared,
+extracted packed image is reusable retail content. It must not force the material's
+entire stock texture set into the VPK. Actual image edits and explicit artist overrides
+remain authored resources; filename similarity alone never establishes reuse.
+For a material with texture overrides, compiled texture input dependencies identify
+the specific overridden outputs. Unchanged stock textures referenced by that same
+material still resolve from the game and are omitted.
+
+Build logs include each selected path, bytes, root/dependency/scene classification,
+SHA-256, previous entry size/delta, removed paths, and total archive bytes/delta.
+This audit supplements VPK checksums and is required when assessing packaging changes.

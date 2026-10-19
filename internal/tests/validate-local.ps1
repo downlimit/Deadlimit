@@ -7,6 +7,7 @@ Set-StrictMode -Version Latest
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $log = Join-Path ([IO.Path]::GetTempPath()) ("Deadlimit-validation-{0:yyyyMMdd-HHmmss}-{1}.log" -f (Get-Date), $PID)
 $failed = $false
+$testIsolation = $null
 Push-Location $root
 try {
     Start-Transcript -LiteralPath $log -ErrorAction Stop | Out-Null
@@ -33,6 +34,9 @@ try {
             if ($LASTEXITCODE -ne 0) { throw "dotnet restore exited with $LASTEXITCODE." }
             & dotnet build internal/src/Deadlimit/Deadlimit.csproj --configuration Release --no-restore
             if ($LASTEXITCODE -ne 0) { throw "dotnet build exited with $LASTEXITCODE." }
+            $assembly = [Reflection.Assembly]::LoadFrom((Resolve-Path 'internal/src/Deadlimit/bin/Release/net10.0-windows/DeadlimitManager.dll'))
+            $isolate = $assembly.GetType('Deadlimit.Core.UserDataPaths').GetMethod('IsolateForTests', [Reflection.BindingFlags]'Static,NonPublic')
+            $testIsolation = $isolate.Invoke($null, @())
             foreach ($script in @(
                 'internal/tests/metal-material-preset-smoke.ps1',
                 'internal/tests/texture-naming-alias-smoke.ps1',
@@ -66,6 +70,7 @@ try {
         Stop-Transcript | Out-Null
     }
 } finally {
+    if ($null -ne $testIsolation) { $testIsolation.Dispose() }
     Pop-Location
 }
 Write-Host "Validation log (local only): $log"

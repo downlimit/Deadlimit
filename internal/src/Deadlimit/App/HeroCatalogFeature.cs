@@ -301,10 +301,7 @@ internal static class HeroCatalogFeature
         refreshButton.Click += async (_, _) => await RefreshCatalogAsync(showErrors: true);
 
         var cached = HeroCatalogService.LoadCached();
-        if (cached.Count > 0)
-        {
-            ApplyCatalog(cached);
-        }
+        ApplyCatalog(cached);
 
         ResetLockForProject();
 

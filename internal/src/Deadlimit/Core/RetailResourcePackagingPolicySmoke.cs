@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using SteamDatabase.ValvePak;
+
 namespace Deadlimit.Core;
 
 internal static class RetailResourcePackagingPolicySmoke
@@ -8,6 +11,8 @@ internal static class RetailResourcePackagingPolicySmoke
             || !NonCompiledPayloadIsNotParsed()
             || !TruncatedCompiledResourceIsNonFatal()
             || !ChangedPreparedRetailTextureIsDetected()
+            || !ExtractedPackedTextureIsReused()
+            || !VpkPayloadMatchesSelectedResources()
             || !CompatibilityOnlyRetailMaterialIsRecognized())
         {
             return 1;
@@ -38,22 +43,22 @@ internal static class RetailResourcePackagingPolicySmoke
             "models/custom.vmdl_c",
             "materials/overridden-stock.vmat_c",
         };
-        var forcedMaterialDependencyOwners = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        var overriddenTextureResources = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            "materials/overridden-stock.vmat_c",
+            "materials/overridden.vtex_c",
         };
         var references = new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase)
         {
             ["models/custom.vmdl_c"] = ["models/stock.vmdl", "materials/custom.vmat"],
             ["materials/custom.vmat_c"] = ["materials/custom.vtex", "materials/stock.vtex"],
-            ["materials/overridden-stock.vmat_c"] = ["materials/overridden.vtex"],
+            ["materials/overridden-stock.vmat_c"] = ["materials/overridden.vtex", "materials/stock.vtex", "models/stock.vmdl"],
         };
 
         var included = RetailResourcePackagingPolicy.ResolveClosureForSmoke(
             addonFiles,
             retailResources,
             roots,
-            forcedMaterialDependencyOwners,
+            overriddenTextureResources,
             references);
 
         var expected = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -158,6 +163,112 @@ internal static class RetailResourcePackagingPolicySmoke
                 extractedRoot,
                 preparedRoot);
             return changed.SetEquals([resourcePath]);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static bool ExtractedPackedTextureIsReused()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"deadlimit-packed-texture-{Guid.NewGuid():N}");
+        var extractedRoot = Path.Combine(root, "0source");
+        var preparedRoot = Path.Combine(root, "content");
+        const string resourcePath = "materials/hero/body_color.png";
+        const string materialResource = "materials/hero/body.vmat";
+        var extractedPath = Path.Combine(extractedRoot, resourcePath);
+        var packedPath = Path.Combine(extractedRoot, "materials/hero/body_color_psd_1234abcd.png");
+        var materialPath = Path.Combine(extractedRoot, materialResource);
+        var preparedPath = Path.Combine(preparedRoot, resourcePath);
+        RetailTextureTarget[] targets = [new(resourcePath, materialResource, HasExtractedSourceFile: true)];
+        const string compiledMap = "\"Compiled Textures\" { \"g_tColor\" \"materials/hero/body_color_psd_1234abcd.vtex\" }";
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(extractedPath)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(preparedPath)!);
+            File.WriteAllBytes(extractedPath, [1, 2, 3, 255]);
+            File.WriteAllBytes(packedPath, [1, 2, 3, 0]);
+            File.WriteAllBytes(preparedPath, [1, 2, 3, 0]);
+            File.WriteAllText(materialPath, compiledMap);
+            var reused = RetailResourcePackagingPolicy.ResolvePreparedTextureOverridesForSmoke(
+                targets, extractedRoot, preparedRoot);
+            if (reused.Count != 0) return false;
+
+            // Keep real edits, and require declared provenance even when a matching
+            // filename and byte-identical extracted file happen to exist nearby.
+            File.WriteAllBytes(preparedPath, [9, 2, 3, 0]);
+            var edited = RetailResourcePackagingPolicy.ResolvePreparedTextureOverridesForSmoke(
+                targets, extractedRoot, preparedRoot);
+            if (!edited.SetEquals([resourcePath])) return false;
+            File.WriteAllBytes(preparedPath, [1, 2, 3, 0]);
+            File.WriteAllText(materialPath, "\"Layer0\" { }");
+            var undeclared = RetailResourcePackagingPolicy.ResolvePreparedTextureOverridesForSmoke(
+                targets, extractedRoot, preparedRoot);
+            if (!undeclared.SetEquals([resourcePath])) return false;
+
+            // The same provenance rule applies to both supported nested VRF layouts.
+            foreach (var pipeline in new[] { "glTFsource", "glTFpipeline" })
+            {
+                var nestedRoot = Path.Combine(extractedRoot, pipeline);
+                Directory.CreateDirectory(Path.Combine(nestedRoot, "materials/hero"));
+                File.Move(extractedPath, Path.Combine(nestedRoot, resourcePath));
+                File.Move(packedPath, Path.Combine(nestedRoot, "materials/hero/body_color_psd_1234abcd.png"));
+                File.Delete(materialPath);
+                File.WriteAllText(Path.Combine(nestedRoot, materialResource), compiledMap);
+                var nested = RetailResourcePackagingPolicy.ResolvePreparedTextureOverridesForSmoke(
+                    targets, extractedRoot, preparedRoot);
+                if (nested.Count != 0) return false;
+                File.Move(Path.Combine(nestedRoot, resourcePath), extractedPath);
+                File.Move(Path.Combine(nestedRoot, "materials/hero/body_color_psd_1234abcd.png"), packedPath);
+                Directory.Delete(nestedRoot, recursive: true);
+            }
+            return true;
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static bool VpkPayloadMatchesSelectedResources()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"deadlimit-vpk-audit-{Guid.NewGuid():N}");
+        var path = Path.Combine(root, "test_dir.vpk");
+        const string model = "models/authored.vmdl_c";
+        byte[] original = [1, 2, 3, 4];
+        var expected = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [model] = Convert.ToHexString(SHA256.HashData(original)),
+        };
+        void Write(byte[] bytes, bool extra = false)
+        {
+            using var package = new Package { Version = 2 };
+            package.AddFile(model, bytes);
+            if (extra) package.AddFile("materials/unselected.vtex_c", original);
+            package.Write(path);
+        }
+        bool Rejected()
+        {
+            try
+            {
+                BuildAndTestService.VerifyVpkPayload(path, expected, CancellationToken.None);
+                return false;
+            }
+            catch (InvalidDataException) { return true; }
+        }
+        try
+        {
+            Directory.CreateDirectory(root);
+            Write(original);
+            BuildAndTestService.VerifyVpkPayload(path, expected, CancellationToken.None);
+            Write([9, 2, 3, 4]); // Valid VPK checksums still cannot legitimize changed payload bytes.
+            if (!Rejected()) return false;
+            Write(original, extra: true);
+            if (!Rejected()) return false;
+            Write(original);
+            expected.Add("models/missing.vmdl_c", expected[model]);
+            return Rejected();
         }
         finally
         {

@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using SteamDatabase.ValvePak;
 using ValveResourceFormat;
 
@@ -8,7 +9,8 @@ internal sealed record RetailResourcePackagingPlan(
     IReadOnlySet<string> IncludedRelativePaths,
     IReadOnlySet<string> ExcludedRelativePaths,
     int RetailResourceCount,
-    int ProjectRootCount);
+    int ProjectRootCount,
+    IReadOnlySet<string> ProjectRootRelativePaths);
 
 internal static class RetailResourcePackagingPolicy
 {
@@ -47,13 +49,13 @@ internal static class RetailResourcePackagingPolicy
             compiledMainModel,
             cancellationToken,
             diagnosticSink,
-            out var forcedMaterialDependencyOwners);
+            out var overriddenTextureResources);
 
         var included = ResolveClosure(
             addonFiles,
             retailResources,
             projectRoots,
-            forcedMaterialDependencyOwners,
+            overriddenTextureResources,
             diagnosticSink,
             cancellationToken);
         var excluded = addonFiles.Keys
@@ -64,21 +66,22 @@ internal static class RetailResourcePackagingPolicy
             included,
             excluded,
             retailResources.Count,
-            projectRoots.Count);
+            projectRoots.Count,
+            projectRoots);
     }
 
     internal static IReadOnlySet<string> ResolveClosureForSmoke(
         IReadOnlyDictionary<string, string> addonFiles,
         IReadOnlySet<string> retailResources,
         IReadOnlySet<string> projectRoots,
-        IReadOnlySet<string> forcedMaterialDependencyOwners,
+        IReadOnlySet<string> overriddenTextureResources,
         IReadOnlyDictionary<string, IReadOnlyList<string>> references)
     {
         return ResolveClosure(
             addonFiles,
             retailResources,
             projectRoots,
-            forcedMaterialDependencyOwners,
+            overriddenTextureResources,
             _ => references.TryGetValue(_, out var value) ? value : Array.Empty<string>(),
             CancellationToken.None);
     }
@@ -117,12 +120,13 @@ internal static class RetailResourcePackagingPolicy
         string compiledMainModel,
         CancellationToken cancellationToken,
         Action<string>? diagnosticSink,
-        out HashSet<string> forcedMaterialDependencyOwners)
+        out HashSet<string> overriddenTextureResources)
     {
         var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var fileHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var textureTargets = RetailTextureOverrideService.BuildTargetIndex(extractedSourceRoot);
-        var textureOverridePaths = RetailTextureOverrideService.ResolveProjectRootOverrides(manifest, textureTargets)
+        var explicitTextureOverrides = RetailTextureOverrideService.ResolveProjectRootOverrides(manifest, textureTargets);
+        var textureOverridePaths = explicitTextureOverrides
             .Select(textureOverride => textureOverride.RetailTextureResourcePath)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var preparedTextureOverridePaths = ResolvePreparedTextureOverrides(
@@ -142,11 +146,10 @@ internal static class RetailResourcePackagingPolicy
             .Select(target => target.ReferencingMaterialResourcePath)
             .Where(path => !string.IsNullOrWhiteSpace(path))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        forcedMaterialDependencyOwners = textureOverrideMaterials
-            .Select(GetCompiledRelativePath)
-            .Where(path => path is not null)
-            .Select(path => path!)
+        var overriddenImageInputs = textureOverridePaths
+            .Concat(explicitTextureOverrides.Select(item => item.StagedSourceResourcePath))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        overriddenTextureResources = ResolveOverriddenTextureResources(addonFiles, overriddenImageInputs, cancellationToken);
 
         foreach (var sourcePath in Directory.EnumerateFiles(addonContentRoot, "*", SearchOption.AllDirectories))
         {
@@ -163,7 +166,7 @@ internal static class RetailResourcePackagingPolicy
                 continue;
             }
 
-            var extractedPath = TryResolve(extractedSourceRoot, sourceRelativePath);
+            var extractedPath = ExtractedSourceLayout.ResolveResource(extractedSourceRoot, sourceRelativePath);
             var projectOwned = extractedPath is null
                 || !File.Exists(extractedPath)
                 || !FilesEqual(extractedPath, sourcePath, fileHashes);
@@ -219,6 +222,27 @@ internal static class RetailResourcePackagingPolicy
         return roots;
     }
 
+    private static HashSet<string> ResolveOverriddenTextureResources(
+        IReadOnlyDictionary<string, string> addonFiles,
+        IReadOnlySet<string> overriddenImageInputs,
+        CancellationToken cancellationToken)
+    {
+        var resources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (overriddenImageInputs.Count == 0) return resources;
+        foreach (var (relativePath, path) in addonFiles.Where(item =>
+                     item.Key.EndsWith(".vtex_c", StringComparison.OrdinalIgnoreCase)))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var resource = new Resource();
+            resource.Read(path);
+            var info = resource.EditInfo;
+            if (info is not null && info.InputDependencies.Concat(info.AdditionalInputDependencies)
+                    .Any(input => overriddenImageInputs.Contains(input.ContentRelativeFilename.Replace('\\', '/'))))
+                resources.Add(relativePath);
+        }
+        return resources;
+    }
+
     private static HashSet<string> ResolvePreparedTextureOverrides(
         IReadOnlyList<RetailTextureTarget> textureTargets,
         string extractedSourceRoot,
@@ -236,7 +260,8 @@ internal static class RetailResourcePackagingPolicy
                 || preparedPath is null
                 || !File.Exists(extractedPath)
                 || !File.Exists(preparedPath)
-                || FilesEqual(extractedPath, preparedPath, fileHashes))
+                || FilesEqual(extractedPath, preparedPath, fileHashes)
+                || MatchesExtractedCompiledTexture(target, extractedSourceRoot, preparedPath, fileHashes))
             {
                 continue;
             }
@@ -245,6 +270,41 @@ internal static class RetailResourcePackagingPolicy
         }
 
         return overrides;
+    }
+
+    private static bool MatchesExtractedCompiledTexture(
+        RetailTextureTarget target,
+        string extractedSourceRoot,
+        string preparedPath,
+        IDictionary<string, string> fileHashes)
+    {
+        // VRF can extract both a channel-unpacked authoring image and the original
+        // packed texture. Older prepared addons retain the packed copy at the source
+        // image path. Only an exact copy of a resource declared by the extracted VMAT
+        // is reusable; a filename resemblance alone is never proof of retail content.
+        if (string.IsNullOrWhiteSpace(target.ReferencingMaterialResourcePath)) return false;
+        var materialPath = ExtractedSourceLayout.ResolveResource(
+            extractedSourceRoot, target.ReferencingMaterialResourcePath);
+        if (materialPath is null) return false;
+
+        var sourceDirectory = Path.GetDirectoryName(target.ResourcePath)?.Replace('\\', '/') ?? string.Empty;
+        var packedStem = "^" + Regex.Escape(Path.GetFileNameWithoutExtension(target.ResourcePath))
+            + @"_(?:png|tga|psd|jpg|jpeg|tif|tiff|exr)_[0-9a-f]{1,8}$";
+        foreach (Match match in Regex.Matches(File.ReadAllText(materialPath),
+                     "\\\"g_t[A-Za-z0-9_]+\\\"[ \\t]+\\\"(?<path>[^\\\"\\r\\n]+\\.vtex)\\\"",
+                     RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
+        {
+            var resourcePath = NormalizeRelativePath(match.Groups["path"].Value);
+            var directory = Path.GetDirectoryName(resourcePath)?.Replace('\\', '/') ?? string.Empty;
+            if (!string.Equals(directory, sourceDirectory, StringComparison.OrdinalIgnoreCase)
+                || !Regex.IsMatch(Path.GetFileNameWithoutExtension(resourcePath), packedStem,
+                    RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) continue;
+
+            var packedImage = ExtractedSourceLayout.ResolveResource(
+                extractedSourceRoot, Path.ChangeExtension(resourcePath, ".png"));
+            if (packedImage is not null && FilesEqual(packedImage, preparedPath, fileHashes)) return true;
+        }
+        return false;
     }
 
     private static HashSet<string> BuildRetailResourceIndex(
@@ -294,7 +354,7 @@ internal static class RetailResourcePackagingPolicy
         IReadOnlyDictionary<string, string> addonFiles,
         IReadOnlySet<string> retailResources,
         IReadOnlySet<string> projectRoots,
-        IReadOnlySet<string> forcedMaterialDependencyOwners,
+        IReadOnlySet<string> overriddenTextureResources,
         Action<string>? diagnosticSink,
         CancellationToken cancellationToken)
     {
@@ -302,7 +362,7 @@ internal static class RetailResourcePackagingPolicy
             addonFiles,
             retailResources,
             projectRoots,
-            forcedMaterialDependencyOwners,
+            overriddenTextureResources,
             relativePath => ReadExternalReferences(addonFiles[relativePath], relativePath, diagnosticSink),
             cancellationToken);
     }
@@ -311,7 +371,7 @@ internal static class RetailResourcePackagingPolicy
         IReadOnlyDictionary<string, string> addonFiles,
         IReadOnlySet<string> retailResources,
         IReadOnlySet<string> projectRoots,
-        IReadOnlySet<string> forcedMaterialDependencyOwners,
+        IReadOnlySet<string> overriddenTextureResources,
         Func<string, IReadOnlyList<string>> readReferences,
         CancellationToken cancellationToken)
     {
@@ -329,7 +389,6 @@ internal static class RetailResourcePackagingPolicy
                 continue;
             }
 
-            var retainMaterialDependencies = forcedMaterialDependencyOwners.Contains(current);
             foreach (var reference in readReferences(current))
             {
                 var dependency = ToCompiledResourcePath(reference);
@@ -338,7 +397,10 @@ internal static class RetailResourcePackagingPolicy
                     continue;
                 }
 
-                if (retainMaterialDependencies || !retailResources.Contains(dependency))
+                // Changing one material texture does not make its other stock
+                // textures authored. Compiler input provenance identifies precisely
+                // which compiled textures contain an artist override at a retail path.
+                if (overriddenTextureResources.Contains(dependency) || !retailResources.Contains(dependency))
                 {
                     pending.Enqueue(dependency);
                 }

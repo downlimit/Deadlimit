@@ -487,5 +487,7 @@
   "Reduced CSDK installed": "Reduced CSDK instalado",
   "FINE-TUNE CSDK": "AJUSTAR CSDK",
   "LATER": "MAIS TARDE",
-  "CSDK fine-tuning": "Ajuste do CSDK"
+  "CSDK fine-tuning": "Ajuste do CSDK",
+  "**BUILD FOR TEST** builds the current project and places its VPK in the Deadlock game client.\n\n**CTRL + CLICK** opens the VPK output folder in Explorer.\n\n**SHIFT + CLICK** forces a full clean rebuild.\n\nThe game is not launched. Close Deadlock before building if its VPK is locked.": "**COMPILAR PARA TESTE** compila o projeto atual e instala o VPK no cliente do Deadlock.\n\n**CTRL + CLIQUE** abre a pasta de saída dos VPKs no Explorador de Arquivos.\n\n**SHIFT + CLIQUE** força uma recompilação limpa e completa.\n\nO jogo não é iniciado. Se o Deadlock estiver bloqueando o VPK, feche o jogo antes de compilar.",
+  "Select the installed Deadlock folder in SETTINGS first.": "Primeiro, selecione a pasta de instalação do Deadlock nas CONFIGURAÇÕES."
 }

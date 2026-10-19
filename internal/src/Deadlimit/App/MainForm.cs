@@ -100,6 +100,7 @@ public sealed class MainForm : Form
 
     internal static int RunProjectSaveSmoke()
     {
+        using var isolatedUserData = UserDataPaths.IsolateForTests();
         var settingsPath = UserDataPaths.Combine("settings.json");
         byte[]? settingsBackup = null;
         var hadSettings = File.Exists(settingsPath);
@@ -228,6 +229,21 @@ public sealed class MainForm : Form
             {
                 return 11;
             }
+
+            ProjectStore.Save(new ProjectManifest
+            {
+                ProjectFolder = Path.Combine(projectsRoot, "BackgroundProject"),
+                ProjectName = "BackgroundProject",
+                Hero = "ivy",
+                ReleaseTarget = "03",
+            });
+            if (!PathsEqual(ProjectStore.GetLastProjectFolder(), projectFolder)) return 13;
+            var startupSettings = ProjectStore.GetToolPathSettings();
+            startupSettings.CsdkRoot = Path.Combine(tempRoot, "csdk");
+            ProjectStore.SaveToolPathSettings(startupSettings);
+            using var reopened = new MainForm();
+            reopened.InitializeProjectLibrary();
+            if (!PathsEqual(reopened._loadedManifest?.ProjectFolder, projectFolder)) return 14;
 
             return 0;
         }
@@ -984,6 +1000,7 @@ public sealed class MainForm : Form
             };
 
             ProjectStore.Save(manifest);
+            ProjectStore.RememberLastProject(manifest.ProjectFolder);
             _loadedManifest = manifest;
             RefreshScan(showStatus: false);
             return true;

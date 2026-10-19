@@ -89,7 +89,9 @@ public sealed class ImportedVpkRepairInspectionService
         }
 
         var modelPaths = snapshot.Entries
-            .Select(entry => NormalizeResourcePath(entry.InternalPath))
+            .Select(entry => entry.InternalPath)
+            .Concat((ImportedVpkAuthoringBuildService.TryLoadSnapshot(manifest.ProjectFolder)?.Entries ?? []).Select(entry => entry.InternalPath))
+            .Select(NormalizeResourcePath)
             .Where(IsCharacterModelPath)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderByDescending(path => manifest.ImportedVpk.PrimaryModelResources.Contains(
@@ -329,11 +331,15 @@ public sealed class ImportedVpkRepairInspectionService
 
                 foreach (var entry in packageEntries.SelectMany(group => group.Value))
                 {
-                    var resourcePath = NormalizeResourcePath(entry.GetFullPath());
+                    // Only matching entries need filesystem-style path validation.
+                    // Running SafePath/GetTempPath for every unrelated retail entry
+                    // makes a small imported repair scan unnecessarily expensive.
+                    var resourcePath = entry.GetFullPath().Replace('\\', '/');
                     if (!targets.Contains(resourcePath))
                     {
                         continue;
                     }
+                    resourcePath = NormalizeResourcePath(resourcePath);
 
                     try
                     {

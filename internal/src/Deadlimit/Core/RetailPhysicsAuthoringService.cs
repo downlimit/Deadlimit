@@ -100,8 +100,7 @@ public static class RetailPhysicsAuthoringService
         package.ReadEntry(entry, out byte[] rawData);
         using var stream = new MemoryStream(rawData, writable: false);
         using var resource = new Resource { FileName = entry.GetFullPath() };
-        resource.Read(stream);
-
+        ReadRetailModelResource(resource, stream, compiledResourcePath);
         if (resource.DataBlock is not Model model)
         {
             throw new InvalidDataException($"Retail resource is not a model: {compiledResourcePath}");
@@ -643,6 +642,22 @@ public static class RetailPhysicsAuthoringService
         return names;
     }
 
+    private static void ReadRetailModelResource(Resource resource, Stream stream, string resourcePath)
+    {
+        try
+        {
+            resource.Read(stream);
+        }
+        catch (ValveResourceFormat.Utils.UnexpectedMagicException exception)
+        {
+            throw new InvalidDataException(
+                $"Could not read the game model '{resourcePath}' with ValveResourceFormat " +
+                $"{typeof(Resource).Assembly.GetName().Version}. Update Deadlimit Manager and retry preparation. " +
+                exception.Message,
+                exception);
+        }
+    }
+
     private static IReadOnlyList<RetailFixedClothJoint> ReadRetailFixedClothJoints(
         ProjectManifest manifest)
     {
@@ -674,7 +689,7 @@ public static class RetailPhysicsAuthoringService
         package.ReadEntry(entry, out byte[] rawData);
         using var stream = new MemoryStream(rawData, writable: false);
         using var resource = new Resource { FileName = entry.GetFullPath() };
-        resource.Read(stream);
+        ReadRetailModelResource(resource, stream, compiledResourcePath);
         if (resource.DataBlock is not Model model)
         {
             throw new InvalidDataException($"Retail resource is not a model: {compiledResourcePath}");

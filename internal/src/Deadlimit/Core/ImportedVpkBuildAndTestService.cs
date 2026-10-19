@@ -67,7 +67,7 @@ internal sealed class ImportedVpkBuildAndTestService
                 .Where(target => target.Status is ImportedVpkRepairTargetStatus.MissingRetailCounterpart
                     or ImportedVpkRepairTargetStatus.UnsupportedOrUnreadable)
                 .Select(target => $"{target.ResourcePath}: {target.Detail}")
-                .ToArray();
+                .ToList();
 
             log.AppendLine($"Compiled character models inspected: {inspection.Targets.Count}");
             log.AppendLine($"Binding repair targets: {eligible.Length}");
@@ -76,29 +76,20 @@ internal sealed class ImportedVpkBuildAndTestService
                 log.AppendLine($"  {target.Status}: {target.ResourcePath}");
             }
 
-            var repairedCount = 0;
-            if (eligible.Length > 0)
+            cancellationToken.ThrowIfCancellationRequested();
+            Report(progress, 52, LocalizedText.T(
+                "Checking and repairing model animation and cameras...",
+                "Проверка и исправление анимации и камер моделей..."));
+            var repair = new ImportedVpkAnimationBindingRepairService(_paths).Repair(manifest, cancellationToken);
+            var repairedCount = repair.ModifiedTargetCount;
+            log.AppendLine($"Compiled models repaired this run: {repairedCount}");
+            log.AppendLine($"Camera models repaired: {repair.CameraModifiedTargetCount}");
+            log.AppendLine($"Repair report: {repair.ReportPath}");
+            foreach (var entry in repair.Entries)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                Report(progress, 52, LocalizedText.T(
-                    $"Repairing current-retail animation bindings in {eligible.Length} compiled model(s)...",
-                    $"Исправление animation bindings по retail в compiled-моделях: {eligible.Length}..."));
-                var repair = new ImportedVpkAnimationBindingRepairService(_paths).Repair(manifest);
-                repairedCount = repair.ModifiedTargetCount;
-                if (repairedCount != eligible.Length)
-                {
-                    throw new InvalidDataException(
-                        $"Imported binding repair expected {eligible.Length} modified model(s), but committed {repairedCount}.");
-                }
-                log.AppendLine($"Compiled models repaired this run: {repairedCount}");
-                log.AppendLine($"Repair report: {repair.ReportPath}");
-            }
-            else
-            {
-                // A previous successful repair report is provenance for compiled bytes
-                // that intentionally differ from their authoring-build baseline. Do not
-                // overwrite that report with a no-op repair run.
-                log.AppendLine("No binding repair required; existing repair provenance was preserved unchanged.");
+                log.AppendLine($"  {entry.ResourcePath}: {entry.Detail}");
+                if (entry.CameraStatus is "Unsupported" or "ReviewNeeded")
+                    warnings.Add($"{entry.ResourcePath}: {entry.Detail}");
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -150,7 +141,7 @@ internal sealed class ImportedVpkBuildAndTestService
                 CompiledSourceCount: authoringBuild.Recompiled ? authoringBuild.SourceFileCount : 0,
                 RemovedCompiledOutputCount: 0,
                 FullRebuild: authoringBuild.Recompiled,
-                Ag2Applied: repairedCount > 0,
+                Ag2Applied: repair.BindingModifiedTargetCount > 0,
                 warnings,
                 deployedVpk,
                 logPath);

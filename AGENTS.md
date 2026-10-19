@@ -26,3 +26,10 @@ Read `internal/docs/UI_GUIDELINES.md` before creating or modifying Deadlimit Man
 ## GitHub Actions budget and verification
 
 Read [docs/CI_COST_POLICY.md](docs/CI_COST_POLICY.md) before modifying workflows, release automation, caches or Actions artifacts. Run `internal/tests/validate-local.ps1` for routine changes and add `-Full` for the native Windows/.NET validation where relevant. Do not start a hosted full build, publish a release, upload artifacts, or change account/repository billing and retention settings without the owner's explicit authorization. Run `internal/tests/workflow-cost-policy-smoke.ps1` for every workflow edit and update its approved inventory together with the policy when a new workflow is intentionally introduced. Report local, hosted and owner-only checks separately.
+
+## Packaging regression checks
+
+- After changing compilation, PREPARE, resource selection, model repair or VPK packing, inspect an actual resulting VPK before reporting success. Check exact entry paths, per-entry sizes, total archive/family size, largest resources, and the delta against the previous or known-good VPK. A passing build or checksum test alone is insufficient.
+- Unchanged stock content used by a mod must resolve from the installed game and must not enter the VPK. A reference from an authored model/material or a CSDK compatibility transformation does not establish authorship. Changing one texture must not pull in the material's remaining stock textures. Preserve actual authored overrides even at retail resource paths.
+- For IvyBuilder, explicitly report the measured VPK size and investigate growth against the known-good archive. The user's 20–30 MB expectation refers to the compressed archive. Keep compressed archive size and unpacked VPK size distinct. Do not remove authored resources, lower texture quality or strip animation/physics data merely to reach a size target.
+- Preserve and hash-check project source/artist files during real fixture checks. Exercise imported VPK repacking as well when the shared dependency or repair path changes. Record verification locally; never commit game/model/texture payloads.

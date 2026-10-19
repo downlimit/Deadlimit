@@ -596,6 +596,8 @@ $resolveUserData = $userDataType.GetMethod('ResolveRoot', $nonPublicStatic)
 if ($null -eq $resolveUserData) { throw 'UserDataPaths.ResolveRoot was not found.' }
 $resolvedUserData = [string]$resolveUserData.Invoke($null, @())
 $expectedUserData = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)) 'Deadlimit'
+$testUserData = [Environment]::GetEnvironmentVariable('DEADLIMIT_TEST_USER_DATA_ROOT')
+if (-not [string]::IsNullOrWhiteSpace($testUserData)) { $expectedUserData = [IO.Path]::GetFullPath($testUserData) }
 if (-not [string]::Equals($resolvedUserData, $expectedUserData, [StringComparison]::OrdinalIgnoreCase)) {
     throw "Deadlimit user data root is unexpected: $resolvedUserData"
 }
