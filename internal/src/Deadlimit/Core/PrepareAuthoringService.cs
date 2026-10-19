@@ -85,6 +85,11 @@ public sealed class PrepareAuthoringService
         ValidateEnvironment(manifest);
         cancellationToken.ThrowIfCancellationRequested();
 
+        if (manifest.Mode == ProjectMode.ImportedVpk)
+        {
+            return new ImportedVpkPrepareService(_paths).Prepare(manifest, progress, cancellationToken, options);
+        }
+
         var authoringFiles = ProjectAuthoringLayout.EnumerateAuthoringFiles(manifest).ToArray();
         var rootDmxFiles = ProjectAuthoringLayout.SelectFirstByFileName(manifest, authoringFiles
             .Where(path => Path.GetExtension(path).Equals(".dmx", StringComparison.OrdinalIgnoreCase))
