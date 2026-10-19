@@ -487,5 +487,7 @@
   "Reduced CSDK installed": "Reduced CSDK 已安装",
   "FINE-TUNE CSDK": "完善 CSDK 配置",
   "LATER": "稍后",
-  "CSDK fine-tuning": "CSDK 完善配置"
+  "CSDK fine-tuning": "CSDK 完善配置",
+  "**BUILD FOR TEST** builds the current project and places its VPK in the Deadlock game client.\n\n**CTRL + CLICK** opens the VPK output folder in Explorer.\n\n**SHIFT + CLICK** forces a full clean rebuild.\n\nThe game is not launched. Close Deadlock before building if its VPK is locked.": "**构建测试版本**构建当前项目，并将其 VPK 放入 Deadlock 游戏客户端。\n\n**CTRL + 单击**在文件资源管理器中打开 VPK 输出文件夹。\n\n**SHIFT + 单击**执行完整的干净重建。\n\n此操作不会启动游戏。如果运行中的 Deadlock 锁定了 VPK，请在构建前关闭游戏。",
+  "Select the installed Deadlock folder in SETTINGS first.": "请先在设置中指定已安装的 Deadlock 文件夹。"
 }

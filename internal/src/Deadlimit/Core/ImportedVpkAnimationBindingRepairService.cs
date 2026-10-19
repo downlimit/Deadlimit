@@ -10,14 +10,19 @@ public sealed record ImportedVpkAnimationBindingRepairEntry(
     bool Modified,
     string BeforeSha256,
     string AfterSha256,
-    string Detail);
+    string Detail,
+    bool BindingsModified = false,
+    bool CameraModified = false,
+    string CameraStatus = "");
 
 public sealed record ImportedVpkAnimationBindingRepairResult(
     DateTimeOffset RepairedUtc,
     int EligibleTargetCount,
     int ModifiedTargetCount,
     IReadOnlyList<ImportedVpkAnimationBindingRepairEntry> Entries,
-    string ReportPath);
+    string ReportPath,
+    int BindingModifiedTargetCount = 0,
+    int CameraModifiedTargetCount = 0);
 
 internal sealed class ImportedVpkAnimationBindingRepairSnapshot
 {
@@ -43,7 +48,7 @@ public sealed class ImportedVpkAnimationBindingRepairService
         _paths = paths;
     }
 
-    public ImportedVpkAnimationBindingRepairResult Repair(ProjectManifest manifest)
+    public ImportedVpkAnimationBindingRepairResult Repair(ProjectManifest manifest, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         if (manifest.Mode != ProjectMode.ImportedVpk || manifest.ImportedVpk is null)
@@ -59,142 +64,115 @@ public sealed class ImportedVpkAnimationBindingRepairService
             throw new DirectoryNotFoundException(payloadRoot);
         }
 
-        var eligible = inspection.Targets
-            .Where(target => target.Status is ImportedVpkRepairTargetStatus.BindingsMissing
-                or ImportedVpkRepairTargetStatus.BindingsDiffer)
-            .ToArray();
-        var staged = new List<StagedRepair>(eligible.Length);
-        var entries = new List<ImportedVpkAnimationBindingRepairEntry>(inspection.Targets.Count);
+        var sourceSnapshot = ImportedVpkPayloadService.TryLoadSnapshot(manifest.ProjectFolder)
+            ?? throw new InvalidDataException("Missing imported source snapshot.");
+        var reportPath = Path.Combine(ProjectStore.GetMetadataFolder(manifest.ProjectFolder), ReportFileName);
+        var previousReportBytes = File.Exists(reportPath) ? File.ReadAllBytes(reportPath) : null;
+        var previous = previousReportBytes is null ? null
+            : JsonSerializer.Deserialize<ImportedVpkAnimationBindingRepairSnapshot>(previousReportBytes, JsonOptions)
+                ?? throw new InvalidDataException("Invalid compiled model repair report.");
+        if (previous is not null && previous.SchemaVersion is not (1 or 2))
+            throw new InvalidDataException("Unsupported compiled model repair report version.");
+        var recorded = (previous?.Entries ?? []).Where(entry => entry.Modified)
+            .ToDictionary(entry => entry.ResourcePath, StringComparer.OrdinalIgnoreCase);
+        var originals = sourceSnapshot.Entries.ToDictionary(entry => entry.InternalPath, StringComparer.OrdinalIgnoreCase);
+        var baseline = sourceSnapshot.Entries.ToDictionary(entry => entry.InternalPath, entry => entry.Sha256, StringComparer.OrdinalIgnoreCase);
+        var authoring = ImportedVpkAuthoringBuildService.TryLoadSnapshot(manifest.ProjectFolder);
+        foreach (var built in authoring?.Entries ?? [])
+        {
+            if (originals.TryGetValue(built.InternalPath, out var original))
+            {
+                if (!string.Equals(built.OriginalSha256, original.Sha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException($"Authoring provenance does not match imported source: {built.InternalPath}");
+            }
+            else if (built.OriginalSha256 is not null)
+                throw new InvalidDataException($"Authoring provenance references an unknown original: {built.InternalPath}");
+            baseline[built.InternalPath] = built.BuiltSha256;
+        }
 
+        // Validate the entire payload before accepting it as the next repair input.
+        // A later game update can extend an earlier repair; provenance always starts
+        // at the originally imported bytes and ends at the latest verified output.
+        foreach (var entry in baseline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var path = ResolvePayloadModel(payloadRoot, entry.Key);
+            var expected = entry.Value;
+            if (recorded.TryGetValue(entry.Key, out var record))
+            {
+                if (!string.Equals(record.BeforeSha256, entry.Value, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException($"Repair provenance does not start at imported source: {entry.Key}");
+                expected = record.AfterSha256;
+            }
+            if (!File.Exists(path) || !string.Equals(ComputeSha256(File.ReadAllBytes(path)), expected, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"Payload differs from its verified import/repair: {entry.Key}");
+        }
+        var staged = new List<StagedRepair>();
+        var entries = new List<ImportedVpkAnimationBindingRepairEntry>();
+        var bindingsChanged = 0;
+        var camerasChanged = 0;
         foreach (var target in inspection.Targets)
         {
-            if (target.Status == ImportedVpkRepairTargetStatus.BindingsAlreadyCurrent)
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!target.RetailMatched || string.IsNullOrWhiteSpace(target.RetailVpkPath) || target.RetailBindings is null)
             {
-                var path = ResolvePayloadModel(payloadRoot, target.ResourcePath);
-                var hash = File.Exists(path) ? ComputeSha256(File.ReadAllBytes(path)) : string.Empty;
-                entries.Add(new ImportedVpkAnimationBindingRepairEntry(
-                    target.ResourcePath,
-                    target.Status,
-                    Modified: false,
-                    hash,
-                    hash,
-                    "Bindings already match current retail; compiled model bytes were not serialized or rewritten."));
+                entries.Add(new(target.ResourcePath, target.Status, false, "", "", target.Detail));
                 continue;
             }
-
-            if (target.Status is not (ImportedVpkRepairTargetStatus.BindingsMissing
-                or ImportedVpkRepairTargetStatus.BindingsDiffer))
-            {
-                entries.Add(new ImportedVpkAnimationBindingRepairEntry(
-                    target.ResourcePath,
-                    target.Status,
-                    Modified: false,
-                    string.Empty,
-                    string.Empty,
-                    target.Detail));
-                continue;
-            }
-
-            if (!target.RetailMatched
-                || string.IsNullOrWhiteSpace(target.RetailVpkPath)
-                || target.RetailBindings is null)
-            {
-                throw new InvalidOperationException(
-                    $"Repair target '{target.ResourcePath}' was marked eligible without a verified current-retail counterpart.");
-            }
-
             var payloadPath = ResolvePayloadModel(payloadRoot, target.ResourcePath);
-            if (!File.Exists(payloadPath))
-            {
-                throw new FileNotFoundException(
-                    "Imported repair target disappeared from the preserved payload.",
-                    payloadPath);
-            }
-
-            var originalBytes = File.ReadAllBytes(payloadPath);
-            var retailBytes = ReadExactVpkEntry(target.RetailVpkPath, target.ResourcePath);
-            var retailNow = CompiledModelAnimationBindingRepair.ReadSnapshot(retailBytes, target.ResourcePath);
-            if (!CompiledModelAnimationBindingRepair.SnapshotsEqual(retailNow, target.RetailBindings))
-            {
-                throw new InvalidOperationException(
-                    $"Current retail bindings changed while repair was being prepared: {target.ResourcePath}. " +
-                    "No imported payload bytes were changed; inspect the updated Deadlock build and retry.");
-            }
-
-            var repaired = CompiledModelAnimationBindingRepair.Repair(
-                originalBytes,
-                retailBytes,
-                target.ResourcePath);
-            if (!repaired.Modified)
-            {
-                throw new InvalidOperationException(
-                    $"Repair inspection marked '{target.ResourcePath}' as {target.Status}, but a fresh semantic comparison found no binding difference. " +
-                    "No payload bytes were changed.");
-            }
-
-            var beforeHash = ComputeSha256(originalBytes);
-            var afterHash = ComputeSha256(repaired.Bytes);
-            if (string.Equals(beforeHash, afterHash, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidDataException(
-                    $"Binding repair reported a modification without changing compiled model bytes: {target.ResourcePath}");
-            }
-
-            staged.Add(new StagedRepair(
-                target.ResourcePath,
-                payloadPath,
-                originalBytes,
-                repaired.Bytes));
-            entries.Add(new ImportedVpkAnimationBindingRepairEntry(
-                target.ResourcePath,
-                target.Status,
-                Modified: true,
-                beforeHash,
-                afterHash,
-                target.Status == ImportedVpkRepairTargetStatus.BindingsMissing
-                    ? "Missing AG2/NmSkeleton bindings were replaced with exact current-retail values."
-                    : "Stale AG2/NmSkeleton bindings were replaced with exact current-retail values."));
+            var input = File.ReadAllBytes(payloadPath);
+            var retail = ReadExactVpkEntry(target.RetailVpkPath, target.ResourcePath);
+            if (!CompiledModelAnimationBindingRepair.SnapshotsEqual(
+                CompiledModelAnimationBindingRepair.ReadSnapshot(retail, target.ResourcePath), target.RetailBindings))
+                throw new InvalidOperationException($"Retail model changed during repair: {target.ResourcePath}");
+            var binding = CompiledModelAnimationBindingRepair.Repair(input, retail, target.ResourcePath);
+            var camera = CompiledModelCameraRepair.Repair(binding.Bytes, retail, target.ResourcePath);
+            if (binding.Modified) bindingsChanged++;
+            if (camera.Modified) camerasChanged++;
+            var modified = binding.Modified || camera.Modified;
+            var currentHash = ComputeSha256(input);
+            var finalHash = ComputeSha256(camera.Bytes);
+            var oldRecord = recorded.GetValueOrDefault(target.ResourcePath);
+            var entry = new ImportedVpkAnimationBindingRepairEntry(
+                target.ResourcePath, target.Status, modified || oldRecord is not null,
+                baseline[target.ResourcePath], finalHash,
+                $"AG2/NmSkeleton {(binding.Modified ? "repaired" : "current")}. {camera.Status}: {camera.Detail}",
+                binding.Modified || (oldRecord?.BindingsModified ?? false),
+                camera.Modified || (oldRecord?.CameraModified ?? false), camera.Status.ToString());
+            entries.Add(entry);
+            if (!modified) continue;
+            if (string.Equals(currentHash, finalHash, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"Repair did not change bytes: {target.ResourcePath}");
+            staged.Add(new(target.ResourcePath, payloadPath, input, camera.Bytes));
+            recorded[target.ResourcePath] = entry;
         }
-
-        CommitRepairs(staged);
-
-        // Refresh the inspection after commit. Every successfully repaired target must now
-        // compare as current retail truth; this also catches a serialization/write mismatch.
-        var postInspection = new ImportedVpkRepairInspectionService(_paths).InspectAndSave(manifest);
-        var remainingEligible = postInspection.Targets
-            .Where(target => staged.Any(stage => string.Equals(
-                stage.ResourcePath,
-                target.ResourcePath,
-                StringComparison.OrdinalIgnoreCase)))
-            .Where(target => target.Status != ImportedVpkRepairTargetStatus.BindingsAlreadyCurrent)
-            .ToArray();
-        if (remainingEligible.Length > 0)
-        {
-            RollbackRepairs(staged);
-            throw new InvalidDataException(
-                "One or more compiled models no longer matched current retail bindings after repair; payload changes were rolled back.\n\n" +
-                string.Join("\n", remainingEligible.Select(target => $"- {target.ResourcePath}: {target.Status}")));
-        }
-
         var repairedUtc = DateTimeOffset.UtcNow;
-        var reportPath = Path.Combine(
-            ProjectStore.GetMetadataFolder(manifest.ProjectFolder),
-            ReportFileName);
-        AtomicFile.WriteJson(
-            reportPath,
-            new ImportedVpkAnimationBindingRepairSnapshot
+        if (staged.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            CommitRepairs(staged);
+            try
             {
-                RepairedUtc = repairedUtc,
-                Entries = entries,
-            },
-            JsonOptions);
-
-        return new ImportedVpkAnimationBindingRepairResult(
-            repairedUtc,
-            eligible.Length,
-            staged.Count,
-            entries,
-            reportPath);
+                var post = new ImportedVpkRepairInspectionService(_paths).InspectAndSave(manifest);
+                if (post.Targets.Any(target => staged.Any(stage => stage.ResourcePath == target.ResourcePath)
+                        && target.Status != ImportedVpkRepairTargetStatus.BindingsAlreadyCurrent))
+                    throw new InvalidDataException("Repaired payload failed current-retail binding verification.");
+                AtomicFile.WriteJson(reportPath, new ImportedVpkAnimationBindingRepairSnapshot
+                {
+                    SchemaVersion = 2,
+                    RepairedUtc = repairedUtc,
+                    Entries = recorded.Values.OrderBy(entry => entry.ResourcePath, StringComparer.Ordinal).ToList(),
+                }, JsonOptions);
+            }
+            catch
+            {
+                RollbackRepairs(staged);
+                if (previousReportBytes is not null) AtomicFile.WriteAllBytes(reportPath, previousReportBytes);
+                else if (File.Exists(reportPath)) File.Delete(reportPath);
+                throw;
+            }
+        }
+        return new(repairedUtc, staged.Count, staged.Count, entries, reportPath, bindingsChanged, camerasChanged);
     }
 
     private static string ResolvePayloadModel(string payloadRoot, string resourcePath) =>
@@ -216,9 +194,7 @@ public sealed class ImportedVpkAnimationBindingRepairService
         var matches = entries
             .SelectMany(group => group.Value)
             .Where(entry => string.Equals(
-                SafePath.NormalizeRelative(
-                    entry.GetFullPath().Replace('\\', '/'),
-                    "Current retail VPK entry path"),
+                entry.GetFullPath().Replace('\\', '/'),
                 normalizedTarget,
                 StringComparison.OrdinalIgnoreCase))
             .ToArray();
@@ -239,8 +215,12 @@ public sealed class ImportedVpkAnimationBindingRepairService
         {
             foreach (var repair in staged)
             {
+                if (!File.ReadAllBytes(repair.PayloadPath).AsSpan().SequenceEqual(repair.OriginalBytes))
+                    throw new IOException($"Imported payload changed during repair: {repair.ResourcePath}");
                 AtomicFile.WriteAllBytes(repair.PayloadPath, repair.RepairedBytes);
                 committed.Add(repair);
+                if (!File.ReadAllBytes(repair.PayloadPath).AsSpan().SequenceEqual(repair.RepairedBytes))
+                    throw new IOException($"Imported payload write verification failed: {repair.ResourcePath}");
             }
         }
         catch

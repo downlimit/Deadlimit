@@ -102,7 +102,6 @@ public static class ProjectStore
         var json = JsonSerializer.Serialize(manifest, JsonOptions);
         AtomicFile.WriteAllText(Path.Combine(metadataFolder, ManifestFileName), json);
         LastKnownGoodManifestJson[GetManifestCacheKey(manifest.ProjectFolder)] = json;
-        RememberLastProject(manifest.ProjectFolder);
     }
 
     public static ProjectManifest? TryLoadLastProject()

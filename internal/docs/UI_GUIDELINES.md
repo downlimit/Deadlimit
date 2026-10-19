@@ -59,6 +59,11 @@ Actions that perform validation, network checks, installs or updates must provid
 
 ## Language and theme
 
+The last selected project belongs to explicit UI selection/save actions. Background
+manifest saves, compilation, extraction and smoke fixtures must not change it.
+Startup and local validation smoke runs use isolated user-data folders so their
+settings, library state and temporary projects cannot overwrite the live session.
+
 Changing language or theme must not require the user to manually relaunch Deadlimit Manager.
 
 - Theme preview may apply immediately while Settings is open.

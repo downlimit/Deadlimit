@@ -373,7 +373,7 @@ public sealed class ImportedVpkRepackService
             var snapshot = JsonSerializer.Deserialize<ImportedVpkAnimationBindingRepairSnapshot>(
                 File.ReadAllText(path),
                 JsonOptions);
-            return snapshot is { SchemaVersion: 1 } ? snapshot : null;
+            return snapshot is { SchemaVersion: 1 or 2 } ? snapshot : null;
         }
         catch (Exception exception) when (exception is JsonException
             or IOException

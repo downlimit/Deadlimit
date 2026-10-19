@@ -57,11 +57,7 @@ internal static class BuildFeature
             UiText.T(
                 "Prepare the selected project's working files for Reduced CSDK12 / ModelDoc / Material Editor.\n\nA normal click preserves artist edits. Hold SHIFT to choose reset sections or create an editable hero-select VMAP.",
                 "Подготовить рабочие файлы выбранного проекта для Reduced CSDK12 / ModelDoc / Material Editor.\n\nОбычный клик сохраняет правки автора. Удерживайте SHIFT, чтобы выбрать разделы для восстановления или создать редактируемый VMAP сцены выбора героя."));
-        toolTip.SetToolTip(
-            buildAndTestButton,
-            UiText.T(
-                "Compile the current project and deploy its VPK into Deadlock game client so it is ready for testing.\n\nThis action does not launch the game. If Deadlock is already running, it must be closed because the loaded VPK is locked. Hold SHIFT while clicking to force a full clean rebuild.",
-                "Скомпилировать текущий проект и установить его VPK в игровой клиент Deadlock, чтобы мод был готов к тесту.\n\nЭта кнопка не запускает игру. Если Deadlock уже запущен, его нужно закрыть: загруженный VPK заблокирован игрой. Удерживайте SHIFT при клике для полной чистой пересборки."));
+        toolTip.SetToolTip(buildAndTestButton, BuildForTestToolTip());
         toolTip.SetToolTip(
             launchCsdkButton,
             UiText.T(
@@ -222,6 +218,12 @@ internal static class BuildFeature
         };
         buildAndTestButton.Click += async (_, _) =>
         {
+            if ((Control.ModifierKeys & Keys.Control) == Keys.Control)
+            {
+                OpenBuildOutputFolder(form);
+                return;
+            }
+
             if (buildCancellation is not null)
             {
                 RequestCancellation(
@@ -915,6 +917,47 @@ internal static class BuildFeature
             }
 
             OpenParticleCompilationLog(form, error.LogPath);
+        }
+    }
+
+    internal static string BuildForTestToolTip() => UiText.T(
+        "**BUILD FOR TEST** builds the current project and places its VPK in the Deadlock game client.\n\n**CTRL + CLICK** opens the VPK output folder in Explorer.\n\n**SHIFT + CLICK** forces a full clean rebuild.\n\nThe game is not launched. Close Deadlock before building if its VPK is locked.",
+        "**СОБРАТЬ ДЛЯ ТЕСТА** собирает текущий проект и устанавливает его VPK в игровой клиент Deadlock.\n\n**CTRL + КЛИК** открывает папку с готовыми VPK в Проводнике.\n\n**SHIFT + КЛИК** выполняет полную чистую пересборку.\n\nИгра не запускается. Если VPK заблокирован работающим Deadlock, перед сборкой игру нужно закрыть.");
+
+    private static void OpenBuildOutputFolder(MainForm form)
+    {
+        try
+        {
+            var retailRoot = new DeadlimitPaths().RetailDeadlockRoot;
+            if (string.IsNullOrWhiteSpace(retailRoot)
+                || !Directory.Exists(Path.Combine(retailRoot, "game", "citadel")))
+            {
+                throw new InvalidOperationException(UiText.T(
+                    "Select the installed Deadlock folder in SETTINGS first.",
+                    "Сначала укажите папку установленного Deadlock в НАСТРОЙКАХ."));
+            }
+
+            var outputFolder = Path.Combine(retailRoot, "game", "citadel", "addons");
+            Directory.CreateDirectory(outputFolder);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = outputFolder,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex) when (ex is IOException
+            or UnauthorizedAccessException
+            or InvalidOperationException
+            or System.ComponentModel.Win32Exception
+            or ArgumentException
+            or NotSupportedException)
+        {
+            MessageBox.Show(
+                form,
+                ex.Message,
+                UiText.T("Could not open folder", "Не удалось открыть папку"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
         }
     }
 

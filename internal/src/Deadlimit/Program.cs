@@ -41,6 +41,7 @@ internal static class Program
 
         var startupSmoke = args.Any(argument =>
             string.Equals(argument, StartupSmokeArgument, StringComparison.OrdinalIgnoreCase));
+        using var isolatedUserData = startupSmoke ? UserDataPaths.IsolateForTests() : null;
 
         Mutex? singleInstanceMutex = null;
         var ownsSingleInstanceMutex = false;

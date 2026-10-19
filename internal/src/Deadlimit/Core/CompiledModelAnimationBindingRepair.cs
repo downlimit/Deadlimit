@@ -42,6 +42,8 @@ internal static class CompiledModelAnimationBindingRepair
         var retailData = GetModel(retailResource).Data;
         var before = ReadSnapshot(importedData);
         var retail = ReadSnapshot(retailData);
+        var preserved = CompiledModelIntegrity.Fingerprint(importedData,
+            path => path is AnimGraph2Field or NmSkeletonField);
 
         if (SnapshotsEqual(before, retail))
         {
@@ -63,15 +65,21 @@ internal static class CompiledModelAnimationBindingRepair
                 "Compiled model binding mutation did not reproduce the current retail AG2/NmSkeleton values in memory.");
         }
 
-        using var output = new MemoryStream(capacity: Math.Max(importedBytes.Length, 4096));
-        importedResource.Serialize(output);
-        var repairedBytes = output.ToArray();
+        var edited = new HashSet<int> { importedResource.Blocks.IndexOf(importedResource.DataBlock!) };
+        var repairedBytes = CompiledModelIntegrity.Serialize(importedResource, importedBytes, edited);
         if (repairedBytes.Length == 0)
         {
             throw new InvalidDataException("ValveResourceFormat serialized an empty compiled model.");
         }
 
         var serializedAfter = ReadSnapshot(repairedBytes, resourcePath);
+        using var reopened = CompiledModelIntegrity.Read(repairedBytes, resourcePath);
+        CompiledModelIntegrity.VerifyUneditedBlocks(importedResource, importedBytes, reopened, repairedBytes, edited);
+        if (preserved != CompiledModelIntegrity.Fingerprint(GetModel(reopened).Data,
+                path => path is AnimGraph2Field or NmSkeletonField))
+        {
+            throw new InvalidDataException("Animation binding repair changed unrelated model data.");
+        }
         if (!SnapshotsEqual(serializedAfter, retail))
         {
             throw new InvalidDataException(

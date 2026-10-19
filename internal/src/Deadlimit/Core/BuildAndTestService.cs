@@ -368,6 +368,10 @@ public sealed class BuildAndTestService
             ApplyAg2(manifest, compiledMainModel, log, cancellationToken);
             var ag2Applied = true;
 
+            Report(progress, 87, LocalizedText.T("Checking and repairing model cameras...", "Проверка и исправление камер моделей..."));
+            var cameraWarnings = CompiledModelCameraRepairService.RepairBuildOutputs(
+                addonGameRoot, _paths.RetailDeadlockRoot, message => log.AppendLine(message), cancellationToken);
+
             cancellationToken.ThrowIfCancellationRequested();
             Report(progress, 86, LocalizedText.T(
                 "Validating compiled rigid bodies and authored secondary motion...",
@@ -439,10 +443,16 @@ public sealed class BuildAndTestService
                 $"Loose hero-select resources omitted from outer VPK: {looseHeroSelectResources.Length}");
             log.AppendLine($"Authored hero-select packages built: {heroSelectPackages.Count}");
 
+            var packagingInclusions = packagingPlan.IncludedRelativePaths
+                .Where(path => !packagingExclusions.Contains(path))
+                .Concat(heroSelectPackages)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
             PackVpk(
                 addonGameRoot,
                 vpkPath,
-                packagingExclusions,
+                packagingInclusions,
+                packagingPlan.ProjectRootRelativePaths,
                 log,
                 progress,
                 cancellationToken,
@@ -485,7 +495,7 @@ public sealed class BuildAndTestService
                 removedCompiledOutputs,
                 fullRebuild,
                 ag2Applied,
-                prepare.VertexColorWarnings,
+                prepare.VertexColorWarnings.Concat(cameraWarnings).ToArray(),
                 vpkPath,
                 logPath);
         }
@@ -1295,7 +1305,8 @@ public sealed class BuildAndTestService
     private static void PackVpk(
         string addonGameRoot,
         string outputVpk,
-        IReadOnlySet<string> excludedRelativePaths,
+        IReadOnlySet<string> includedRelativePaths,
+        IReadOnlySet<string> projectRootRelativePaths,
         StringBuilder log,
         IProgress<BuildAndTestProgress>? progress,
         CancellationToken cancellationToken,
@@ -1313,7 +1324,7 @@ public sealed class BuildAndTestService
                 Path = path,
                 RelativePath = NormalizeRelativePath(Path.GetRelativePath(addonGameRoot, path)),
             })
-            .Where(item => !excludedRelativePaths.Contains(item.RelativePath))
+            .Where(item => includedRelativePaths.Contains(item.RelativePath))
             .OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         if (files.Length == 0)
@@ -1321,6 +1332,27 @@ public sealed class BuildAndTestService
             throw new InvalidOperationException(
                 $"Cannot create VPK because the compiled addon game folder is empty after retail-resource reuse filtering: {addonGameRoot}");
         }
+
+        if (files.Length != includedRelativePaths.Count)
+        {
+            throw new InvalidDataException("A selected VPK resource disappeared before packaging.");
+        }
+
+        var previousEntries = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        var previousArchiveBytes = EnumerateVpkFamily(outputVpk).Sum(path => new FileInfo(path).Length);
+        if (File.Exists(outputVpk))
+        {
+            using var previous = new Package();
+            previous.Read(outputVpk);
+            foreach (var entry in previous.Entries!.SelectMany(group => group.Value))
+            {
+                previousEntries.Add(NormalizeRelativePath(entry.GetFullPath()), entry.TotalLength);
+            }
+        }
+        var expectedHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        long payloadBytes = 0;
+        log.AppendLine();
+        log.AppendLine("[VPK payload audit: exact selected resources]");
 
         var targetDirectory = Path.GetDirectoryName(outputVpk)!;
         Directory.CreateDirectory(targetDirectory);
@@ -1341,7 +1373,18 @@ public sealed class BuildAndTestService
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var file = files[index];
-                    package.AddFile(file.RelativePath, File.ReadAllBytes(file.Path));
+                    var bytes = File.ReadAllBytes(file.Path);
+                    var hash = Convert.ToHexString(SHA256.HashData(bytes));
+                    expectedHashes.Add(file.RelativePath, hash);
+                    payloadBytes += bytes.LongLength;
+                    var reason = projectRootRelativePaths.Contains(file.RelativePath) ? "authored root"
+                        : file.RelativePath.EndsWith(".vpk", StringComparison.OrdinalIgnoreCase) ? "authored scene"
+                        : "dependency";
+                    var change = previousEntries.TryGetValue(file.RelativePath, out var previousLength)
+                        ? $"previous={previousLength}, delta={bytes.LongLength - previousLength:+0;-0;0}"
+                        : "new entry";
+                    log.AppendLine($"  pack {file.RelativePath} | bytes={bytes.LongLength} | {reason} | {change} | SHA256={hash}");
+                    package.AddFile(file.RelativePath, bytes);
 
                     var percent = 90 + (int)Math.Floor(6.0 * (index + 1) / files.Length);
                     Report(progress, percent, $"Packing VPK — {index + 1}/{files.Length} files...");
@@ -1359,6 +1402,15 @@ public sealed class BuildAndTestService
 
             Report(progress, 98, "Verifying VPK checksums...");
             VerifyVpk(temporaryVpk);
+            VerifyVpkPayload(temporaryVpk, expectedHashes, cancellationToken);
+            var archiveBytes = EnumerateVpkFamily(temporaryVpk).Sum(path => new FileInfo(path).Length);
+            log.AppendLine($"VPK payload verified: {files.Length} exact paths and SHA-256 hashes; payload bytes={payloadBytes}.");
+            log.AppendLine($"VPK archive bytes={archiveBytes}; previous bytes={previousArchiveBytes}; delta={archiveBytes - previousArchiveBytes:+0;-0;0}.");
+            foreach (var removed in previousEntries.Keys.Where(path => !includedRelativePaths.Contains(path))
+                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                log.AppendLine($"  omit previous {removed} | bytes={previousEntries[removed]}");
+            }
 
             cancellationToken.ThrowIfCancellationRequested();
             beforeDeploy();
@@ -1366,7 +1418,7 @@ public sealed class BuildAndTestService
             log.AppendLine();
             log.AppendLine("[ValvePak in-process packaging]");
             log.AppendLine($"Packed files: {files.Length}");
-            log.AppendLine($"Retail/redundant compiled outputs omitted: {excludedRelativePaths.Count}");
+            log.AppendLine($"Retail/redundant compiled outputs omitted: {Directory.EnumerateFiles(addonGameRoot, "*", SearchOption.AllDirectories).Count() - files.Length}");
             log.AppendLine("VPK version: 2");
             log.AppendLine($"Output: {outputVpk}");
             Report(progress, 99, "VPK deployed to retail Deadlock addons.");
@@ -1749,6 +1801,29 @@ public sealed class BuildAndTestService
         verificationPackage.Read(path);
         verificationPackage.VerifyHashes();
         verificationPackage.VerifyFileChecksums();
+    }
+
+    internal static void VerifyVpkPayload(
+        string path,
+        IReadOnlyDictionary<string, string> expectedHashes,
+        CancellationToken cancellationToken)
+    {
+        using var package = new Package();
+        package.Read(path);
+        var entries = package.Entries!.SelectMany(group => group.Value).ToArray();
+        var verified = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var entry in entries)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var relativePath = NormalizeRelativePath(entry.GetFullPath());
+            if (!verified.Add(relativePath) || !expectedHashes.TryGetValue(relativePath, out var expectedHash))
+                throw new InvalidDataException($"Unexpected or duplicate VPK entry: {relativePath}");
+            package.ReadEntry(entry, out byte[] bytes);
+            if (!string.Equals(Convert.ToHexString(SHA256.HashData(bytes)), expectedHash, StringComparison.Ordinal))
+                throw new InvalidDataException($"VPK payload differs from the selected compiled resource: {relativePath}");
+        }
+        if (verified.Count != expectedHashes.Count)
+            throw new InvalidDataException("The VPK is missing selected compiled resources.");
     }
 
     private static IReadOnlyList<string> EnumerateVpkFamily(string dirVpkPath)

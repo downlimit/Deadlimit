@@ -257,11 +257,7 @@ internal static class ProjectHeaderFeature
             UiText.T(
                 "Prepare the selected project's working files for Reduced CSDK12.\n\nA normal click preserves artist edits. Hold SHIFT to choose reset sections or create an editable hero-select VMAP.",
                 "Подготовить рабочие файлы выбранного проекта для Reduced CSDK12.\n\nОбычный клик сохраняет правки автора. Удерживайте SHIFT, чтобы выбрать разделы для восстановления или создать редактируемый VMAP сцены выбора героя."));
-        toolTip.SetToolTip(
-            buildOverlay,
-            UiText.T(
-                "Compile the current project and deploy its VPK into Deadlock game client.\n\nThis action does not launch the game. Hold SHIFT while clicking to force a full clean rebuild.",
-                "Скомпилировать текущий проект и установить его VPK в игровой клиент Deadlock.\n\nЭта кнопка не запускает игру. Удерживайте SHIFT при клике для полной чистой пересборки."));
+        toolTip.SetToolTip(buildOverlay, BuildFeature.BuildForTestToolTip());
         toolTip.SetToolTip(
             launchGameButton,
             BuildLaunchGameToolTip(gameIsRunning: false));
