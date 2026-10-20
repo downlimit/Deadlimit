@@ -15,6 +15,8 @@ internal static class CompiledModelCameraRepairService
             .ToDictionary(group => group.Key, group => group.ToArray(), StringComparer.OrdinalIgnoreCase);
         var staged = new List<(string Path, byte[] Before, byte[] After)>();
         var warnings = new List<string>();
+        var camerasRepaired = 0;
+        var soundsRepaired = 0;
         foreach (var path in Directory.EnumerateFiles(addonGameRoot, "*.vmdl_c", SearchOption.AllDirectories)
                      .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
         {
@@ -34,7 +36,13 @@ internal static class CompiledModelCameraRepairService
             foreach (var remapping in result.RemappedBones) log($"  Camera bone adaptation: {remapping}");
             if (result.Status is CameraRepairStatus.ReviewNeeded or CameraRepairStatus.Unsupported)
                 warnings.Add($"{resourcePath}: {result.Detail}");
-            if (result.Modified) staged.Add((path, before, result.Bytes));
+            if (result.Modified) camerasRepaired++;
+            var sound = CompiledModelSoundRepair.Repair(result.Bytes, retail, resourcePath);
+            log($"Tagged sounds {sound.Status}: {resourcePath}: {sound.Detail}");
+            if (sound.Status == SoundSettingsRepairStatus.ReviewNeeded)
+                warnings.Add($"{resourcePath}: {sound.Detail}");
+            if (sound.Modified) soundsRepaired++;
+            if (result.Modified || sound.Modified) staged.Add((path, before, sound.Bytes));
         }
         var committed = new List<(string Path, byte[] Before)>();
         try
@@ -43,11 +51,11 @@ internal static class CompiledModelCameraRepairService
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (!SHA256.HashData(File.ReadAllBytes(edit.Path)).AsSpan().SequenceEqual(SHA256.HashData(edit.Before)))
-                    throw new IOException($"Compiled model changed during camera repair: {edit.Path}");
+                    throw new IOException($"Compiled model changed during compatibility repair: {edit.Path}");
                 AtomicFile.WriteAllBytes(edit.Path, edit.After);
                 committed.Add((edit.Path, edit.Before));
                 if (!File.ReadAllBytes(edit.Path).AsSpan().SequenceEqual(edit.After))
-                    throw new IOException($"Camera repair write verification failed: {edit.Path}");
+                    throw new IOException($"Model compatibility repair write verification failed: {edit.Path}");
             }
         }
         catch
@@ -55,7 +63,8 @@ internal static class CompiledModelCameraRepairService
             foreach (var edit in committed.AsEnumerable().Reverse()) AtomicFile.WriteAllBytes(edit.Path, edit.Before);
             throw;
         }
-        log($"Camera models repaired: {staged.Count}");
+        log($"Camera models repaired: {camerasRepaired}");
+        log($"Tagged-sound models repaired: {soundsRepaired}");
         return warnings;
     }
 }

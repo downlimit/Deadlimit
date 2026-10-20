@@ -13,7 +13,9 @@ public sealed record ImportedVpkAnimationBindingRepairEntry(
     string Detail,
     bool BindingsModified = false,
     bool CameraModified = false,
-    string CameraStatus = "");
+    string CameraStatus = "",
+    bool SoundSettingsModified = false,
+    string SoundSettingsStatus = "");
 
 public sealed record ImportedVpkAnimationBindingRepairResult(
     DateTimeOffset RepairedUtc,
@@ -22,7 +24,8 @@ public sealed record ImportedVpkAnimationBindingRepairResult(
     IReadOnlyList<ImportedVpkAnimationBindingRepairEntry> Entries,
     string ReportPath,
     int BindingModifiedTargetCount = 0,
-    int CameraModifiedTargetCount = 0);
+    int CameraModifiedTargetCount = 0,
+    int SoundSettingsModifiedTargetCount = 0);
 
 internal sealed class ImportedVpkAnimationBindingRepairSnapshot
 {
@@ -111,6 +114,7 @@ public sealed class ImportedVpkAnimationBindingRepairService
         var entries = new List<ImportedVpkAnimationBindingRepairEntry>();
         var bindingsChanged = 0;
         var camerasChanged = 0;
+        var soundsChanged = 0;
         foreach (var target in inspection.Targets)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -127,23 +131,26 @@ public sealed class ImportedVpkAnimationBindingRepairService
                 throw new InvalidOperationException($"Retail model changed during repair: {target.ResourcePath}");
             var binding = CompiledModelAnimationBindingRepair.Repair(input, retail, target.ResourcePath);
             var camera = CompiledModelCameraRepair.Repair(binding.Bytes, retail, target.ResourcePath);
+            var sound = CompiledModelSoundRepair.Repair(camera.Bytes, retail, target.ResourcePath);
             if (binding.Modified) bindingsChanged++;
             if (camera.Modified) camerasChanged++;
-            var modified = binding.Modified || camera.Modified;
+            if (sound.Modified) soundsChanged++;
+            var modified = binding.Modified || camera.Modified || sound.Modified;
             var currentHash = ComputeSha256(input);
-            var finalHash = ComputeSha256(camera.Bytes);
+            var finalHash = ComputeSha256(sound.Bytes);
             var oldRecord = recorded.GetValueOrDefault(target.ResourcePath);
             var entry = new ImportedVpkAnimationBindingRepairEntry(
                 target.ResourcePath, target.Status, modified || oldRecord is not null,
                 baseline[target.ResourcePath], finalHash,
-                $"AG2/NmSkeleton {(binding.Modified ? "repaired" : "current")}. {camera.Status}: {camera.Detail}",
+                $"AG2/NmSkeleton {(binding.Modified ? "repaired" : "current")}. {camera.Status}: {camera.Detail} Tagged sounds {sound.Status}: {sound.Detail}",
                 binding.Modified || (oldRecord?.BindingsModified ?? false),
-                camera.Modified || (oldRecord?.CameraModified ?? false), camera.Status.ToString());
+                camera.Modified || (oldRecord?.CameraModified ?? false), camera.Status.ToString(),
+                sound.Modified || (oldRecord?.SoundSettingsModified ?? false), sound.Status.ToString());
             entries.Add(entry);
             if (!modified) continue;
             if (string.Equals(currentHash, finalHash, StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException($"Repair did not change bytes: {target.ResourcePath}");
-            staged.Add(new(target.ResourcePath, payloadPath, input, camera.Bytes));
+            staged.Add(new(target.ResourcePath, payloadPath, input, sound.Bytes));
             recorded[target.ResourcePath] = entry;
         }
         var repairedUtc = DateTimeOffset.UtcNow;
@@ -172,7 +179,7 @@ public sealed class ImportedVpkAnimationBindingRepairService
                 throw;
             }
         }
-        return new(repairedUtc, staged.Count, staged.Count, entries, reportPath, bindingsChanged, camerasChanged);
+        return new(repairedUtc, staged.Count, staged.Count, entries, reportPath, bindingsChanged, camerasChanged, soundsChanged);
     }
 
     private static string ResolvePayloadModel(string payloadRoot, string resourcePath) =>

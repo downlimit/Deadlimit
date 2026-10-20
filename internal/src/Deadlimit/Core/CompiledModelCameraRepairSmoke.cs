@@ -92,12 +92,16 @@ internal static class CompiledModelCameraRepairSmoke
     }
 
     // Runs against actual installed Ivy/Dynamo mods, but only writes isolated test outputs.
-    public static string RunLive(string retailRoot)
+    public static string RunLive(string retailRoot) => RunLiveModels(retailRoot, [("ivy", "01"), ("dynamo", "34")]);
+
+    public static string RunLiveIvy(string retailRoot) => RunLiveModels(retailRoot, [("ivy", "01")]);
+
+    private static string RunLiveModels(string retailRoot, (string Hero, string Slot)[] models)
     {
         var outputRoot = Path.Combine(Path.GetTempPath(), "deadlimit-camera-live-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"));
         Directory.CreateDirectory(outputRoot);
         var results = new List<object>();
-        foreach (var (hero, slot) in new[] { ("ivy", "01"), ("dynamo", "34") })
+        foreach (var (hero, slot) in models)
         {
             var source = Path.Combine(retailRoot, "game", "citadel", "addons", $"pak{slot}_dir.vpk");
             var sourceHash = SHA256.HashData(File.ReadAllBytes(source));
@@ -105,6 +109,7 @@ internal static class CompiledModelCameraRepairSmoke
             var retail = ReadEntry(Path.Combine(retailRoot, "game", "citadel", "pak01_dir.vpk"), modelPath);
             var input = ReadEntry(source, modelPath);
             var repaired = CompiledModelCameraRepair.Repair(input, retail, modelPath);
+            var sound = CompiledModelSoundRepair.Repair(repaired.Bytes, retail, modelPath);
             Require(repaired.Status is CameraRepairStatus.Repaired or CameraRepairStatus.Current,
                 $"{hero}: recognized camera state: {repaired.Status}");
             Require(!CompiledModelCameraRepair.Repair(repaired.Bytes, retail, modelPath).Modified, $"{hero}: repeat repair no-op");
@@ -114,6 +119,8 @@ internal static class CompiledModelCameraRepairSmoke
             var first = service.Repair(manifest);
             Require(repaired.Modified ? first.CameraModifiedTargetCount > 0 : first.CameraModifiedTargetCount == 0,
                 $"{hero}: imported camera repair agrees with input state");
+            Require(sound.Modified ? first.SoundSettingsModifiedTargetCount > 0 : first.SoundSettingsModifiedTargetCount == 0,
+                $"{hero}: imported tagged-sound repair agrees with input state");
             var repacked = new ImportedVpkRepackService().RebuildAndVerify(manifest);
             var reportBefore = File.Exists(first.ReportPath) ? File.ReadAllBytes(first.ReportPath) : null;
             Require(service.Repair(manifest).ModifiedTargetCount == 0
@@ -133,7 +140,7 @@ internal static class CompiledModelCameraRepairSmoke
                 $"{hero}: authoring and imported model outputs agree");
             Require(SHA256.HashData(File.ReadAllBytes(source)).SequenceEqual(sourceHash), $"{hero}: installed source untouched");
             results.Add(new { hero, CameraStatus = repaired.Status.ToString(), repaired.MeshBlocks,
-                repaired.RemappedBones, repacked.EntryCount, repacked.ChangedEntryCount,
+                repaired.RemappedBones, SoundStatus = sound.Status.ToString(), repacked.EntryCount, repacked.ChangedEntryCount,
                 SourceVpkBytes = new FileInfo(source).Length, OutputVpkBytes = new FileInfo(repacked.OutputVpkPath).Length,
                 SourceModelBytes = input.Length, OutputModelBytes = new FileInfo(compiledFile).Length,
                 Vpk = repacked.OutputVpkPath, Log = log, first.ReportPath });
@@ -191,6 +198,10 @@ internal static class CompiledModelCameraRepairSmoke
         var metadata = KVObject.Collection();
         metadata["CCitadelHeroModelGameData_t"] = KVObject.Collection();
         metadata["untouched_game_metadata"] = new KVObject("preserve this");
+        var sounds = KVObject.Collection();
+        sounds["m_taggedSounds"] = KVObject.Array([
+            new KVObject("scripts/tagged_sounds/camera_smoke.vdata") { Flag = KVFlag.Resource }]);
+        metadata[old ? CompiledModelSoundRepair.LegacySection : CompiledModelSoundRepair.CurrentSection] = sounds;
         metadata["AttachmentCameraData"] = KVObject.Array();
         var camera = KVObject.Collection(); camera["attachment_name"] = new KVObject("portrait_camera_attach");
         metadata["AttachmentCameraData"].Add(camera);
