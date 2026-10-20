@@ -163,6 +163,12 @@ internal static class Program
                 return 40 + bindingRepairResult;
             }
 
+            var soundSettingsResult = CompiledModelSoundRepairSmoke.Run();
+            if (soundSettingsResult != 0)
+            {
+                return 110 + soundSettingsResult;
+            }
+
             var physicsInheritanceResult = CompiledModelPhysicsInheritanceSmoke.Run();
             if (physicsInheritanceResult != 0)
             {

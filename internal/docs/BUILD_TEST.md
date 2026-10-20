@@ -360,3 +360,19 @@ material still resolve from the game and are omitted.
 Build logs include each selected path, bytes, root/dependency/scene classification,
 SHA-256, previous entry size/delta, removed paths, and total archive bytes/delta.
 This audit supplements VPK checksums and is required when assessing packaging changes.
+
+### Tagged animation sound compatibility
+
+Current Deadlock models use `TaggedSoundSettings_t` where older CSDK/model sources
+used `CitadelTaggedSoundSettings_t`. BUILD FOR TEST migrates that confirmed metadata
+key after compilation on every authoring build, and in the imported model repair
+transaction. This reconnects tagged animation sounds such as footsteps, landing,
+melee and reload events while retaining every original sound-table reference.
+
+The migration requires an exact retail model counterpart using the current schema.
+Current models and models without the legacy section remain unchanged. Conflicting
+or unrecognized authored data produces a warning and is preserved. Unrelated model
+metadata, geometry, materials, skeleton, animation and physics blocks are verified;
+unedited blocks remain byte-identical. No stock sound tables or audio files are
+added to the VPK. Repeat repair is a byte-identical no-op, and imported provenance
+continues from the original import through the combined binding/camera/sound repair.

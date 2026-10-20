@@ -84,11 +84,12 @@ internal sealed class ImportedVpkBuildAndTestService
             var repairedCount = repair.ModifiedTargetCount;
             log.AppendLine($"Compiled models repaired this run: {repairedCount}");
             log.AppendLine($"Camera models repaired: {repair.CameraModifiedTargetCount}");
+            log.AppendLine($"Tagged-sound models repaired: {repair.SoundSettingsModifiedTargetCount}");
             log.AppendLine($"Repair report: {repair.ReportPath}");
             foreach (var entry in repair.Entries)
             {
                 log.AppendLine($"  {entry.ResourcePath}: {entry.Detail}");
-                if (entry.CameraStatus is "Unsupported" or "ReviewNeeded")
+                if (entry.CameraStatus is "Unsupported" or "ReviewNeeded" || entry.SoundSettingsStatus == "ReviewNeeded")
                     warnings.Add($"{entry.ResourcePath}: {entry.Detail}");
             }
 
